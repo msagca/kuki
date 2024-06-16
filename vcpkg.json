@@ -1,0 +1,4 @@
+{
+  "dependencies": ["glfw3", "opengl", "glad"]
+}
+
