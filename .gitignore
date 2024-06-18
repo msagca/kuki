@@ -19,6 +19,11 @@
 *.smod
 *.so
 /[Bb]uild
+/out
+/vcpkg_installed
+vcpkg-manifest-install.log
+package-lock.json
+package.json
 CMakeCache.txt
 CMakeFiles
 CMakeLists.txt.user
@@ -30,4 +35,3 @@ _deps
 cmake_install.cmake
 compile_commands.json
 install_manifest.txt
-
