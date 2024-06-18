@@ -2,16 +2,15 @@
 
 This is where I experiment with OpenGL as I follow along the tutorials at [LearnOpenGL](https://learnopengl.com/).
 
-## Building
+## How to Build
 
 ### Requirements
 
-- *Windows:* [Visual Studio](https://visualstudio.microsoft.com/vs/community/), `git`
-- *Linux:* `cmake`, `ninja`, `gcc`, `g++`, `git`
+- `git`, [vcpkg](https://github.com/microsoft/vcpkg)
+- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community/) (with CMake)
+- **Linux:** `cmake`, `ninja`, `gcc`, `g++`
 
 ### Instructions
-
-- Install [vcpkg](https://github.com/microsoft/vcpkg)
 
 - Set the environment variable `VCPKG_ROOT` and append it to `PATH`
 
@@ -27,7 +26,7 @@ git clone https://github.com/msagca/learning-opengl
 cmake .
 ```
 
-> :warning: You may have to specify a preset suitable for your OS
+> You may have to specify a preset suitable for your OS
 
 ```bash
 cmake --preset linux-debug .
