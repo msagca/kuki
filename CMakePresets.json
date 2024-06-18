@@ -19,8 +19,8 @@
       }
     },
     {
-      "name": "x64-debug",
-      "displayName": "x64 Debug",
+      "name": "windows-debug",
+      "displayName": "Windows x64 Debug",
       "inherits": "windows-base",
       "architecture": {
         "value": "x64",
@@ -31,19 +31,36 @@
       }
     },
     {
-      "name": "x64-release",
-      "displayName": "x64 Release",
-      "inherits": "x64-debug",
+      "name": "windows-release",
+      "displayName": "Windows x64 Release",
+      "inherits": "windows-debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
-      "name": "x86-debug",
-      "displayName": "x86 Debug",
-      "inherits": "windows-base",
+      "name": "linux-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux x64 Debug",
+      "inherits": "linux-base",
       "architecture": {
-        "value": "x86",
+        "value": "x64",
         "strategy": "external"
       },
       "cacheVariables": {
@@ -51,9 +68,9 @@
       }
     },
     {
-      "name": "x86-release",
-      "displayName": "x86 Release",
-      "inherits": "x86-debug",
+      "name": "linux-release",
+      "displayName": "Linux x64 Release",
+      "inherits": "linux-debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
