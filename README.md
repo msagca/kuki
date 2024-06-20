@@ -7,12 +7,12 @@ This is where I experiment with OpenGL as I follow along the tutorials at [Learn
 ### Requirements
 
 - `git`, [vcpkg](https://github.com/microsoft/vcpkg)
-- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community/) (with CMake)
+- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community/)
 - **Linux:** `cmake`, `ninja`, `gcc`, `g++`
 
 ### Instructions
 
-- Set the environment variable `VCPKG_ROOT` and append it to `PATH`
+- Set the environment variable `VCPKG_ROOT` and append it to the `PATH`
 
 - Clone this repository
 
