@@ -16,24 +16,18 @@ This is where I experiment with OpenGL as I follow along the tutorials at [Learn
 
 - Clone this repository
 
-```bash
+```powershell
 git clone https://github.com/msagca/learning-opengl
 ```
 
 - Run the configure command
 
-```bash
+```powershell
 cmake .
-```
-
-> You may have to specify a preset suitable for your OS
-
-```bash
-cmake --preset linux-debug .
 ```
 
 - Run the build command
 
-```bash
+```powershell
 cmake --build .
 ```
