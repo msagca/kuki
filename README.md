@@ -6,9 +6,9 @@ This is where I experiment with OpenGL as I follow along the tutorials at [Learn
 
 ### Requirements
 
-- `git`, [vcpkg](https://github.com/microsoft/vcpkg)
+- `git`, `cmake`, [vcpkg](https://github.com/microsoft/vcpkg)
 - **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community/)
-- **Linux:** `cmake`, `ninja`, `gcc`, `g++`
+- **Linux:** `ninja` (or `make`), `gcc`, `g++`
 
 ### Instructions
 
