@@ -20,10 +20,10 @@ static GLFWwindow* createWindow() {
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   auto window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Getting Started", NULL, NULL);
   if (window == NULL)
-    std::cout << "Failed to create GLFW window" << std::endl;
+    std::cout << "Error: Failed to create GLFW window." << std::endl;
   glfwMakeContextCurrent(window);
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-    std::cout << "Failed to initialize GLAD" << std::endl;
+    std::cout << "Error: Failed to initialize GLAD." << std::endl;
   glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
   glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
   glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
@@ -44,7 +44,7 @@ static unsigned int createTexture(const char* filename) {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
   } else
-    std::cout << "Failed to load texture" << std::endl;
+    std::cout << "Error: Failed to load texture." << std::endl;
   stbi_image_free(data);
   return texture;
 }
