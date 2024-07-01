@@ -20,7 +20,6 @@ ContinuationIndentWidth: 2
 EmptyLineBeforeAccessModifier: Never
 IndentExternBlock: Indent
 IndentGotoLabels: false
-IndentPPDirectives: AfterHash
 IndentRequiresClause: false
 InsertNewlineAtEOF: true
 KeepEmptyLinesAtTheStartOfBlocks: false

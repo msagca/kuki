@@ -1,9 +1,13 @@
 #include "shader.hpp"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+const float rotationSpeed = .8f;
 const unsigned int WINDOW_WIDTH = 800;
 const unsigned int WINDOW_HEIGHT = 600;
 static void processInput(GLFWwindow* window) {
@@ -84,10 +88,20 @@ int main() {
   glEnableVertexAttribArray(1);
   glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
   glEnableVertexAttribArray(2);
+  glm::mat4 trans = glm::mat4(1.0f);
+  unsigned int transformLoc = glGetUniformLocation(shader.progID, "transform");
   shader.use();
+  float currentTime = 0;
+  float lastTime = 0;
+  float deltaTime = 0;
   while (!glfwWindowShouldClose(window)) {
+    currentTime = glfwGetTime();
+    deltaTime = currentTime - lastTime;
+    lastTime = currentTime;
     processInput(window);
     glClear(GL_COLOR_BUFFER_BIT);
+    trans = glm::rotate(trans, sin(deltaTime * rotationSpeed), glm::vec3(0.0f, 0.0f, 1.0f));
+    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(trans));
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glfwSwapBuffers(window);
     glfwPollEvents();

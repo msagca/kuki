@@ -1,13 +1,9 @@
 #include "shader.hpp"
-#include <cstring>
 #include <fstream>
 #include <glad/glad.h>
-#include <ios>
-#include <iosfwd>
 #include <iostream>
 #include <sstream>
-#include <string>
-static const char* ReadShader(const char* filename) {
+static const char* readShader(const char* filename) {
   std::ifstream shaderFile;
   shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
   std::string shaderStr;
@@ -24,7 +20,7 @@ static const char* ReadShader(const char* filename) {
   std::strcpy(shaderCStr, shaderStr.c_str());
   return shaderCStr;
 }
-static void CompileShader(unsigned int& shaderID, const char* shaderText, bool isVertex = true) {
+static void compileShader(unsigned int& shaderID, const char* shaderText, bool isVertex = true) {
   shaderID = glCreateShader(isVertex ? GL_VERTEX_SHADER : GL_FRAGMENT_SHADER);
   glShaderSource(shaderID, 1, &shaderText, NULL);
   glCompileShader(shaderID);
@@ -34,11 +30,11 @@ static void CompileShader(unsigned int& shaderID, const char* shaderText, bool i
     std::cout << "Error: Failed to compile shader." << std::endl;
 }
 Shader::Shader(const char* vertexPath, const char* fragmentPath) {
-  auto vShaderText = ReadShader(vertexPath);
-  auto fShaderText = ReadShader(fragmentPath);
+  auto vShaderText = readShader(vertexPath);
+  auto fShaderText = readShader(fragmentPath);
   unsigned int vShaderID, fShaderID;
-  CompileShader(vShaderID, vShaderText);
-  CompileShader(fShaderID, fShaderText, false);
+  compileShader(vShaderID, vShaderText);
+  compileShader(fShaderID, fShaderText, false);
   progID = glCreateProgram();
   glAttachShader(progID, vShaderID);
   glAttachShader(progID, fShaderID);
