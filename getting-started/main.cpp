@@ -1,15 +1,20 @@
 #include "shader.hpp"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#include <glm/detail/func_trigonometric.inl>
+#include <glm/ext/matrix_clip_space.inl>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/matrix_transform.inl>
+#include <glm/ext/vector_float3.hpp>
 const float rotationSpeed = .8f;
 const unsigned int WINDOW_WIDTH = 800;
 const unsigned int WINDOW_HEIGHT = 600;
+const float NEAR_PLANE = .1f;
+const float FAR_PLANE = 100.0f;
+const float VIEW_ANGLE = 45.0f;
 static void processInput(GLFWwindow* window) {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
     glfwSetWindowShouldClose(window, true);
@@ -33,7 +38,7 @@ static GLFWwindow* createWindow() {
   glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
   return window;
 }
-static unsigned int createTexture(const char* filename) {
+static void createTexture(const char* filename) {
   unsigned int texture;
   glGenTextures(1, &texture);
   glActiveTexture(GL_TEXTURE0);
@@ -50,66 +55,62 @@ static unsigned int createTexture(const char* filename) {
   } else
     std::cout << "Error: Failed to load texture." << std::endl;
   stbi_image_free(data);
-  return texture;
 }
 int main() {
   auto window = createWindow();
   Shader shader("shader.vert", "shader.frag");
-  auto texture = createTexture("container.jpg");
-  float vertices[] = {
-    // clang-format off
-    0.5f, 0.5f, 0.0f, // xyz
-    1.0f, 0.0f, 0.0f, // rgb
-    1.0f, 1.0f, // st
-    0.5f, -0.5f, 0.0f, // xyz
-    0.0f, 1.0f, 0.0f, // rgb
-    1.0f, 0.0f, // st
-    -0.5f, -0.5f, 0.0f, // xyz
-    0.0f, 0.0f, 1.0f, // rgb
-    0.0f, 0.0f, // st
-    -0.5f, 0.5f, 0.0f, // xyz
-    1.0f, 1.0f, 0.0f, // rgb
-    0.0f, 1.0f // st
-    // clang-format on
-  };
-  unsigned int indices[] = {0, 1, 3, 1, 2, 3};
-  unsigned int VAO, VBO, EBO;
+  createTexture("container.jpg");
+  //
+  //              0-----1
+  //              |     |
+  //              |     |
+  //  1-----0-----4-----5-----1
+  //  |     |     |     |     |
+  //  |     |     |     |     |
+  //  2-----3-----7-----6-----2
+  //              |     |
+  //              |     |
+  //              3-----2
+  //
+  float vertices[] = {-0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.5f, 0.5f, -0.5f, 1.0f, 1.0f, -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f, 1.0f, -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, -0.5f, 0.5f, -0.5f, 1.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.5f, -0.5f, 0.5f, 1.0f, 0.0f, -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, -0.5f, 0.5f, -0.5f, 0.0f, 1.0f};
+  unsigned int VAO, VBO;
   glGenVertexArrays(1, &VAO);
   glGenBuffers(1, &VBO);
-  glGenBuffers(1, &EBO);
   glBindVertexArray(VAO);
   glBindBuffer(GL_ARRAY_BUFFER, VBO);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-  glEnableVertexAttribArray(2);
-  glm::mat4 trans = glm::mat4(1.0f);
-  unsigned int transformLoc = glGetUniformLocation(shader.progID, "transform");
   shader.use();
-  float currentTime = 0;
-  float lastTime = 0;
-  float deltaTime = 0;
+  auto posAttrib = glGetAttribLocation(shader.ID, "posIn");
+  glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(posAttrib);
+  auto texCoordAttrib = glGetAttribLocation(shader.ID, "texCoordIn");
+  glVertexAttribPointer(texCoordAttrib, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+  glEnableVertexAttribArray(texCoordAttrib);
+  glEnable(GL_DEPTH_TEST);
+  auto model = glm::mat4(1.0f);
+  auto view = glm::mat4(1.0f);
+  view = glm::translate(view, glm::vec3(0.0f, 0.0f, -3.0f));
+  auto projection = glm::perspective(glm::radians(VIEW_ANGLE), (float)WINDOW_WIDTH / WINDOW_HEIGHT, NEAR_PLANE, FAR_PLANE);
+  shader.setMat4("view", view);
+  shader.setMat4("projection", projection);
+  auto currentTime = 0.0f;
+  auto lastTime = 0.0f;
+  auto deltaTime = 0.0f;
   while (!glfwWindowShouldClose(window)) {
     currentTime = glfwGetTime();
     deltaTime = currentTime - lastTime;
     lastTime = currentTime;
     processInput(window);
-    glClear(GL_COLOR_BUFFER_BIT);
-    trans = glm::rotate(trans, sin(deltaTime * rotationSpeed), glm::vec3(0.0f, 0.0f, 1.0f));
-    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(trans));
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    model = glm::rotate(model, deltaTime * glm::radians(45.0f), glm::vec3(0.5f, 0.5f, 0.0f));
+    shader.setMat4("model", model);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
     glfwSwapBuffers(window);
     glfwPollEvents();
   }
   glDeleteVertexArrays(1, &VAO);
   glDeleteBuffers(1, &VBO);
-  glDeleteBuffers(1, &EBO);
-  glDeleteProgram(shader.progID);
+  glDeleteProgram(shader.ID);
   glfwTerminate();
   return 0;
 }
