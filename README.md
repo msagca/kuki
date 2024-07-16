@@ -12,7 +12,7 @@ This is where I experiment with OpenGL as I follow along the tutorials at [Learn
 
 ### Instructions
 
-- Set the environment variable `VCPKG_ROOT` and append it to the `PATH`
+- Set up `vcpkg` (follow steps *1..2* [here](https://learn.microsoft.com/en-us/vcpkg/get_started/get-started))
 
 - Clone this repository
 
