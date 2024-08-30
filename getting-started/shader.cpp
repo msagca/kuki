@@ -2,14 +2,13 @@
 #include <cstring>
 #include <fstream>
 #include <glad/glad.h>
-#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/gtc/type_ptr.inl>
 #include <ios>
 #include <iosfwd>
 #include <iostream>
 #include <sstream>
 #include <string>
-static const char* readShader(const char* filename) {
+static const char* RadShader(const char* filename) {
   std::ifstream shaderFile;
   shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
   std::string shaderStr;
@@ -23,10 +22,10 @@ static const char* readShader(const char* filename) {
     std::cout << "Error: Failed to read shader file." << std::endl;
   }
   char* shaderCStr = new char[shaderStr.size() + 1];
-  std::strcpy(shaderCStr, shaderStr.c_str());
+  strcpy_s(shaderCStr, shaderStr.size() + 1, shaderStr.c_str());
   return shaderCStr;
 }
-static void compileShader(unsigned int& shaderID, const char* shaderText, bool isVertex = true) {
+static void CompileShader(unsigned int& shaderID, const char* shaderText, bool isVertex = true) {
   shaderID = glCreateShader(isVertex ? GL_VERTEX_SHADER : GL_FRAGMENT_SHADER);
   glShaderSource(shaderID, 1, &shaderText, NULL);
   glCompileShader(shaderID);
@@ -36,11 +35,11 @@ static void compileShader(unsigned int& shaderID, const char* shaderText, bool i
     std::cout << "Error: Failed to compile shader." << std::endl;
 }
 Shader::Shader(const char* vertexPath, const char* fragmentPath) {
-  auto vShaderText = readShader(vertexPath);
-  auto fShaderText = readShader(fragmentPath);
+  auto vShaderText = RadShader(vertexPath);
+  auto fShaderText = RadShader(fragmentPath);
   unsigned int vShaderID, fShaderID;
-  compileShader(vShaderID, vShaderText);
-  compileShader(fShaderID, fShaderText, false);
+  CompileShader(vShaderID, vShaderText);
+  CompileShader(fShaderID, fShaderText, false);
   ID = glCreateProgram();
   glAttachShader(ID, vShaderID);
   glAttachShader(ID, fShaderID);
@@ -56,22 +55,22 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
   glDeleteShader(vShaderID);
   glDeleteShader(fShaderID);
 }
-void Shader::use() const {
+void Shader::Use() const {
   glUseProgram(ID);
 }
-void Shader::setBool(const std::string& name, bool value) const {
+void Shader::SetBool(const std::string& name, bool value) const {
   auto loc = glGetUniformLocation(ID, name.c_str());
   glUniform1i(loc, (int)value);
 }
-void Shader::setInt(const std::string& name, int value) const {
+void Shader::SetInt(const std::string& name, int value) const {
   auto loc = glGetUniformLocation(ID, name.c_str());
   glUniform1i(loc, value);
 }
-void Shader::setFloat(const std::string& name, float value) const {
+void Shader::SetFloat(const std::string& name, float value) const {
   auto loc = glGetUniformLocation(ID, name.c_str());
   glUniform1f(loc, value);
 }
-void Shader::setMat4(const std::string& name, glm::mat4 value) const {
+void Shader::SetMat4(const std::string& name, glm::mat4 value) const {
   auto loc = glGetUniformLocation(ID, name.c_str());
   glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 }

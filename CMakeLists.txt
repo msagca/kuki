@@ -1,13 +1,10 @@
-cmake_minimum_required(VERSION 3.8)
-set(CMAKE_TOOLCHAIN_FILE
-    "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-    CACHE STRING
-    "vcpkg toolchain file"
-)
+cmake_minimum_required(VERSION 3.20)
+set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(CMAKE_VERSION VERSION_GREATER 3.25)
-    set(CMAKE_CXX_STANDARD 23)
-elseif(CMAKE_VERSION VERSION_GREATER 3.12)
-    set(CMAKE_CXX_STANDARD 20)
+  set(CMAKE_CXX_STANDARD 23)
+else()
+  set(CMAKE_CXX_STANDARD 20)
 endif()
 project("LearningOpenGL")
 find_package(OpenGL REQUIRED)
