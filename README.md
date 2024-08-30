@@ -26,7 +26,7 @@ git clone https://github.com/msagca/learning-opengl
 cmake .
 ```
 
-> If `CMake` uses `Visual Studio` as the generator (default on `Windows`) but you use a different code editor (e.g., [Neovim](https://neovim.io)), header files installed via `vcpkg` might not be found by the [LSP](https://en.wikipedia.org/wiki/Language_Server_Protocol) (e.g., `clangd`). To fix this, you have to specify `Ninja` or `Unix Makefiles` as the generator so that the required `compile_commands.json` file is created.
+> If `CMake` uses `Visual Studio` as the generator (default on `Windows`) but you use a different code editor (e.g., [Neovim](https://neovim.io)), header files installed via `vcpkg` might not be found by the language server (e.g., [clangd](https://clangd.llvm.org)). To fix this, you have to specify `Ninja` or `Unix Makefiles` as the generator so that the required `compile_commands.json` file is created.
 >
 > ```bash
 > cmake -G "Ninja" .
