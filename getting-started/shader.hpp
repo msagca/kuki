@@ -4,7 +4,7 @@
 class Shader {
 public:
   unsigned int ID;
-  Shader(const char* vertexPath, const char* fragmentPath);
+  Shader(const char* vShaderPath, const char* fShaderPath);
   void Use() const;
   void SetBool(const std::string& name, bool value) const;
   void SetInt(const std::string& name, int value) const;

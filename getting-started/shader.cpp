@@ -8,7 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-static const char* RadShader(const char* filename) {
+static const char* ReadShader(const char* filename) {
   std::ifstream shaderFile;
   shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
   std::string shaderStr;
@@ -34,9 +34,9 @@ static void CompileShader(unsigned int& shaderID, const char* shaderText, bool i
   if (!success)
     std::cout << "Error: Failed to compile shader." << std::endl;
 }
-Shader::Shader(const char* vertexPath, const char* fragmentPath) {
-  auto vShaderText = RadShader(vertexPath);
-  auto fShaderText = RadShader(fragmentPath);
+Shader::Shader(const char* vShaderPath, const char* fShaderPath) {
+  auto vShaderText = ReadShader(vShaderPath);
+  auto fShaderText = ReadShader(fShaderPath);
   unsigned int vShaderID, fShaderID;
   CompileShader(vShaderID, vShaderText);
   CompileShader(fShaderID, fShaderText, false);
