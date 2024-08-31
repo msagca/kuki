@@ -22,7 +22,7 @@ static const char* ReadShader(const char* filename) {
     std::cout << "Error: Failed to read shader file." << std::endl;
   }
   char* shaderCStr = new char[shaderStr.size() + 1];
-  strcpy_s(shaderCStr, shaderStr.size() + 1, shaderStr.c_str());
+  strcpy(shaderCStr, shaderStr.c_str());
   return shaderCStr;
 }
 static void CompileShader(unsigned int& shaderID, const char* shaderText, bool isVertex = true) {
