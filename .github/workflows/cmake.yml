@@ -6,7 +6,7 @@ on:
     branches: [main]
 env:
   VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-  GITHUB_PATH: ${{ github.env.GITHUB_PATH }}:${{ VCPKG_ROOT }}
+  GITHUB_PATH: ${{ github.env.GITHUB_PATH }}:$VCPKG_ROOT
 jobs:
   build:
     runs-on: ubuntu-latest
