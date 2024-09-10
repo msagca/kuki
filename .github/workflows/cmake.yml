@@ -15,13 +15,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: lukka/get-cmake@latest
       - uses: lukka/run-vcpkg@v11
-      - name: Set CMake preset
+      - name: Set CMake preset on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            echo "CMAKE_PRESET=windows-release" >> $GITHUB_ENV
-          else
-            echo "CMAKE_PRESET=linux-release" >> $GITHUB_ENV
-          fi
+          echo "CMAKE_PRESET=windows-release" >> $env:GITHUB_ENV
+      - name: Set CMake preset on Linux
+        if: runner.os != 'Windows'
+        run: |
+          echo "CMAKE_PRESET=linux-release" >> $GITHUB_ENV
       - uses: lukka/run-cmake@v10
         with:
           workflowPreset: ${{ env.CMAKE_PRESET }}
