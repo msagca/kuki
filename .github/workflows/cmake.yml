@@ -9,9 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
     - name: Set up CMake
-      uses: actions/setup-cmake@v2
+      uses: jwlawson/actions-setup-cmake@v2
     - name: Set up vcpkg
       uses: lukka/run-vcpkg@v11
       with:
@@ -19,7 +19,7 @@ jobs:
         vcpkgDirectory: '${{ runner.temp }}/vcpkg'
         cleanAfterBuild: true
     - name: Cache vcpkg
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ${{ runner.temp }}/vcpkg
         key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
