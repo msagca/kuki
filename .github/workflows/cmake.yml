@@ -1,9 +1,9 @@
 name: CMake
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 env:
   VCPKG_ROOT: ${{ github.workspace }}/vcpkg
   GITHUB_PATH: $GITHUB_PATH:$VCPKG_ROOT
@@ -11,25 +11,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Install prerequisites
-      run: |
-        chmod +x scripts/install-tools.sh
-        ./scripts/install-tools.sh
-    - name: Cache vcpkg
-      id: cache-vcpkg
-      uses: actions/cache@v4
-      with:
-        path: vcpkg
-        key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
-        restore-keys: |
-          ${{ runner.os }}-vcpkg-
-    - name: Set up vcpkg
-      if: steps.cache-vcpkg.outputs.cache-hit != 'true'
-      run: |
-        chmod +x scripts/setup-vcpkg.sh
-        ./scripts/setup-vcpkg.sh
-    - name: Configure
-      run: cmake .
-    - name: Build
-      run: cmake --build .
+      - uses: actions/checkout@v4
+      - name: Install requirements
+        run: bash scripts/install-requirements.sh
+      - name: Cache vcpkg
+        id: cache-vcpkg
+        uses: actions/cache@v4
+        with:
+          path: vcpkg
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
+      - name: Set up vcpkg
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        run: bash scripts/setup-vcpkg.sh
+      - name: Configure
+        run: cmake -DCMAKE_CXX_FLAGS="-fpermissive" .
+      - name: Build
+        run: cmake --build .
