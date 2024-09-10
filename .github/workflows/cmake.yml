@@ -4,31 +4,28 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+  PATH: $PATH:$VCPKG_ROOT
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    - name: Set up CMake
-      uses: jwlawson/actions-setup-cmake@v2
-    - name: Install dependencies on Linux
-      if: runner.os == 'Linux'
-      run: sudo apt update && sudo apt install -y make ninja-build gcc g++
-    - name: Set up vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgArguments: 'install'
-        vcpkgDirectory: '${{ runner.temp }}/vcpkg'
-        cleanAfterBuild: true
+    - uses: actions/checkout@v4
+    - name: Install prerequisites
+      run: ./scripts/install-tools.sh
     - name: Cache vcpkg
+      id: cache-vcpkg
       uses: actions/cache@v4
       with:
-        path: ${{ runner.temp }}/vcpkg
+        path: vcpkg
         key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
         restore-keys: |
           ${{ runner.os }}-vcpkg-
-    - name: Configure CMake
+    - name: Set up vcpkg
+      if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+      run: ./scripts/setup-vcpkg.sh
+    - name: Configure
       run: cmake .
     - name: Build
       run: cmake --build .
