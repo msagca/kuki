@@ -13,7 +13,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Install prerequisites
-      run: ./scripts/install-tools.sh
+      run: |
+        chmod +x scripts/install-tools.sh
+        ./scripts/install-tools.sh
     - name: Cache vcpkg
       id: cache-vcpkg
       uses: actions/cache@v4
@@ -24,7 +26,9 @@ jobs:
           ${{ runner.os }}-vcpkg-
     - name: Set up vcpkg
       if: steps.cache-vcpkg.outputs.cache-hit != 'true'
-      run: ./scripts/setup-vcpkg.sh
+      run: |
+        chmod +x scripts/setup-vcpkg.sh
+        ./scripts/setup-vcpkg.sh
     - name: Configure
       run: cmake .
     - name: Build
