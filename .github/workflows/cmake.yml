@@ -1,29 +1,31 @@
 name: CMake
 on:
   push:
-    branches: ["main"]
+    branches: [ main ]
   pull_request:
-    branches: ["main"]
+    branches: [ main ]
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: lukka/get-cmake@latest
-      - uses: lukka/run-vcpkg@v11
-      - name: Set CMake preset on Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          echo "CMAKE_PRESET=windows-release" >> $env:GITHUB_ENV
-      - name: Set CMake preset on Linux
-        if: runner.os != 'Windows'
-        run: |
-          echo "CMAKE_PRESET=linux-release" >> $GITHUB_ENV
-      - uses: lukka/run-cmake@v10
-        with:
-          workflowPreset: ${{ env.CMAKE_PRESET }}
+    - name: Checkout repository
+      uses: actions/checkout@v2
+    - name: Set up CMake
+      uses: actions/setup-cmake@v2
+    - name: Set up vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgArguments: 'install'
+        vcpkgDirectory: '${{ runner.temp }}/vcpkg'
+        cleanAfterBuild: true
+    - name: Cache vcpkg
+      uses: actions/cache@v3
+      with:
+        path: ${{ runner.temp }}/vcpkg
+        key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+        restore-keys: |
+          ${{ runner.os }}-vcpkg-
+    - name: Configure CMake
+      run: cmake -B build -S .
+    - name: Build
+      run: cmake --build build
