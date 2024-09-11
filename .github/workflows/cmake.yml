@@ -36,7 +36,7 @@ jobs:
       - name: Set up vcpkg for Windows
         if: runner.os == 'Windows' && steps.cache-vcpkg.outputs.cache-hit != 'true'
         run: .\scripts\setup-vcpkg-windows.bat
-      - name: Configure
+      - name: CMake configure
         run: cmake -DCMAKE_CXX_FLAGS="-fpermissive" .
-      - name: Build
+      - name: CMake build
         run: cmake --build .
