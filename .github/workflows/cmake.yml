@@ -1,19 +1,25 @@
 name: CMake
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+on: [push, pull_request]
 env:
   VCPKG_ROOT: ${{ github.workspace }}/vcpkg
   GITHUB_PATH: ${{ github.env.GITHUB_PATH }}:$VCPKG_ROOT
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - name: Install requirements
-        run: bash scripts/install-requirements.sh
+      - name: Install requirements for Linux
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x scripts/install-requirements-linux.sh
+          ./scripts/install-requirements-linux.sh
+      - name: Install requirements for Windows
+        if: runner.os == 'Windows'
+        run: .\scripts/install-requirements-windows.bat
       - name: Cache vcpkg
         id: cache-vcpkg
         uses: actions/cache@v4
@@ -22,9 +28,14 @@ jobs:
           key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
           restore-keys: |
             ${{ runner.os }}-vcpkg-
-      - name: Set up vcpkg
-        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
-        run: bash scripts/setup-vcpkg.sh
+      - name: Set up vcpkg for Linux
+        if: runner.os == 'Linux' && steps.cache-vcpkg.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/setup-vcpkg-linux.sh
+          ./scripts/setup-vcpkg-linux.sh
+      - name: Set up vcpkg for Windows
+        if: runner.os == 'Windows' && steps.cache-vcpkg.outputs.cache-hit != 'true'
+        run: .\scripts/setup-vcpkg-windows.bat
       - name: Configure
         run: cmake -DCMAKE_CXX_FLAGS="-fpermissive" .
       - name: Build
