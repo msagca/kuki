@@ -19,7 +19,7 @@ jobs:
           ./scripts/install-requirements-linux.sh
       - name: Install requirements for Windows
         if: runner.os == 'Windows'
-        run: .\scripts/install-requirements-windows.bat
+        run: .\scripts\install-requirements-windows.bat
       - name: Cache vcpkg
         id: cache-vcpkg
         uses: actions/cache@v4
@@ -35,7 +35,7 @@ jobs:
           ./scripts/setup-vcpkg-linux.sh
       - name: Set up vcpkg for Windows
         if: runner.os == 'Windows' && steps.cache-vcpkg.outputs.cache-hit != 'true'
-        run: .\scripts/setup-vcpkg-windows.bat
+        run: .\scripts\setup-vcpkg-windows.bat
       - name: Configure
         run: cmake -DCMAKE_CXX_FLAGS="-fpermissive" .
       - name: Build
