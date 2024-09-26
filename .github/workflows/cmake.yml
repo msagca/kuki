@@ -1,5 +1,9 @@
 name: CMake
 on: [push, pull_request]
+  paths:
+  - '**.cpp'
+  - '**.hpp'
+  - '**/CMakeLists.txt'
 env:
   VCPKG_ROOT: ${{ github.workspace }}/vcpkg
   GITHUB_PATH: ${{ github.env.GITHUB_PATH }}:$VCPKG_ROOT
