@@ -16,24 +16,28 @@ This is where I experiment with `OpenGL` as I follow along the tutorials at [Lea
 
 - Clone this repository
 
-```bash
+```powershell
 git clone https://github.com/msagca/learning-opengl
+```
+
+```powershell
+cd learning-opengl
 ```
 
 - Run the configure command
 
-```bash
+```powershell
 cmake .
 ```
 
 > If `CMake` uses `Visual Studio` as the generator (default on `Windows`) but you use a different code editor (e.g., [Neovim](https://neovim.io)), header files installed via `vcpkg` might not be found by the language server (e.g., [clangd](https://clangd.llvm.org)). To fix this, you have to specify `Ninja` or `Unix Makefiles` as the generator so that the required `compile_commands.json` file is created.
 >
-> ```bash
+> ```powershell
 > cmake -G "Ninja" .
 > ```
 
 - Run the build command
 
-```bash
+```powershell
 cmake --build .
 ```
