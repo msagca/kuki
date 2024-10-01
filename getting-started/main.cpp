@@ -101,7 +101,7 @@ int main() {
     std::cout << "Error: Failed to initialize GLAD." << std::endl;
   glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-  Shader shader("shader.vert", "shader.frag");
+  Shader shader("vertShader.glsl", "fragShader.glsl");
   CreateTexture("container.jpg");
   // define a mesh
   //
