@@ -100,7 +100,8 @@ int main() {
     std::cout << "Error: Failed to initialize GLAD." << std::endl;
   glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-  Shader shader("vertShader.glsl", "fragShader.glsl");
+  Shader objectShader("vertShader.glsl", "fragShaderObject.glsl");
+  Shader lightShader("vertShader.glsl", "fragShaderLight.glsl");
   CreateTexture("container.jpg");
   //
   //              0-----1
@@ -115,46 +116,68 @@ int main() {
   //              3-----2
   //
   float vertices[] = {-0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.5f, 0.5f, -0.5f, 1.0f, 1.0f, -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f, 1.0f, -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, -0.5f, 0.5f, -0.5f, 1.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.5f, -0.5f, 0.5f, 1.0f, 0.0f, -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, -0.5f, 0.5f, -0.5f, 0.0f, 1.0f};
-  unsigned int VAO, VBO;
-  glGenVertexArrays(1, &VAO);
+  unsigned int objectVAO, lightVAO, VBO;
+  glGenVertexArrays(1, &objectVAO);
   glGenBuffers(1, &VBO);
-  glBindVertexArray(VAO);
+  glBindVertexArray(objectVAO);
   glBindBuffer(GL_ARRAY_BUFFER, VBO);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-  shader.Use();
-  auto posAttrib = glGetAttribLocation(shader.ID, "posIn");
+  objectShader.Use();
+  auto posAttrib = glGetAttribLocation(objectShader.ID, "posIn");
   glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
   glEnableVertexAttribArray(posAttrib);
-  auto texCoordAttrib = glGetAttribLocation(shader.ID, "texCoordIn");
-  glVertexAttribPointer(texCoordAttrib, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-  glEnableVertexAttribArray(texCoordAttrib);
+  glGenVertexArrays(1, &lightVAO);
+  glBindVertexArray(lightVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(posAttrib);
   glEnable(GL_DEPTH_TEST);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
   glfwSetCursorPosCallback(window, MouseCallback);
-  auto model = glm::mat4(1.0f);
-  auto view = glm::mat4(1.0f);
+  auto model = glm::mat4(1);
+  auto view = glm::mat4(1);
   view = glm::translate(view, -cameraPos);
   auto projection = glm::perspective(glm::radians(VIEW_ANGLE), (float)WINDOW_WIDTH / WINDOW_HEIGHT, NEAR_PLANE, FAR_PLANE);
-  shader.SetMat4("model", model);
-  shader.SetMat4("view", view);
-  shader.SetMat4("projection", projection);
-  glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+  auto lightColor = glm::vec3(1, 1, 1);
+  auto objectColor = glm::vec3(1, .5, .31);
+  objectShader.SetMat4("model", model);
+  objectShader.SetMat4("view", view);
+  objectShader.SetMat4("projection", projection);
+  objectShader.SetVec3("lightColor", lightColor);
+  objectShader.SetVec3("objectColor", objectColor);
+  auto lightPos = glm::vec3(1.2, 1, 2);
+  auto lightScale = glm::vec3(.2);
+  model = glm::translate(model, lightPos);
+  model = glm::scale(model, lightScale);
+  lightShader.Use();
+  lightShader.SetMat4("model", model);
+  lightShader.SetMat4("view", view);
+  lightShader.SetMat4("projection", projection);
+  glClearColor(.6, .6, .6, 1);
   auto timeLast = 0.0f;
   while (!glfwWindowShouldClose(window)) {
     auto timeNow = glfwGetTime();
     deltaTime = timeNow - timeLast;
     timeLast = timeNow;
     ProcessInput(window);
-    view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
-    shader.SetMat4("view", view);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+    objectShader.Use();
+    objectShader.SetMat4("view", view);
+    glBindVertexArray(objectVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+    lightShader.Use();
+    lightShader.SetMat4("view", view);
+    glBindVertexArray(lightVAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
     glfwSwapBuffers(window);
     glfwPollEvents();
   }
-  glDeleteVertexArrays(1, &VAO);
+  glDeleteVertexArrays(1, &objectVAO);
+  glDeleteVertexArrays(1, &lightVAO);
   glDeleteBuffers(1, &VBO);
-  glDeleteProgram(shader.ID);
+  glDeleteProgram(objectShader.ID);
+  glDeleteProgram(lightShader.ID);
   glfwTerminate();
   return 0;
 }
