@@ -3,8 +3,8 @@
 #include <string>
 class Shader {
 public:
-  unsigned int ID;
   Shader(const char* vShaderPath, const char* fShaderPath);
+  unsigned int ID;
   void Use() const;
   void SetBool(const std::string& name, bool value) const;
   void SetInt(const std::string& name, int value) const;
