@@ -1,3 +1,0 @@
-{
-  "dependencies": ["glad", "glfw3", "glm", "imgui", "opengl", "stb"]
-}
