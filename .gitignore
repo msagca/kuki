@@ -16,7 +16,7 @@
 !include/**/*.hpp
 !include/**/*.inl
 !lib/*.lib
-!scripts/*.sh
+!script/*.sh
 !src/**/*.c
 !src/**/*.cpp
 !src/**/*.glsl

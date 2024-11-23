@@ -1,10 +1,10 @@
 #include <camera.hpp>
+#include <shader.hpp>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <iostream>
-#include <shader.hpp>
 const unsigned int WINDOW_HEIGHT = 600;
 const unsigned int WINDOW_WIDTH = 800;
 const auto NEAR_PLANE = .1f;
@@ -32,8 +32,8 @@ int main() {
     std::cout << "Error: Failed to initialize GLAD." << std::endl;
   glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-  Shader objectShader("vertShader.glsl", "fragShaderObject.glsl");
-  Shader lightShader("vertShader.glsl", "fragShaderLight.glsl");
+  Shader objectShader("vert.glsl", "object-frag.glsl");
+  Shader lightShader("vert.glsl", "light-frag.glsl");
   //
   //              0-----1
   //              |     |
@@ -76,16 +76,25 @@ int main() {
   auto model = glm::mat4(1.0f);
   auto view = camera.GetViewMatrix();
   auto projection = glm::perspective(glm::radians(VIEW_ANGLE), (float)WINDOW_WIDTH / WINDOW_HEIGHT, NEAR_PLANE, FAR_PLANE);
-  auto lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
-  auto objectColor = glm::vec3(1.0f, .5f, .31f);
+  auto lightAmbient = glm::vec3(.2f, .2f, .2f);
+  auto lightDiffuse = glm::vec3(.5f, .5f, .5f);
+  auto lightSpecular = glm::vec3(1.0f, 1.0f, 1.0f);
+  auto objectAmbient = glm::vec3(1.0f, .5f, .3f);
+  auto objectDiffuse = glm::vec3(1.0f, .5f, .3f);
+  auto objectSpecular = glm::vec3(.5f, .5f, .5f);
   objectShader.Use();
   objectShader.SetMat4("model", model);
   objectShader.SetMat4("view", view);
   objectShader.SetMat4("projection", projection);
-  objectShader.SetVec3("lightColor", lightColor);
-  objectShader.SetVec3("objectColor", objectColor);
+  objectShader.SetVec3("light.ambient", lightAmbient);
+  objectShader.SetVec3("light.diffuse", lightDiffuse);
+  objectShader.SetVec3("light.specular", lightSpecular);
+  objectShader.SetVec3("material.ambient", objectAmbient);
+  objectShader.SetVec3("material.diffuse", objectDiffuse);
+  objectShader.SetVec3("material.specular", objectSpecular);
+  objectShader.SetFloat("material.shininess", 32.0f);
   auto lightPos = glm::vec3(1.2f, 1.0f, 2.0f);
-  objectShader.SetVec3("lightPos", lightPos);
+  objectShader.SetVec3("light.position", lightPos);
   auto lightScale = glm::vec3(.2f);
   model = glm::translate(model, lightPos);
   model = glm::scale(model, lightScale);
@@ -106,9 +115,17 @@ int main() {
     auto lightX = cos(timeNow) * 5;
     auto lightY = sin(timeNow) * 5;
     auto lightPosNew = lightPos + glm::vec3(lightX, lightY, 0);
+    glm::vec3 lightColor;
+    lightColor.x = sin(timeNow * 1.1f);
+    lightColor.y = sin(timeNow * .3f);
+    lightColor.z = sin(timeNow * .7f);
+    auto diffuseColor = lightColor * .5f;
+    auto ambientColor = diffuseColor * .2f;
     objectShader.Use();
     objectShader.SetMat4("view", view);
-    objectShader.SetVec3("lightPos", lightPosNew);
+    objectShader.SetVec3("light.position", lightPosNew);
+    objectShader.SetVec3("light.diffuse", diffuseColor);
+    objectShader.SetVec3("light.ambient", ambientColor);
     glBindVertexArray(objectVAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
     auto lightModel = glm::translate(model, lightPosNew);

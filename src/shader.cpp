@@ -1,8 +1,8 @@
+#include <shader.hpp>
 #include <fstream>
 #include <glad/glad.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
-#include <shader.hpp>
 #include <sstream>
 static const char* ReadShader(const char* filename) {
   std::ifstream shaderFile;
