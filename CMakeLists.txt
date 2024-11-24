@@ -11,22 +11,28 @@ if(CMAKE_GENERATOR MATCHES "Visual Studio")
   endforeach()
 endif()
 file(GLOB CPP_SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp")
-file(GLOB GLSL_SOURCES "${CMAKE_SOURCE_DIR}/src/shaders/*.glsl")
-add_executable(${PROJECT_NAME} ${CPP_SOURCES} ${GLSL_SOURCES})
+file(GLOB C_SOURCES "${CMAKE_SOURCE_DIR}/src/*.c")
+file(GLOB GLSL_SOURCES "${CMAKE_SOURCE_DIR}/src/shader/*.glsl")
+file(GLOB PNG_SOURCES "${CMAKE_SOURCE_DIR}/src/image/*.png")
+add_executable(${PROJECT_NAME} ${CPP_SOURCES} ${C_SOURCES})
 target_link_libraries(
   ${PROJECT_NAME}
   PRIVATE glad glfw glm OpenGL::GL stb
 )
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_sources(${PROJECT_NAME} PRIVATE ${GLSL_SOURCES})
-include_directories(${CMAKE_SOURCE_DIR}/include)
 foreach(FILE ${GLSL_SOURCES})
   cmake_path(APPEND FULL_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${FILE})
-  list(APPEND SHADER_FILES ${FULL_PATH})
+  list(APPEND GLSL_FILES ${FULL_PATH})
+endforeach()
+foreach(FILE ${PNG_SOURCES})
+  cmake_path(APPEND FULL_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${FILE})
+  list(APPEND PNG_FILES ${FULL_PATH})
 endforeach()
 add_custom_command(
   TARGET ${PROJECT_NAME}
   POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SHADER_FILES} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${GLSL_FILES} ${PNG_FILES} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
 )
 if(WIN32)
   add_custom_command(

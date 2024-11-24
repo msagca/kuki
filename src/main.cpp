@@ -1,10 +1,12 @@
-#include <camera.hpp>
-#include <shader.hpp>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <iostream>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#include <camera.hpp>
+#include <shader.hpp>
 const unsigned int WINDOW_HEIGHT = 600;
 const unsigned int WINDOW_WIDTH = 800;
 const auto NEAR_PLANE = .1f;
@@ -17,6 +19,7 @@ auto xPosLast = (float)WINDOW_WIDTH / 2;
 auto yPosLast = (float)WINDOW_HEIGHT / 2;
 Camera camera(glm::vec3(.0f, .0f, 3.0f));
 static void FramebufferSizeCallback(GLFWwindow*, int, int);
+static unsigned int LoadTexture(const char*);
 static void MouseCallback(GLFWwindow*, double, double);
 static void ProcessInput(GLFWwindow*);
 int main() {
@@ -32,8 +35,10 @@ int main() {
     std::cout << "Error: Failed to initialize GLAD." << std::endl;
   glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-  Shader objectShader("vert.glsl", "object-frag.glsl");
-  Shader lightShader("vert.glsl", "light-frag.glsl");
+  Shader objectShader("object-vert.glsl", "object-frag.glsl");
+  Shader lightShader("light-vert.glsl", "light-frag.glsl");
+  auto diffuseMap = LoadTexture("container.png");
+  auto specularMap = LoadTexture("container-specular.png");
   //
   //              0-----1
   //              |     |
@@ -46,7 +51,7 @@ int main() {
   //              |     |
   //              3-----2
   //
-  float vertices[] = {-.5f, -.5f, -.5f, .0f, .0f, -1.0f, .5f, -.5f, -.5f, .0f, .0f, -1.0f, .5f, .5f, -.5f, .0f, .0f, -1.0f, .5f, .5f, -.5f, .0f, .0f, -1.0f, -.5f, .5f, -.5f, .0f, .0f, -1.0f, -.5f, -.5f, -.5f, .0f, .0f, -1.0f, -.5f, -.5f, .5f, .0f, .0f, 1.0f, .5f, -.5f, .5f, .0f, .0f, 1.0f, .5f, .5f, .5f, .0f, .0f, 1.0f, .5f, .5f, .5f, .0f, .0f, 1.0f, -.5f, .5f, .5f, .0f, .0f, 1.0f, -.5f, -.5f, .5f, .0f, .0f, 1.0f, -.5f, .5f, .5f, -1.0f, .0f, .0f, -.5f, .5f, -.5f, -1.0f, .0f, .0f, -.5f, -.5f, -.5f, -1.0f, .0f, .0f, -.5f, -.5f, -.5f, -1.0f, .0f, .0f, -.5f, -.5f, .5f, -1.0f, .0f, .0f, -.5f, .5f, .5f, -1.0f, .0f, .0f, .5f, .5f, .5f, 1.0f, .0f, .0f, .5f, .5f, -.5f, 1.0f, .0f, .0f, .5f, -.5f, -.5f, 1.0f, .0f, .0f, .5f, -.5f, -.5f, 1.0f, .0f, .0f, .5f, -.5f, .5f, 1.0f, .0f, .0f, .5f, .5f, .5f, 1.0f, .0f, .0f, -.5f, -.5f, -.5f, .0f, -1.0f, .0f, .5f, -.5f, -.5f, .0f, -1.0f, .0f, .5f, -.5f, .5f, .0f, -1.0f, .0f, .5f, -.5f, .5f, .0f, -1.0f, .0f, -.5f, -.5f, .5f, .0f, -1.0f, .0f, -.5f, -.5f, -.5f, .0f, -1.0f, .0f, -.5f, .5f, -.5f, .0f, 1.0f, .0f, .5f, .5f, -.5f, .0f, 1.0f, .0f, .5f, .5f, .5f, .0f, 1.0f, .0f, .5f, .5f, .5f, .0f, 1.0f, .0f, -.5f, .5f, .5f, .0f, 1.0f, .0f, -.5f, .5f, -.5f, .0f, 1.0f, .0f};
+  float vertices[] = {-.5f, -.5f, -.5f, .0f, .0f, -1.0f, .0f, .0f, .5f, -.5f, -.5f, .0f, .0f, -1.0f, 1.0f, .0f, .5f, .5f, -.5f, .0f, .0f, -1.0f, 1.0f, 1.0f, .5f, .5f, -.5f, .0f, .0f, -1.0f, 1.0f, 1.0f, -.5f, .5f, -.5f, .0f, .0f, -1.0f, .0f, 1.0f, -.5f, -.5f, -.5f, .0f, .0f, -1.0f, .0f, .0f, -.5f, -.5f, .5f, .0f, .0f, 1.0f, .0f, .0f, .5f, -.5f, .5f, .0f, .0f, 1.0f, 1.0f, .0f, .5f, .5f, .5f, .0f, .0f, 1.0f, 1.0f, 1.0f, .5f, .5f, .5f, .0f, .0f, 1.0f, 1.0f, 1.0f, -.5f, .5f, .5f, .0f, .0f, 1.0f, .0f, 1.0f, -.5f, -.5f, .5f, .0f, .0f, 1.0f, .0f, .0f, -.5f, .5f, .5f, -1.0f, .0f, .0f, 1.0f, .0f, -.5f, .5f, -.5f, -1.0f, .0f, .0f, 1.0f, 1.0f, -.5f, -.5f, -.5f, -1.0f, .0f, .0f, .0f, 1.0f, -.5f, -.5f, -.5f, -1.0f, .0f, .0f, .0f, 1.0f, -.5f, -.5f, .5f, -1.0f, .0f, .0f, .0f, .0f, -.5f, .5f, .5f, -1.0f, .0f, .0f, 1.0f, .0f, .5f, .5f, .5f, 1.0f, .0f, .0f, 1.0f, .0f, .5f, .5f, -.5f, 1.0f, .0f, .0f, 1.0f, 1.0f, .5f, -.5f, -.5f, 1.0f, .0f, .0f, .0f, 1.0f, .5f, -.5f, -.5f, 1.0f, .0f, .0f, .0f, 1.0f, .5f, -.5f, .5f, 1.0f, .0f, .0f, .0f, .0f, .5f, .5f, .5f, 1.0f, .0f, .0f, 1.0f, .0f, -.5f, -.5f, -.5f, .0f, -1.0f, .0f, .0f, 1.0f, .5f, -.5f, -.5f, .0f, -1.0f, .0f, 1.0f, 1.0f, .5f, -.5f, .5f, .0f, -1.0f, .0f, 1.0f, .0f, .5f, -.5f, .5f, .0f, -1.0f, .0f, 1.0f, .0f, -.5f, -.5f, .5f, .0f, -1.0f, .0f, .0f, .0f, -.5f, -.5f, -.5f, .0f, -1.0f, .0f, .0f, 1.0f, -.5f, .5f, -.5f, .0f, 1.0f, .0f, .0f, 1.0f, .5f, .5f, -.5f, .0f, 1.0f, .0f, 1.0f, 1.0f, .5f, .5f, .5f, .0f, 1.0f, .0f, 1.0f, .0f, .5f, .5f, .5f, .0f, 1.0f, .0f, 1.0f, .0f, -.5f, .5f, .5f, .0f, 1.0f, .0f, .0f, .0f, -.5f, .5f, -.5f, .0f, 1.0f, .0f, .0f, 1.0f};
   unsigned int objectVAO, lightVAO, VBO;
   glGenVertexArrays(1, &objectVAO);
   glGenVertexArrays(1, &lightVAO);
@@ -58,17 +63,20 @@ int main() {
   objectShader.Use();
   auto posAttr = glGetAttribLocation(objectShader.ID, "posIn");
   auto normAttr = glGetAttribLocation(objectShader.ID, "normIn");
-  glVertexAttribPointer(posAttr, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+  auto texCoordsAttr = glGetAttribLocation(objectShader.ID, "texCoordsIn");
+  glVertexAttribPointer(posAttr, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
   glEnableVertexAttribArray(posAttr);
-  glVertexAttribPointer(normAttr, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+  glVertexAttribPointer(normAttr, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
   glEnableVertexAttribArray(normAttr);
+  glVertexAttribPointer(texCoordsAttr, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+  glEnableVertexAttribArray(texCoordsAttr);
   // set up light VAO
   glBindVertexArray(lightVAO);
   glBindBuffer(GL_ARRAY_BUFFER, VBO);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
   lightShader.Use();
   posAttr = glGetAttribLocation(lightShader.ID, "posIn");
-  glVertexAttribPointer(posAttr, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+  glVertexAttribPointer(posAttr, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
   glEnableVertexAttribArray(posAttr);
   glEnable(GL_DEPTH_TEST);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -79,9 +87,6 @@ int main() {
   auto lightAmbient = glm::vec3(.2f, .2f, .2f);
   auto lightDiffuse = glm::vec3(.5f, .5f, .5f);
   auto lightSpecular = glm::vec3(1.0f, 1.0f, 1.0f);
-  auto objectAmbient = glm::vec3(1.0f, .5f, .3f);
-  auto objectDiffuse = glm::vec3(1.0f, .5f, .3f);
-  auto objectSpecular = glm::vec3(.5f, .5f, .5f);
   objectShader.Use();
   objectShader.SetMat4("model", model);
   objectShader.SetMat4("view", view);
@@ -89,9 +94,12 @@ int main() {
   objectShader.SetVec3("light.ambient", lightAmbient);
   objectShader.SetVec3("light.diffuse", lightDiffuse);
   objectShader.SetVec3("light.specular", lightSpecular);
-  objectShader.SetVec3("material.ambient", objectAmbient);
-  objectShader.SetVec3("material.diffuse", objectDiffuse);
-  objectShader.SetVec3("material.specular", objectSpecular);
+  objectShader.SetInt("material.diffuse", 0);
+  objectShader.SetInt("material.specular", 1);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, diffuseMap);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, specularMap);
   objectShader.SetFloat("material.shininess", 32.0f);
   auto lightPos = glm::vec3(1.2f, 1.0f, 2.0f);
   objectShader.SetVec3("light.position", lightPos);
@@ -102,7 +110,6 @@ int main() {
   lightShader.SetMat4("model", model);
   lightShader.SetMat4("view", view);
   lightShader.SetMat4("projection", projection);
-  lightShader.SetVec3("viewPos", camera.position);
   glClearColor(.1f, .1f, .1f, 1.0f);
   auto timeLast = .0f;
   while (!glfwWindowShouldClose(window)) {
@@ -115,17 +122,17 @@ int main() {
     auto lightX = cos(timeNow) * 5;
     auto lightY = sin(timeNow) * 5;
     auto lightPosNew = lightPos + glm::vec3(lightX, lightY, 0);
-    glm::vec3 lightColor;
-    lightColor.x = sin(timeNow * 1.1f);
-    lightColor.y = sin(timeNow * .3f);
-    lightColor.z = sin(timeNow * .7f);
-    auto diffuseColor = lightColor * .5f;
-    auto ambientColor = diffuseColor * .2f;
+    /* glm::vec3 lightColor; */
+    /* lightColor.x = sin(timeNow * 1.1f); */
+    /* lightColor.y = sin(timeNow * .3f); */
+    /* lightColor.z = sin(timeNow * .7f); */
+    /* auto diffuseColor = lightColor * .5f; */
+    /* auto ambientColor = diffuseColor * .2f; */
     objectShader.Use();
     objectShader.SetMat4("view", view);
     objectShader.SetVec3("light.position", lightPosNew);
-    objectShader.SetVec3("light.diffuse", diffuseColor);
-    objectShader.SetVec3("light.ambient", ambientColor);
+    /* objectShader.SetVec3("light.diffuse", diffuseColor); */
+    /* objectShader.SetVec3("light.ambient", ambientColor); */
     glBindVertexArray(objectVAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
     auto lightModel = glm::translate(model, lightPosNew);
@@ -148,6 +155,31 @@ int main() {
 }
 static void FramebufferSizeCallback(GLFWwindow* window, int width, int height) {
   glViewport(0, 0, width, height);
+}
+static unsigned int LoadTexture(char const* path) {
+  unsigned int textureID;
+  glGenTextures(1, &textureID);
+  int width, height, nrComponents;
+  auto data = stbi_load(path, &width, &height, &nrComponents, 0);
+  if (data) {
+    GLenum format;
+    if (nrComponents == 1)
+      format = GL_RED;
+    else if (nrComponents == 3)
+      format = GL_RGB;
+    else if (nrComponents == 4)
+      format = GL_RGBA;
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  } else
+    std::cout << "Failed to load the texture at " << path << std::endl;
+  stbi_image_free(data);
+  return textureID;
 }
 static void MouseCallback(GLFWwindow* window, double xPos, double yPos) {
   if (mouseFirstEnter) {

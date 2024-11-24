@@ -26,8 +26,10 @@ if(STB_INCLUDE_DIRS)
   target_include_directories(stb INTERFACE ${STB_INCLUDE_DIRS})
 endif()
 # GLAD
-add_library(glad INTERFACE)
-target_include_directories(glad INTERFACE ${INCLUDE_DIR})
-target_sources(glad INTERFACE ${SRC_DIR}/glad.c)
+find_path(GLAD_INCLUDE_DIRS NAMES glad/glad.h HINTS ${INCLUDE_DIR} PATHS ${INCLUDE_DIRS})
+if(GLAD_INCLUDE_DIRS)
+  add_library(glad INTERFACE)
+  target_include_directories(glad INTERFACE ${GLAD_INCLUDE_DIRS})
+endif()
 # OpenGL
 find_package(OpenGL REQUIRED)
