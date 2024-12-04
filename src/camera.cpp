@@ -6,8 +6,8 @@ Camera::Camera(glm::vec3 position, glm::vec3 worldUp, float pitch, float yaw, fl
   : position(position), worldUp(worldUp), pitch(pitch), yaw(yaw), speed(speed) {
   UpdateVectors();
 }
-void Camera::ProcessKeyboard(uint8_t wasd, float deltaTime) {
-  auto velocity = speed * deltaTime;
+void Camera::ProcessKeyboard(uint8_t wasd, bool shift, float deltaTime) {
+  auto velocity = speed * (shift ? 2 : 1) * deltaTime;
   if (wasd & 1) // W
     position += front * velocity;
   if (wasd & 2) // A

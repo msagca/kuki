@@ -19,17 +19,26 @@ if(GLM_INCLUDE_DIRS)
   add_library(glm INTERFACE)
   target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIRS})
 endif()
-# STB
-find_path(STB_INCLUDE_DIRS NAMES stb_image.h HINTS ${INCLUDE_DIR} PATHS ${INCLUDE_DIRS})
+# stb
+find_path(STB_INCLUDE_DIRS NAMES stb_image.h HINTS ${INCLUDE_DIR}/stb PATHS ${INCLUDE_DIRS})
 if(STB_INCLUDE_DIRS)
   add_library(stb INTERFACE)
   target_include_directories(stb INTERFACE ${STB_INCLUDE_DIRS})
 endif()
-# GLAD
+# Glad
 find_path(GLAD_INCLUDE_DIRS NAMES glad/glad.h HINTS ${INCLUDE_DIR} PATHS ${INCLUDE_DIRS})
 if(GLAD_INCLUDE_DIRS)
   add_library(glad INTERFACE)
   target_include_directories(glad INTERFACE ${GLAD_INCLUDE_DIRS})
 endif()
+# ImGui
+find_path(IMGUI_INCLUDE_DIRS NAMES imgui.h HINTS ${INCLUDE_DIR}/imgui PATHS ${INCLUDE_DIRS})
+if(IMGUI_INCLUDE_DIRS)
+  add_library(imgui INTERFACE)
+  target_include_directories(imgui INTERFACE ${IMGUI_INCLUDE_DIRS})
+endif()
 # OpenGL
 find_package(OpenGL REQUIRED)
+# msagca
+add_library(msagca INTERFACE)
+target_include_directories(msagca INTERFACE ${INCLUDE_DIR}/msagca)

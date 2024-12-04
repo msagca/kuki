@@ -22,10 +22,20 @@ git clone https://github.com/msagca/learning-opengl
 cd learning-opengl
 ```
 
+- Create a build directory
+
+```bash
+mkdir build
+```
+
+```bash
+cd build
+```
+
 - Run the configure command
 
 ```bash
-cmake .
+cmake ..
 ```
 
 - Run the build command
