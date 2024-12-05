@@ -13,6 +13,7 @@ private:
 public:
   T& AddComponent(unsigned int);
   void RemoveComponent(unsigned int);
+  bool HasComponent(unsigned int);
   T& GetComponent(unsigned int);
   T& GetDefault();
   const unsigned int GetEntityID(unsigned int) const;
@@ -63,6 +64,10 @@ void ComponentManager<T>::RemoveComponent(unsigned int entityID) {
   entityToComponent.erase(entityID);
   componentToEntity.pop_back();
   components.pop_back();
+}
+template <typename T>
+bool ComponentManager<T>::HasComponent(unsigned int entityID) {
+  return entityToComponent.find(entityID) != entityToComponent.end();
 }
 template <typename T>
 T& ComponentManager<T>::GetComponent(unsigned int entityID) {

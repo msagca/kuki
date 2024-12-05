@@ -1,5 +1,6 @@
 #pragma once
 #include <component.hpp>
+#include <functional>
 class EntityManager {
 private:
   unsigned int nextID = 0;
@@ -16,6 +17,8 @@ public:
   void RemoveComponent(unsigned int);
   template <typename T>
   T& GetComponent(unsigned int);
+  template <typename... T>
+  void ForEach(std::function<void(unsigned int)>);
   template <typename T>
   ComponentManager<T>& GetManager();
   void CleanUp();
@@ -38,8 +41,16 @@ void EntityManager::RemoveComponent(unsigned int entityID) {
 }
 template <typename T>
 T& EntityManager::GetComponent(unsigned int entityID) {
-  const auto& manager = GetManager<T>();
+  auto& manager = GetManager<T>();
   return manager.GetComponent(entityID);
+}
+template <typename... T>
+void EntityManager::ForEach(std::function<void(unsigned int)> func) {
+  for (auto id = 0; id < GetCount(); id++) {
+    auto hasAllComponents = (GetManager<T>().HasComponent(id) && ...);
+    if (hasAllComponents)
+      func(id);
+  }
 }
 template <>
 inline ComponentManager<Transform>& EntityManager::GetManager() {

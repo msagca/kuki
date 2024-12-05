@@ -61,6 +61,7 @@ int main() {
     auto timeNow = glfwGetTime();
     deltaTime = timeNow - timeLast;
     timeLast = timeNow;
+    TrackUserActivity(window);
     ProcessInput(window);
     glClearColor(clearColor.x, clearColor.y, clearColor.z, clearColor.w);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -68,7 +69,11 @@ int main() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
+    ShowHierarchyWindow(entityManager);
     ShowCreateMenu(entityManager);
+    int windowWidth, windowHeight;
+    glfwGetFramebufferSize(window, &windowWidth, &windowHeight);
+    ShowHints(windowWidth, windowHeight);
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     glfwSwapBuffers(window);
