@@ -6,12 +6,12 @@
 static const auto FAR_PLANE = 100.0f;
 static const auto NEAR_PLANE = .1f;
 static const auto VIEW_ANGLE = 45.0f;
-class System {
+class ISystem {
 public:
-  virtual ~System() = default;
+  virtual ~ISystem() = default;
   virtual void Update() = 0;
 };
-class RenderSystem : public System {
+class RenderSystem : ISystem {
 private:
   const Camera* activeCamera;
   glm::mat4 projection;

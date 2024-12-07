@@ -4,6 +4,8 @@
 #include <glm/vec4.hpp>
 #include <unordered_map>
 #include <vector>
+#include <variant>
+#include <string>
 template <typename T>
 class ComponentManager {
 private:
@@ -21,20 +23,37 @@ public:
   typename std::vector<T>::const_iterator end();
   void CleanUp();
 };
-struct Transform {
+struct Property {
+  std::string name;
+  std::variant<GLuint, GLsizei, glm::vec3> value;
+};
+struct IComponent {
+  virtual ~IComponent() = default;
+  virtual std::vector<Property> GetProperties() const = 0;
+};
+struct Transform : IComponent {
   glm::vec3 position = glm::vec3(.0f);
   glm::vec3 rotation = glm::vec3(.0f);
   glm::vec3 scale = glm::vec3(1.0f);
+  std::vector<Property> GetProperties() const override {
+    return {{"Position", position}, {"Rotation", rotation}, {"Scale", scale}};
+  }
 };
-struct MeshRenderer {
+struct MeshRenderer : IComponent {
   GLuint shader = 0;
+  std::vector<Property> GetProperties() const override {
+    return {{"Shader ID", shader}};
+  }
 };
-struct MeshFilter {
+struct MeshFilter : IComponent {
   GLuint vao = 0;
   GLuint vbo = 0;
   GLuint ebo = 0;
   GLsizei vertexCount = 0;
   GLsizei indexCount = 0;
+  std::vector<Property> GetProperties() const override {
+    return {{"VAO", vao}, {"VBO", vbo}, {"EBO", ebo}, {"Vertex Count", vertexCount}, {"Index Count", indexCount}};
+  }
 };
 template <typename T>
 T& ComponentManager<T>::AddComponent(unsigned int entityID) {

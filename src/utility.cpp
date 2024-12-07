@@ -173,24 +173,27 @@ void ShowHierarchyWindow(EntityManager& entityManager) {
   if (!showHierarchyWindow)
     return;
   static int selectedEntity = -1;
+  static glm::vec3 position, rotation, scale;
   ImGui::Begin("Hierarchy");
   entityManager.ForEach<Transform>([&](unsigned int id) {
     char label[128];
     sprintf(label, "Entity %d", id);
-    if (ImGui::Selectable(label, id == selectedEntity))
+    if (ImGui::Selectable(label, id == selectedEntity)) {
       selectedEntity = id;
+      auto& transform = entityManager.GetComponent<Transform>(selectedEntity);
+      position = transform.position;
+      rotation = transform.rotation;
+      scale = transform.scale;
+    }
   });
   ImGui::End();
   if (selectedEntity > -1) {
-    auto& transform = entityManager.GetComponent<Transform>(selectedEntity);
     ImGui::Begin("Properties");
-    static auto position = transform.position;
-    static auto rotation = transform.rotation;
-    static auto scale = transform.scale;
     ImGui::InputFloat3("Position", glm::value_ptr(position));
     ImGui::InputFloat3("Rotation", glm::value_ptr(rotation));
     ImGui::InputFloat3("Scale", glm::value_ptr(scale));
     if (ImGui::Button("Apply")) {
+      auto& transform = entityManager.GetComponent<Transform>(selectedEntity);
       transform.position = position;
       transform.rotation = rotation;
       transform.scale = scale;

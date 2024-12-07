@@ -23,12 +23,12 @@ int main() {
   auto window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Learning OpenGL", nullptr, nullptr);
   if (window == nullptr) {
     std::cerr << "Error: Failed to create GLFW window." << std::endl;
-    return -1;
+    return 1;
   }
   glfwMakeContextCurrent(window);
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
     std::cerr << "Error: Failed to initialize GLAD." << std::endl;
-    return -1;
+    return 1;
   }
   glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
   glEnable(GL_DEPTH_TEST);
