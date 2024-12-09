@@ -7,7 +7,7 @@ static const float SPEED = 2.5f;
 static const float YAW = -90.0f;
 class Camera {
 public:
-  Camera(glm::vec3 position = glm::vec3(.0f, .0f, .0f), glm::vec3 worldUp = glm::vec3(.0f, 1.0f, .0f), float pitch = PITCH, float yaw = YAW, float speed = SPEED);
+  Camera(glm::vec3 = glm::vec3(.0f, .0f, .0f), glm::vec3 = glm::vec3(.0f, 1.0f, .0f), float = PITCH, float = YAW, float = SPEED);
   glm::mat4 GetViewMatrix() const;
   glm::vec3 position;
   void ProcessKeyboard(uint8_t, bool, float);

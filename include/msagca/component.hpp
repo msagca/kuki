@@ -4,8 +4,9 @@
 #include <glm/vec4.hpp>
 #include <unordered_map>
 #include <vector>
-#include <variant>
 #include <string>
+#include <variant>
+#include <memory>
 template <typename T>
 class ComponentManager {
 private:
@@ -17,31 +18,43 @@ public:
   void RemoveComponent(unsigned int);
   bool HasComponent(unsigned int);
   T& GetComponent(unsigned int);
+  std::unique_ptr<T> GetComponentPtr(unsigned int);
   T& GetDefault();
+  std::unique_ptr<T> GetDefaultPtr();
   const unsigned int GetEntityID(unsigned int) const;
   typename std::vector<T>::const_iterator begin();
   typename std::vector<T>::const_iterator end();
   void CleanUp();
 };
+struct Transform;
 struct Property {
   std::string name;
-  std::variant<GLuint, GLsizei, glm::vec3> value;
+  std::variant<GLuint, GLsizei, glm::vec3, Transform*> value;
 };
 struct IComponent {
   virtual ~IComponent() = default;
+  virtual std::string GetName() const = 0;
   virtual std::vector<Property> GetProperties() const = 0;
 };
 struct Transform : IComponent {
   glm::vec3 position = glm::vec3(.0f);
-  glm::vec3 rotation = glm::vec3(.0f);
+  glm::vec3 rotation = glm::vec3(.0f); // NOTE: these should be in radians and converted to degrees when displayed in the editor
   glm::vec3 scale = glm::vec3(1.0f);
+  Transform* parent = nullptr;
+  std::string GetName() const override {
+    return "Transform";
+  }
   std::vector<Property> GetProperties() const override {
-    return {{"Position", position}, {"Rotation", rotation}, {"Scale", scale}};
+    return {{"Position", position}, {"Rotation", rotation}, {"Scale", scale}, {"Parent", parent}};
   }
 };
 struct MeshRenderer : IComponent {
   GLuint shader = 0;
+  std::string GetName() const override {
+    return "MeshRenderer";
+  }
   std::vector<Property> GetProperties() const override {
+    // TODO: the editor should display a friendly name instead of an ID; also, a preview of the shader would be nice
     return {{"Shader ID", shader}};
   }
 };
@@ -51,55 +64,72 @@ struct MeshFilter : IComponent {
   GLuint ebo = 0;
   GLsizei vertexCount = 0;
   GLsizei indexCount = 0;
+  std::string GetName() const override {
+    return "MeshFilter";
+  }
   std::vector<Property> GetProperties() const override {
+    // TODO: the buffer IDs don't mean anything to the user, the editor should display a preview of the mesh instead
     return {{"VAO", vao}, {"VBO", vbo}, {"EBO", ebo}, {"Vertex Count", vertexCount}, {"Index Count", indexCount}};
   }
 };
+struct Light : IComponent {
+};
 template <typename T>
-T& ComponentManager<T>::AddComponent(unsigned int entityID) {
-  if (entityToComponent.find(entityID) != entityToComponent.end())
-    return components[entityToComponent[entityID]];
+T& ComponentManager<T>::AddComponent(unsigned int id) {
+  if (entityToComponent.find(id) != entityToComponent.end())
+    return components[entityToComponent[id]];
   T component{};
   auto componentID = components.size();
   components.push_back(component);
-  entityToComponent[entityID] = componentID;
-  componentToEntity.push_back(entityID);
+  entityToComponent[id] = componentID;
+  componentToEntity.push_back(id);
   return components[componentID];
 }
 template <typename T>
-void ComponentManager<T>::RemoveComponent(unsigned int entityID) {
-  if (entityToComponent.find(entityID) == entityToComponent.end())
+void ComponentManager<T>::RemoveComponent(unsigned int id) {
+  if (entityToComponent.find(id) == entityToComponent.end())
     return;
   auto count = components.size();
-  if (count <= 0)
+  if (count == 0)
     return;
-  auto componentID = entityToComponent[entityID];
+  auto componentID = entityToComponent[id];
   auto lastID = count - 1;
   if (componentID != lastID) {
     std::swap(components[componentID], components[lastID]);
     std::swap(componentToEntity[componentID], componentToEntity[lastID]);
     entityToComponent[componentToEntity[componentID]] = componentID;
   }
-  entityToComponent.erase(entityID);
+  entityToComponent.erase(id);
   componentToEntity.pop_back();
   components.pop_back();
 }
 template <typename T>
-bool ComponentManager<T>::HasComponent(unsigned int entityID) {
-  return entityToComponent.find(entityID) != entityToComponent.end();
+bool ComponentManager<T>::HasComponent(unsigned int id) {
+  return entityToComponent.find(id) != entityToComponent.end();
 }
 template <typename T>
-T& ComponentManager<T>::GetComponent(unsigned int entityID) {
-  auto it = entityToComponent.find(entityID);
+T& ComponentManager<T>::GetComponent(unsigned int id) {
+  auto it = entityToComponent.find(id);
   if (it == entityToComponent.end())
     return GetDefault();
   return components[it->second];
+}
+template <typename T>
+std::unique_ptr<T> ComponentManager<T>::GetComponentPtr(unsigned int id) {
+  auto it = entityToComponent.find(id);
+  if (it == entityToComponent.end())
+    return GetDefaultPtr();
+  return std::make_unique<T>(components[it->second]);
 }
 template <typename T>
 T& ComponentManager<T>::GetDefault() {
   // FIXME: this should not be modified by the caller
   static T defaultValue{};
   return defaultValue;
+}
+template <typename T>
+std::unique_ptr<T> ComponentManager<T>::GetDefaultPtr() {
+  return std::make_unique<T>(GetDefault());
 }
 template <typename T>
 const unsigned int ComponentManager<T>::GetEntityID(unsigned int componentID) const {

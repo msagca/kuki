@@ -7,19 +7,17 @@
 #include <camera.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-#include <functional>
-static const auto HINT_OFFSET = 10.0f;
-static const auto INACTIVITY_DURATION = 5.0;
+extern double deltaTime;
+extern Camera* cameraPtr;
+extern RenderSystem* renderSystemPtr;
 static const auto MOUSE_SENSITIVITY = 0.1f;
+bool showCreateMenu = false;
+bool showHierarchyWindow = true;
 static auto hKeyPressed = false;
-static auto idleTime = .0;
 static auto mouseFirstEnter = true;
 static auto mousePosXLast = static_cast<float>(WINDOW_WIDTH) / 2;
 static auto mousePosYLast = static_cast<float>(WINDOW_HEIGHT) / 2;
 static auto mouseRightClicked = false;
-static auto showCreateMenu = false;
-static auto showHierarchyWindow = true;
-static auto showHints = false;
 static auto spaceKeyPressed = false;
 void ProcessInput(GLFWwindow* window) {
   uint8_t wasd = 0;
@@ -125,119 +123,4 @@ void SetWindowIcon(GLFWwindow* window, const char* iconPath) {
     stbi_image_free(data);
   } else
     std::cerr << "Error: Failed to load the icon at " << iconPath << "." << std::endl;
-}
-void ShowCreateMenu(EntityManager& entityManager) {
-  if (!showCreateMenu)
-    return;
-  static const char* primitives[] = {"Cube"};
-  static int selectedPrimitive = -1;
-  static auto position = glm::vec3(.0f, .0f, .0f);
-  static auto rotation = glm::vec3(.0f, .0f, .0f);
-  static auto scale = glm::vec3(1.0f, 1.0f, 1.0f);
-  static bool showProperties = false;
-  ImGui::Begin("Create");
-  if (ImGui::ListBox("Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives)))
-    showProperties = true;
-  if (showProperties && selectedPrimitive != -1) {
-    ImGui::InputFloat3("Position", glm::value_ptr(position));
-    ImGui::InputFloat3("Rotation", glm::value_ptr(rotation));
-    ImGui::InputFloat3("Scale", glm::value_ptr(scale));
-    if (ImGui::Button("Confirm")) {
-      auto id = entityManager.CreateEntity();
-      std::vector<float> vertices;
-      std::vector<unsigned int> indices;
-      if (strcmp(primitives[selectedPrimitive], "Cube") == 0) {
-        vertices = {-.5f, -.5f, -.5f, .5f, -.5f, -.5f, .5f, .5f, -.5f, -.5f, .5f, -.5f, -.5f, -.5f, .5f, .5f, -.5f, .5f, .5f, .5f, .5f, -.5f, .5f, .5f};
-        indices = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 4, 5, 1, 1, 0, 4, 7, 6, 2, 2, 3, 7, 4, 0, 3, 3, 7, 4, 5, 1, 2, 2, 6, 5};
-      }
-      auto mesh = CreateMesh(vertices, indices);
-      auto& filter = entityManager.AddComponent<MeshFilter>(id);
-      filter = mesh;
-      entityManager.AddComponent<MeshRenderer>(id);
-      auto& transform = entityManager.AddComponent<Transform>(id);
-      transform.position = position;
-      transform.rotation = rotation;
-      transform.scale = scale;
-      selectedPrimitive = -1;
-      showProperties = false;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
-      selectedPrimitive = -1;
-      showProperties = false;
-    }
-  }
-  ImGui::End();
-}
-void ShowHierarchyWindow(EntityManager& entityManager) {
-  if (!showHierarchyWindow)
-    return;
-  static int selectedEntity = -1;
-  static glm::vec3 position, rotation, scale;
-  ImGui::Begin("Hierarchy");
-  entityManager.ForEach<Transform>([&](unsigned int id) {
-    char label[128];
-    sprintf(label, "Entity %d", id);
-    if (ImGui::Selectable(label, id == selectedEntity)) {
-      selectedEntity = id;
-      auto& transform = entityManager.GetComponent<Transform>(selectedEntity);
-      position = transform.position;
-      rotation = transform.rotation;
-      scale = transform.scale;
-    }
-  });
-  ImGui::End();
-  if (selectedEntity > -1) {
-    ImGui::Begin("Properties");
-    ImGui::InputFloat3("Position", glm::value_ptr(position));
-    ImGui::InputFloat3("Rotation", glm::value_ptr(rotation));
-    ImGui::InputFloat3("Scale", glm::value_ptr(scale));
-    if (ImGui::Button("Apply")) {
-      auto& transform = entityManager.GetComponent<Transform>(selectedEntity);
-      transform.position = position;
-      transform.rotation = rotation;
-      transform.scale = scale;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel"))
-      selectedEntity = -1;
-    ImGui::End();
-  }
-}
-struct Hint {
-  std::string text;
-  std::function<bool()> condition;
-};
-static const std::vector<Hint> hints = {
-  {"Hold down the right mouse button and use the WASD keys to fly around.", []() { return true; }},
-  {"Press spacebar to open/close the create menu.", []() { return !showCreateMenu; }},
-  {"Press H to show/hide the hierarchy window.", []() { return !showHierarchyWindow; }}};
-void ShowHints(float windowWidth, float windowHeight) {
-  if (!showHints)
-    return;
-  ImVec2 position(HINT_OFFSET, windowHeight - HINT_OFFSET);
-  ImVec2 size(windowWidth - 2 * HINT_OFFSET, .0f);
-  ImGui::SetNextWindowPos(position, ImGuiCond_Always, ImVec2(.0f, 1.0f));
-  ImGui::SetNextWindowSize(size);
-  ImGui::SetNextWindowBgAlpha(0.5f);
-  ImGui::Begin("Hints", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-  for (const auto& hint : hints)
-    if (hint.condition())
-      ImGui::TextWrapped("%s", hint.text.c_str());
-  ImGui::End();
-}
-void TrackUserActivity(GLFWwindow* window) {
-  for (auto key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; key++)
-    if (glfwGetKey(window, key) == GLFW_PRESS) {
-      idleTime = 0.0f;
-      showHints = false;
-    }
-  for (auto button = GLFW_MOUSE_BUTTON_1; button <= GLFW_MOUSE_BUTTON_LAST; button++)
-    if (glfwGetMouseButton(window, button) == GLFW_PRESS) {
-      idleTime = 0.0f;
-      showHints = false;
-    }
-  idleTime += deltaTime;
-  if (idleTime >= INACTIVITY_DURATION)
-    showHints = true;
 }

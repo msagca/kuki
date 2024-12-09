@@ -19,5 +19,7 @@
 !script/*.sh
 !src/**/*.c
 !src/**/*.cpp
+!src/**/*.frag
 !src/**/*.glsl
 !src/**/*.png
+!src/**/*.vert

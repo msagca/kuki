@@ -7,25 +7,25 @@
 static const char* ReadShader(const char*);
 static void CompileShader(GLuint&, const char*, bool isVertex = true);
 Shader::Shader()
-  : Shader("default-vert.glsl", "default-frag.glsl") {}
-Shader::Shader(const char* vertShaderPath, const char* fragShaderPath) {
-  auto vertShaderText = ReadShader(vertShaderPath);
-  auto fragShaderText = ReadShader(fragShaderPath);
-  GLuint vertShaderID, fragShaderID;
-  CompileShader(vertShaderID, vertShaderText);
-  CompileShader(fragShaderID, fragShaderText, false);
-  delete[] vertShaderText;
-  delete[] fragShaderText;
+  : Shader("default.vert", "default.frag") {}
+Shader::Shader(const char* vert, const char* frag) {
+  auto vertText = ReadShader(vert);
+  auto fragText = ReadShader(frag);
+  GLuint vertID, fragID;
+  CompileShader(vertID, vertText);
+  CompileShader(fragID, fragText, false);
+  delete[] vertText;
+  delete[] fragText;
   ID = glCreateProgram();
-  glAttachShader(ID, vertShaderID);
-  glAttachShader(ID, fragShaderID);
+  glAttachShader(ID, vertID);
+  glAttachShader(ID, fragID);
   glLinkProgram(ID);
   int success;
   glGetProgramiv(ID, GL_LINK_STATUS, &success);
   if (!success)
     std::cerr << "Error: Failed to link shader program." << std::endl;
-  glDeleteShader(vertShaderID);
-  glDeleteShader(fragShaderID);
+  glDeleteShader(vertID);
+  glDeleteShader(fragID);
 }
 void Shader::Use() const {
   glUseProgram(ID);
