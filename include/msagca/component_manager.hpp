@@ -1,12 +1,14 @@
 #pragma once
+#include <component_types.hpp>
 #include <glad/glad.h>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <unordered_map>
 #include <vector>
-#include <string>
-#include <variant>
-#include <memory>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/trigonometric.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
 template <typename T>
 class ComponentManager {
 private:
@@ -18,61 +20,13 @@ public:
   void RemoveComponent(unsigned int);
   bool HasComponent(unsigned int);
   T& GetComponent(unsigned int);
-  std::unique_ptr<T> GetComponentPtr(unsigned int);
+  T* GetComponentPtr(unsigned int);
   T& GetDefault();
-  std::unique_ptr<T> GetDefaultPtr();
+  T* GetDefaultPtr();
   const unsigned int GetEntityID(unsigned int) const;
-  typename std::vector<T>::const_iterator begin();
-  typename std::vector<T>::const_iterator end();
+  typename std::vector<T>::const_iterator Begin();
+  typename std::vector<T>::const_iterator End();
   void CleanUp();
-};
-struct Transform;
-struct Property {
-  std::string name;
-  std::variant<GLuint, GLsizei, glm::vec3, Transform*> value;
-};
-struct IComponent {
-  virtual ~IComponent() = default;
-  virtual std::string GetName() const = 0;
-  virtual std::vector<Property> GetProperties() const = 0;
-};
-struct Transform : IComponent {
-  glm::vec3 position = glm::vec3(.0f);
-  glm::vec3 rotation = glm::vec3(.0f); // NOTE: these should be in radians and converted to degrees when displayed in the editor
-  glm::vec3 scale = glm::vec3(1.0f);
-  Transform* parent = nullptr;
-  std::string GetName() const override {
-    return "Transform";
-  }
-  std::vector<Property> GetProperties() const override {
-    return {{"Position", position}, {"Rotation", rotation}, {"Scale", scale}, {"Parent", parent}};
-  }
-};
-struct MeshRenderer : IComponent {
-  GLuint shader = 0;
-  std::string GetName() const override {
-    return "MeshRenderer";
-  }
-  std::vector<Property> GetProperties() const override {
-    // TODO: the editor should display a friendly name instead of an ID; also, a preview of the shader would be nice
-    return {{"Shader ID", shader}};
-  }
-};
-struct MeshFilter : IComponent {
-  GLuint vao = 0;
-  GLuint vbo = 0;
-  GLuint ebo = 0;
-  GLsizei vertexCount = 0;
-  GLsizei indexCount = 0;
-  std::string GetName() const override {
-    return "MeshFilter";
-  }
-  std::vector<Property> GetProperties() const override {
-    // TODO: the buffer IDs don't mean anything to the user, the editor should display a preview of the mesh instead
-    return {{"VAO", vao}, {"VBO", vbo}, {"EBO", ebo}, {"Vertex Count", vertexCount}, {"Index Count", indexCount}};
-  }
-};
-struct Light : IComponent {
 };
 template <typename T>
 T& ComponentManager<T>::AddComponent(unsigned int id) {
@@ -115,11 +69,11 @@ T& ComponentManager<T>::GetComponent(unsigned int id) {
   return components[it->second];
 }
 template <typename T>
-std::unique_ptr<T> ComponentManager<T>::GetComponentPtr(unsigned int id) {
+T* ComponentManager<T>::GetComponentPtr(unsigned int id) {
   auto it = entityToComponent.find(id);
   if (it == entityToComponent.end())
     return GetDefaultPtr();
-  return std::make_unique<T>(components[it->second]);
+  return &components[it->second];
 }
 template <typename T>
 T& ComponentManager<T>::GetDefault() {
@@ -128,21 +82,24 @@ T& ComponentManager<T>::GetDefault() {
   return defaultValue;
 }
 template <typename T>
-std::unique_ptr<T> ComponentManager<T>::GetDefaultPtr() {
-  return std::make_unique<T>(GetDefault());
+T* ComponentManager<T>::GetDefaultPtr() {
+  return &GetDefault();
 }
 template <typename T>
 const unsigned int ComponentManager<T>::GetEntityID(unsigned int componentID) const {
   return componentToEntity[componentID];
 }
 template <typename T>
-typename std::vector<T>::const_iterator ComponentManager<T>::begin() {
+typename std::vector<T>::const_iterator ComponentManager<T>::Begin() {
   return components.cbegin();
 }
 template <typename T>
-typename std::vector<T>::const_iterator ComponentManager<T>::end() {
+typename std::vector<T>::const_iterator ComponentManager<T>::End() {
   return components.cend();
 }
+struct IComponent;
+struct MeshRenderer;
+struct MeshFilter;
 template <>
 inline void ComponentManager<MeshRenderer>::CleanUp() {
   for (const auto& renderer : components)

@@ -4,88 +4,8 @@
 #include <utility.hpp>
 #include <iostream>
 #include <imgui.h>
-#include <camera.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-extern double deltaTime;
-extern Camera* cameraPtr;
-extern RenderSystem* renderSystemPtr;
-static const auto MOUSE_SENSITIVITY = 0.1f;
-bool showCreateMenu = false;
-bool showHierarchyWindow = true;
-static auto hKeyPressed = false;
-static auto mouseFirstEnter = true;
-static auto mousePosXLast = static_cast<float>(WINDOW_WIDTH) / 2;
-static auto mousePosYLast = static_cast<float>(WINDOW_HEIGHT) / 2;
-static auto mouseRightClicked = false;
-static auto spaceKeyPressed = false;
-void ProcessInput(GLFWwindow* window) {
-  uint8_t wasd = 0;
-  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
-    wasd |= 1;
-  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
-    wasd |= 2;
-  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
-    wasd |= 4;
-  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
-    wasd |= 8;
-  auto shift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-  if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-    if (!spaceKeyPressed) {
-      showCreateMenu = !showCreateMenu;
-      spaceKeyPressed = true;
-    }
-  } else
-    spaceKeyPressed = false;
-  if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS) {
-    if (!hKeyPressed) {
-      showHierarchyWindow = !showHierarchyWindow;
-      hKeyPressed = true;
-    }
-  } else
-    hKeyPressed = false;
-  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-    showCreateMenu = false;
-  if (cameraPtr)
-    cameraPtr->ProcessKeyboard(wasd, shift, deltaTime);
-}
-void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-  if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
-    mouseRightClicked = true;
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-  }
-  if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE) {
-    mouseRightClicked = false;
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    mouseFirstEnter = true;
-  }
-}
-void MousePosCallback(GLFWwindow* window, double xPos, double yPos) {
-  if (!mouseRightClicked)
-    return;
-  if (mouseFirstEnter) {
-    mousePosXLast = xPos;
-    mousePosYLast = yPos;
-    mouseFirstEnter = false;
-  }
-  auto xOffset = xPos - mousePosXLast;
-  auto yOffset = mousePosYLast - yPos;
-  mousePosXLast = xPos;
-  mousePosYLast = yPos;
-  xOffset *= MOUSE_SENSITIVITY;
-  yOffset *= MOUSE_SENSITIVITY;
-  if (cameraPtr)
-    cameraPtr->ProcessMouse(xOffset, yOffset);
-}
-void WindowCloseCallback(GLFWwindow* window) {
-  glfwSetWindowShouldClose(window, GLFW_TRUE);
-}
-void FramebufferSizeCallback(GLFWwindow* window, int width, int height) {
-  glViewport(0, 0, width, height);
-  auto ratio = static_cast<float>(width) / height;
-  if (renderSystemPtr)
-    renderSystemPtr->SetAspectRatio(ratio);
-}
 unsigned int LoadTexture(char const* path) {
   unsigned int textureID;
   glGenTextures(1, &textureID);

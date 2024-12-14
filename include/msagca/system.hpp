@@ -1,11 +1,8 @@
 #pragma once
 #include <glm/ext/matrix_float4x4.hpp>
-#include <camera.hpp>
 #include <shader.hpp>
-#include <entity.hpp>
-static const auto FAR_PLANE = 100.0f;
-static const auto NEAR_PLANE = .1f;
-static const auto VIEW_ANGLE = 45.0f;
+#include <entity_manager.hpp>
+#include <unordered_set>
 class ISystem {
 public:
   virtual ~ISystem() = default;
@@ -13,18 +10,14 @@ public:
 };
 class RenderSystem : ISystem {
 private:
-  const Camera* activeCamera;
-  glm::mat4 projection;
-  ComponentManager<Transform>& transformManager;
-  ComponentManager<MeshFilter>& filterManager;
-  ComponentManager<MeshRenderer>& rendererManager;
-  std::unordered_map<GLuint, Shader> shaderDB;
+  EntityManager* entityManager;
+  Camera* camera;
+  std::unordered_set<GLuint> shaderDB;
   GLuint defaultShader;
 public:
   RenderSystem(EntityManager&);
+  void SetCamera(Camera&);
   GLuint AddShader(const char*, const char*);
   void RemoveShader(GLuint);
-  void SetAspectRatio(float ratio);
-  void SetActiveCamera(const Camera*);
   void Update() override;
 };
