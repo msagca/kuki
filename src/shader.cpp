@@ -7,7 +7,7 @@
 static const char* ReadShader(const char*);
 static void CompileShader(GLuint&, const char*, bool isVertex = true);
 Shader::Shader()
-  : Shader("default.vert", "default.frag") {}
+  : Shader("default_lit.vert", "default_lit.frag") {}
 Shader::Shader(const char* vert, const char* frag) {
   auto vertText = ReadShader(vert);
   auto fragText = ReadShader(frag);

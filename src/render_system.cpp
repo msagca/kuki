@@ -41,17 +41,13 @@ static glm::mat4 GetWorldTransform(const Transform& transform) {
 void RenderSystem::Update() {
   if (!camera || !light)
     return;
-  auto begin = entityManager->Begin<Primitive>();
-  auto end = entityManager->End<Primitive>();
-  // TODO: add render loops for other types or type combinations
-  for (auto& it = begin; it != end; it++) {
+  entityManager->ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform& transform, MeshFilter& filter, MeshRenderer& renderer) {
     // TODO: do instanced rendering for objects sharing the same mesh
-    auto& primitive = *it;
     auto shader = defaultShader;
-    if (shaderDB.find(primitive.renderer.shader) != shaderDB.end())
-      shader = primitive.renderer.shader;
+    if (shaderDB.find(renderer.shader) != shaderDB.end())
+      shader = renderer.shader;
     glUseProgram(shader);
-    auto model = GetWorldTransform(primitive.transform);
+    auto model = GetWorldTransform(transform);
     // object transform
     auto loc = glGetUniformLocation(shader, "model");
     glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(model));
@@ -61,14 +57,14 @@ void RenderSystem::Update() {
     glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(camera->projection));
     // material properties
     loc = glGetUniformLocation(shader, "material.diffuse");
-    glUniform3fv(loc, 1, glm::value_ptr(primitive.renderer.material.diffuse));
+    glUniform3fv(loc, 1, glm::value_ptr(renderer.material.diffuse));
     loc = glGetUniformLocation(shader, "material.specular");
-    glUniform3fv(loc, 1, glm::value_ptr(primitive.renderer.material.specular));
+    glUniform3fv(loc, 1, glm::value_ptr(renderer.material.specular));
     loc = glGetUniformLocation(shader, "material.shininess");
-    glUniform1f(loc, primitive.renderer.material.shininess);
+    glUniform1f(loc, renderer.material.shininess);
     // light properties
-    loc = glGetUniformLocation(shader, "light.direction");
-    glUniform3fv(loc, 1, glm::value_ptr(light->direction));
+    loc = glGetUniformLocation(shader, "light.vector");
+    glUniform4fv(loc, 1, glm::value_ptr(glm::vec4(light->vector, light->type == LightType::Directional ? .0f : 1.0f)));
     loc = glGetUniformLocation(shader, "light.ambient");
     glUniform3fv(loc, 1, glm::value_ptr(light->ambient));
     loc = glGetUniformLocation(shader, "light.diffuse");
@@ -78,10 +74,11 @@ void RenderSystem::Update() {
     // camera position
     loc = glGetUniformLocation(shader, "viewPos");
     glUniform3fv(loc, 1, glm::value_ptr(camera->position));
-    glBindVertexArray(primitive.filter.vertexArray);
-    if (primitive.filter.indexCount > 0)
-      glDrawElements(GL_TRIANGLES, primitive.filter.indexCount, GL_UNSIGNED_INT, 0);
+    // draw calls
+    glBindVertexArray(filter.vertexArray);
+    if (filter.indexCount > 0)
+      glDrawElements(GL_TRIANGLES, filter.indexCount, GL_UNSIGNED_INT, 0);
     else
-      glDrawArrays(GL_TRIANGLES, 0, primitive.filter.vertexCount);
-  }
+      glDrawArrays(GL_TRIANGLES, 0, filter.vertexCount);
+  });
 }

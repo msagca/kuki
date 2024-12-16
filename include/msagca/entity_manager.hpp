@@ -4,21 +4,19 @@
 #include <functional>
 #include <tuple>
 #include <format>
-enum ComponentType {
-  TransformType,
-  MeshFilterType,
-  MeshRendererType,
-  PrimitiveType,
-  CameraType,
-  LightType
+enum ComponentID {
+  TransformID,
+  MeshFilterID,
+  MeshRendererID,
+  CameraID,
+  LightID
 };
 enum ComponentMask {
-  TransformMask = 1 << TransformType,
-  MeshFilterMask = 1 << MeshFilterType,
-  MeshRendererMask = 1 << MeshRendererType,
-  PrimitiveMask = 1 << PrimitiveType,
-  CameraMask = 1 << CameraType,
-  LightMask = 1 << LightType
+  TransformMask = 1 << TransformID,
+  MeshFilterMask = 1 << MeshFilterID,
+  MeshRendererMask = 1 << MeshRendererID,
+  CameraMask = 1 << CameraID,
+  LightMask = 1 << LightID
 };
 class EntityManager {
 private:
@@ -28,7 +26,6 @@ private:
   ComponentManager<Transform> transformManager;
   ComponentManager<MeshFilter> filterManager;
   ComponentManager<MeshRenderer> rendererManager;
-  ComponentManager<Primitive> primitiveManager;
   ComponentManager<Camera> cameraManager;
   ComponentManager<Light> lightManager;
   template <typename T>
@@ -43,13 +40,13 @@ public:
   void CleanUp();
   template <typename T>
   T& AddComponent(unsigned int);
-  IComponent* AddComponent(unsigned int, ComponentType);
+  IComponent* AddComponent(unsigned int, ComponentID);
   IComponent* AddComponent(unsigned int, const std::string&);
   template <typename... T>
   std::tuple<T&...> AddComponents(unsigned int);
   template <typename T>
   void RemoveComponent(unsigned int);
-  void RemoveComponent(unsigned int, ComponentType);
+  void RemoveComponent(unsigned int, ComponentID);
   void RemoveComponent(unsigned int, const std::string&);
   template <typename... T>
   void RemoveComponents(unsigned int);
@@ -71,8 +68,8 @@ public:
   ComponentManager<T>& GetManager();
   template <typename... T>
   void ForEach(std::function<void(unsigned int)>);
-  template <typename... T>
-  void ForEach(std::function<void(unsigned int, T&...)>);
+  template <typename... T, typename F>
+  void ForEach(F);
   void ForAll(std::function<void(unsigned int)>);
   template <typename T>
   typename std::vector<T>::const_iterator Begin();
@@ -125,41 +122,37 @@ T& EntityManager::AddComponent(unsigned int id) {
   entities[id] |= GetComponentMask<T>();
   return manager.AddComponent(id);
 }
-inline IComponent* EntityManager::AddComponent(unsigned int id, ComponentType type) {
-  switch (type) {
-  case ComponentType::TransformType:
+inline IComponent* EntityManager::AddComponent(unsigned int id, ComponentID componentID) {
+  switch (componentID) {
+  case TransformID:
     return &AddComponent<Transform>(id);
-  case ComponentType::MeshFilterType:
+  case MeshFilterID:
     return &AddComponent<MeshFilter>(id);
-  case ComponentType::MeshRendererType:
+  case MeshRendererID:
     return &AddComponent<MeshRenderer>(id);
-  case ComponentType::PrimitiveType:
-    return &AddComponent<Primitive>(id);
-  case ComponentType::CameraType:
+  case CameraID:
     return &AddComponent<Camera>(id);
-  case ComponentType::LightType:
+  case LightID:
     return &AddComponent<Light>(id);
   default:
     return nullptr;
   }
 }
 inline IComponent* EntityManager::AddComponent(unsigned int id, const std::string& name) {
-  ComponentType type;
+  ComponentID componentID;
   if (name == "Transform")
-    type = ComponentType::TransformType;
+    componentID = TransformID;
   else if (name == "MeshFilter")
-    type = ComponentType::MeshFilterType;
+    componentID = MeshFilterID;
   else if (name == "MeshRenderer")
-    type = ComponentType::MeshRendererType;
-  else if (name == "Primitive")
-    type = ComponentType::PrimitiveType;
+    componentID = MeshRendererID;
   else if (name == "Camera")
-    type = ComponentType::CameraType;
+    componentID = CameraID;
   else if (name == "Light")
-    type = ComponentType::LightType;
+    componentID = LightID;
   else
     return nullptr;
-  return AddComponent(id, type);
+  return AddComponent(id, componentID);
 }
 template <typename... T>
 std::tuple<T&...> EntityManager::AddComponents(unsigned int id) {
@@ -173,45 +166,40 @@ void EntityManager::RemoveComponent(unsigned int id) {
   auto& manager = GetManager<T>();
   manager.RemoveComponent(id);
 }
-inline void EntityManager::RemoveComponent(unsigned int id, ComponentType type) {
-  switch (type) {
-  case ComponentType::TransformType:
+inline void EntityManager::RemoveComponent(unsigned int id, ComponentID componentID) {
+  switch (componentID) {
+  case TransformID:
     RemoveComponent<Transform>(id);
     break;
-  case ComponentType::MeshFilterType:
+  case MeshFilterID:
     RemoveComponent<MeshFilter>(id);
     break;
-  case ComponentType::MeshRendererType:
+  case MeshRendererID:
     RemoveComponent<MeshRenderer>(id);
     break;
-  case ComponentType::PrimitiveType:
-    RemoveComponent<Primitive>(id);
-    break;
-  case ComponentType::CameraType:
+  case CameraID:
     RemoveComponent<Camera>(id);
     break;
-  case ComponentType::LightType:
+  case LightID:
     RemoveComponent<Light>(id);
     break;
   }
 }
 inline void EntityManager::RemoveComponent(unsigned int id, const std::string& name) {
-  ComponentType type;
+  ComponentID componentID;
   if (name == "Transform")
-    type = ComponentType::TransformType;
+    componentID = TransformID;
   else if (name == "MeshFilter")
-    type = ComponentType::MeshFilterType;
+    componentID = MeshFilterID;
   else if (name == "MeshRenderer")
-    type = ComponentType::MeshRendererType;
-  else if (name == "Primitive")
-    type = ComponentType::PrimitiveType;
+    componentID = MeshRendererID;
   else if (name == "Camera")
-    type = ComponentType::CameraType;
+    componentID = CameraID;
   else if (name == "Light")
-    type = ComponentType::LightType;
+    componentID = LightID;
   else
     return;
-  return RemoveComponent(id, type);
+  return RemoveComponent(id, componentID);
 }
 template <typename... T>
 void EntityManager::RemoveComponents(unsigned int id) {
@@ -222,11 +210,9 @@ void EntityManager::RemoveComponents(unsigned int id) {
 inline void EntityManager::RemoveAllComponents(unsigned int id) {
   if (entities.find(id) == entities.end())
     return;
-  // TODO: make this a loop
   transformManager.RemoveComponent(id);
   filterManager.RemoveComponent(id);
   rendererManager.RemoveComponent(id);
-  primitiveManager.RemoveComponent(id);
   cameraManager.RemoveComponent(id);
   lightManager.RemoveComponent(id);
   entities[id] = 0;
@@ -261,8 +247,6 @@ inline IComponent* EntityManager::GetComponent(unsigned int id, const std::strin
     return GetComponentPtr<MeshFilter>(id);
   else if (name == "MeshRenderer")
     return GetComponentPtr<MeshRenderer>(id);
-  else if (name == "Primitive")
-    return GetComponentPtr<Primitive>(id);
   else if (name == "Camera")
     return GetComponentPtr<Camera>(id);
   else if (name == "Light")
@@ -282,8 +266,6 @@ inline std::vector<IComponent*> EntityManager::GetAllComponents(unsigned int id)
     components.push_back(filterManager.GetComponentPtr(id));
   if (HasComponent<MeshRenderer>(id))
     components.push_back(rendererManager.GetComponentPtr(id));
-  if (HasComponent<Primitive>(id))
-    components.push_back(primitiveManager.GetComponentPtr(id));
   if (HasComponent<Camera>(id))
     components.push_back(cameraManager.GetComponentPtr(id));
   if (HasComponent<Light>(id))
@@ -298,8 +280,6 @@ inline std::vector<std::string> EntityManager::GetMissingComponents(unsigned int
     components.push_back("MeshFilter");
   if (!HasComponent<MeshRenderer>(id))
     components.push_back("MeshRenderer");
-  if (!HasComponent<Primitive>(id))
-    components.push_back("Primitive");
   if (!HasComponent<Camera>(id))
     components.push_back("Camera");
   if (!HasComponent<Light>(id))
@@ -312,12 +292,12 @@ void EntityManager::ForEach(std::function<void(unsigned int)> func) {
     if (HasComponents<T...>(id))
       func(id);
 }
-template <typename... T>
-void EntityManager::ForEach(std::function<void(unsigned int, T&...)> func) {
+template <typename... T, typename F>
+void EntityManager::ForEach(F func) {
   for (const auto& [id, _] : entities)
     if (HasComponents<T...>(id)) {
       auto components = GetComponents<T...>(id);
-      std::apply([&](T&... args) { func(id, args...); }, components);
+      std::apply([&](T&... args) { func(args...); }, components);
     }
 }
 inline void EntityManager::ForAll(std::function<void(unsigned int)> func) {
@@ -335,10 +315,6 @@ inline ComponentManager<MeshFilter>& EntityManager::GetManager() {
 template <>
 inline ComponentManager<MeshRenderer>& EntityManager::GetManager() {
   return rendererManager;
-}
-template <>
-inline ComponentManager<Primitive>& EntityManager::GetManager() {
-  return primitiveManager;
 }
 template <>
 inline ComponentManager<Camera>& EntityManager::GetManager() {
@@ -359,10 +335,6 @@ inline ComponentMask EntityManager::GetComponentMask<MeshFilter>() const {
 template <>
 inline ComponentMask EntityManager::GetComponentMask<MeshRenderer>() const {
   return MeshRendererMask;
-}
-template <>
-inline ComponentMask EntityManager::GetComponentMask<Primitive>() const {
-  return PrimitiveMask;
 }
 template <>
 inline ComponentMask EntityManager::GetComponentMask<Camera>() const {
@@ -395,14 +367,6 @@ inline typename std::vector<MeshRenderer>::const_iterator EntityManager::Begin<M
 template <>
 inline typename std::vector<MeshRenderer>::const_iterator EntityManager::End<MeshRenderer>() {
   return rendererManager.End();
-}
-template <>
-inline typename std::vector<Primitive>::const_iterator EntityManager::Begin<Primitive>() {
-  return primitiveManager.Begin();
-}
-template <>
-inline typename std::vector<Primitive>::const_iterator EntityManager::End<Primitive>() {
-  return primitiveManager.End();
 }
 template <>
 inline typename std::vector<Camera>::const_iterator EntityManager::Begin<Camera>() {

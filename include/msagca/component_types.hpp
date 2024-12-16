@@ -9,9 +9,13 @@
 #include <glm/trigonometric.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
+enum class LightType {
+  Directional,
+  Point
+};
 struct Property {
   std::string name;
-  std::variant<int, unsigned int, float, bool, glm::vec3> value;
+  std::variant<int, unsigned int, float, bool, glm::vec3, LightType> value;
 };
 struct IComponent {
   virtual ~IComponent() = default;
@@ -82,8 +86,8 @@ struct Camera : IComponent {
   }
 };
 struct Light : IComponent {
-  // TODO: allow different types of lights than directional
-  glm::vec3 direction = glm::vec3(.3f, .4f, .0f);
+  LightType type = LightType::Directional;
+  glm::vec3 vector = glm::vec3(.2f, 1.0f, .3f);
   glm::vec3 ambient = glm::vec3(.2f);
   glm::vec3 diffuse = glm::vec3(.5f);
   glm::vec3 specular = glm::vec3(1.0f);
@@ -91,26 +95,26 @@ struct Light : IComponent {
     return "Light";
   }
   std::vector<Property> GetProperties() const override {
-    return {{"Direction", direction}, {"Ambient", ambient}, {"Diffuse", diffuse}, {"Specular", specular}};
+    return {{"Type", type}, {"Vector", vector}, {"Ambient", ambient}, {"Diffuse", diffuse}, {"Specular", specular}};
   }
   void SetProperty(Property property) override {
     if (std::holds_alternative<glm::vec3>(property.value)) {
       auto& value = std::get<glm::vec3>(property.value);
-      if (property.name == "Direction")
-        direction = value;
+      if (property.name == "Vector")
+        vector = value;
       else if (property.name == "Ambient")
         ambient = value;
       else if (property.name == "Diffuse")
         diffuse = value;
       else if (property.name == "Specular")
         specular = value;
-    }
+    } else if (std::holds_alternative<LightType>(property.value))
+      type = std::get<LightType>(property.value);
   }
 };
 struct MeshFilter : IComponent {
   unsigned int vertexArray = 0;
   unsigned int vertexBuffer = 0;
-  unsigned int normalBuffer = 0;
   unsigned int indexBuffer = 0;
   int vertexCount = 0;
   int indexCount = 0;
@@ -119,17 +123,15 @@ struct MeshFilter : IComponent {
   }
   std::vector<Property> GetProperties() const override {
     // TODO: the buffer IDs don't mean anything to the user, the editor should display a preview of the mesh instead
-    return {{"VAO", vertexArray}, {"VertexBuffer", vertexBuffer}, {"NormalBuffer", normalBuffer}, {"IndexBuffer", indexBuffer}, {"VertexCount", vertexCount}, {"IndexCount", indexCount}};
+    return {{"VertexArray", vertexArray}, {"VertexBuffer", vertexBuffer}, {"IndexBuffer", indexBuffer}, {"VertexCount", vertexCount}, {"IndexCount", indexCount}};
   }
   void SetProperty(Property property) override {
     if (std::holds_alternative<unsigned int>(property.value)) {
       auto& value = std::get<unsigned int>(property.value);
-      if (property.name == "VAO")
+      if (property.name == "VertexArray")
         vertexArray = value;
       else if (property.name == "VertexBuffer")
         vertexBuffer = value;
-      else if (property.name == "NormalBuffer")
-        normalBuffer = value;
       else if (property.name == "IndexBuffer")
         indexBuffer = value;
     } else if (std::holds_alternative<int>(property.value)) {
@@ -178,27 +180,5 @@ struct MeshRenderer : IComponent {
     if (property.name == "ShaderID" && std::holds_alternative<unsigned int>(property.value))
       shader = std::get<unsigned int>(property.value);
     material.SetProperty(property);
-  }
-};
-struct Primitive : IComponent {
-  Transform transform;
-  MeshFilter filter;
-  MeshRenderer renderer;
-  std::string GetName() const override {
-    return "Primitive";
-  }
-  std::vector<Property> GetProperties() const override {
-    auto properties = transform.GetProperties();
-    auto filterProperties = filter.GetProperties();
-    auto rendererProperties = renderer.GetProperties();
-    properties.insert(properties.end(), filterProperties.begin(), filterProperties.end());
-    properties.insert(properties.end(), rendererProperties.begin(), rendererProperties.end());
-    return properties;
-  }
-  void SetProperty(Property property) override {
-    // FIXME: if the following components share a property with the same name, all those values will be modified
-    transform.SetProperty(property);
-    filter.SetProperty(property);
-    renderer.SetProperty(property);
   }
 };

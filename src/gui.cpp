@@ -25,16 +25,14 @@ void ShowCreateMenu(EntityManager& entityManager) {
   if (ImGui::ListBox("Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
     auto id = entityManager.CreateEntity();
     std::vector<float> vertices;
-    std::vector<float> normals;
-    std::vector<unsigned int> indices;
     switch (selectedPrimitive) {
     default:
-      vertices = Cube::GetVertices();
-      normals = Cube::GetNormals();
-      indices = Cube::GetIndices();
+      vertices = Cube::GetVerticesWithNormals();
     }
-    auto& primitive = entityManager.AddComponent<Primitive>(id);
-    primitive.filter = Mesh::Create(vertices, normals, indices);
+    entityManager.AddComponent<Transform>(id);
+    entityManager.AddComponent<MeshRenderer>(id);
+    auto& filter = entityManager.AddComponent<MeshFilter>(id);
+    filter = Mesh::Create(vertices);
     selectedPrimitive = -1;
   }
   ImGui::End();
@@ -42,7 +40,7 @@ void ShowCreateMenu(EntityManager& entityManager) {
 static void ShowProperties(EntityManager& entityManager, unsigned int selectedEntity, bool first) {
   ImGui::Begin("Properties");
   static IComponent* selectedComponent = nullptr;
-  static std::unordered_map<std::string, std::variant<int, unsigned int, float, bool, glm::vec3>> propertyMap;
+  static std::unordered_map<std::string, std::variant<int, unsigned int, float, bool, glm::vec3, LightType>> propertyMap;
   auto components = entityManager.GetAllComponents(selectedEntity);
   for (const auto& component : components) {
     auto isSelected = (selectedComponent == component);
@@ -92,6 +90,15 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
         if (ImGui::Checkbox(prop.name.c_str(), &valueBool)) {
           propertyMap[prop.name] = valueBool;
           component->SetProperty(Property(prop.name, valueBool));
+        }
+      } else if (std::holds_alternative<LightType>(value)) {
+        auto valueEnum = std::get<LightType>(value);
+        static const char* items[] = {"Directional", "Point"};
+        auto currentItem = static_cast<int>(valueEnum);
+        if (ImGui::Combo(prop.name.c_str(), &currentItem, items, IM_ARRAYSIZE(items))) {
+          valueEnum = static_cast<LightType>(currentItem);
+          propertyMap[prop.name] = valueEnum;
+          component->SetProperty(Property(prop.name, valueEnum));
         }
       }
     }
