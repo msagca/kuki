@@ -48,7 +48,7 @@ void RenderSystem::Update() {
       shader = renderer.shader;
     glUseProgram(shader);
     auto model = GetWorldTransform(transform);
-    // object transform
+    // transform matrices
     auto loc = glGetUniformLocation(shader, "model");
     glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(model));
     loc = glGetUniformLocation(shader, "view");
@@ -71,6 +71,12 @@ void RenderSystem::Update() {
     glUniform3fv(loc, 1, glm::value_ptr(light->diffuse));
     loc = glGetUniformLocation(shader, "light.specular");
     glUniform3fv(loc, 1, glm::value_ptr(light->specular));
+    loc = glGetUniformLocation(shader, "light.constant");
+    glUniform1f(loc, light->constant);
+    loc = glGetUniformLocation(shader, "light.linear");
+    glUniform1f(loc, light->linear);
+    loc = glGetUniformLocation(shader, "light.quadratic");
+    glUniform1f(loc, light->quadratic);
     // camera position
     loc = glGetUniformLocation(shader, "viewPos");
     glUniform3fv(loc, 1, glm::value_ptr(camera->position));

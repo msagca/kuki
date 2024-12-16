@@ -91,11 +91,15 @@ struct Light : IComponent {
   glm::vec3 ambient = glm::vec3(.2f);
   glm::vec3 diffuse = glm::vec3(.5f);
   glm::vec3 specular = glm::vec3(1.0f);
+  // attenuation terms (for point light)
+  float constant = 1.0f;
+  float linear = .09f;
+  float quadratic = .032f;
   std::string GetName() const override {
     return "Light";
   }
   std::vector<Property> GetProperties() const override {
-    return {{"Type", type}, {"Vector", vector}, {"Ambient", ambient}, {"Diffuse", diffuse}, {"Specular", specular}};
+    return {{"Type", type}, {"Vector", vector}, {"Ambient", ambient}, {"Diffuse", diffuse}, {"Specular", specular}, {"Constant", constant}, {"Linear", linear}, {"Quadratic", quadratic}};
   }
   void SetProperty(Property property) override {
     if (std::holds_alternative<glm::vec3>(property.value)) {
@@ -108,6 +112,14 @@ struct Light : IComponent {
         diffuse = value;
       else if (property.name == "Specular")
         specular = value;
+    } else if (std::holds_alternative<float>(property.value)) {
+      auto& value = std::get<float>(property.value);
+      if (property.name == "Constant")
+        constant = value;
+      else if (property.name == "Linear")
+        linear = value;
+      else if (property.name == "Quadratic")
+        quadratic = value;
     } else if (std::holds_alternative<LightType>(property.value))
       type = std::get<LightType>(property.value);
   }
