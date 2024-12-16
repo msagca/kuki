@@ -20,19 +20,21 @@ void ShowHints(float windowWidth, float windowHeight) {
 }
 void ShowCreateMenu(EntityManager& entityManager) {
   static const char* primitives[] = {"Cube"};
-  static int selectedPrimitive = -1;
+  static auto selectedPrimitive = -1;
   ImGui::Begin("Create");
   if (ImGui::ListBox("Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
     auto id = entityManager.CreateEntity();
     std::vector<float> vertices;
+    std::vector<float> normals;
     std::vector<unsigned int> indices;
     switch (selectedPrimitive) {
     default:
       vertices = Cube::GetVertices();
+      normals = Cube::GetNormals();
       indices = Cube::GetIndices();
     }
     auto& primitive = entityManager.AddComponent<Primitive>(id);
-    primitive.filter = CreateMesh(vertices, indices);
+    primitive.filter = Mesh::Create(vertices, normals, indices);
     selectedPrimitive = -1;
   }
   ImGui::End();
@@ -55,9 +57,15 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
       auto value = prop.value;
       if (propertyMap.find(prop.name) != propertyMap.end() && !first)
         value = propertyMap[prop.name];
+      auto isColor = (prop.name == "Ambient" || prop.name == "Diffuse" || prop.name == "Specular");
       if (std::holds_alternative<glm::vec3>(value)) {
         auto valueVec3 = std::get<glm::vec3>(value);
-        if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3))) {
+        if (isColor) {
+          if (ImGui::ColorEdit3(prop.name.c_str(), glm::value_ptr(valueVec3))) {
+            propertyMap[prop.name] = valueVec3;
+            component->SetProperty(Property(prop.name, valueVec3));
+          }
+        } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3))) {
           propertyMap[prop.name] = valueVec3;
           component->SetProperty(Property(prop.name, valueVec3));
         }
@@ -101,12 +109,16 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
   ImGui::End();
 }
 void ShowHierarchyWindow(EntityManager& entityManager) {
-  static int selectedEntity = -1;
+  static auto selectedEntity = -1;
+  static auto selectedEntityLast = -1;
+  static auto renameMode = false;
+  static char newName[256] = "";
   ImGui::Begin("Hierarchy");
   entityManager.ForAll([&](unsigned int id) {
     if (ImGui::Selectable(entityManager.GetName(id).c_str(), id == selectedEntity)) {
       selectedEntity = id;
       ShowProperties(entityManager, selectedEntity, true);
+      selectedEntityLast = selectedEntity;
     }
   });
   auto windowHeight = ImGui::GetWindowHeight();
@@ -123,8 +135,28 @@ void ShowHierarchyWindow(EntityManager& entityManager) {
       entityManager.RemoveEntity(selectedEntity);
       selectedEntity = -1;
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Rename")) {
+      renameMode = true;
+      strcpy(newName, entityManager.GetName(selectedEntity).c_str());
+    }
   }
   ImGui::End();
+  if (renameMode) {
+    ImGui::Begin("Rename Entity", &renameMode);
+    if (ImGui::InputText("New Name", newName, IM_ARRAYSIZE(newName), ImGuiInputTextFlags_EnterReturnsTrue)) {
+      entityManager.RenameEntity(selectedEntity, std::string(newName));
+      renameMode = false;
+    }
+    if (ImGui::Button("Apply")) {
+      entityManager.RenameEntity(selectedEntity, std::string(newName));
+      renameMode = false;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel"))
+      renameMode = false;
+    ImGui::End();
+  }
   if (selectedEntity != -1)
-    ShowProperties(entityManager, selectedEntity, false);
+    ShowProperties(entityManager, selectedEntity, selectedEntity != selectedEntityLast);
 }

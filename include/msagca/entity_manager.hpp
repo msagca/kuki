@@ -9,14 +9,16 @@ enum ComponentType {
   MeshFilterType,
   MeshRendererType,
   PrimitiveType,
-  CameraType
+  CameraType,
+  LightType
 };
 enum ComponentMask {
   TransformMask = 1 << TransformType,
   MeshFilterMask = 1 << MeshFilterType,
   MeshRendererMask = 1 << MeshRendererType,
   PrimitiveMask = 1 << PrimitiveType,
-  CameraMask = 1 << CameraType
+  CameraMask = 1 << CameraType,
+  LightMask = 1 << LightType
 };
 class EntityManager {
 private:
@@ -28,6 +30,7 @@ private:
   ComponentManager<MeshRenderer> rendererManager;
   ComponentManager<Primitive> primitiveManager;
   ComponentManager<Camera> cameraManager;
+  ComponentManager<Light> lightManager;
   template <typename T>
   ComponentMask GetComponentMask() const;
 public:
@@ -103,7 +106,7 @@ inline const std::string& EntityManager::GetName(unsigned int id) {
   return names[id];
 }
 inline const std::string EntityManager::GetNextName() const {
-  return std::format("Entity {}", nextID);
+  return std::format("Entity.{}", nextID);
 }
 inline size_t EntityManager::GetCount() const {
   return entities.size();
@@ -126,19 +129,16 @@ inline IComponent* EntityManager::AddComponent(unsigned int id, ComponentType ty
   switch (type) {
   case ComponentType::TransformType:
     return &AddComponent<Transform>(id);
-    break;
   case ComponentType::MeshFilterType:
     return &AddComponent<MeshFilter>(id);
-    break;
   case ComponentType::MeshRendererType:
     return &AddComponent<MeshRenderer>(id);
-    break;
   case ComponentType::PrimitiveType:
     return &AddComponent<Primitive>(id);
-    break;
   case ComponentType::CameraType:
     return &AddComponent<Camera>(id);
-    break;
+  case ComponentType::LightType:
+    return &AddComponent<Light>(id);
   default:
     return nullptr;
   }
@@ -155,6 +155,8 @@ inline IComponent* EntityManager::AddComponent(unsigned int id, const std::strin
     type = ComponentType::PrimitiveType;
   else if (name == "Camera")
     type = ComponentType::CameraType;
+  else if (name == "Light")
+    type = ComponentType::LightType;
   else
     return nullptr;
   return AddComponent(id, type);
@@ -174,19 +176,22 @@ void EntityManager::RemoveComponent(unsigned int id) {
 inline void EntityManager::RemoveComponent(unsigned int id, ComponentType type) {
   switch (type) {
   case ComponentType::TransformType:
-    return RemoveComponent<Transform>(id);
+    RemoveComponent<Transform>(id);
     break;
   case ComponentType::MeshFilterType:
-    return RemoveComponent<MeshFilter>(id);
+    RemoveComponent<MeshFilter>(id);
     break;
   case ComponentType::MeshRendererType:
-    return RemoveComponent<MeshRenderer>(id);
+    RemoveComponent<MeshRenderer>(id);
     break;
   case ComponentType::PrimitiveType:
-    return RemoveComponent<Primitive>(id);
+    RemoveComponent<Primitive>(id);
     break;
   case ComponentType::CameraType:
-    return RemoveComponent<Camera>(id);
+    RemoveComponent<Camera>(id);
+    break;
+  case ComponentType::LightType:
+    RemoveComponent<Light>(id);
     break;
   }
 }
@@ -202,6 +207,8 @@ inline void EntityManager::RemoveComponent(unsigned int id, const std::string& n
     type = ComponentType::PrimitiveType;
   else if (name == "Camera")
     type = ComponentType::CameraType;
+  else if (name == "Light")
+    type = ComponentType::LightType;
   else
     return;
   return RemoveComponent(id, type);
@@ -221,6 +228,7 @@ inline void EntityManager::RemoveAllComponents(unsigned int id) {
   rendererManager.RemoveComponent(id);
   primitiveManager.RemoveComponent(id);
   cameraManager.RemoveComponent(id);
+  lightManager.RemoveComponent(id);
   entities[id] = 0;
 }
 template <typename T>
@@ -257,6 +265,8 @@ inline IComponent* EntityManager::GetComponent(unsigned int id, const std::strin
     return GetComponentPtr<Primitive>(id);
   else if (name == "Camera")
     return GetComponentPtr<Camera>(id);
+  else if (name == "Light")
+    return GetComponentPtr<Light>(id);
   else
     return nullptr;
 }
@@ -266,7 +276,6 @@ std::tuple<T&...> EntityManager::GetComponents(unsigned int id) {
 }
 inline std::vector<IComponent*> EntityManager::GetAllComponents(unsigned int id) {
   std::vector<IComponent*> components;
-  // TODO: make this a loop
   if (HasComponent<Transform>(id))
     components.push_back(transformManager.GetComponentPtr(id));
   if (HasComponent<MeshFilter>(id))
@@ -277,6 +286,8 @@ inline std::vector<IComponent*> EntityManager::GetAllComponents(unsigned int id)
     components.push_back(primitiveManager.GetComponentPtr(id));
   if (HasComponent<Camera>(id))
     components.push_back(cameraManager.GetComponentPtr(id));
+  if (HasComponent<Light>(id))
+    components.push_back(lightManager.GetComponentPtr(id));
   return components;
 }
 inline std::vector<std::string> EntityManager::GetMissingComponents(unsigned int id) {
@@ -291,6 +302,8 @@ inline std::vector<std::string> EntityManager::GetMissingComponents(unsigned int
     components.push_back("Primitive");
   if (!HasComponent<Camera>(id))
     components.push_back("Camera");
+  if (!HasComponent<Light>(id))
+    components.push_back("Light");
   return components;
 }
 template <typename... T>
@@ -332,6 +345,10 @@ inline ComponentManager<Camera>& EntityManager::GetManager() {
   return cameraManager;
 }
 template <>
+inline ComponentManager<Light>& EntityManager::GetManager() {
+  return lightManager;
+}
+template <>
 inline ComponentMask EntityManager::GetComponentMask<Transform>() const {
   return TransformMask;
 }
@@ -350,6 +367,10 @@ inline ComponentMask EntityManager::GetComponentMask<Primitive>() const {
 template <>
 inline ComponentMask EntityManager::GetComponentMask<Camera>() const {
   return CameraMask;
+}
+template <>
+inline ComponentMask EntityManager::GetComponentMask<Light>() const {
+  return LightMask;
 }
 template <>
 inline typename std::vector<Transform>::const_iterator EntityManager::Begin<Transform>() {
@@ -390,4 +411,12 @@ inline typename std::vector<Camera>::const_iterator EntityManager::Begin<Camera>
 template <>
 inline typename std::vector<Camera>::const_iterator EntityManager::End<Camera>() {
   return cameraManager.End();
+}
+template <>
+inline typename std::vector<Light>::const_iterator EntityManager::Begin<Light>() {
+  return lightManager.Begin();
+}
+template <>
+inline typename std::vector<Light>::const_iterator EntityManager::End<Light>() {
+  return lightManager.End();
 }

@@ -108,8 +108,8 @@ inline void ComponentManager<MeshRenderer>::CleanUp() {
 template <>
 inline void ComponentManager<MeshFilter>::CleanUp() {
   for (const auto& filter : components) {
-    glDeleteVertexArrays(1, &filter.vao);
-    glDeleteBuffers(1, &filter.vbo);
-    glDeleteBuffers(1, &filter.ebo);
+    glDeleteVertexArrays(1, &filter.vertexArray);
+    glDeleteBuffers(1, &filter.vertexBuffer);
+    glDeleteBuffers(1, &filter.indexBuffer);
   }
 }

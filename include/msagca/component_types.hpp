@@ -32,22 +32,24 @@ struct Transform : IComponent {
   }
   void SetProperty(Property property) override {
     if (std::holds_alternative<glm::vec3>(property.value)) {
+      auto& value = std::get<glm::vec3>(property.value);
       if (property.name == "Position")
-        position = std::get<glm::vec3>(property.value);
+        position = value;
       else if (property.name == "Rotation")
-        rotation = std::get<glm::vec3>(property.value);
+        rotation = value;
       else if (property.name == "Scale")
-        scale = std::get<glm::vec3>(property.value);
+        scale = value;
     }
   }
 };
 struct Camera : IComponent {
-  glm::mat4 view;
-  glm::mat4 projection;
-  glm::vec3 position;
+  // TODO: add the orthogonal projection option
+  glm::mat4 view = glm::mat4(1.0f);
+  glm::mat4 projection = glm::mat4(1.0f);
+  glm::vec3 position = glm::vec3(.0f);
   glm::vec3 front = glm::vec3(.0f, .0f, -1.0f);
   glm::vec3 up = glm::vec3(.0f, 1.0f, .0f);
-  glm::vec3 right;
+  glm::vec3 right = glm::vec3(1.0f, .0f, .0f);
   float pitch = .0f;
   float yaw = -90.0f;
   float fov = 45.0f;
@@ -62,26 +64,54 @@ struct Camera : IComponent {
   }
   void SetProperty(Property property) override {
     if (std::holds_alternative<float>(property.value)) {
+      auto& value = std::get<float>(property.value);
       if (property.name == "Pitch")
-        pitch = std::get<float>(property.value);
+        pitch = value;
       else if (property.name == "Yaw")
-        yaw = std::get<float>(property.value);
+        yaw = value;
       else if (property.name == "FOV")
-        fov = std::get<float>(property.value);
+        fov = value;
       else if (property.name == "Aspect")
-        aspect = std::get<float>(property.value);
+        aspect = value;
       else if (property.name == "Near")
-        near = std::get<float>(property.value);
+        near = value;
       else if (property.name == "Far")
-        far = std::get<float>(property.value);
+        far = value;
     } else if (std::holds_alternative<glm::vec3>(property.value))
       position = std::get<glm::vec3>(property.value);
   }
 };
+struct Light : IComponent {
+  // TODO: allow different types of lights than directional
+  glm::vec3 direction = glm::vec3(.3f, .4f, .0f);
+  glm::vec3 ambient = glm::vec3(.2f);
+  glm::vec3 diffuse = glm::vec3(.5f);
+  glm::vec3 specular = glm::vec3(1.0f);
+  std::string GetName() const override {
+    return "Light";
+  }
+  std::vector<Property> GetProperties() const override {
+    return {{"Direction", direction}, {"Ambient", ambient}, {"Diffuse", diffuse}, {"Specular", specular}};
+  }
+  void SetProperty(Property property) override {
+    if (std::holds_alternative<glm::vec3>(property.value)) {
+      auto& value = std::get<glm::vec3>(property.value);
+      if (property.name == "Direction")
+        direction = value;
+      else if (property.name == "Ambient")
+        ambient = value;
+      else if (property.name == "Diffuse")
+        diffuse = value;
+      else if (property.name == "Specular")
+        specular = value;
+    }
+  }
+};
 struct MeshFilter : IComponent {
-  unsigned int vao = 0;
-  unsigned int vbo = 0;
-  unsigned int ebo = 0;
+  unsigned int vertexArray = 0;
+  unsigned int vertexBuffer = 0;
+  unsigned int normalBuffer = 0;
+  unsigned int indexBuffer = 0;
   int vertexCount = 0;
   int indexCount = 0;
   std::string GetName() const override {
@@ -89,16 +119,19 @@ struct MeshFilter : IComponent {
   }
   std::vector<Property> GetProperties() const override {
     // TODO: the buffer IDs don't mean anything to the user, the editor should display a preview of the mesh instead
-    return {{"VAO", vao}, {"VBO", vbo}, {"EBO", ebo}, {"VertexCount", vertexCount}, {"IndexCount", indexCount}};
+    return {{"VAO", vertexArray}, {"VertexBuffer", vertexBuffer}, {"NormalBuffer", normalBuffer}, {"IndexBuffer", indexBuffer}, {"VertexCount", vertexCount}, {"IndexCount", indexCount}};
   }
   void SetProperty(Property property) override {
     if (std::holds_alternative<unsigned int>(property.value)) {
+      auto& value = std::get<unsigned int>(property.value);
       if (property.name == "VAO")
-        vao = std::get<unsigned int>(property.value);
-      else if (property.name == "VBO")
-        vbo = std::get<unsigned int>(property.value);
-      else if (property.name == "EBO")
-        ebo = std::get<unsigned int>(property.value);
+        vertexArray = value;
+      else if (property.name == "VertexBuffer")
+        vertexBuffer = value;
+      else if (property.name == "NormalBuffer")
+        normalBuffer = value;
+      else if (property.name == "IndexBuffer")
+        indexBuffer = value;
     } else if (std::holds_alternative<int>(property.value)) {
       if (property.name == "VertexCount")
         vertexCount = std::get<int>(property.value);
@@ -107,18 +140,44 @@ struct MeshFilter : IComponent {
     }
   }
 };
+struct Material : IComponent {
+  glm::vec3 diffuse = glm::vec3(1.0f, .5f, .3f);
+  glm::vec3 specular = glm::vec3(.5f);
+  float shininess = 32.0f;
+  std::string GetName() const override {
+    return "Material";
+  }
+  std::vector<Property> GetProperties() const override {
+    return {{"Diffuse", diffuse}, {"Specular", specular}, {"Shininess", shininess}};
+  }
+  void SetProperty(Property property) override {
+    if (std::holds_alternative<glm::vec3>(property.value)) {
+      auto& value = std::get<glm::vec3>(property.value);
+      if (property.name == "Diffuse")
+        diffuse = value;
+      else if (property.name == "Specular")
+        specular = value;
+    } else if (std::holds_alternative<float>(property.value))
+      shininess = std::get<float>(property.value);
+  }
+};
 struct MeshRenderer : IComponent {
   unsigned int shader = 0;
+  Material material;
   std::string GetName() const override {
     return "MeshRenderer";
   }
   std::vector<Property> GetProperties() const override {
-    // TODO: the editor should display a friendly name instead of an ID; also, a preview of the shader would be nice
-    return {{"ShaderID", shader}};
+    // TODO: the editor should display a friendly name instead of a shader ID; also, a preview of the shader would be nice
+    std::vector<Property> properties = {{"ShaderID", shader}};
+    auto materialProperties = material.GetProperties();
+    properties.insert(properties.end(), materialProperties.begin(), materialProperties.end());
+    return properties;
   }
   void SetProperty(Property property) override {
     if (property.name == "ShaderID" && std::holds_alternative<unsigned int>(property.value))
       shader = std::get<unsigned int>(property.value);
+    material.SetProperty(property);
   }
 };
 struct Primitive : IComponent {
@@ -137,6 +196,7 @@ struct Primitive : IComponent {
     return properties;
   }
   void SetProperty(Property property) override {
+    // FIXME: if the following components share a property with the same name, all those values will be modified
     transform.SetProperty(property);
     filter.SetProperty(property);
     renderer.SetProperty(property);

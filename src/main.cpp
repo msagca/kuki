@@ -16,16 +16,16 @@ static const auto WINDOW_WIDTH = 800u;
 static const auto CAMERA_POSITION = glm::vec3(.0f, .0f, 3.0f);
 static const auto CLEAR_COLOR = glm::vec4(.1f, .1f, .1f, 1.0f);
 static const auto INACTIVITY_TIMEOUT = 3.0f;
-auto deltaTime = .0;
+double deltaTime = .0;
 bool showCreateMenu = false;
 bool showHierarchyWindow = true;
+static CameraController* cameraControllerPtr;
 static GLFWwindow* InitializeGLFW();
 static void InitializeImGui(GLFWwindow*);
 static void WindowCloseCallback(GLFWwindow*);
 static void FramebufferSizeCallback(GLFWwindow*, int, int);
 static void ToggleCreateMenu();
 static void ToggleHierarchyWindow();
-CameraController* cameraControllerPtr;
 int main() {
   auto window = InitializeGLFW();
   if (!window)
@@ -43,6 +43,9 @@ int main() {
   cameraController.SetInputManager(inputManager);
   cameraControllerPtr = &cameraController;
   renderSystem.SetCamera(camera);
+  auto lightID = entityManager.CreateEntity("Light");
+  auto& light = entityManager.AddComponent<Light>(lightID);
+  renderSystem.SetLight(light);
   glfwMaximizeWindow(window);
   // register callbacks
   inputManager.RegisterKeyCallback(GLFW_KEY_H, GLFW_PRESS, ToggleHierarchyWindow);

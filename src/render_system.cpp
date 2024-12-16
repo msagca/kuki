@@ -7,7 +7,7 @@ static const auto Y_AXIS = glm::vec3(0.0f, 1.0f, 0.0f);
 static const auto Z_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
 RenderSystem::RenderSystem(EntityManager& entityManager)
   : entityManager(&entityManager) {
-  defaultShader = AddShader("default.vert", "default.frag");
+  defaultShader = AddShader("default_lit.vert", "default_lit.frag");
 }
 GLuint RenderSystem::AddShader(const char* vert, const char* frag) {
   Shader shader(vert, frag);
@@ -19,8 +19,12 @@ void RenderSystem::RemoveShader(GLuint id) {
   glDeleteProgram(id);
 }
 void RenderSystem::SetCamera(Camera& camera) {
-  // TODO: if there is no active camera scan the entities for camera components
+  // TODO: if there is no active camera, scan the entities for camera components
   this->camera = &camera;
+}
+void RenderSystem::SetLight(Light& light) {
+  // TODO: allow multiple light sources
+  this->light = &light;
 }
 static glm::mat4 GetWorldTransform(const Transform& transform) {
   auto model = glm::mat4(1.0f);
@@ -35,7 +39,7 @@ static glm::mat4 GetWorldTransform(const Transform& transform) {
   return model;
 }
 void RenderSystem::Update() {
-  if (!camera)
+  if (!camera || !light)
     return;
   auto begin = entityManager->Begin<Primitive>();
   auto end = entityManager->End<Primitive>();
@@ -48,13 +52,33 @@ void RenderSystem::Update() {
       shader = primitive.renderer.shader;
     glUseProgram(shader);
     auto model = GetWorldTransform(primitive.transform);
+    // object transform
     auto loc = glGetUniformLocation(shader, "model");
     glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(model));
     loc = glGetUniformLocation(shader, "view");
     glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(camera->view));
     loc = glGetUniformLocation(shader, "projection");
     glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(camera->projection));
-    glBindVertexArray(primitive.filter.vao);
+    // material properties
+    loc = glGetUniformLocation(shader, "material.diffuse");
+    glUniform3fv(loc, 1, glm::value_ptr(primitive.renderer.material.diffuse));
+    loc = glGetUniformLocation(shader, "material.specular");
+    glUniform3fv(loc, 1, glm::value_ptr(primitive.renderer.material.specular));
+    loc = glGetUniformLocation(shader, "material.shininess");
+    glUniform1f(loc, primitive.renderer.material.shininess);
+    // light properties
+    loc = glGetUniformLocation(shader, "light.direction");
+    glUniform3fv(loc, 1, glm::value_ptr(light->direction));
+    loc = glGetUniformLocation(shader, "light.ambient");
+    glUniform3fv(loc, 1, glm::value_ptr(light->ambient));
+    loc = glGetUniformLocation(shader, "light.diffuse");
+    glUniform3fv(loc, 1, glm::value_ptr(light->diffuse));
+    loc = glGetUniformLocation(shader, "light.specular");
+    glUniform3fv(loc, 1, glm::value_ptr(light->specular));
+    // camera position
+    loc = glGetUniformLocation(shader, "viewPos");
+    glUniform3fv(loc, 1, glm::value_ptr(camera->position));
+    glBindVertexArray(primitive.filter.vertexArray);
     if (primitive.filter.indexCount > 0)
       glDrawElements(GL_TRIANGLES, primitive.filter.indexCount, GL_UNSIGNED_INT, 0);
     else

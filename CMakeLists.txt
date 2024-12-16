@@ -23,25 +23,29 @@ target_link_libraries(
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
 file(GLOB VERT_SOURCES "${CMAKE_SOURCE_DIR}/src/shader/*.vert")
 file(GLOB FRAG_SOURCES "${CMAKE_SOURCE_DIR}/src/shader/*.frag")
-file(GLOB GLSL_SOURCES "${CMAKE_SOURCE_DIR}/src/shader/*.glsl")
-set(SHADER_SOURCES ${VERT_SOURCES} ${FRAG_SOURCES} ${GLSL_SOURCES})
+set(SHADER_SOURCES ${VERT_SOURCES} ${FRAG_SOURCES})
 target_sources(${PROJECT_NAME} PRIVATE ${SHADER_SOURCES})
+file(GLOB JPG_SOURCES "${CMAKE_SOURCE_DIR}/src/image/*.jpg")
 file(GLOB PNG_SOURCES "${CMAKE_SOURCE_DIR}/src/image/*.png")
-set(IMAGE_SOURCES ${PNG_SOURCES})
+set(IMAGE_SOURCES ${JPG_SOURCES} ${PNG_SOURCES})
 set(OTHER_SOURCES ${SHADER_SOURCES} ${IMAGE_SOURCES})
 foreach(FILE ${OTHER_SOURCES})
   cmake_path(APPEND FULL_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${FILE})
   list(APPEND OTHER_FILES ${FULL_PATH})
 endforeach()
-add_custom_command(
-  TARGET ${PROJECT_NAME}
-  POST_BUILD
+add_custom_target(
+  CopyOtherFiles
+  ALL
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${OTHER_FILES} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+  DEPENDS ${OTHER_FILES}
 )
+add_dependencies(${PROJECT_NAME} CopyOtherFiles)
 if(WIN32)
-  add_custom_command(
-    TARGET ${PROJECT_NAME}
-    POST_BUILD
+  add_custom_target(
+    CopyDLLs
+    ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${GLFW_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    DEPENDS ${GLFW_DLL}
   )
+  add_dependencies(${PROJECT_NAME} CopyDLLs)
 endif()
