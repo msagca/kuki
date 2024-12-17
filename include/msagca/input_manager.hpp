@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/ext/vector_float2.hpp>
 #include <unordered_map>
+#include <unordered_set>
 #include <functional>
 class InputManager {
 public:
@@ -17,8 +18,12 @@ public:
   glm::vec2 GetArrow() const;
   glm::vec2 GetMousePos() const;
   double GetInactivityTime() const;
-  void RegisterKeyCallback(int, int, std::function<void()>);
-  void RegisterMouseCallback(int, int, std::function<void()>);
+  void RegisterCallback(int, int, std::function<void()>);
+  void UnregisterCallback(int, int);
+  void DisableCallback(int);
+  void EnableCallback(int);
+  void DisableKeyCallbacks();
+  void EnableKeyCallbacks();
 private:
   InputManager() = default;
   ~InputManager() = default;
@@ -34,7 +39,8 @@ private:
   uint32_t KeyToBitmask(int);
   std::unordered_map<int, std::function<void()>> pressCallbacks;
   std::unordered_map<int, std::function<void()>> releaseCallbacks;
-  std::unordered_map<int, std::function<void()>> repeatCallbacks;
+  std::unordered_set<int> inactiveCallbacks;
+  bool keysEnabled = true;
   static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     GetInstance().SetKeyState(key, action);
   }

@@ -42,16 +42,17 @@ int main() {
   cameraController.SetPosition(CAMERA_POSITION);
   cameraController.SetInputManager(inputManager);
   cameraControllerPtr = &cameraController;
-  renderSystem.SetCamera(camera);
+  renderSystem.SetCamera(&camera);
   auto lightID = entityManager.CreateEntity("Light");
   auto& light = entityManager.AddComponent<Light>(lightID);
-  renderSystem.SetLight(light);
+  // TODO: notify systems of component add/remove operations via callbacks
+  renderSystem.AddLight(&light);
   glfwMaximizeWindow(window);
   // register callbacks
-  inputManager.RegisterKeyCallback(GLFW_KEY_H, GLFW_PRESS, ToggleHierarchyWindow);
-  inputManager.RegisterKeyCallback(GLFW_KEY_SPACE, GLFW_PRESS, ToggleCreateMenu);
-  inputManager.RegisterMouseCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
-  inputManager.RegisterMouseCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
+  inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, ToggleHierarchyWindow);
+  inputManager.RegisterCallback(GLFW_KEY_SPACE, GLFW_PRESS, ToggleCreateMenu);
+  inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
+  inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
   auto timeLast = .0;
   while (!glfwWindowShouldClose(window)) {
     auto timeNow = glfwGetTime();
@@ -65,7 +66,7 @@ int main() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
     if (showHierarchyWindow)
-      ShowHierarchyWindow(entityManager);
+      ShowHierarchyWindow(entityManager, inputManager);
     if (showCreateMenu)
       ShowCreateMenu(entityManager);
     int windowWidth, windowHeight;

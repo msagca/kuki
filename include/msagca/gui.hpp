@@ -1,5 +1,6 @@
 #pragma once
 #include <entity_manager.hpp>
+#include <input_manager.hpp>
 extern bool showCreateMenu;
 extern bool showHierarchyWindow;
 struct Hint {
@@ -12,4 +13,4 @@ static const std::vector<Hint> hints = {
   {"Press [H] to show/hide the hierarchy window.", []() { return !showHierarchyWindow; }}};
 void ShowHints(float, float);
 void ShowCreateMenu(EntityManager&);
-void ShowHierarchyWindow(EntityManager&);
+void ShowHierarchyWindow(EntityManager&, InputManager&);

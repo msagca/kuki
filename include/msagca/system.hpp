@@ -12,13 +12,14 @@ class RenderSystem : ISystem {
 private:
   EntityManager* entityManager;
   Camera* camera;
-  Light* light;
+  std::vector<Light*> lightSources;
   std::unordered_set<GLuint> shaderDB;
   GLuint defaultShader;
 public:
   RenderSystem(EntityManager&);
-  void SetCamera(Camera&);
-  void SetLight(Light&);
+  void SetCamera(Camera*);
+  void AddLight(Light*);
+  void RemoveLight(Light*);
   GLuint AddShader(const char*, const char*);
   void RemoveShader(GLuint);
   void Update() override;

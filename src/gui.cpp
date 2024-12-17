@@ -115,7 +115,7 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
       entityManager.AddComponent(selectedEntity, comp);
   ImGui::End();
 }
-void ShowHierarchyWindow(EntityManager& entityManager) {
+void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManager) {
   static auto selectedEntity = -1;
   static auto selectedEntityLast = -1;
   static auto renameMode = false;
@@ -150,18 +150,14 @@ void ShowHierarchyWindow(EntityManager& entityManager) {
   }
   ImGui::End();
   if (renameMode) {
+    inputManager.DisableKeyCallbacks();
     ImGui::Begin("Rename Entity", &renameMode);
     if (ImGui::InputText("New Name", newName, IM_ARRAYSIZE(newName), ImGuiInputTextFlags_EnterReturnsTrue)) {
       entityManager.RenameEntity(selectedEntity, std::string(newName));
       renameMode = false;
     }
-    if (ImGui::Button("Apply")) {
-      entityManager.RenameEntity(selectedEntity, std::string(newName));
-      renameMode = false;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel"))
-      renameMode = false;
+    if (!renameMode)
+      inputManager.EnableKeyCallbacks();
     ImGui::End();
   }
   if (selectedEntity != -1)

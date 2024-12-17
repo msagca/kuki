@@ -76,6 +76,10 @@ double InputManager::GetInactivityTime() const {
 }
 void InputManager::SetKeyState(int key, int action) {
   lastInputTime = glfwGetTime();
+  if (!keysEnabled)
+    return;
+  if (inactiveCallbacks.find(key) != inactiveCallbacks.end())
+    return;
   if (action == GLFW_PRESS) {
     keyMask |= KeyToBitmask(key);
     if (pressCallbacks.find(key) != pressCallbacks.end())
@@ -84,14 +88,13 @@ void InputManager::SetKeyState(int key, int action) {
     keyMask &= ~KeyToBitmask(key);
     if (releaseCallbacks.find(key) != releaseCallbacks.end())
       releaseCallbacks[key]();
-  } else if (action == GLFW_REPEAT) {
+  } else if (action == GLFW_REPEAT)
     keyMask |= KeyToBitmask(key);
-    if (repeatCallbacks.find(key) != repeatCallbacks.end())
-      repeatCallbacks[key]();
-  }
 }
 void InputManager::SetButtonState(int button, int action) {
   lastInputTime = glfwGetTime();
+  if (inactiveCallbacks.find(button) != inactiveCallbacks.end())
+    return;
   if (action == GLFW_PRESS) {
     if (pressCallbacks.find(button) != pressCallbacks.end())
       pressCallbacks[button]();
@@ -105,19 +108,34 @@ void InputManager::SetMousePos(double xpos, double ypos) {
   mousePos.x = xpos;
   mousePos.y = ypos;
 }
-void InputManager::RegisterKeyCallback(int key, int action, std::function<void()> callback) {
+void InputManager::RegisterCallback(int key, int action, std::function<void()> callback) {
   if (action == GLFW_PRESS)
     pressCallbacks[key] = callback;
   else if (action == GLFW_RELEASE)
     releaseCallbacks[key] = callback;
-  else if (action == GLFW_REPEAT)
-    repeatCallbacks[key] = callback;
 }
-void InputManager::RegisterMouseCallback(int button, int action, std::function<void()> callback) {
+void InputManager::UnregisterCallback(int key, int action) {
+  inactiveCallbacks.erase(key);
   if (action == GLFW_PRESS)
-    pressCallbacks[button] = callback;
+    pressCallbacks.erase(key);
   else if (action == GLFW_RELEASE)
-    releaseCallbacks[button] = callback;
+    releaseCallbacks.erase(key);
+}
+void InputManager::DisableCallback(int key) {
+  if (pressCallbacks.find(key) != pressCallbacks.end())
+    inactiveCallbacks.insert(key);
+  if (releaseCallbacks.find(key) != releaseCallbacks.end())
+    inactiveCallbacks.insert(key);
+}
+void InputManager::EnableCallback(int key) {
+  if (inactiveCallbacks.find(key) != inactiveCallbacks.end())
+    inactiveCallbacks.erase(key);
+}
+void InputManager::DisableKeyCallbacks() {
+  keysEnabled = false;
+}
+void InputManager::EnableKeyCallbacks() {
+  keysEnabled = true;
 }
 uint32_t InputManager::KeyToBitmask(int key) {
   switch (key) {

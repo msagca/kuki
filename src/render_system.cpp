@@ -1,10 +1,13 @@
+#include <component_types.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <system.hpp>
 #include <entity_manager.hpp>
+#include <iostream>
 static const auto X_AXIS = glm::vec3(1.0f, 0.0f, 0.0f);
 static const auto Y_AXIS = glm::vec3(0.0f, 1.0f, 0.0f);
 static const auto Z_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
+static const auto MAX_LIGHT_SOURCES = 8;
 RenderSystem::RenderSystem(EntityManager& entityManager)
   : entityManager(&entityManager) {
   defaultShader = AddShader("default_lit.vert", "default_lit.frag");
@@ -18,13 +21,21 @@ void RenderSystem::RemoveShader(GLuint id) {
   shaderDB.erase(id);
   glDeleteProgram(id);
 }
-void RenderSystem::SetCamera(Camera& camera) {
+void RenderSystem::SetCamera(Camera* camera) {
   // TODO: if there is no active camera, scan the entities for camera components
-  this->camera = &camera;
+  this->camera = camera;
 }
-void RenderSystem::SetLight(Light& light) {
-  // TODO: allow multiple light sources
-  this->light = &light;
+void RenderSystem::AddLight(Light* light) {
+  if (lightSources.size() >= MAX_LIGHT_SOURCES) {
+    std::cerr << "The number of light sources in the scene exceeded the allowed limit (" << MAX_LIGHT_SOURCES << ")." << std::endl;
+    return;
+  }
+  lightSources.push_back(light);
+}
+void RenderSystem::RemoveLight(Light* light) {
+  auto it = std::find(lightSources.begin(), lightSources.end(), light);
+  if (it != lightSources.end())
+    lightSources.erase(it);
 }
 static glm::mat4 GetWorldTransform(const Transform& transform) {
   auto model = glm::mat4(1.0f);
@@ -39,7 +50,7 @@ static glm::mat4 GetWorldTransform(const Transform& transform) {
   return model;
 }
 void RenderSystem::Update() {
-  if (!camera || !light)
+  if (!camera || lightSources.size() == 0)
     return;
   entityManager->ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform& transform, MeshFilter& filter, MeshRenderer& renderer) {
     // TODO: do instanced rendering for objects sharing the same mesh
@@ -63,20 +74,44 @@ void RenderSystem::Update() {
     loc = glGetUniformLocation(shader, "material.shininess");
     glUniform1f(loc, renderer.material.shininess);
     // light properties
-    loc = glGetUniformLocation(shader, "light.vector");
-    glUniform4fv(loc, 1, glm::value_ptr(glm::vec4(light->vector, light->type == LightType::Directional ? .0f : 1.0f)));
-    loc = glGetUniformLocation(shader, "light.ambient");
-    glUniform3fv(loc, 1, glm::value_ptr(light->ambient));
-    loc = glGetUniformLocation(shader, "light.diffuse");
-    glUniform3fv(loc, 1, glm::value_ptr(light->diffuse));
-    loc = glGetUniformLocation(shader, "light.specular");
-    glUniform3fv(loc, 1, glm::value_ptr(light->specular));
-    loc = glGetUniformLocation(shader, "light.constant");
-    glUniform1f(loc, light->constant);
-    loc = glGetUniformLocation(shader, "light.linear");
-    glUniform1f(loc, light->linear);
-    loc = glGetUniformLocation(shader, "light.quadratic");
-    glUniform1f(loc, light->quadratic);
+    auto hasDirectionalLight = false;
+    auto numPointLights = 0;
+    for (auto i = 0; i < lightSources.size(); i++)
+      if (lightSources[i]->type == LightType::Point)
+        numPointLights++;
+      else
+        hasDirectionalLight = true;
+    loc = glGetUniformLocation(shader, "hasDirectionalLight");
+    glUniform1i(loc, hasDirectionalLight);
+    loc = glGetUniformLocation(shader, "numPointLights");
+    glUniform1i(loc, numPointLights);
+    for (auto i = 0; i < lightSources.size(); i++)
+      if (lightSources[i]->type == LightType::Point) {
+        // TODO: cache the locations to avoid std::format calls if possible
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].position", i).c_str());
+        glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->vector));
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].ambient", i).c_str());
+        glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->ambient));
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].diffuse", i).c_str());
+        glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->diffuse));
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].specular", i).c_str());
+        glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->specular));
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].constant", i).c_str());
+        glUniform1f(loc, lightSources[i]->constant);
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].linear", i).c_str());
+        glUniform1f(loc, lightSources[i]->linear);
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].quadratic", i).c_str());
+        glUniform1f(loc, lightSources[i]->quadratic);
+      } else { // NOTE: if there are multiple directional lights, only the last one in the list will have an impact
+        loc = glGetUniformLocation(shader, "directionalLight.direction");
+        glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->vector));
+        loc = glGetUniformLocation(shader, "directionalLight.ambient");
+        glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->ambient));
+        loc = glGetUniformLocation(shader, "directionalLight.diffuse");
+        glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->diffuse));
+        loc = glGetUniformLocation(shader, "directionalLight.specular");
+        glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->specular));
+      }
     // camera position
     loc = glGetUniformLocation(shader, "viewPos");
     glUniform3fv(loc, 1, glm::value_ptr(camera->position));
