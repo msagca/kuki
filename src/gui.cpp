@@ -40,7 +40,6 @@ void ShowCreateMenu(EntityManager& entityManager) {
 static void ShowProperties(EntityManager& entityManager, unsigned int selectedEntity, bool first) {
   ImGui::Begin("Properties");
   static IComponent* selectedComponent = nullptr;
-  static std::unordered_map<std::string, std::variant<int, unsigned int, float, bool, glm::vec3, LightType>> propertyMap;
   auto components = entityManager.GetAllComponents(selectedEntity);
   for (const auto& component : components) {
     auto isSelected = (selectedComponent == component);
@@ -53,51 +52,36 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
     auto properties = component->GetProperties();
     for (auto& prop : properties) {
       auto value = prop.value;
-      if (propertyMap.find(prop.name) != propertyMap.end() && !first)
-        value = propertyMap[prop.name];
       auto isColor = (prop.name == "Ambient" || prop.name == "Diffuse" || prop.name == "Specular");
       if (std::holds_alternative<glm::vec3>(value)) {
         auto valueVec3 = std::get<glm::vec3>(value);
         if (isColor) {
-          if (ImGui::ColorEdit3(prop.name.c_str(), glm::value_ptr(valueVec3))) {
-            propertyMap[prop.name] = valueVec3;
+          if (ImGui::ColorEdit3(prop.name.c_str(), glm::value_ptr(valueVec3)))
             component->SetProperty(Property(prop.name, valueVec3));
-          }
-        } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3))) {
-          propertyMap[prop.name] = valueVec3;
+        } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3)))
           component->SetProperty(Property(prop.name, valueVec3));
-        }
       } else if (std::holds_alternative<int>(value)) {
         auto valueInt = std::get<int>(value);
-        if (ImGui::InputInt(prop.name.c_str(), &valueInt)) {
-          propertyMap[prop.name] = valueInt;
+        if (ImGui::InputInt(prop.name.c_str(), &valueInt))
           component->SetProperty(Property(prop.name, valueInt));
-        }
       } else if (std::holds_alternative<unsigned int>(value)) {
         auto valueInt = static_cast<int>(std::get<unsigned int>(value));
-        if (ImGui::InputInt(prop.name.c_str(), &valueInt)) {
-          propertyMap[prop.name] = valueInt;
+        if (ImGui::InputInt(prop.name.c_str(), &valueInt))
           component->SetProperty(Property(prop.name, valueInt));
-        }
       } else if (std::holds_alternative<float>(value)) {
         auto valueFloat = std::get<float>(value);
-        if (ImGui::InputFloat(prop.name.c_str(), &valueFloat)) {
-          propertyMap[prop.name] = valueFloat;
+        if (ImGui::InputFloat(prop.name.c_str(), &valueFloat))
           component->SetProperty(Property(prop.name, valueFloat));
-        }
       } else if (std::holds_alternative<bool>(value)) {
         auto valueBool = std::get<bool>(value);
-        if (ImGui::Checkbox(prop.name.c_str(), &valueBool)) {
-          propertyMap[prop.name] = valueBool;
+        if (ImGui::Checkbox(prop.name.c_str(), &valueBool))
           component->SetProperty(Property(prop.name, valueBool));
-        }
       } else if (std::holds_alternative<LightType>(value)) {
         auto valueEnum = std::get<LightType>(value);
         static const char* items[] = {"Directional", "Point"};
         auto currentItem = static_cast<int>(valueEnum);
         if (ImGui::Combo(prop.name.c_str(), &currentItem, items, IM_ARRAYSIZE(items))) {
           valueEnum = static_cast<LightType>(currentItem);
-          propertyMap[prop.name] = valueEnum;
           component->SetProperty(Property(prop.name, valueEnum));
         }
       }

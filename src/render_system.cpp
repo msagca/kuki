@@ -85,23 +85,24 @@ void RenderSystem::Update() {
     glUniform1i(loc, hasDirectionalLight);
     loc = glGetUniformLocation(shader, "numPointLights");
     glUniform1i(loc, numPointLights);
-    for (auto i = 0; i < lightSources.size(); i++)
+    for (auto i = 0, j = 0; i < lightSources.size(); i++)
       if (lightSources[i]->type == LightType::Point) {
         // TODO: cache the locations to avoid std::format calls if possible
-        loc = glGetUniformLocation(shader, std::format("pointLights[{}].position", i).c_str());
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].position", j).c_str());
         glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->vector));
-        loc = glGetUniformLocation(shader, std::format("pointLights[{}].ambient", i).c_str());
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].ambient", j).c_str());
         glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->ambient));
-        loc = glGetUniformLocation(shader, std::format("pointLights[{}].diffuse", i).c_str());
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].diffuse", j).c_str());
         glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->diffuse));
-        loc = glGetUniformLocation(shader, std::format("pointLights[{}].specular", i).c_str());
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].specular", j).c_str());
         glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->specular));
-        loc = glGetUniformLocation(shader, std::format("pointLights[{}].constant", i).c_str());
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].constant", j).c_str());
         glUniform1f(loc, lightSources[i]->constant);
-        loc = glGetUniformLocation(shader, std::format("pointLights[{}].linear", i).c_str());
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].linear", j).c_str());
         glUniform1f(loc, lightSources[i]->linear);
-        loc = glGetUniformLocation(shader, std::format("pointLights[{}].quadratic", i).c_str());
+        loc = glGetUniformLocation(shader, std::format("pointLights[{}].quadratic", j).c_str());
         glUniform1f(loc, lightSources[i]->quadratic);
+        j++;
       } else { // NOTE: if there are multiple directional lights, only the last one in the list will have an impact
         loc = glGetUniformLocation(shader, "directionalLight.direction");
         glUniform3fv(loc, 1, glm::value_ptr(lightSources[i]->vector));

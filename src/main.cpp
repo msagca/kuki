@@ -1,3 +1,4 @@
+#include <component_types.hpp>
 #include <imgui.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -43,10 +44,15 @@ int main() {
   cameraController.SetInputManager(inputManager);
   cameraControllerPtr = &cameraController;
   renderSystem.SetCamera(&camera);
-  auto lightID = entityManager.CreateEntity("Light");
-  auto& light = entityManager.AddComponent<Light>(lightID);
-  // TODO: notify systems of component add/remove operations via callbacks
-  renderSystem.AddLight(&light);
+  auto dirLightID = entityManager.CreateEntity("DirectionalLight");
+  auto& dirLight = entityManager.AddComponent<Light>(dirLightID);
+  auto pointLightID = entityManager.CreateEntity("PointLight");
+  auto& pointLight = entityManager.AddComponent<Light>(pointLightID);
+  pointLight.type = LightType::Point;
+  pointLight.vector = glm::vec3(-.2f, 1.0f, -.3f);
+  // TODO: notify the systems of component addition/removal/modification operations via callbacks
+  renderSystem.AddLight(&dirLight);
+  renderSystem.AddLight(&pointLight);
   glfwMaximizeWindow(window);
   // register callbacks
   inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, ToggleHierarchyWindow);
