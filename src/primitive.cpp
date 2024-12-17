@@ -1,4 +1,3 @@
-#pragma once
 #include <glm/geometric.hpp>
 #include <primitive.hpp>
 #include <glm/vec3.hpp>

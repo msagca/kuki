@@ -3,7 +3,6 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <system.hpp>
 #include <entity_manager.hpp>
-#include <iostream>
 static const auto X_AXIS = glm::vec3(1.0f, 0.0f, 0.0f);
 static const auto Y_AXIS = glm::vec3(0.0f, 1.0f, 0.0f);
 static const auto Z_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
@@ -39,7 +38,7 @@ static glm::mat4 GetWorldTransform(const Transform& transform) {
 void RenderSystem::Update() {
   if (!camera) {
     auto cameraPtr = entityManager.GetFirst<Camera>();
-    if (!cameraPtr)
+    if (cameraPtr)
       SetCamera(cameraPtr);
     if (!camera)
       return;
