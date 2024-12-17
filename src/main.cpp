@@ -37,22 +37,19 @@ int main() {
   // initialize ECS
   EntityManager entityManager;
   RenderSystem renderSystem(entityManager);
-  auto cameraID = entityManager.CreateEntity("Camera");
+  auto cameraID = entityManager.CreateEntity("MainCamera");
   auto& camera = entityManager.AddComponent<Camera>(cameraID);
   auto cameraController = CameraController(camera);
   cameraController.SetPosition(CAMERA_POSITION);
   cameraController.SetInputManager(inputManager);
   cameraControllerPtr = &cameraController;
   renderSystem.SetCamera(&camera);
-  auto dirLightID = entityManager.CreateEntity("DirectionalLight");
-  auto& dirLight = entityManager.AddComponent<Light>(dirLightID);
-  auto pointLightID = entityManager.CreateEntity("PointLight");
-  auto& pointLight = entityManager.AddComponent<Light>(pointLightID);
-  pointLight.type = LightType::Point;
-  pointLight.vector = glm::vec3(-.2f, 1.0f, -.3f);
-  // TODO: notify the systems of component addition/removal/modification operations via callbacks
-  renderSystem.AddLight(&dirLight);
-  renderSystem.AddLight(&pointLight);
+  auto lightID = entityManager.CreateEntity("MainLight");
+  entityManager.AddComponent<Light>(lightID);
+  lightID = entityManager.CreateEntity("PointLight");
+  auto& light = entityManager.AddComponent<Light>(lightID);
+  light.type = LightType::Point;
+  light.vector = glm::vec3(-.2f, 1.0f, -.3f);
   glfwMaximizeWindow(window);
   // register callbacks
   inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, ToggleHierarchyWindow);
