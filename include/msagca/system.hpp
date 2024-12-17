@@ -3,6 +3,7 @@
 #include <shader.hpp>
 #include <entity_manager.hpp>
 #include <unordered_set>
+#include <camera_controller.hpp>
 class ISystem {
 public:
   virtual ~ISystem() = default;
@@ -10,7 +11,7 @@ public:
 };
 class RenderSystem : ISystem {
 private:
-  EntityManager* entityManager;
+  EntityManager& entityManager;
   Camera* camera;
   std::unordered_set<GLuint> shaderDB;
   GLuint defaultShader;

@@ -9,7 +9,7 @@ static const auto Y_AXIS = glm::vec3(0.0f, 1.0f, 0.0f);
 static const auto Z_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
 static const auto MAX_LIGHT_SOURCES = 8;
 RenderSystem::RenderSystem(EntityManager& entityManager)
-  : entityManager(&entityManager) {
+  : entityManager(entityManager) {
   defaultShader = AddShader("default_lit.vert", "default_lit.frag");
 }
 GLuint RenderSystem::AddShader(const char* vert, const char* frag) {
@@ -22,7 +22,6 @@ void RenderSystem::RemoveShader(GLuint id) {
   glDeleteProgram(id);
 }
 void RenderSystem::SetCamera(Camera* camera) {
-  // TODO: if there is no active camera, scan the entities for camera components
   this->camera = camera;
 }
 static glm::mat4 GetWorldTransform(const Transform& transform) {
@@ -38,9 +37,14 @@ static glm::mat4 GetWorldTransform(const Transform& transform) {
   return model;
 }
 void RenderSystem::Update() {
-  if (!camera)
-    return;
-  entityManager->ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform& transform, MeshFilter& filter, MeshRenderer& renderer) {
+  if (!camera) {
+    auto cameraPtr = entityManager.GetFirst<Camera>();
+    if (!cameraPtr)
+      SetCamera(cameraPtr);
+    if (!camera)
+      return;
+  }
+  entityManager.ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform& transform, MeshFilter& filter, MeshRenderer& renderer) {
     // TODO: do instanced rendering for objects sharing the same mesh
     auto shader = defaultShader;
     if (shaderDB.find(renderer.shader) != shaderDB.end())
@@ -64,7 +68,7 @@ void RenderSystem::Update() {
     // light properties
     auto hasDirectionalLight = false;
     auto pointLightCount = 0;
-    entityManager->ForEach<Light>([&](Light& light) {
+    entityManager.ForEach<Light>([&](Light& light) {
       if (light.type == LightType::Point) {
         // TODO: cache the locations to avoid std::format calls if possible
         loc = glGetUniformLocation(shader, std::format("pointLights[{}].position", pointLightCount).c_str());

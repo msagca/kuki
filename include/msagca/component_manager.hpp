@@ -26,6 +26,7 @@ public:
   const unsigned int GetEntityID(unsigned int) const;
   typename std::vector<T>::const_iterator Begin();
   typename std::vector<T>::const_iterator End();
+  T* GetFirst();
   void CleanUp();
 };
 template <typename T>
@@ -96,6 +97,10 @@ typename std::vector<T>::const_iterator ComponentManager<T>::Begin() {
 template <typename T>
 typename std::vector<T>::const_iterator ComponentManager<T>::End() {
   return components.cend();
+}
+template <typename T>
+T* ComponentManager<T>::GetFirst() {
+  return components.empty() ? nullptr : &components.front();
 }
 struct IComponent;
 struct MeshRenderer;

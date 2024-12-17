@@ -39,9 +39,8 @@ int main() {
   RenderSystem renderSystem(entityManager);
   auto cameraID = entityManager.CreateEntity("MainCamera");
   auto& camera = entityManager.AddComponent<Camera>(cameraID);
-  auto cameraController = CameraController(camera);
+  auto cameraController = CameraController(camera, inputManager);
   cameraController.SetPosition(CAMERA_POSITION);
-  cameraController.SetInputManager(inputManager);
   cameraControllerPtr = &cameraController;
   renderSystem.SetCamera(&camera);
   auto lightID = entityManager.CreateEntity("MainLight");

@@ -75,6 +75,8 @@ public:
   typename std::vector<T>::const_iterator Begin();
   template <typename T>
   typename std::vector<T>::const_iterator End();
+  template <typename T>
+  T* GetFirst();
 };
 inline unsigned int EntityManager::CreateEntity(std::string name) {
   entities[nextID] = 0;
@@ -383,4 +385,24 @@ inline typename std::vector<Light>::const_iterator EntityManager::Begin<Light>()
 template <>
 inline typename std::vector<Light>::const_iterator EntityManager::End<Light>() {
   return lightManager.End();
+}
+template <>
+inline Transform* EntityManager::GetFirst<Transform>() {
+  return transformManager.GetFirst();
+}
+template <>
+inline MeshFilter* EntityManager::GetFirst<MeshFilter>() {
+  return filterManager.GetFirst();
+}
+template <>
+inline MeshRenderer* EntityManager::GetFirst<MeshRenderer>() {
+  return rendererManager.GetFirst();
+}
+template <>
+inline Camera* EntityManager::GetFirst<Camera>() {
+  return cameraManager.GetFirst();
+}
+template <>
+inline Light* EntityManager::GetFirst<Light>() {
+  return lightManager.GetFirst();
 }
