@@ -1,6 +1,6 @@
 # Learning OpenGL
 
-This is where I experiment with `OpenGL` as I follow along the tutorials at [LearnOpenGL](https://learnopengl.com).
+This is where I experiment with `OpenGL` as I follow the tutorials at https://learnopengl.com.
 
 ## How to Build
 
