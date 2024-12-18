@@ -19,15 +19,19 @@ void ShowHints(float windowWidth, float windowHeight) {
   ImGui::End();
 }
 void ShowCreateMenu(EntityManager& entityManager) {
-  static const char* primitives[] = {"Cube"};
+  static const char* primitives[] = {"Cube", "Sphere"};
   static auto selectedPrimitive = -1;
   ImGui::Begin("Create");
   if (ImGui::ListBox("Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
     auto id = entityManager.CreateEntity();
     std::vector<float> vertices;
     switch (selectedPrimitive) {
+    case 0:
+      vertices = Primitive::Cube();
+      break;
     default:
-      vertices = Cube::GetVerticesWithNormals();
+      vertices = Primitive::Sphere();
+      break;
     }
     entityManager.AddComponent<Transform>(id);
     entityManager.AddComponent<MeshRenderer>(id);

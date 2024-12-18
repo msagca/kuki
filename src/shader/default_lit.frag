@@ -31,7 +31,7 @@ uniform int numPointLights;
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
 vec3 CalculateDirectionalLight(DirectionalLight light, Material material, vec3 normalDir, vec3 viewDir) {
     vec3 lightDir = normalize(light.direction);
-    vec3 reflectDir = reflect(lightDir, normalDir);
+    vec3 reflectDir = reflect(-lightDir, normalDir);
     float diffuseStrength = max(dot(normalDir, lightDir), 0.0);
     float specularStrength = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
     vec3 ambientColor = light.ambient * material.diffuse;
@@ -43,7 +43,7 @@ vec3 CalculatePointLight(PointLight light, Material material, vec3 normalDir, ve
     vec3 lightDir = normalize(light.position - position);
     float distance = length(lightDir);
     float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * distance * distance);
-    vec3 reflectDir = reflect(lightDir, normalDir);
+    vec3 reflectDir = reflect(-lightDir, normalDir);
     float diffuseStrength = max(dot(normalDir, lightDir), 0.0);
     float specularStrength = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
     vec3 ambientColor = light.ambient * material.diffuse * attenuation;

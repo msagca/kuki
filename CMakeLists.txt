@@ -21,6 +21,7 @@ target_link_libraries(
   PRIVATE glad glfw glm imgui OpenGL::GL stb msagca
 )
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 file(GLOB VERT_SOURCES "${CMAKE_SOURCE_DIR}/src/shader/*.vert")
 file(GLOB FRAG_SOURCES "${CMAKE_SOURCE_DIR}/src/shader/*.frag")
 set(SHADER_SOURCES ${VERT_SOURCES} ${FRAG_SOURCES})
