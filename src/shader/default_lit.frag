@@ -2,7 +2,7 @@
 #define MAX_POINT_LIGHTS 8
 in vec3 position;
 in vec3 normal;
-out vec4 fragColor;
+out vec4 color;
 struct Material {
     vec3 diffuse;
     vec3 specular;
@@ -59,5 +59,5 @@ void main() {
         finalColor += CalculateDirectionalLight(directionalLight, material, normalDir, viewDir);
     for (int i = 0; i < numPointLights; i++)
         finalColor += CalculatePointLight(pointLights[i], material, normalDir, viewDir, position);
-    fragColor = vec4(finalColor, 1.0);
+    color = vec4(finalColor, 1.0);
 }

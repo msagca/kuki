@@ -29,7 +29,7 @@ private:
   ~InputManager() = default;
   InputManager(const InputManager&) = delete;
   InputManager& operator=(const InputManager&) = delete;
-  GLFWwindow* window;
+  GLFWwindow* window = nullptr;
   double lastInputTime = .0;
   uint32_t keyMask = 0;
   glm::vec2 mousePos = glm::vec2(.0f);

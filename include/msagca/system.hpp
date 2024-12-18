@@ -2,7 +2,6 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <shader.hpp>
 #include <entity_manager.hpp>
-#include <unordered_set>
 #include <camera_controller.hpp>
 class ISystem {
 public:
@@ -13,12 +12,19 @@ class RenderSystem : ISystem {
 private:
   EntityManager& entityManager;
   Camera* camera;
-  std::unordered_set<GLuint> shaderDB;
-  GLuint defaultShader;
+  std::unordered_map<GLuint, std::string> shaderIDs;
+  std::unordered_map<std::string, GLuint> shaderNames;
+  GLuint defaultLit;
+  GLuint wireframe;
+  bool wireframeMode = false;
 public:
   RenderSystem(EntityManager&);
   void SetCamera(Camera*);
-  GLuint AddShader(const char*, const char*);
-  void RemoveShader(GLuint);
+  GLuint CreateShader(const std::string, const char*, const char*);
+  void DeleteShader(const std::string);
+  void DeleteShader(GLuint);
+  GLuint GetShaderID(const std::string);
+  std::string GetShaderName(GLuint);
+  void ToggleWireframeMode();
   void Update() override;
 };

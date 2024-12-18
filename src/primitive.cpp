@@ -1,7 +1,20 @@
 #include <glm/geometric.hpp>
 #include <primitive.hpp>
 std::vector<float> Primitive::Cube() {
-  return {-.5f, -.5f, -.5f, .0f, .0f, -1.0f, .5f, -.5f, -.5f, .0f, .0f, -1.0f, .5f, .5f, -.5f, .0f, .0f, -1.0f, .5f, .5f, -.5f, .0f, .0f, -1.0f, -.5f, .5f, -.5f, .0f, .0f, -1.0f, -.5f, -.5f, -.5f, .0f, .0f, -1.0f, -.5f, -.5f, .5f, .0f, .0f, 1.0f, .5f, -.5f, .5f, .0f, .0f, 1.0f, .5f, .5f, .5f, .0f, .0f, 1.0f, .5f, .5f, .5f, .0f, .0f, 1.0f, -.5f, .5f, .5f, .0f, .0f, 1.0f, -.5f, -.5f, .5f, .0f, .0f, 1.0f, -.5f, .5f, .5f, -1.0f, .0f, .0f, -.5f, .5f, -.5f, -1.0f, .0f, .0f, -.5f, -.5f, -.5f, -1.0f, .0f, .0f, -.5f, -.5f, -.5f, -1.0f, .0f, .0f, -.5f, -.5f, .5f, -1.0f, .0f, .0f, -.5f, .5f, .5f, -1.0f, .0f, .0f, .5f, .5f, .5f, 1.0f, .0f, .0f, .5f, .5f, -.5f, 1.0f, .0f, .0f, .5f, -.5f, -.5f, 1.0f, .0f, .0f, .5f, -.5f, -.5f, 1.0f, .0f, .0f, .5f, -.5f, .5f, 1.0f, .0f, .0f, .5f, .5f, .5f, 1.0f, .0f, .0f, -.5f, -.5f, -.5f, .0f, -1.0f, .0f, .5f, -.5f, -.5f, .0f, -1.0f, .0f, .5f, -.5f, .5f, .0f, -1.0f, .0f, .5f, -.5f, .5f, .0f, -1.0f, .0f, -.5f, -.5f, .5f, .0f, -1.0f, .0f, -.5f, -.5f, -.5f, .0f, -1.0f, .0f, -.5f, .5f, -.5f, .0f, 1.0f, .0f, .5f, .5f, -.5f, .0f, 1.0f, .0f, .5f, .5f, .5f, .0f, 1.0f, .0f, .5f, .5f, .5f, .0f, 1.0f, .0f, -.5f, .5f, .5f, .0f, 1.0f, .0f, -.5f, .5f, -.5f, .0f, 1.0f, .0f};
+  return {// clang-format off
+  // Front face (z = -.5f)
+  .5f, -.5f, -.5f, .0f, .0f, -1.0f, -.5f, -.5f, -.5f, .0f, .0f, -1.0f, .5f, .5f, -.5f, .0f, .0f, -1.0f, -.5f, .5f, -.5f, .0f, .0f, -1.0f, .5f, .5f, -.5f, .0f, .0f, -1.0f, -.5f, -.5f, -.5f, .0f, .0f, -1.0f,
+  // Back face (z = .5f)
+  -.5f, -.5f, .5f, .0f, .0f, 1.0f, .5f, -.5f, .5f, .0f, .0f, 1.0f, .5f, .5f, .5f, .0f, .0f, 1.0f, .5f, .5f, .5f, .0f, .0f, 1.0f, -.5f, .5f, .5f, .0f, .0f, 1.0f, -.5f, -.5f, .5f, .0f, .0f, 1.0f,
+  // Left face (x = -.5f)
+  -.5f, -.5f, -.5f, -1.0f, .0f, .0f, -.5f, -.5f, .5f, -1.0f, .0f, .0f, -.5f, .5f, .5f, -1.0f, .0f, .0f, -.5f, .5f, .5f, -1.0f, .0f, .0f, -.5f, .5f, -.5f, -1.0f, .0f, .0f, -.5f, -.5f, -.5f, -1.0f, .0f, .0f,
+  // Right face (x = .5f)
+  .5f, -.5f, .5f, 1.0f, .0f, .0f, .5f, -.5f, -.5f, 1.0f, .0f, .0f, .5f, .5f, .5f, 1.0f, .0f, .0f, .5f, .5f, -.5f, 1.0f, .0f, .0f, .5f, .5f, .5f, 1.0f, .0f, .0f, .5f, -.5f, -.5f, 1.0f, .0f, .0f,
+  // Bottom face (y = -.5f)
+  -.5f, -.5f, -.5f, .0f, -1.0f, .0f, .5f, -.5f, -.5f, .0f, -1.0f, .0f, .5f, -.5f, .5f, .0f, -1.0f, .0f, .5f, -.5f, .5f, .0f, -1.0f, .0f, -.5f, -.5f, .5f, .0f, -1.0f, .0f, -.5f, -.5f, -.5f, .0f, -1.0f, .0f,
+  // Top face (y = .5f)
+  .5f, .5f, -.5f, .0f, 1.0f, .0f, -.5f, .5f, -.5f, .0f, 1.0f, .0f, .5f, .5f, .5f, .0f, 1.0f, .0f, -.5f, .5f, .5f, .0f, 1.0f, .0f, .5f, .5f, .5f, .0f, 1.0f, .0f, -.5f, .5f, -.5f, .0f, 1.0f, .0f
+  }; // clang-format on
 }
 std::vector<float> Primitive::Sphere(int level) {
   std::vector<Triangle> triangles = CreateIcosahedron();
@@ -40,4 +53,24 @@ std::vector<Triangle> Primitive::Subdivide(const std::vector<Triangle>& triangle
     result = temp;
   }
   return result;
+}
+/// <summary>
+/// Flip the winding order of triangles in a mesh so that back-face culling works correctly
+/// </summary>
+void Primitive::FlipWindingOrder(std::vector<float>& vertices, bool withNormals) {
+  auto stride = withNormals ? 6 : 3;
+  auto strideTri = 3 * stride; // distance between consecutive triangles
+  for (auto i = 0; i < vertices.size(); i += strideTri) {
+    // swap vertex #0 and vertex #1 of the triangle
+    std::swap(vertices[i], vertices[i + stride]);
+    std::swap(vertices[i + 1], vertices[i + 1 + stride]);
+    std::swap(vertices[i + 2], vertices[i + 2 + stride]);
+  }
+  if (withNormals)
+    for (auto i = 3; i < vertices.size(); i += strideTri) {
+      // swap the normals as well
+      std::swap(vertices[i], vertices[i + stride]);
+      std::swap(vertices[i + 1], vertices[i + 1 + stride]);
+      std::swap(vertices[i + 2], vertices[i + 2 + stride]);
+    }
 }

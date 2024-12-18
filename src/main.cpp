@@ -25,8 +25,6 @@ static GLFWwindow* InitializeGLFW();
 static void InitializeImGui(GLFWwindow*);
 static void WindowCloseCallback(GLFWwindow*);
 static void FramebufferSizeCallback(GLFWwindow*, int, int);
-static void ToggleCreateMenu();
-static void ToggleHierarchyWindow();
 int main() {
   auto window = InitializeGLFW();
   if (!window)
@@ -34,9 +32,16 @@ int main() {
   auto& inputManager = InputManager::GetInstance();
   inputManager.Initialize(window);
   InitializeImGui(window);
+  // OpenGL configuration
+  glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+  glEnable(GL_DEPTH_TEST);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  glFrontFace(GL_CCW);
   // initialize ECS
   EntityManager entityManager;
   RenderSystem renderSystem(entityManager);
+  // populate the scene
   auto cameraID = entityManager.CreateEntity("MainCamera");
   auto& camera = entityManager.AddComponent<Camera>(cameraID);
   auto cameraController = CameraController(camera, inputManager);
@@ -51,10 +56,11 @@ int main() {
   light.vector = glm::vec3(-.2f, 1.0f, -.3f);
   glfwMaximizeWindow(window);
   // register callbacks
-  inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, ToggleHierarchyWindow);
-  inputManager.RegisterCallback(GLFW_KEY_SPACE, GLFW_PRESS, ToggleCreateMenu);
-  inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
-  inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
+  inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, []() { showHierarchyWindow = !showHierarchyWindow; });
+  inputManager.RegisterCallback(GLFW_KEY_SPACE, GLFW_PRESS, []() { showCreateMenu = !showCreateMenu; });
+  inputManager.RegisterCallback(GLFW_KEY_V, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); });
+  inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
+  inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
   auto timeLast = .0;
   while (!glfwWindowShouldClose(window)) {
     auto timeNow = glfwGetTime();
@@ -88,12 +94,6 @@ int main() {
   glfwTerminate();
   return 0;
 }
-static void ToggleHierarchyWindow() {
-  showHierarchyWindow = !showHierarchyWindow;
-}
-static void ToggleCreateMenu() {
-  showCreateMenu = !showCreateMenu;
-}
 static GLFWwindow* InitializeGLFW() {
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -106,8 +106,6 @@ static GLFWwindow* InitializeGLFW() {
   glfwMakeContextCurrent(window);
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     std::cerr << "Error: Failed to initialize GLAD." << std::endl;
-  glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
-  glEnable(GL_DEPTH_TEST);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
   glfwSetWindowCloseCallback(window, WindowCloseCallback);
