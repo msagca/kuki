@@ -8,10 +8,12 @@ struct Triangle {
 };
 class Primitive {
 private:
+  static std::vector<Triangle> CreateOctahedron();
   static std::vector<Triangle> CreateIcosahedron();
   static std::vector<Triangle> Subdivide(const std::vector<Triangle>&, int);
   static void FlipWindingOrder(std::vector<float>&, bool = false);
 public:
   static std::vector<float> Cube();
   static std::vector<float> Sphere(int = 3);
+  static std::vector<float> Cylinder(int = 16);
 };

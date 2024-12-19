@@ -128,7 +128,7 @@ struct MeshFilter : IComponent {
   unsigned int vertexArray = 0;
   unsigned int vertexBuffer = 0;
   unsigned int indexBuffer = 0;
-  int vertexCount = 0;
+  int vertexCount = 0; // NOTE: includes duplicates if no EBO is used
   int indexCount = 0;
   std::string GetName() const override {
     return "MeshFilter";
