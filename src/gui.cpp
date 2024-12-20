@@ -1,9 +1,10 @@
+#include <component_types.hpp>
+#include <asset_manager.hpp>
 #include <entity_manager.hpp>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <primitive.hpp>
-#include <mesh.hpp>
 #include <gui.hpp>
 static const auto HINT_OFFSET = 10.0f;
 void ShowHints(float windowWidth, float windowHeight) {
@@ -20,12 +21,12 @@ void ShowHints(float windowWidth, float windowHeight) {
 }
 void ShowCreateMenu(EntityManager& entityManager) {
   static const char* primitives[] = {"Cube", "Sphere", "Cylinder"};
-  static auto selectedPrimitive = -1;
+  static auto primID = -1;
   ImGui::Begin("Create");
-  if (ImGui::ListBox("Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
-    auto id = entityManager.CreateEntity(primitives[selectedPrimitive]);
+  if (ImGui::ListBox("Primitives", &primID, primitives, IM_ARRAYSIZE(primitives))) {
+    auto id = entityManager.CreateEntity(primitives[primID]);
     std::vector<float> vertices;
-    switch (selectedPrimitive) {
+    switch (primID) {
     case 0:
       vertices = Primitive::Cube();
       break;
@@ -38,8 +39,8 @@ void ShowCreateMenu(EntityManager& entityManager) {
     entityManager.AddComponent<Transform>(id);
     entityManager.AddComponent<MeshRenderer>(id);
     auto& filter = entityManager.AddComponent<MeshFilter>(id);
-    filter = Mesh::Create(vertices);
-    selectedPrimitive = -1;
+    filter.mesh = AssetManager::GetInstance().CreateMesh(primitives[primID], vertices);
+    primID = -1;
   }
   ImGui::End();
 }

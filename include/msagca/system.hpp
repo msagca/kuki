@@ -12,13 +12,14 @@ class RenderSystem : ISystem {
 private:
   EntityManager& entityManager;
   Camera* camera;
-  std::unordered_map<GLuint, std::string> shaderIDs;
-  std::unordered_map<std::string, GLuint> shaderNames;
+  std::unordered_map<GLuint, std::string> shaderIndexNameMap;
+  std::unordered_map<std::string, GLuint> shaderNameIndexMap;
   GLuint defaultLit;
   GLuint wireframe;
   bool wireframeMode = false;
 public:
   RenderSystem(EntityManager&);
+  ~RenderSystem();
   void SetCamera(Camera*);
   GLuint CreateShader(const std::string, const char*, const char*);
   void DeleteShader(const std::string);

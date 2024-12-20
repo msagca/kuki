@@ -14,6 +14,6 @@ private:
   static void FlipWindingOrder(std::vector<float>&, bool = false);
 public:
   static std::vector<float> Cube();
-  static std::vector<float> Sphere(int = 3);
-  static std::vector<float> Cylinder(int = 16);
+  static std::vector<float> Sphere(int = 4);
+  static std::vector<float> Cylinder(int = 40);
 };

@@ -124,17 +124,16 @@ struct Light : IComponent {
       type = std::get<LightType>(property.value);
   }
 };
-struct MeshFilter : IComponent {
+struct Mesh : IComponent {
   unsigned int vertexArray = 0;
   unsigned int vertexBuffer = 0;
   unsigned int indexBuffer = 0;
   int vertexCount = 0; // NOTE: includes duplicates if no EBO is used
   int indexCount = 0;
   std::string GetName() const override {
-    return "MeshFilter";
+    return "Mesh";
   }
   std::vector<Property> GetProperties() const override {
-    // TODO: the buffer IDs don't mean anything to the user, the editor should display a preview of the mesh instead
     return {{"VertexArray", vertexArray}, {"VertexBuffer", vertexBuffer}, {"IndexBuffer", indexBuffer}, {"VertexCount", vertexCount}, {"IndexCount", indexCount}};
   }
   void SetProperty(Property property) override {
@@ -147,11 +146,24 @@ struct MeshFilter : IComponent {
       else if (property.name == "IndexBuffer")
         indexBuffer = value;
     } else if (std::holds_alternative<int>(property.value)) {
+      auto& value = std::get<int>(property.value);
       if (property.name == "VertexCount")
-        vertexCount = std::get<int>(property.value);
+        vertexCount = value;
       else if (property.name == "IndexCount")
-        indexCount = std::get<int>(property.value);
+        indexCount = value;
     }
+  }
+};
+struct MeshFilter : IComponent {
+  Mesh mesh;
+  std::string GetName() const override {
+    return "MeshFilter";
+  }
+  std::vector<Property> GetProperties() const override {
+    return mesh.GetProperties();
+  }
+  void SetProperty(Property property) override {
+    mesh.SetProperty(property);
   }
 };
 struct Material : IComponent {

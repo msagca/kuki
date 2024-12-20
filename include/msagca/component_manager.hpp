@@ -27,7 +27,6 @@ public:
   typename std::vector<T>::const_iterator Begin();
   typename std::vector<T>::const_iterator End();
   T* GetFirst();
-  void CleanUp();
 };
 template <typename T>
 T& ComponentManager<T>::AddComponent(unsigned int id) {
@@ -105,16 +104,3 @@ T* ComponentManager<T>::GetFirst() {
 struct IComponent;
 struct MeshRenderer;
 struct MeshFilter;
-template <>
-inline void ComponentManager<MeshRenderer>::CleanUp() {
-  for (const auto& renderer : components)
-    glDeleteProgram(renderer.shader);
-}
-template <>
-inline void ComponentManager<MeshFilter>::CleanUp() {
-  for (const auto& filter : components) {
-    glDeleteVertexArrays(1, &filter.vertexArray);
-    glDeleteBuffers(1, &filter.vertexBuffer);
-    glDeleteBuffers(1, &filter.indexBuffer);
-  }
-}

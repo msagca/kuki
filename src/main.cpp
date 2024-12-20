@@ -5,7 +5,6 @@
 #include <camera_controller.hpp>
 #include <utility.hpp>
 #include <imgui_impl_opengl3.h>
-#include <mesh.hpp>
 #include <imgui_impl_glfw.h>
 #include <entity_manager.hpp>
 #include <system.hpp>
@@ -57,8 +56,8 @@ int main() {
   glfwMaximizeWindow(window);
   // register callbacks
   inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, []() { showHierarchyWindow = !showHierarchyWindow; });
+  inputManager.RegisterCallback(GLFW_KEY_R, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); });
   inputManager.RegisterCallback(GLFW_KEY_SPACE, GLFW_PRESS, []() { showCreateMenu = !showCreateMenu; });
-  inputManager.RegisterCallback(GLFW_KEY_V, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
   auto timeLast = .0;
@@ -86,7 +85,6 @@ int main() {
     glfwSwapBuffers(window);
     glfwPollEvents();
   }
-  entityManager.CleanUp();
   ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
   ImGui::DestroyContext();

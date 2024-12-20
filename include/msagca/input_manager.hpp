@@ -26,7 +26,6 @@ public:
   void EnableKeyCallbacks();
 private:
   InputManager() = default;
-  ~InputManager() = default;
   InputManager(const InputManager&) = delete;
   InputManager& operator=(const InputManager&) = delete;
   GLFWwindow* window = nullptr;

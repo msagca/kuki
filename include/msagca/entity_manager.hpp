@@ -37,7 +37,6 @@ public:
   const std::string& GetName(unsigned int);
   const std::string GetNextName() const;
   size_t GetCount() const;
-  void CleanUp();
   template <typename T>
   T& AddComponent(unsigned int);
   IComponent* AddComponent(unsigned int, ComponentID);
@@ -109,10 +108,6 @@ inline const std::string EntityManager::GetNextName() const {
 }
 inline size_t EntityManager::GetCount() const {
   return entities.size();
-}
-inline void EntityManager::CleanUp() {
-  filterManager.CleanUp();
-  rendererManager.CleanUp();
 }
 template <typename T>
 T& EntityManager::AddComponent(unsigned int id) {

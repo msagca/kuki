@@ -1,5 +1,4 @@
 #include <glm/gtc/type_ptr.hpp>
-#include <mesh.hpp>
 #include <glad/glad.h>
 #include <utility.hpp>
 #include <iostream>

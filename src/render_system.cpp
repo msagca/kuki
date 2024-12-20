@@ -13,31 +13,35 @@ RenderSystem::RenderSystem(EntityManager& entityManager)
   defaultLit = CreateShader("DefaultLit", "default_lit.vert", "default_lit.frag");
   wireframe = CreateShader("Wireframe", "wireframe.vert", "wireframe.frag");
 }
+RenderSystem::~RenderSystem() {
+  for (const auto& [id, _] : shaderIndexNameMap)
+    glDeleteProgram(id);
+}
 GLuint RenderSystem::CreateShader(const std::string name, const char* vert, const char* frag) {
   Shader shader(vert, frag);
-  shaderIDs[shader.ID] = name;
-  shaderNames[name] = shader.ID;
+  shaderIndexNameMap[shader.ID] = name;
+  shaderNameIndexMap[name] = shader.ID;
   return shader.ID;
 }
 void RenderSystem::DeleteShader(const std::string name) {
-  auto id = shaderNames[name];
-  shaderNames.erase(name);
-  shaderIDs.erase(id);
+  auto id = shaderNameIndexMap[name];
+  shaderNameIndexMap.erase(name);
+  shaderIndexNameMap.erase(id);
   glDeleteProgram(id);
 }
 void RenderSystem::DeleteShader(GLuint id) {
-  shaderNames.erase(shaderIDs[id]);
-  shaderIDs.erase(id);
+  shaderNameIndexMap.erase(shaderIndexNameMap[id]);
+  shaderIndexNameMap.erase(id);
   glDeleteProgram(id);
 }
 GLuint RenderSystem::GetShaderID(const std::string name) {
-  if (shaderNames.find(name) != shaderNames.end())
-    return shaderNames[name];
+  if (shaderNameIndexMap.find(name) != shaderNameIndexMap.end())
+    return shaderNameIndexMap[name];
   return 0;
 }
 std::string RenderSystem::GetShaderName(GLuint id) {
-  if (shaderIDs.find(id) != shaderIDs.end())
-    return shaderIDs[id];
+  if (shaderIndexNameMap.find(id) != shaderIndexNameMap.end())
+    return shaderIndexNameMap[id];
   return "";
 }
 void RenderSystem::SetCamera(Camera* camera) {
@@ -83,17 +87,17 @@ void RenderSystem::Update() {
       glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(camera->projection));
       loc = glGetUniformLocation(shader, "wireColor");
       glUniform3fv(loc, 1, glm::value_ptr(WIRE_COLOR));
-      glBindVertexArray(filter.vertexArray);
-      if (filter.indexCount > 0)
-        glDrawElements(GL_TRIANGLES, filter.indexCount, GL_UNSIGNED_INT, 0);
+      glBindVertexArray(filter.mesh.vertexArray);
+      if (filter.mesh.indexCount > 0)
+        glDrawElements(GL_TRIANGLES, filter.mesh.indexCount, GL_UNSIGNED_INT, 0);
       else
-        glDrawArrays(GL_TRIANGLES, 0, filter.vertexCount);
+        glDrawArrays(GL_TRIANGLES, 0, filter.mesh.vertexCount);
     });
   else
     entityManager.ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform& transform, MeshFilter& filter, MeshRenderer& renderer) {
       // TODO: do instanced rendering for objects sharing the same mesh
       auto shader = defaultLit;
-      if (shaderIDs.find(renderer.shader) != shaderIDs.end())
+      if (shaderIndexNameMap.find(renderer.shader) != shaderIndexNameMap.end())
         shader = renderer.shader;
       glUseProgram(shader);
       auto model = GetWorldTransform(transform);
@@ -147,10 +151,10 @@ void RenderSystem::Update() {
       glUniform1i(loc, hasDirectionalLight);
       loc = glGetUniformLocation(shader, "numPointLights");
       glUniform1i(loc, pointLightCount);
-      glBindVertexArray(filter.vertexArray);
-      if (filter.indexCount > 0)
-        glDrawElements(GL_TRIANGLES, filter.indexCount, GL_UNSIGNED_INT, 0);
+      glBindVertexArray(filter.mesh.vertexArray);
+      if (filter.mesh.indexCount > 0)
+        glDrawElements(GL_TRIANGLES, filter.mesh.indexCount, GL_UNSIGNED_INT, 0);
       else
-        glDrawArrays(GL_TRIANGLES, 0, filter.vertexCount);
+        glDrawArrays(GL_TRIANGLES, 0, filter.mesh.vertexCount);
     });
 }
