@@ -1,18 +1,24 @@
-#include <component_types.hpp>
 #include <asset_manager.hpp>
+#include <component_types.hpp>
+#include <cstring>
 #include <entity_manager.hpp>
-#include <GLFW/glfw3.h>
-#include <glm/gtc/type_ptr.hpp>
-#include <imgui.h>
-#include <primitive.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/type_ptr.inl>
 #include <gui.hpp>
-static const auto SCREEN_EDGE_OFFSET = 10.0f;
+#include <imgui.h>
+#include <input_manager.hpp>
+#include <primitive.hpp>
+#include <string>
+#include <variant>
+#include <vector>
 static const auto IMGUI_NON_INTERACTABLE_FLAGS = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize;
-void ShowHints(float windowWidth, float windowHeight) {
-  ImVec2 position(SCREEN_EDGE_OFFSET, windowHeight - SCREEN_EDGE_OFFSET);
-  ImVec2 size(windowWidth - 2 * SCREEN_EDGE_OFFSET, .0f);
-  ImGui::SetNextWindowPos(position, ImGuiCond_Always, ImVec2(.0f, 1.0f));
-  ImGui::SetNextWindowSize(size);
+static const auto IMGUI_DEFAULT_WINDOW_WIDTH = 400;
+void ShowHints() {
+  auto displaySize = ImGui::GetIO().DisplaySize;
+  ImVec2 windowPos(IMGUI_DEFAULT_WINDOW_WIDTH, displaySize.y);
+  ImVec2 windowSize(displaySize.x - 2 * IMGUI_DEFAULT_WINDOW_WIDTH, .0f);
+  ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, ImVec2(.0f, 1.0f));
+  ImGui::SetNextWindowSize(windowSize);
   ImGui::SetNextWindowBgAlpha(0.5f);
   ImGui::Begin("Hints", nullptr, IMGUI_NON_INTERACTABLE_FLAGS);
   for (const auto& hint : hints)
@@ -20,9 +26,9 @@ void ShowHints(float windowWidth, float windowHeight) {
       ImGui::TextWrapped("%s", hint.text.c_str());
   ImGui::End();
 }
-void ShowFPS(unsigned int fps, float windowWidth) {
-  ImVec2 position(windowWidth - SCREEN_EDGE_OFFSET, SCREEN_EDGE_OFFSET);
-  ImGui::SetNextWindowPos(position, ImGuiCond_Always, ImVec2(1.0f, .0f));
+void ShowFPS(unsigned int fps) {
+  ImVec2 windowPos(ImGui::GetIO().DisplaySize.x / 2, 0);
+  ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, ImVec2(1.0f, .0f));
   ImGui::SetNextWindowBgAlpha(.5f);
   ImGui::Begin("FPS", nullptr, IMGUI_NON_INTERACTABLE_FLAGS);
   ImGui::Text("%u", fps);
@@ -56,7 +62,11 @@ void ShowCreateMenu(EntityManager& entityManager, AssetManager& assetManager) {
   }
   ImGui::End();
 }
-static void ShowProperties(EntityManager& entityManager, unsigned int selectedEntity, bool first) {
+static void ShowProperties(EntityManager& entityManager, unsigned int selectedEntity) {
+  ImVec2 windowPos(ImGui::GetIO().DisplaySize.x - IMGUI_DEFAULT_WINDOW_WIDTH, 0);
+  ImVec2 windowSize(IMGUI_DEFAULT_WINDOW_WIDTH, ImGui::GetIO().DisplaySize.y);
+  ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
+  ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
   ImGui::Begin("Properties");
   static IComponent* componentID = nullptr;
   auto components = entityManager.GetAllComponents(selectedEntity);
@@ -119,6 +129,10 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
   ImGui::End();
 }
 void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManager) {
+  ImVec2 windowPos(0, 0);
+  ImVec2 windowSize(IMGUI_DEFAULT_WINDOW_WIDTH, ImGui::GetIO().DisplaySize.y);
+  ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
+  ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
   static auto entityID = -1;
   static auto entityIDLast = -1;
   static auto renameMode = false;
@@ -127,7 +141,7 @@ void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManage
   entityManager.ForAll([&](unsigned int id) {
     if (ImGui::Selectable(entityManager.GetName(id).c_str(), id == entityID)) {
       entityID = id;
-      ShowProperties(entityManager, entityID, true);
+      ShowProperties(entityManager, entityID);
       entityIDLast = entityID;
     }
   });
@@ -155,6 +169,7 @@ void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManage
   if (renameMode) {
     inputManager.DisableKeyCallbacks();
     ImGui::Begin("Rename Entity", &renameMode);
+    ImGui::SetKeyboardFocusHere();
     if (ImGui::InputText("New Name", newName, IM_ARRAYSIZE(newName), ImGuiInputTextFlags_EnterReturnsTrue)) {
       entityManager.Rename(entityID, std::string(newName));
       renameMode = false;
@@ -164,5 +179,5 @@ void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManage
     ImGui::End();
   }
   if (entityID != -1)
-    ShowProperties(entityManager, entityID, entityID != entityIDLast);
+    ShowProperties(entityManager, entityID);
 }

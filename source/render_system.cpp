@@ -1,10 +1,18 @@
-#include <component_types.hpp>
-#include <format>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <system.hpp>
-#include <entity_manager.hpp>
 #include <asset_manager.hpp>
+#include <component_types.hpp>
+#include <entity_manager.hpp>
+#include <format>
+#include <glad/glad.h>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/matrix_transform.inl>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
+#include <glm/gtc/type_ptr.inl>
+#include <primitive.hpp>
+#include <shader.hpp>
+#include <string>
+#include <system.hpp>
+#include <vector>
 static const auto X_AXIS = glm::vec3(1.0f, 0.0f, 0.0f);
 static const auto Y_AXIS = glm::vec3(0.0f, 1.0f, 0.0f);
 static const auto Z_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);

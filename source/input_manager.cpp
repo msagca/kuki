@@ -1,4 +1,7 @@
+#include <cstdint>
+#include <functional>
 #include <GLFW/glfw3.h>
+#include <glm/ext/vector_float2.hpp>
 #include <input_manager.hpp>
 extern double deltaTime;
 enum KeyBit {

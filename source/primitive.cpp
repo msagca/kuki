@@ -1,6 +1,10 @@
-#include <glm/geometric.hpp>
+#include <cmath>
+#include <glm/detail/func_geometric.inl>
+#include <glm/ext/scalar_constants.inl>
+#include <glm/ext/vector_float3.hpp>
 #include <primitive.hpp>
-#include <glm/ext/scalar_constants.hpp>
+#include <utility>
+#include <vector>
 const static auto PI = glm::pi<float>();
 std::vector<Vertex> Primitive::Cube() {
   return {
@@ -128,7 +132,7 @@ std::vector<Triangle> Primitive::Subdivide(const std::vector<Triangle>& triangle
   return result;
 }
 /// <summary>
-/// Flip the winding order of triangles in a mesh so that back-face culling works correctly
+/// Flip the winding order of faces in a mesh
 /// </summary>
 void Primitive::FlipWindingOrder(std::vector<Vertex>& vertices) {
   for (auto i = 0; i < vertices.size(); i += 3)

@@ -1,5 +1,10 @@
 #pragma once
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/geometric.hpp>
+#include <cmath>
 #include <component_types.hpp>
+#include <GLFW/glfw3.h>
 #include <input_manager.hpp>
 extern double deltaTime;
 static const auto WORLD_UP = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -71,7 +76,7 @@ public:
       if (firstEnter)
         mouseLast = mousePos;
       firstEnter = false;
-      glm::vec2 mouseDiff;
+      glm::vec2 mouseDiff{};
       mouseDiff.x = (mousePos.x - mouseLast.x) * mouseSensitivity;
       mouseDiff.y = (mouseLast.y - mousePos.y) * mouseSensitivity;
       mouseLast = mousePos;

@@ -1,16 +1,15 @@
 #pragma once
 #include <component_manager.hpp>
-#include <primitive.hpp>
-#include <glad/glad.h>
 #include <component_types.hpp>
-#include <unordered_map>
+#include <cstdint>
+#include <primitive.hpp>
 #include <string>
+#include <unordered_map>
 #include <vector>
 /// <summary>
 /// This is very much like the EntityManager class, but for managing things that are not necessarily in a scene
 /// </summary>
 class AssetManager {
-  // TODO: separate asset creation logic from this class
 private:
   unsigned int nextID = 0;
   std::unordered_map<unsigned int, uint32_t> idToMask;

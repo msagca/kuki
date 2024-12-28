@@ -1,5 +1,8 @@
-#include <entity_manager.hpp>
 #include <chrono>
+#include <component_types.hpp>
+#include <entity_manager.hpp>
+#include <string>
+#include <vector>
 unsigned int EntityManager::Create(std::string name) {
   if (name.size() > 0) {
     auto entityName = name;

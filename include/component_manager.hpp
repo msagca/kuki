@@ -1,14 +1,8 @@
 #pragma once
 #include <component_types.hpp>
 #include <glad/glad.h>
-#include <glm/vec3.hpp>
-#include <glm/vec4.hpp>
 #include <unordered_map>
 #include <vector>
-#include <glm/ext/matrix_float4x4.hpp>
-#include <glm/trigonometric.hpp>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/ext/matrix_clip_space.hpp>
 template <typename T>
 class ComponentManager {
 private:

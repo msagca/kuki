@@ -1,9 +1,10 @@
 #pragma once
+#include <cstdint>
+#include <functional>
 #include <GLFW/glfw3.h>
 #include <glm/ext/vector_float2.hpp>
 #include <unordered_map>
 #include <unordered_set>
-#include <functional>
 class InputManager {
 public:
   static InputManager& GetInstance() {

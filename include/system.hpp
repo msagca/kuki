@@ -1,9 +1,10 @@
 #pragma once
 #include <asset_manager.hpp>
-#include <glm/ext/matrix_float4x4.hpp>
-#include <shader.hpp>
+#include <component_types.hpp>
 #include <entity_manager.hpp>
-#include <camera_controller.hpp>
+#include <glad/glad.h>
+#include <string>
+#include <unordered_map>
 class ISystem {
 public:
   virtual ~ISystem() = default;

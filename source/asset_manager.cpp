@@ -1,9 +1,14 @@
+#include <glm/common.hpp>
 #include <asset_manager.hpp>
+#include <chrono>
+#include <component_types.hpp>
 #include <cstddef>
 #include <glad/glad.h>
+#include <glm/ext/vector_float3.hpp>
+#include <limits>
+#include <primitive.hpp>
 #include <string>
 #include <vector>
-#include <chrono>
 unsigned int AssetManager::Create(std::string name) {
   if (name.size() > 0) {
     auto assetName = name;

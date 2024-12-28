@@ -1,9 +1,12 @@
-#include <shader.hpp>
+#include <cstring>
 #include <fstream>
 #include <glad/glad.h>
-#include <glm/gtc/type_ptr.hpp>
+#include <ios>
+#include <iosfwd>
 #include <iostream>
+#include <shader.hpp>
 #include <sstream>
+#include <string>
 static const char* ReadShader(const char*);
 static void CompileShader(GLuint&, const char*, bool isVertex = true);
 Shader::Shader()
@@ -23,7 +26,7 @@ Shader::Shader(const char* vert, const char* frag) {
   int success;
   glGetProgramiv(ID, GL_LINK_STATUS, &success);
   if (!success)
-    std::cerr << "Error: Failed to link shader program." << std::endl;
+    std::cerr << "Failed to link shader program." << std::endl;
   glDeleteShader(vertID);
   glDeleteShader(fragID);
 }
@@ -38,7 +41,7 @@ static const char* ReadShader(const char* filename) {
     shaderFile.close();
     shaderStr = shaderStream.str();
   } catch (std::ifstream::failure e) {
-    std::cerr << "Error: Failed to read shader file at " << filename << "." << std::endl;
+    std::cerr << "Failed to read the shader file at " << filename << "." << std::endl;
   }
   char* shaderCStr = new char[shaderStr.size() + 1];
   strcpy(shaderCStr, shaderStr.c_str());
@@ -51,5 +54,5 @@ static void CompileShader(GLuint& shaderID, const char* shaderText, bool isVerte
   int success;
   glGetShaderiv(shaderID, GL_COMPILE_STATUS, &success);
   if (!success)
-    std::cerr << "Error: Failed to compile shader." << std::endl;
+    std::cerr << "Failed to compile shader." << std::endl;
 }

@@ -1,7 +1,10 @@
 #pragma once
 #include <asset_manager.hpp>
 #include <entity_manager.hpp>
+#include <functional>
 #include <input_manager.hpp>
+#include <string>
+#include <vector>
 extern bool showCreateMenu;
 extern bool showHierarchyWindow;
 extern bool showFPS;
@@ -15,7 +18,7 @@ static const std::vector<Hint> hints = {
   {"Press [H] to show/hide the hierarchy window.", []() { return !showHierarchyWindow; }},
   {"Press [R] to change the render mode.", []() { return true; }},
   {"Press [F] to display the FPS counter.", []() { return !showFPS; }}};
-void ShowHints(float, float);
-void ShowFPS(unsigned int, float);
+void ShowHints();
+void ShowFPS(unsigned int);
 void ShowCreateMenu(EntityManager&, AssetManager&);
 void ShowHierarchyWindow(EntityManager&, InputManager&);

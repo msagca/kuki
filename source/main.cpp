@@ -1,17 +1,18 @@
-#include "asset_manager.hpp"
+#include <asset_manager.hpp>
+#include <camera_controller.hpp>
 #include <component_types.hpp>
-#include <imgui.h>
+#include <entity_manager.hpp>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <camera_controller.hpp>
-#include <imgui_impl_opengl3.h>
-#include <imgui_impl_glfw.h>
-#include <entity_manager.hpp>
-#include <system.hpp>
-#include <iostream>
+#include <glm/ext/vector_float3.hpp>
 #include <gui.hpp>
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
 #include <input_manager.hpp>
+#include <iostream>
 #include <stb_image.h>
+#include <system.hpp>
 static const auto WINDOW_HEIGHT = 600u;
 static const auto WINDOW_WIDTH = 800u;
 static const auto CAMERA_POSITION = glm::vec3(.0f, .0f, 3.0f);
@@ -87,16 +88,14 @@ int main() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
-    int windowWidth, windowHeight;
-    glfwGetFramebufferSize(window, &windowWidth, &windowHeight);
     if (showFPS)
-      ShowFPS(fps, windowWidth);
+      ShowFPS(fps);
     if (showHierarchyWindow)
       ShowHierarchyWindow(entityManager, inputManager);
     if (showCreateMenu)
       ShowCreateMenu(entityManager, assetManager);
     if (inputManager.GetInactivityTime() > INACTIVITY_TIMEOUT)
-      ShowHints(windowWidth, windowHeight);
+      ShowHints();
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     glfwSwapBuffers(window);
@@ -117,10 +116,10 @@ static GLFWwindow* InitializeGLFW() {
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
   auto window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Learning OpenGL", nullptr, nullptr);
   if (!window)
-    std::cerr << "Error: Failed to create GLFW window." << std::endl;
+    std::cerr << "Failed to create GLFW window." << std::endl;
   glfwMakeContextCurrent(window);
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-    std::cerr << "Error: Failed to initialize GLAD." << std::endl;
+    std::cerr << "Failed to initialize GLAD." << std::endl;
   glfwSwapInterval(0);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
@@ -157,5 +156,5 @@ static void SetWindowIcon(GLFWwindow* window, const char* iconPath) {
     glfwSetWindowIcon(window, 1, images);
     stbi_image_free(data);
   } else
-    std::cerr << "Error: Failed to load the icon at " << iconPath << "." << std::endl;
+    std::cerr << "Failed to load the icon at " << iconPath << "." << std::endl;
 }

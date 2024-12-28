@@ -1,14 +1,9 @@
 #pragma once
-#include <glad/glad.h>
-#include <glm/vec3.hpp>
-#include <glm/vec4.hpp>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <string>
 #include <variant>
 #include <vector>
-#include <glm/ext/matrix_float4x4.hpp>
-#include <glm/trigonometric.hpp>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/ext/matrix_clip_space.hpp>
 enum ComponentID {
   TransformID,
   MeshFilterID,

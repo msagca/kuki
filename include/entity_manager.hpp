@@ -1,7 +1,11 @@
 #pragma once
 #include <component_manager.hpp>
 #include <component_types.hpp>
+#include <cstdint>
+#include <string>
 #include <tuple>
+#include <unordered_map>
+#include <vector>
 /// <summary>
 /// Manages entities and their components in a scene
 /// </summary>
