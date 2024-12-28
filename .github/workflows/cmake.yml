@@ -17,13 +17,13 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - name: Install requirements for Linux
+      - name: Linux Prerequisites
         if: runner.os == 'Linux'
-        run: bash script/install_requirements.sh
-      - name: Install requirements for Windows
+        run: sudo apt install -y build-essential ninja-build cmake libwayland-dev libxkbcommon-dev xorg-dev
+      - name: Windows Prerequisites
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
-      - name: CMake configure
+      - name: Configure
         run: cmake -DCMAKE_CXX_FLAGS="-fpermissive" .
-      - name: CMake build
+      - name: Build
         run: cmake --build .

@@ -5,7 +5,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project("LearningOpenGL")
-include(FindDependencies)
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/glm)
+set(ASSIMP_BUILD_TESTS OFF)
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/assimp)
+find_package(OpenGL REQUIRED)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 if(CMAKE_GENERATOR MATCHES "Visual Studio")
   foreach(CONFIG ${CMAKE_CONFIGURATION_TYPES})
@@ -13,40 +17,59 @@ if(CMAKE_GENERATOR MATCHES "Visual Studio")
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${CONFIG_UPPER} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
   endforeach()
 endif()
-file(GLOB CPP_SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp")
-file(GLOB C_SOURCES "${CMAKE_SOURCE_DIR}/src/*.c")
+file(GLOB_RECURSE CPP_SOURCES "${CMAKE_SOURCE_DIR}/source/*.cpp")
+file(GLOB_RECURSE C_SOURCES "${CMAKE_SOURCE_DIR}/source/*.c")
 add_executable(${PROJECT_NAME} ${CPP_SOURCES} ${C_SOURCES})
-target_link_libraries(
-  ${PROJECT_NAME}
-  PRIVATE glad glfw glm imgui OpenGL::GL stb msagca
-)
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(${PROJECT_NAME} PRIVATE OpenGL::GL glfw glm assimp)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/third-party)
+if(UNIX)
+  set(CMAKE_INSTALL_PREFIX $ENV{HOME}/.local)
+elseif(WIN32)
+  set(CMAKE_INSTALL_PREFIX $ENV{USERPROFILE}/.local)
+endif()
+set(INSTALL_DIR bin)
+install(TARGETS ${PROJECT_NAME} DESTINATION ${INSTALL_DIR})
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
-file(GLOB VERT_SOURCES "${CMAKE_SOURCE_DIR}/src/shader/*.vert")
-file(GLOB FRAG_SOURCES "${CMAKE_SOURCE_DIR}/src/shader/*.frag")
+# shaders
+file(GLOB_RECURSE VERT_SOURCES "${CMAKE_SOURCE_DIR}/source/shader/*.vert")
+file(GLOB_RECURSE FRAG_SOURCES "${CMAKE_SOURCE_DIR}/source/shader/*.frag")
 set(SHADER_SOURCES ${VERT_SOURCES} ${FRAG_SOURCES})
 target_sources(${PROJECT_NAME} PRIVATE ${SHADER_SOURCES})
-file(GLOB JPG_SOURCES "${CMAKE_SOURCE_DIR}/src/image/*.jpg")
-file(GLOB PNG_SOURCES "${CMAKE_SOURCE_DIR}/src/image/*.png")
-set(IMAGE_SOURCES ${JPG_SOURCES} ${PNG_SOURCES})
-set(OTHER_SOURCES ${SHADER_SOURCES} ${IMAGE_SOURCES})
-foreach(FILE ${OTHER_SOURCES})
+foreach(FILE ${SHADER_SOURCES})
   cmake_path(APPEND FULL_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${FILE})
-  list(APPEND OTHER_FILES ${FULL_PATH})
+  list(APPEND SHADER_FILES ${FULL_PATH})
 endforeach()
-add_custom_target(
-  CopyOtherFiles
-  ALL
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${OTHER_FILES} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-  DEPENDS ${OTHER_FILES}
-)
-add_dependencies(${PROJECT_NAME} CopyOtherFiles)
-if(WIN32)
+list(LENGTH SHADER_FILES SHADER_COUNT)
+if(SHADER_COUNT GREATER 0)
+  set(SHADER_FOLDER ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shader)
+  add_custom_target(CreateShaderFolder COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_FOLDER})
   add_custom_target(
-    CopyDLLs
+    CopyShaders
     ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${GLFW_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-    DEPENDS ${GLFW_DLL}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SHADER_FILES} ${SHADER_FOLDER}
+    DEPENDS ${SHADER_FILES} CreateShaderFolder
   )
-  add_dependencies(${PROJECT_NAME} CopyDLLs)
+  add_dependencies(${PROJECT_NAME} CopyShaders)
+  install(DIRECTORY ${SHADER_FOLDER} DESTINATION ${INSTALL_DIR})
+endif()
+# images
+file(GLOB_RECURSE JPG_SOURCES "${CMAKE_SOURCE_DIR}/source/image/*.jpg")
+file(GLOB_RECURSE PNG_SOURCES "${CMAKE_SOURCE_DIR}/source/image/*.png")
+set(IMAGE_SOURCES ${JPG_SOURCES} ${PNG_SOURCES})
+foreach(FILE ${IMAGE_SOURCES})
+  cmake_path(APPEND FULL_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${FILE})
+  list(APPEND IMAGE_FILES ${FULL_PATH})
+endforeach()
+list(LENGTH IMAGE_FILES IMAGE_COUNT)
+if(IMAGE_COUNT GREATER 0)
+  set(IMAGE_FOLDER ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/image)
+  add_custom_target(CreateImageFolder COMMAND ${CMAKE_COMMAND} -E make_directory ${IMAGE_FOLDER})
+  add_custom_target(
+    CopyImages
+    ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${IMAGE_FILES} ${IMAGE_FOLDER}
+    DEPENDS ${IMAGE_FILES} CreateImageFolder
+  )
+  add_dependencies(${PROJECT_NAME} CopyImages)
+  install(DIRECTORY ${IMAGE_FOLDER} DESTINATION ${INSTALL_DIR})
 endif()

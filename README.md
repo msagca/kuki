@@ -12,14 +12,20 @@ This is where I experiment with `OpenGL`.
 
 ### Instructions
 
-- Clone this repository
+- Clone this repository with all its submodules
 
 ```bash
-git clone https://github.com/msagca/learning-opengl
+git clone --recursive https://github.com/msagca/learning-opengl
 ```
 
 ```bash
 cd learning-opengl
+```
+
+- Update the submodules if necessary
+
+```bash
+git submodule update --init --recursive
 ```
 
 - Create a build directory
