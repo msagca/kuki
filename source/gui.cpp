@@ -34,7 +34,7 @@ void ShowFPS(unsigned int fps) {
   ImGui::Text("%u", fps);
   ImGui::End();
 }
-void ShowCreateMenu(EntityManager& entityManager, AssetManager& assetManager) {
+void ShowCreateMenu(EntityManager& entityManager, AssetManager& assetManager, AssetLoader& assetLoader) {
   static const char* primitives[] = {"Cube", "Sphere", "Cylinder"};
   static auto primID = -1;
   ImGui::Begin("Create");
@@ -54,10 +54,8 @@ void ShowCreateMenu(EntityManager& entityManager, AssetManager& assetManager) {
     entityManager.AddComponent<Transform>(entityID);
     entityManager.AddComponent<MeshRenderer>(entityID);
     auto& filter = entityManager.AddComponent<MeshFilter>(entityID);
-    auto assetID = assetManager.Create(primitives[primID]);
-    auto& mesh = assetManager.AddComponent<Mesh>(assetID);
-    mesh = assetManager.CreateMesh(vertices);
-    filter.mesh = mesh;
+    auto meshID = assetLoader.LoadMesh(primitives[primID], vertices);
+    filter.mesh = assetManager.GetComponent<Mesh>(meshID);
     primID = -1;
   }
   ImGui::End();

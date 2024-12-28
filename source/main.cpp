@@ -1,3 +1,4 @@
+#include <asset_loader.hpp>
 #include <asset_manager.hpp>
 #include <camera_controller.hpp>
 #include <component_types.hpp>
@@ -49,7 +50,8 @@ int main() {
   // initialize ECS
   EntityManager entityManager;
   AssetManager assetManager;
-  RenderSystem renderSystem(entityManager, assetManager);
+  AssetLoader assetLoader(assetManager);
+  RenderSystem renderSystem(entityManager, assetManager, assetLoader);
   // populate the scene
   auto cameraID = entityManager.Create("MainCamera");
   auto& camera = entityManager.AddComponent<Camera>(cameraID);
@@ -93,7 +95,7 @@ int main() {
     if (showHierarchyWindow)
       ShowHierarchyWindow(entityManager, inputManager);
     if (showCreateMenu)
-      ShowCreateMenu(entityManager, assetManager);
+      ShowCreateMenu(entityManager, assetManager, assetLoader);
     if (inputManager.GetInactivityTime() > INACTIVITY_TIMEOUT)
       ShowHints();
     ImGui::Render();

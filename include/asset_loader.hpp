@@ -6,6 +6,9 @@ private:
   AssetManager& assetManager;
 public:
   AssetLoader(AssetManager&);
-  void LoadModel(const std::string&);
-  void LoadTexture(const std::string&);
+  unsigned int LoadShader(const std::string&, const std::string&, const std::string&);
+  unsigned int LoadModel(const std::string&, const std::string&);
+  unsigned int LoadTexture(const std::string&, const std::string&);
+  unsigned int LoadMesh(const std::string&, const std::vector<Vertex>&);
+  unsigned int LoadMesh(const std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
 };

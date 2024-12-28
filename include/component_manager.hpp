@@ -104,3 +104,9 @@ inline void ComponentManager<Texture>::CleanUp() {
     glBindTexture(GL_TEXTURE_2D, 0);
   });
 }
+template <>
+inline void ComponentManager<Shader>::CleanUp() {
+  ForEach([](const Shader& shader) {
+    glDeleteProgram(shader.id);
+  });
+}

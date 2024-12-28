@@ -9,7 +9,6 @@
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/type_ptr.inl>
 #include <primitive.hpp>
-#include <shader.hpp>
 #include <string>
 #include <system.hpp>
 #include <vector>
@@ -19,48 +18,18 @@ static const auto Z_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
 static const auto MAX_LIGHT_SOURCES = 8;
 static const auto WIRE_COLOR = glm::vec3(.5f);
 static const auto CLEAR_COLOR = glm::vec4(.1f, .1f, .1f, 1.0f);
-RenderSystem::RenderSystem(EntityManager& entityManager, AssetManager& assetManager)
-  : entityManager(entityManager), assetManager(assetManager) {
-  defaultLit = CreateShader("DefaultLit", "shader/default_lit.vert", "shader/default_lit.frag");
-  wireframe = CreateShader("Wireframe", "shader/wireframe.vert", "shader/wireframe.frag");
-  grid = CreateShader("Grid", "shader/grid.vert", "shader/grid.frag");
+RenderSystem::RenderSystem(EntityManager& entityManager, AssetManager& assetManager, AssetLoader& assetLoader)
+  : entityManager(entityManager), assetManager(assetManager), assetLoader(assetLoader) {
+  auto defaultShaderID = assetLoader.LoadShader("DefaultShader", "shader/default_lit.vert", "shader/default_lit.frag");
+  auto wireframeShaderID = assetLoader.LoadShader("WireframeShader", "shader/wireframe.vert", "shader/wireframe.frag");
+  auto gridShaderID = assetLoader.LoadShader("GridShader", "shader/grid.vert", "shader/grid.frag");
+  defaultShader = assetManager.GetComponent<Shader>(defaultShaderID).id;
+  wireframeShader = assetManager.GetComponent<Shader>(wireframeShaderID).id;
+  gridShader = assetManager.GetComponent<Shader>(gridShaderID).id;
   std::vector<Vertex> vertices = {{{-1.0f, .0f, -1.0f}, {}}, {{1.0f, .0f, -1.0f}, {}}, {{1.0f, .0f, 1.0f}, {}}, {{-1.0f, .0f, 1.0f}, {}}};
   std::vector<unsigned int> indices = {0, 2, 1, 2, 0, 3};
-  auto gridID = assetManager.Create("Grid");
-  auto& mesh = assetManager.AddComponent<Mesh>(gridID);
-  mesh = assetManager.CreateMesh(vertices, indices);
-  gridMesh = mesh;
-}
-RenderSystem::~RenderSystem() {
-  for (const auto& [id, _] : shaderIndexNameMap)
-    glDeleteProgram(id);
-}
-GLuint RenderSystem::CreateShader(const std::string name, const char* vert, const char* frag) {
-  Shader shader(vert, frag);
-  shaderIndexNameMap[shader.ID] = name;
-  shaderNameIndexMap[name] = shader.ID;
-  return shader.ID;
-}
-void RenderSystem::DeleteShader(const std::string name) {
-  auto id = shaderNameIndexMap[name];
-  shaderNameIndexMap.erase(name);
-  shaderIndexNameMap.erase(id);
-  glDeleteProgram(id);
-}
-void RenderSystem::DeleteShader(GLuint id) {
-  shaderNameIndexMap.erase(shaderIndexNameMap[id]);
-  shaderIndexNameMap.erase(id);
-  glDeleteProgram(id);
-}
-GLuint RenderSystem::GetShaderID(const std::string name) {
-  if (shaderNameIndexMap.find(name) != shaderNameIndexMap.end())
-    return shaderNameIndexMap[name];
-  return 0;
-}
-std::string RenderSystem::GetShaderName(GLuint id) {
-  if (shaderIndexNameMap.find(id) != shaderIndexNameMap.end())
-    return shaderIndexNameMap[id];
-  return "";
+  auto meshID = assetLoader.LoadMesh("GridMesh", vertices, indices);
+  gridMesh = assetManager.GetComponent<Mesh>(meshID);
 }
 void RenderSystem::SetCamera(Camera* camera) {
   this->camera = camera;
@@ -88,14 +57,14 @@ void RenderSystem::RenderGrid() {
   GLint polygonMode[2];
   glGetIntegerv(GL_POLYGON_MODE, polygonMode);
   glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-  glUseProgram(grid);
-  auto loc = glGetUniformLocation(grid, "view");
+  glUseProgram(gridShader);
+  auto loc = glGetUniformLocation(gridShader, "view");
   glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(camera->view));
-  loc = glGetUniformLocation(grid, "projection");
+  loc = glGetUniformLocation(gridShader, "projection");
   glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(camera->projection));
-  loc = glGetUniformLocation(grid, "cameraPos");
+  loc = glGetUniformLocation(gridShader, "cameraPos");
   glUniform3fv(loc, 1, glm::value_ptr(camera->position));
-  loc = glGetUniformLocation(grid, "cameraFront");
+  loc = glGetUniformLocation(gridShader, "cameraFront");
   glUniform3fv(loc, 1, glm::value_ptr(camera->front));
   glBindVertexArray(gridMesh.vertexArray);
   glDrawElements(GL_TRIANGLES, gridMesh.indexCount, GL_UNSIGNED_INT, 0);
@@ -104,9 +73,7 @@ void RenderSystem::RenderGrid() {
 void RenderSystem::RenderObjects() {
   entityManager.ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform& transform, MeshFilter& filter, MeshRenderer& renderer) {
     // TODO: do instanced rendering for objects sharing the same mesh
-    auto shader = defaultLit;
-    if (shaderIndexNameMap.find(renderer.shader) != shaderIndexNameMap.end())
-      shader = renderer.shader;
+    auto shader = defaultShader;
     glUseProgram(shader);
     auto model = GetWorldTransform(transform);
     auto loc = glGetUniformLocation(shader, "model");

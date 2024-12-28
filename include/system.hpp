@@ -1,10 +1,9 @@
 #pragma once
 #include <asset_manager.hpp>
+#include <asset_loader.hpp>
 #include <component_types.hpp>
 #include <entity_manager.hpp>
 #include <glad/glad.h>
-#include <string>
-#include <unordered_map>
 class ISystem {
 public:
   virtual ~ISystem() = default;
@@ -13,26 +12,19 @@ public:
 class RenderSystem : ISystem {
 private:
   EntityManager& entityManager;
+  AssetLoader& assetLoader;
   AssetManager& assetManager;
   Camera* camera;
-  std::unordered_map<GLuint, std::string> shaderIndexNameMap;
-  std::unordered_map<std::string, GLuint> shaderNameIndexMap;
-  GLuint defaultLit;
-  GLuint wireframe;
-  GLuint grid;
-  Mesh gridMesh;
   bool wireframeMode = false;
+  unsigned int gridShader;
+  unsigned int wireframeShader;
+  unsigned int defaultShader;
+  Mesh gridMesh;
   void RenderGrid();
   void RenderObjects();
 public:
-  RenderSystem(EntityManager&, AssetManager&);
-  ~RenderSystem();
+  RenderSystem(EntityManager&, AssetManager&, AssetLoader&);
   void SetCamera(Camera*);
-  GLuint CreateShader(const std::string, const char*, const char*);
-  void DeleteShader(const std::string);
-  void DeleteShader(GLuint);
-  GLuint GetShaderID(const std::string);
-  std::string GetShaderName(GLuint);
   void ToggleWireframeMode();
   void Update() override;
 };

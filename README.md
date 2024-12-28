@@ -28,24 +28,14 @@ cd learning-opengl
 git submodule update --init --recursive
 ```
 
-- Create a build directory
-
-```bash
-mkdir build
-```
-
-```bash
-cd build
-```
-
 - Run the configure command
 
 ```bash
-cmake ..
+cmake -B build .
 ```
 
 - Run the build command
 
 ```bash
-cmake --build .
+cmake --build build
 ```

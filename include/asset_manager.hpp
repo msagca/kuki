@@ -5,7 +5,6 @@
 #include <primitive.hpp>
 #include <string>
 #include <unordered_map>
-#include <vector>
 /// <summary>
 /// This is very much like the EntityManager class, but for managing things that are not necessarily in a scene
 /// </summary>
@@ -18,13 +17,12 @@ private:
   ComponentManager<Transform> transformManager;
   ComponentManager<Mesh> meshManager;
   ComponentManager<Texture> textureManager;
+  ComponentManager<Shader> shaderManager;
   std::string GenerateName(const std::string&);
   template <typename T>
   ComponentManager<T>& GetManager();
   template <typename T>
   ComponentMask GetComponentMask() const;
-  Mesh CreateVertexBuffer(const std::vector<Vertex>&);
-  void CreateIndexBuffer(Mesh&, const std::vector<unsigned int>&);
 public:
   unsigned int Create(std::string = "");
   void Remove(unsigned int);
@@ -39,9 +37,6 @@ public:
   bool HasComponent(unsigned int);
   template <typename T>
   T& GetComponent(unsigned int);
-  Mesh CreateMesh(const std::vector<Vertex>&);
-  Mesh CreateMesh(const std::vector<Vertex>&, const std::vector<unsigned int>&);
-  BoundingBox CalculateBoundingBox(const std::vector<Vertex>&);
   void CleanUp();
 };
 template <typename T>
@@ -71,7 +66,7 @@ bool AssetManager::HasComponent(unsigned int id) {
 template <typename T>
 T& AssetManager::GetComponent(unsigned int id) {
   auto& manager = GetManager<T>();
-  return manager.GetComponent(id);
+  return manager.Get(id);
 }
 template <>
 inline ComponentManager<Transform>& AssetManager::GetManager() {
@@ -86,6 +81,10 @@ inline ComponentManager<Texture>& AssetManager::GetManager() {
   return textureManager;
 }
 template <>
+inline ComponentManager<Shader>& AssetManager::GetManager() {
+  return shaderManager;
+}
+template <>
 inline ComponentMask AssetManager::GetComponentMask<Transform>() const {
   return TransformMask;
 }
@@ -96,4 +95,8 @@ inline ComponentMask AssetManager::GetComponentMask<Mesh>() const {
 template <>
 inline ComponentMask AssetManager::GetComponentMask<Texture>() const {
   return TextureMask;
+}
+template <>
+inline ComponentMask AssetManager::GetComponentMask<Shader>() const {
+  return ShaderMask;
 }

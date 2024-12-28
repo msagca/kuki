@@ -11,7 +11,8 @@ enum ComponentID {
   CameraID,
   LightID,
   MeshID,
-  TextureID
+  TextureID,
+  ShaderID
 };
 enum ComponentMask {
   TransformMask = 1 << TransformID,
@@ -20,7 +21,8 @@ enum ComponentMask {
   CameraMask = 1 << CameraID,
   LightMask = 1 << LightID,
   MeshMask = 1 << MeshID,
-  TextureMask = 1 << TextureID
+  TextureMask = 1 << TextureID,
+  ShaderMask = 1 << ShaderID
 };
 enum class LightType {
   Directional,
@@ -225,23 +227,35 @@ struct Material : IComponent {
         shininess = std::get<float>(property.value);
   }
 };
+struct Shader : IComponent {
+  unsigned int id = 0;
+  std::string GetName() const override {
+    return "Shader";
+  }
+  std::vector<Property> GetProperties() const override {
+    // TODO: the editor should display a friendly name instead of a shader ID; also, a preview of the shader would be nice
+    return {{"ID", id}};
+  }
+  void SetProperty(Property property) override {
+    if (std::holds_alternative<unsigned int>(property.value))
+      if (property.name == "ID")
+        id = std::get<unsigned int>(property.value);
+  }
+};
 struct MeshRenderer : IComponent {
-  unsigned int shader = 0;
+  Shader shader;
   Material material;
   std::string GetName() const override {
     return "MeshRenderer";
   }
   std::vector<Property> GetProperties() const override {
-    // TODO: the editor should display a friendly name instead of a shader ID; also, a preview of the shader would be nice
-    std::vector<Property> properties = {{"ShaderID", shader}};
+    auto properties = shader.GetProperties();
     auto materialProperties = material.GetProperties();
     properties.insert(properties.end(), materialProperties.begin(), materialProperties.end());
     return properties;
   }
   void SetProperty(Property property) override {
-    if (std::holds_alternative<unsigned int>(property.value))
-      if (property.name == "ShaderID")
-        shader = std::get<unsigned int>(property.value);
+    shader.SetProperty(property);
     material.SetProperty(property);
   }
 };

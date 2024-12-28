@@ -18,14 +18,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
       - name: Linux Prerequisites
         if: runner.os == 'Linux'
-        run: sudo apt install -y build-essential ninja-build cmake libwayland-dev libxkbcommon-dev xorg-dev
+        run: |
+          sudo apt install -y build-essential ninja-build cmake libwayland-dev libxkbcommon-dev xorg-dev
       - name: Windows Prerequisites
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+      - name: Cache CMake
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-
       - name: Configure
-        run: cmake -DCMAKE_CXX_FLAGS="-fpermissive" .
+        run: |
+          cmake -DCMAKE_CXX_FLAGS="-fpermissive" -B build .
       - name: Build
-        run: cmake --build .
+        run: |
+          cmake --build build
