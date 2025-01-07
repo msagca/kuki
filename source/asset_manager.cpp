@@ -1,14 +1,11 @@
-#include <glm/common.hpp>
 #include <asset_manager.hpp>
 #include <chrono>
 #include <component_types.hpp>
-#include <glad/glad.h>
-#include <glm/ext/vector_float3.hpp>
-#include <primitive.hpp>
 #include <string>
+#include <vector>
 unsigned int AssetManager::Create(std::string name) {
   if (name.size() > 0) {
-    auto assetName = name;
+    auto& assetName = name;
     if (nameToID.find(name) != nameToID.end())
       assetName = GenerateName(name);
     idToName[nextID] = assetName;
@@ -16,6 +13,7 @@ unsigned int AssetManager::Create(std::string name) {
     idToName[nextID] = GenerateName("Asset#");
   nameToID[idToName[nextID]] = nextID;
   idToMask[nextID] = 0;
+  idToChildren.insert({nextID, {}});
   return nextID++;
 }
 std::string AssetManager::GenerateName(const std::string& name) {
@@ -30,6 +28,7 @@ void AssetManager::Remove(unsigned int id) {
   idToMask.erase(id);
   nameToID.erase(idToName[id]);
   idToName.erase(id);
+  idToChildren.erase(id);
 }
 bool AssetManager::Rename(unsigned int id, std::string name) {
   if (idToName.find(id) == idToName.end() || name.size() == 0 || nameToID.find(name) != nameToID.end())
@@ -46,16 +45,45 @@ const std::string& AssetManager::GetName(unsigned int id) {
     return it->second;
   return emptyString;
 }
+int AssetManager::GetID(const std::string& name) {
+  auto it = nameToID.find(name);
+  if (it != nameToID.end())
+    return it->second;
+  return -1;
+}
+void AssetManager::AddChild(unsigned int parent, unsigned int child) {
+  auto it = idToChildren.find(parent);
+  if (it == idToChildren.end())
+    return;
+  it->second.insert(child);
+}
+void AssetManager::RemoveChild(unsigned int parent, unsigned int child) {
+  auto it = idToChildren.find(parent);
+  if (it == idToChildren.end())
+    return;
+  it->second.erase(child);
+}
 void AssetManager::RemoveAllComponents(unsigned int id) {
   if (idToMask.find(id) == idToMask.end())
     return;
   transformManager.Remove(id);
   meshManager.Remove(id);
-  textureManager.Remove(id);
+  materialManager.Remove(id);
+  shaderManager.Remove(id);
   idToMask[id] = 0;
+}
+std::vector<IComponent*> AssetManager::GetAllComponents(unsigned int id) {
+  std::vector<IComponent*> components;
+  if (HasComponent<Transform>(id))
+    components.emplace_back(GetComponent<Transform>(id));
+  if (HasComponent<Mesh>(id))
+    components.emplace_back(GetComponent<Mesh>(id));
+  if (HasComponent<Material>(id))
+    components.emplace_back(GetComponent<Material>(id));
+  return components;
 }
 void AssetManager::CleanUp() {
   meshManager.CleanUp();
-  textureManager.CleanUp();
+  materialManager.CleanUp();
   shaderManager.CleanUp();
 }

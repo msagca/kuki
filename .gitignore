@@ -18,6 +18,7 @@
 !source/**/*.cpp
 !source/image/**/*.jpg
 !source/image/**/*.png
+!source/model/**/*.fbx
 !source/shader/**/*.frag
 !source/shader/**/*.glsl
 !source/shader/**/*.vert

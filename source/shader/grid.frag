@@ -1,8 +1,8 @@
 #version 330
-in vec3 worldPos;
+in vec3 pos;
+in float scale;
 layout(location = 0) out vec4 color;
 uniform vec3 cameraPos;
-uniform float gridSize = 100.0;
 uniform float minPixelsBetweenCells = 2.0;
 uniform float cellSize = 0.025;
 uniform vec4 colorThin = vec4(0.5, 0.5, 0.5, 1.0);
@@ -24,8 +24,8 @@ float max2(vec2 v) {
     return f;
 }
 void main() {
-    vec2 dvx = vec2(dFdx(worldPos.x), dFdy(worldPos.x));
-    vec2 dvy = vec2(dFdx(worldPos.z), dFdy(worldPos.z));
+    vec2 dvx = vec2(dFdx(pos.x), dFdy(pos.x));
+    vec2 dvy = vec2(dFdx(pos.z), dFdy(pos.z));
     float lx = length(dvx);
     float ly = length(dvy);
     vec2 dudv = vec2(lx, ly);
@@ -34,12 +34,12 @@ void main() {
     float cellSizeLOD0 = cellSize * pow(10.0, floor(lod));
     float cellSizeLOD1 = cellSizeLOD0 * 10.0;
     float cellSizeLOD2 = cellSizeLOD1 * 10.0;
-    dudv *= 4.0;
-    vec2 modDivDuDv = mod(worldPos.xz, cellSizeLOD0) / dudv;
+    dudv *= 1.0;
+    vec2 modDivDuDv = mod(pos.xz, cellSizeLOD0) / dudv;
     float lod0a = max2(vec2(1.0) - abs(satv(modDivDuDv) * 2.0 - vec2(1.0)));
-    modDivDuDv = mod(worldPos.xz, cellSizeLOD1) / dudv;
+    modDivDuDv = mod(pos.xz, cellSizeLOD1) / dudv;
     float lod1a = max2(vec2(1.0) - abs(satv(modDivDuDv) * 2.0 - vec2(1.0)));
-    modDivDuDv = mod(worldPos.xz, cellSizeLOD2) / dudv;
+    modDivDuDv = mod(pos.xz, cellSizeLOD2) / dudv;
     float lod2a = max2(vec2(1.0) - abs(satv(modDivDuDv) * 2.0 - vec2(1.0)));
     float lodFade = fract(lod);
     vec4 colorTemp;
@@ -53,7 +53,7 @@ void main() {
         colorTemp = colorThin;
         colorTemp.a *= (lod0a * (1.0 - lodFade));
     }
-    float opacityFalloff = (1.0 - satf(length(worldPos.xz - cameraPos.xz) / gridSize));
+    float opacityFalloff = (1.0 - satf(length(pos.xz - cameraPos.xz) / scale));
     colorTemp.a *= opacityFalloff;
     color = colorTemp;
 }

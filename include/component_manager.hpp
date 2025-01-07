@@ -1,6 +1,7 @@
 #pragma once
 #include <component_types.hpp>
 #include <glad/glad.h>
+#include <iostream>
 #include <unordered_map>
 #include <vector>
 template <typename T>
@@ -9,27 +10,43 @@ private:
   std::vector<T> components;
   std::unordered_map<unsigned int, unsigned int> entityToComponent;
   std::vector<unsigned int> componentToEntity;
+  unsigned int inactiveCount = 0;
+  // TODO: shrink the array if inactive count gets too high to reclaim some memory
+  template <typename F>
+  void ForAll(F);
 public:
+  unsigned int ActiveCount();
+  unsigned int InactiveCount();
   T& Add(unsigned int);
   void Remove(unsigned int);
   bool Has(unsigned int);
-  T& Get(unsigned int);
-  T* GetPtr(unsigned int);
-  T& GetDefault();
-  T* GetDefaultPtr();
+  T* Get(unsigned int);
   T* GetFirst();
   template <typename F>
   void ForEach(F);
   void CleanUp();
 };
 template <typename T>
+unsigned int ComponentManager<T>::ActiveCount() {
+  return components.size() - inactiveCount;
+}
+template <typename T>
+unsigned int ComponentManager<T>::InactiveCount() {
+  return inactiveCount;
+}
+template <typename T>
 T& ComponentManager<T>::Add(unsigned int id) {
-  if (entityToComponent.find(id) != entityToComponent.end())
-    return components[entityToComponent[id]];
-  T component{};
+  auto it = entityToComponent.find(id);
+  if (it != entityToComponent.end())
+    return components[it->second];
   auto componentID = components.size();
-  components.push_back(component);
-  entityToComponent[id] = componentID;
+  if (inactiveCount > 0) {
+    componentID = ActiveCount();
+    std::cout << "Reusing ID " << componentID << std::endl;
+    inactiveCount--;
+  } else
+    components.emplace_back();
+  entityToComponent.insert({id, componentID});
   componentToEntity.push_back(id);
   return components[componentID];
 }
@@ -43,70 +60,61 @@ void ComponentManager<T>::Remove(unsigned int id) {
   if (componentID != lastID) {
     std::swap(components[componentID], components[lastID]);
     std::swap(componentToEntity[componentID], componentToEntity[lastID]);
-    entityToComponent[componentToEntity[componentID]] = componentID;
+    entityToComponent.insert({componentToEntity[componentID], componentID});
   }
   entityToComponent.erase(id);
   componentToEntity.pop_back();
-  components.pop_back();
-  // TODO: for some component types, relevant OpenGL buffers should be deleted (if no other component references them)
+  inactiveCount++;
+  // TODO: delete unreferenced OpenGL buffers
 }
 template <typename T>
 bool ComponentManager<T>::Has(unsigned int id) {
   return entityToComponent.find(id) != entityToComponent.end();
 }
 template <typename T>
-T& ComponentManager<T>::Get(unsigned int id) {
+T* ComponentManager<T>::Get(unsigned int id) {
   auto it = entityToComponent.find(id);
   if (it == entityToComponent.end())
-    return GetDefault();
-  return components[it->second];
-}
-template <typename T>
-T* ComponentManager<T>::GetPtr(unsigned int id) {
-  auto it = entityToComponent.find(id);
-  if (it == entityToComponent.end())
-    return GetDefaultPtr();
+    return nullptr;
   return &components[it->second];
 }
 template <typename T>
-T& ComponentManager<T>::GetDefault() {
-  // FIXME: this should not be modified by the caller
-  static T defaultValue{};
-  return defaultValue;
-}
-template <typename T>
-T* ComponentManager<T>::GetDefaultPtr() {
-  return &GetDefault();
-}
-template <typename T>
 T* ComponentManager<T>::GetFirst() {
-  return components.empty() ? nullptr : &components.front();
+  return ActiveCount() > 0 ? &components.front() : nullptr;
 }
 template <typename T>
 template <typename F>
 void ComponentManager<T>::ForEach(F func) {
+  for (auto i = 0; i < ActiveCount(); i++)
+    func(components[i]);
+}
+template <typename T>
+template <typename F>
+void ComponentManager<T>::ForAll(F func) {
   for (const auto& c : components)
     func(c);
 }
 template <>
 inline void ComponentManager<Mesh>::CleanUp() {
-  ForEach([](const Mesh& mesh) {
+  ForAll([](const Mesh& mesh) {
     glDeleteBuffers(1, &mesh.vertexBuffer);
     glDeleteBuffers(1, &mesh.indexBuffer);
     glDeleteVertexArrays(1, &mesh.vertexArray);
   });
 }
 template <>
-inline void ComponentManager<Texture>::CleanUp() {
-  ForEach([](const Texture& texture) {
-    glBindTexture(GL_TEXTURE_2D, texture.id);
-    glDeleteTextures(1, &texture.id);
+inline void ComponentManager<Material>::CleanUp() {
+  ForAll([](const Material& material) {
+    glBindTexture(GL_TEXTURE_2D, material.diffuseMap.id);
+    glDeleteTextures(1, &material.diffuseMap.id);
+    glBindTexture(GL_TEXTURE_2D, material.specularMap.id);
+    glDeleteTextures(1, &material.specularMap.id);
     glBindTexture(GL_TEXTURE_2D, 0);
   });
 }
 template <>
 inline void ComponentManager<Shader>::CleanUp() {
-  ForEach([](const Shader& shader) {
+  ForAll([](const Shader& shader) {
     glDeleteProgram(shader.id);
   });
 }

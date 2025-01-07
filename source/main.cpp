@@ -1,3 +1,4 @@
+#define STB_IMAGE_IMPLEMENTATION
 #include <asset_loader.hpp>
 #include <asset_manager.hpp>
 #include <camera_controller.hpp>
@@ -12,11 +13,13 @@
 #include <imgui_impl_opengl3.h>
 #include <input_manager.hpp>
 #include <iostream>
+#include <ostream>
+#include <render_system.hpp>
 #include <stb_image.h>
-#include <system.hpp>
 static const auto WINDOW_HEIGHT = 600u;
 static const auto WINDOW_WIDTH = 800u;
 static const auto CAMERA_POSITION = glm::vec3(.0f, .0f, 3.0f);
+static const auto LIGHT_POSITION = glm::vec3(-2.0f, 1.0f, -3.0f);
 static const auto INACTIVITY_TIMEOUT = 3.0f;
 static const auto FPS_UPDATE_INTERVAL = .1;
 double deltaTime = .0;
@@ -48,23 +51,25 @@ int main() {
   glCullFace(GL_BACK);
   glFrontFace(GL_CCW);
   // initialize ECS
-  EntityManager entityManager;
   AssetManager assetManager;
   AssetLoader assetLoader(assetManager);
+  EntityManager entityManager(assetManager);
   RenderSystem renderSystem(entityManager, assetManager, assetLoader);
   // populate the scene
   auto cameraID = entityManager.Create("MainCamera");
-  auto& camera = entityManager.AddComponent<Camera>(cameraID);
-  auto cameraController = CameraController(camera, inputManager);
+  auto camera = entityManager.AddComponent<Camera>(cameraID);
+  auto cameraController = CameraController(*camera, inputManager);
   cameraController.SetPosition(CAMERA_POSITION);
   cameraControllerPtr = &cameraController;
-  renderSystem.SetCamera(&camera);
+  renderSystem.SetCamera(camera);
   auto lightID = entityManager.Create("MainLight");
   entityManager.AddComponent<Light>(lightID);
   lightID = entityManager.Create("PointLight");
-  auto& light = entityManager.AddComponent<Light>(lightID);
-  light.type = LightType::Point;
-  light.vector = glm::vec3(-.2f, 1.0f, -.3f);
+  auto light = entityManager.AddComponent<Light>(lightID);
+  light->type = LightType::Point;
+  light->vector = LIGHT_POSITION;
+  assetLoader.LoadModel("Backpack", "model/Survival_BackPack_2.fbx");
+  entityManager.Spawn("Backpack");
   glfwMaximizeWindow(window);
   // register callbacks
   inputManager.RegisterCallback(GLFW_KEY_F, GLFW_PRESS, []() { showFPS = !showFPS; });
@@ -95,7 +100,7 @@ int main() {
     if (showHierarchyWindow)
       ShowHierarchyWindow(entityManager, inputManager);
     if (showCreateMenu)
-      ShowCreateMenu(entityManager, assetManager, assetLoader);
+      ShowCreateMenu(entityManager);
     if (inputManager.GetInactivityTime() > INACTIVITY_TIMEOUT)
       ShowHints();
     ImGui::Render();

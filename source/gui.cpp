@@ -1,17 +1,17 @@
-#include <asset_manager.hpp>
 #include <component_types.hpp>
 #include <cstring>
 #include <entity_manager.hpp>
+#include <functional>
 #include <glm/ext/vector_float3.hpp>
-#include <glm/gtc/type_ptr.inl>
+#include <glm/gtc/type_ptr.hpp>
 #include <gui.hpp>
 #include <imgui.h>
 #include <input_manager.hpp>
 #include <primitive.hpp>
 #include <string>
 #include <variant>
-#include <vector>
 static const auto IMGUI_NON_INTERACTABLE_FLAGS = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize;
+static const auto IMGUI_WINDOW_FLAGS = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
 static const auto IMGUI_DEFAULT_WINDOW_WIDTH = 400;
 void ShowHints() {
   auto displaySize = ImGui::GetIO().DisplaySize;
@@ -34,28 +34,12 @@ void ShowFPS(unsigned int fps) {
   ImGui::Text("%u", fps);
   ImGui::End();
 }
-void ShowCreateMenu(EntityManager& entityManager, AssetManager& assetManager, AssetLoader& assetLoader) {
+void ShowCreateMenu(EntityManager& entityManager) {
   static const char* primitives[] = {"Cube", "Sphere", "Cylinder"};
   static auto primID = -1;
   ImGui::Begin("Create");
   if (ImGui::ListBox("Primitives", &primID, primitives, IM_ARRAYSIZE(primitives))) {
-    auto entityID = entityManager.Create(primitives[primID]);
-    std::vector<Vertex> vertices;
-    switch (primID) {
-    case 0:
-      vertices = Primitive::Cube();
-      break;
-    case 1:
-      vertices = Primitive::Sphere();
-      break;
-    default:
-      vertices = Primitive::Cylinder();
-    }
-    entityManager.AddComponent<Transform>(entityID);
-    entityManager.AddComponent<MeshRenderer>(entityID);
-    auto& filter = entityManager.AddComponent<MeshFilter>(entityID);
-    auto meshID = assetLoader.LoadMesh(primitives[primID], vertices);
-    filter.mesh = assetManager.GetComponent<Mesh>(meshID);
+    entityManager.Spawn(primitives[primID]);
     primID = -1;
   }
   ImGui::End();
@@ -65,7 +49,7 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
   ImVec2 windowSize(IMGUI_DEFAULT_WINDOW_WIDTH, ImGui::GetIO().DisplaySize.y);
   ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
   ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
-  ImGui::Begin("Properties");
+  ImGui::Begin("Properties", nullptr, IMGUI_WINDOW_FLAGS);
   static IComponent* componentID = nullptr;
   auto components = entityManager.GetAllComponents(selectedEntity);
   for (const auto& component : components) {
@@ -111,6 +95,14 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
           valueEnum = static_cast<LightType>(currentItem);
           component->SetProperty(Property(prop.name, valueEnum));
         }
+      } else if (std::holds_alternative<TextureType>(value)) {
+        auto valueEnum = std::get<TextureType>(value);
+        static const char* items[] = {"DiffuseMap", "NormalMap", "SpecularMap", "HeightMap", "RoughnessMap", "MetalnessMap"};
+        auto currentItem = static_cast<int>(valueEnum);
+        if (ImGui::Combo(prop.name.c_str(), &currentItem, items, IM_ARRAYSIZE(items))) {
+          valueEnum = static_cast<TextureType>(currentItem);
+          component->SetProperty(Property(prop.name, valueEnum));
+        }
       }
     }
     ImGui::Separator();
@@ -126,42 +118,56 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
       entityManager.AddComponent(selectedEntity, comp);
   ImGui::End();
 }
+static void ShowEntityHierarchy(EntityManager& entityManager, unsigned int parentID, int& entityID) {
+  entityManager.ForAll([&](unsigned int id) {
+    if (entityManager.GetParent(id) == parentID) {
+      ImGuiTreeNodeFlags nodeFlags = (id == entityID ? ImGuiTreeNodeFlags_Selected : 0) | ImGuiTreeNodeFlags_OpenOnArrow;
+      bool nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, entityManager.GetName(id).c_str());
+      if (ImGui::IsItemClicked()) {
+        entityID = id;
+        ShowProperties(entityManager, entityID);
+      }
+      if (nodeOpen) {
+        ShowEntityHierarchy(entityManager, id, entityID);
+        ImGui::TreePop();
+      }
+    }
+  });
+}
 void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManager) {
   ImVec2 windowPos(0, 0);
   ImVec2 windowSize(IMGUI_DEFAULT_WINDOW_WIDTH, ImGui::GetIO().DisplaySize.y);
   ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
   ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
   static auto entityID = -1;
-  static auto entityIDLast = -1;
   static auto renameMode = false;
   static char newName[256] = "";
-  ImGui::Begin("Hierarchy");
+  ImGui::Begin("Hierarchy", nullptr, IMGUI_WINDOW_FLAGS);
   entityManager.ForAll([&](unsigned int id) {
-    if (ImGui::Selectable(entityManager.GetName(id).c_str(), id == entityID)) {
-      entityID = id;
-      ShowProperties(entityManager, entityID);
-      entityIDLast = entityID;
+    if (!entityManager.HasParent(id)) {
+      if (ImGui::Selectable(entityManager.GetName(id).c_str(), id == entityID)) {
+        entityID = id;
+        ShowProperties(entityManager, entityID);
+      }
+      ShowEntityHierarchy(entityManager, id, entityID);
     }
   });
-  auto windowHeight = ImGui::GetWindowHeight();
-  auto buttonHeight = ImGui::GetFrameHeight();
-  auto padding = ImGui::GetStyle().WindowPadding.y;
-  ImGui::SetCursorPosY(windowHeight - buttonHeight - padding);
-  if (ImGui::Button("New")) {
-    entityManager.Create();
-    entityID = -1;
-  }
-  if (entityID != -1) {
-    ImGui::SameLine();
-    if (ImGui::Button("Remove")) {
-      entityManager.Remove(entityID);
+  if (ImGui::BeginPopupContextWindow()) {
+    if (ImGui::MenuItem("New")) {
+      entityManager.Create();
       entityID = -1;
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Rename")) {
-      renameMode = true;
-      strcpy(newName, entityManager.GetName(entityID).c_str());
+    if (entityID != -1) {
+      if (ImGui::MenuItem("Remove")) {
+        entityManager.Remove(entityID);
+        entityID = -1;
+      }
+      if (ImGui::MenuItem("Rename")) {
+        renameMode = true;
+        strcpy(newName, entityManager.GetName(entityID).c_str());
+      }
     }
+    ImGui::EndPopup();
   }
   ImGui::End();
   if (renameMode) {

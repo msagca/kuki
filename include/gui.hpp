@@ -1,6 +1,4 @@
 #pragma once
-#include <asset_loader.hpp>
-#include <asset_manager.hpp>
 #include <entity_manager.hpp>
 #include <functional>
 #include <input_manager.hpp>
@@ -21,5 +19,5 @@ static const std::vector<Hint> hints = {
   {"Press [F] to display the FPS counter.", []() { return !showFPS; }}};
 void ShowHints();
 void ShowFPS(unsigned int);
-void ShowCreateMenu(EntityManager&, AssetManager&, AssetLoader&);
+void ShowCreateMenu(EntityManager&);
 void ShowHierarchyWindow(EntityManager&, InputManager&);

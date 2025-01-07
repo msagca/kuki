@@ -9,6 +9,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/glm)
 set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
 set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF)
+set(ASSIMP_BUILD_FBX_IMPORTER ON)
 set(ASSIMP_BUILD_ASSIMP_VIEW OFF)
 set(ASSIMP_BUILD_TESTS OFF)
 set(ASSIMP_INJECT_DEBUG_POSTFIX OFF)
@@ -79,4 +80,25 @@ if(IMAGE_COUNT GREATER 0)
   )
   add_dependencies(${PROJECT_NAME} CopyImages)
   install(DIRECTORY ${IMAGE_FOLDER} DESTINATION ${INSTALL_DIR})
+endif()
+# models
+file(GLOB_RECURSE FBX_SOURCES "${CMAKE_SOURCE_DIR}/source/model/*.fbx")
+file(GLOB_RECURSE OBJ_SOURCES "${CMAKE_SOURCE_DIR}/source/model/*.obj")
+set(MODEL_SOURCES ${FBX_SOURCES} ${OBJ_SOURCES})
+foreach(FILE ${MODEL_SOURCES})
+  cmake_path(APPEND FULL_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${FILE})
+  list(APPEND MODEL_FILES ${FULL_PATH})
+endforeach()
+list(LENGTH MODEL_FILES MODEL_COUNT)
+if(MODEL_COUNT GREATER 0)
+  set(MODEL_FOLDER ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/model)
+  add_custom_target(CreateModelFolder COMMAND ${CMAKE_COMMAND} -E make_directory ${MODEL_FOLDER})
+  add_custom_target(
+    CopyModels
+    ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MODEL_FILES} ${MODEL_FOLDER}
+    DEPENDS ${MODEL_FILES} CreateModelFolder
+  )
+  add_dependencies(${PROJECT_NAME} CopyModels)
+  install(DIRECTORY ${MODEL_FOLDER} DESTINATION ${INSTALL_DIR})
 endif()

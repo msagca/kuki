@@ -2,6 +2,7 @@
 #define MAX_POINT_LIGHTS 8
 in vec3 position;
 in vec3 normal;
+in vec2 texCoord;
 out vec4 color;
 struct Material {
     vec3 diffuse;
@@ -57,7 +58,7 @@ void main() {
     vec3 finalColor;
     if (hasDirectionalLight)
         finalColor += CalculateDirectionalLight(directionalLight, material, normalDir, viewDir);
-    for (int i = 0; i < numPointLights; i++)
+    for (int i = 0; i < numPointLights; ++i)
         finalColor += CalculatePointLight(pointLights[i], material, normalDir, viewDir, position);
     color = vec4(finalColor, 1.0);
 }

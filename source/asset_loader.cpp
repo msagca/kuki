@@ -1,45 +1,164 @@
 #include <asset_loader.hpp>
 #include <asset_manager.hpp>
 #include <assimp/Importer.hpp>
+#include <assimp/material.h>
+#include <assimp/matrix4x4.h>
+#include <assimp/mesh.h>
 #include <assimp/postprocess.h>
+#include <assimp/scene.h>
+#include <assimp/types.h>
+#include <component_types.hpp>
+#include <cstddef>
+#include <fstream>
+#include <glad/glad.h>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <iosfwd>
 #include <iostream>
+#include <limits>
 #include <ostream>
-#define STB_IMAGE_IMPLEMENTATION
+#include <primitive.hpp>
+#include <sstream>
 #include <stb_image.h>
 #include <string>
-#include <component_types.hpp>
-#include <glad/glad.h>
-#include <fstream>
-#include <sstream>
+#include <vector>
 AssetLoader::AssetLoader(AssetManager& assetManager)
-  : assetManager(assetManager) {}
-unsigned int AssetLoader::LoadModel(const std::string& name, const std::string& path) {
-  Assimp::Importer importer;
-  const auto scene = importer.ReadFile(path, aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
-  if (!scene) {
-    std::cerr << "Assimp: " << importer.GetErrorString() << std::endl;
-    return 0;
+  : assetManager(assetManager) {
+  auto id = LoadMesh("Cube", Primitive::Cube());
+  assetManager.AddComponent<Transform>(id);
+  assetManager.AddComponent<Material>(id);
+  id = LoadMesh("Sphere", Primitive::Sphere());
+  assetManager.AddComponent<Transform>(id);
+  assetManager.AddComponent<Material>(id);
+  id = LoadMesh("Cylinder", Primitive::Cylinder());
+  assetManager.AddComponent<Transform>(id);
+  assetManager.AddComponent<Material>(id);
+}
+static Texture CreateTexture(const std::string& path, TextureType type) {
+  Texture texture;
+  int width, height, nrComponents;
+  auto data = stbi_load(path.c_str(), &width, &height, &nrComponents, 0);
+  if (data) {
+    GLenum format = 0;
+    if (nrComponents == 1)
+      format = GL_RED;
+    else if (nrComponents == 3)
+      format = GL_RGB;
+    else if (nrComponents == 4)
+      format = GL_RGBA;
+    unsigned int id;
+    glGenTextures(1, &id);
+    glBindTexture(GL_TEXTURE_2D, id);
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    stbi_image_free(data);
+    texture.id = id;
+    texture.width = width;
+    texture.height = height;
+    texture.type = type;
+  } else
+    std::cerr << "Failed to load the texture at " << path << "." << std::endl;
+  return texture;
+}
+static Material CreateMaterial(aiMaterial* material) {
+  Material mat;
+  for (auto i = 0; i < material->GetTextureCount(aiTextureType_DIFFUSE); ++i) {
+    aiString path;
+    material->GetTexture(aiTextureType_DIFFUSE, i, &path);
+    mat.diffuseMap = CreateTexture(path.C_Str(), TextureType::DiffuseMap);
   }
-  auto assetID = assetManager.Create(name);
+  for (auto i = 0; i < material->GetTextureCount(aiTextureType_SPECULAR); ++i) {
+    aiString path;
+    material->GetTexture(aiTextureType_SPECULAR, i, &path);
+    mat.specularMap = CreateTexture(path.C_Str(), TextureType::SpecularMap);
+  }
+  return mat;
+}
+static Mesh CreateMesh(const std::vector<Vertex>&, const std::vector<unsigned int>&);
+static Mesh CreateMesh(aiMesh* mesh) {
+  std::vector<Vertex> vertices;
+  std::vector<unsigned int> indices;
+  for (auto i = 0; i < mesh->mNumVertices; ++i) {
+    Vertex vertex{};
+    glm::vec3 vector{};
+    vector.x = mesh->mVertices[i].x;
+    vector.y = mesh->mVertices[i].y;
+    vector.z = mesh->mVertices[i].z;
+    vertex.position = vector;
+    vector.x = mesh->mNormals[i].x;
+    vector.y = mesh->mNormals[i].y;
+    vector.z = mesh->mNormals[i].z;
+    vertex.normal = vector;
+    if (mesh->mTextureCoords[0]) {
+      glm::vec2 texCoord{};
+      texCoord.x = mesh->mTextureCoords[0][i].x;
+      texCoord.y = mesh->mTextureCoords[0][i].y;
+      vertex.texture = texCoord;
+    } else
+      vertex.texture = glm::vec2(.0f);
+  }
+  for (auto i = 0; i < mesh->mNumFaces; ++i) {
+    auto& face = mesh->mFaces[i];
+    for (auto j = 0; j < face.mNumIndices; ++j)
+      indices.push_back(face.mIndices[j]);
+  }
+  return CreateMesh(vertices, indices);
+}
+static glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4&);
+static void DecomposeMatrix(const glm::mat4&, glm::vec3&, glm::vec3&, glm::vec3&);
+unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, Transform* parent) {
+  auto assetID = assetManager.Create(node->mName.C_Str());
+  auto transform = assetManager.AddComponent<Transform>(assetID);
+  transform->parent = parent;
+  DecomposeMatrix(AssimpMatrix4x4ToGlmMat4(node->mTransformation), transform->position, transform->scale, transform->rotation);
+  for (auto i = 0; i < node->mNumMeshes; ++i) {
+    auto mesh = scene->mMeshes[node->mMeshes[i]];
+    auto meshComp = assetManager.AddComponent<Mesh>(assetID);
+    *meshComp = CreateMesh(mesh);
+    if (mesh->mMaterialIndex >= 0) {
+      auto material = scene->mMaterials[mesh->mMaterialIndex];
+      auto materialComp = assetManager.AddComponent<Material>(assetID);
+      *materialComp = CreateMaterial(material);
+    }
+  }
+  for (auto i = 0; i < node->mNumChildren; ++i) {
+    auto childID = LoadNode(node->mChildren[i], scene, transform);
+    assetManager.AddChild(assetID, childID);
+  }
   return assetID;
 }
-static const char* ReadShader(const std::string& filename) {
+int AssetLoader::LoadModel(const std::string& name, const std::string& path) {
+  Assimp::Importer importer;
+  const auto scene = importer.ReadFile(path, aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
+  if (!scene || !scene->mRootNode) {
+    std::cerr << "Assimp: " << importer.GetErrorString() << std::endl;
+    return -1;
+  }
+  auto assetID = assetManager.Create(name);
+  auto childID = LoadNode(scene->mRootNode, scene);
+  assetManager.AddChild(assetID, childID);
+  return assetID;
+}
+static std::string ReadShader(const std::string& filename) {
   std::ifstream shaderFile(filename);
   if (!shaderFile) {
     std::cerr << "Could not open the file: " << filename << "." << std::endl;
-    return nullptr;
+    return "";
   }
   std::stringstream shaderStream;
   shaderStream << shaderFile.rdbuf();
   if (shaderFile.fail()) {
     std::cerr << "Failed to read the file: " << filename << "." << std::endl;
-    return nullptr;
+    return "";
   }
   shaderFile.close();
-  auto shaderStr = shaderStream.str();
-  char* shaderCStr = new char[shaderStr.size() + 1];
-  strcpy(shaderCStr, shaderStr.c_str());
-  return shaderCStr;
+  return shaderStream.str();
 }
 static void CompileShader(GLuint& shaderID, const char* shaderText, int shaderType) {
   shaderID = glCreateShader(shaderType);
@@ -50,16 +169,14 @@ static void CompileShader(GLuint& shaderID, const char* shaderText, int shaderTy
   if (!success)
     std::cerr << "Failed to compile shader." << std::endl;
 }
-unsigned int AssetLoader::LoadShader(const std::string& name, const std::string& vertPath, const std::string& fragPath) {
+int AssetLoader::LoadShader(const std::string& name, const std::string& vertPath, const std::string& fragPath) {
   auto vertText = ReadShader(vertPath);
   auto fragText = ReadShader(fragPath);
-  if (!vertText || !fragText)
-    return 0;
+  if (vertText == "" || fragText == "")
+    return -1;
   GLuint vertID, fragID;
-  CompileShader(vertID, vertText, GL_VERTEX_SHADER);
-  CompileShader(fragID, fragText, GL_FRAGMENT_SHADER);
-  delete[] vertText;
-  delete[] fragText;
+  CompileShader(vertID, vertText.c_str(), GL_VERTEX_SHADER);
+  CompileShader(fragID, fragText.c_str(), GL_FRAGMENT_SHADER);
   auto id = glCreateProgram();
   glAttachShader(id, vertID);
   glAttachShader(id, fragID);
@@ -70,42 +187,11 @@ unsigned int AssetLoader::LoadShader(const std::string& name, const std::string&
   glDeleteShader(fragID);
   if (!success) {
     std::cerr << "Failed to link shader program." << std::endl;
-    return 0;
+    return -1;
   }
   auto assetID = assetManager.Create(name);
-  auto& shader = assetManager.AddComponent<Shader>(assetID);
-  shader.id = id;
-  return assetID;
-}
-unsigned int AssetLoader::LoadTexture(const std::string& name, const std::string& path) {
-  int width, height, nrComponents;
-  auto data = stbi_load(path.c_str(), &width, &height, &nrComponents, 0);
-  if (!data) {
-    std::cerr << "Failed to load the texture at " << path << "." << std::endl;
-    return 0;
-  }
-  GLenum format = 0;
-  if (nrComponents == 1)
-    format = GL_RED;
-  else if (nrComponents == 3)
-    format = GL_RGB;
-  else if (nrComponents == 4)
-    format = GL_RGBA;
-  unsigned int id;
-  glGenTextures(1, &id);
-  glBindTexture(GL_TEXTURE_2D, id);
-  glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-  glGenerateMipmap(GL_TEXTURE_2D);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  stbi_image_free(data);
-  auto assetID = assetManager.Create(name);
-  auto& texture = assetManager.AddComponent<Texture>(assetID);
-  texture.id = id;
-  texture.width = width;
-  texture.height = height;
+  auto shader = assetManager.AddComponent<Shader>(assetID);
+  shader->id = id;
   return assetID;
 }
 static Mesh CreateVertexBuffer(const std::vector<Vertex>& vertices) {
@@ -120,6 +206,8 @@ static Mesh CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal));
   glEnableVertexAttribArray(1);
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, texture));
+  glEnableVertexAttribArray(2);
   return mesh;
 }
 static void CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>& indices) {
@@ -150,13 +238,38 @@ static BoundingBox CalculateBoundingBox(const std::vector<Vertex>& vertices) {
 }
 unsigned int AssetLoader::LoadMesh(const std::string& name, const std::vector<Vertex>& vertices) {
   auto assetID = assetManager.Create(name);
-  auto& mesh = assetManager.AddComponent<Mesh>(assetID);
-  mesh = CreateMesh(vertices);
+  auto mesh = assetManager.AddComponent<Mesh>(assetID);
+  *mesh = CreateMesh(vertices);
   return assetID;
 }
 unsigned int AssetLoader::LoadMesh(const std::string& name, const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices) {
   auto assetID = assetManager.Create(name);
-  auto& mesh = assetManager.AddComponent<Mesh>(assetID);
-  mesh = CreateMesh(vertices, indices);
+  auto mesh = assetManager.AddComponent<Mesh>(assetID);
+  *mesh = CreateMesh(vertices, indices);
   return assetID;
+}
+static void DecomposeMatrix(const glm::mat4& matrix, glm::vec3& position, glm::vec3& scale, glm::vec3& rotation) {
+  position = glm::vec3(matrix[3][0], matrix[3][1], matrix[3][2]);
+  glm::vec3 xBasis(matrix[0][0], matrix[0][1], matrix[0][2]);
+  glm::vec3 yBasis(matrix[1][0], matrix[1][1], matrix[1][2]);
+  glm::vec3 zBasis(matrix[2][0], matrix[2][1], matrix[2][2]);
+  scale.x = glm::length(xBasis);
+  scale.y = glm::length(yBasis);
+  scale.z = glm::length(zBasis);
+  auto rotationMatrix = matrix;
+  rotationMatrix[0][0] /= scale.x;
+  rotationMatrix[0][1] /= scale.x;
+  rotationMatrix[0][2] /= scale.x;
+  rotationMatrix[1][0] /= scale.y;
+  rotationMatrix[1][1] /= scale.y;
+  rotationMatrix[1][2] /= scale.y;
+  rotationMatrix[2][0] /= scale.z;
+  rotationMatrix[2][1] /= scale.z;
+  rotationMatrix[2][2] /= scale.z;
+  auto quat = glm::quat_cast(rotationMatrix);
+  auto euler = glm::eulerAngles(quat);
+  rotation = glm::degrees(euler);
+}
+static glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMat) {
+  return {{aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1}, {aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2}, {aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3}, {aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4}};
 }

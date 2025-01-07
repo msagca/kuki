@@ -1,10 +1,11 @@
 #pragma once
+#include <glm/detail/type_vec3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <string>
 #include <variant>
 #include <vector>
-enum ComponentID {
+enum class ComponentID : unsigned int {
   TransformID,
   MeshFilterID,
   MeshRendererID,
@@ -12,25 +13,32 @@ enum ComponentID {
   LightID,
   MeshID,
   TextureID,
-  ShaderID
+  ShaderID,
+  MaterialID
 };
-enum ComponentMask {
-  TransformMask = 1 << TransformID,
-  MeshFilterMask = 1 << MeshFilterID,
-  MeshRendererMask = 1 << MeshRendererID,
-  CameraMask = 1 << CameraID,
-  LightMask = 1 << LightID,
-  MeshMask = 1 << MeshID,
-  TextureMask = 1 << TextureID,
-  ShaderMask = 1 << ShaderID
+enum class ComponentMask : size_t {
+  TransformMask = 1 << static_cast<unsigned int>(ComponentID::TransformID),
+  MeshFilterMask = 1 << static_cast<unsigned int>(ComponentID::MeshFilterID),
+  MeshRendererMask = 1 << static_cast<unsigned int>(ComponentID::MeshRendererID),
+  CameraMask = 1 << static_cast<unsigned int>(ComponentID::CameraID),
+  LightMask = 1 << static_cast<unsigned int>(ComponentID::LightID),
+  MeshMask = 1 << static_cast<unsigned int>(ComponentID::MeshID),
+  TextureMask = 1 << static_cast<unsigned int>(ComponentID::TextureID),
+  ShaderMask = 1 << static_cast<unsigned int>(ComponentID::ShaderID),
+  MaterialMask = 1 << static_cast<unsigned int>(ComponentID::MaterialID)
 };
 enum class LightType {
   Directional,
   Point
 };
+enum class TextureType {
+  DiffuseMap,
+  SpecularMap,
+  NormalMap
+};
 struct Property {
   std::string name;
-  std::variant<int, unsigned int, float, bool, glm::vec3, LightType> value;
+  std::variant<int, unsigned int, float, bool, glm::vec3, LightType, TextureType> value;
 };
 struct IComponent {
   virtual ~IComponent() = default;
@@ -39,10 +47,10 @@ struct IComponent {
   virtual void SetProperty(Property) = 0;
 };
 struct Transform : IComponent {
-  glm::vec3 position = glm::vec3(.0f);
-  glm::vec3 rotation = glm::vec3(.0f); // NOTE: these should be in radians and converted to degrees when displayed in the editor
-  glm::vec3 scale = glm::vec3(1.0f);
-  Transform* parent = nullptr;
+  glm::vec3 position{};
+  glm::vec3 rotation{}; // NOTE: these should be in radians and converted to degrees when displayed in the editor
+  glm::vec3 scale{1.0f};
+  Transform* parent{};
   std::string GetName() const override {
     return "Transform";
   }
@@ -63,18 +71,18 @@ struct Transform : IComponent {
 };
 struct Camera : IComponent {
   // TODO: add the orthogonal projection option
-  glm::mat4 view = glm::mat4(1.0f);
-  glm::mat4 projection = glm::mat4(1.0f);
-  glm::vec3 position = glm::vec3(.0f);
-  glm::vec3 front = glm::vec3(.0f, .0f, -1.0f);
-  glm::vec3 up = glm::vec3(.0f, 1.0f, .0f);
-  glm::vec3 right = glm::vec3(1.0f, .0f, .0f);
-  float pitch = .0f;
-  float yaw = -90.0f;
-  float fov = 45.0f;
-  float aspect = 1.33f;
-  float near = .1f;
-  float far = 100.0f;
+  glm::mat4 view{};
+  glm::mat4 projection{};
+  glm::vec3 position{};
+  glm::vec3 front{.0f, .0f, -1.0f};
+  glm::vec3 up{.0f, 1.0f, .0f};
+  glm::vec3 right{1.0f, .0f, .0f};
+  float pitch{};
+  float yaw{-90.0f};
+  float fov{45.0f};
+  float aspect{1.33f};
+  float near{.1f};
+  float far{100.0f};
   std::string GetName() const override {
     return "Camera";
   }
@@ -103,14 +111,14 @@ struct Camera : IComponent {
 };
 struct Light : IComponent {
   LightType type = LightType::Directional;
-  glm::vec3 vector = glm::vec3(.2f, 1.0f, .3f);
-  glm::vec3 ambient = glm::vec3(.2f);
-  glm::vec3 diffuse = glm::vec3(.5f);
-  glm::vec3 specular = glm::vec3(1.0f);
+  glm::vec3 vector{.2f, 1.0f, .3f};
+  glm::vec3 ambient{.2f};
+  glm::vec3 diffuse{.5f};
+  glm::vec3 specular{1.0f};
   // attenuation terms (for point light)
-  float constant = 1.0f;
-  float linear = .09f;
-  float quadratic = .032f;
+  float constant{1.0f};
+  float linear{.09f};
+  float quadratic{.032f};
   std::string GetName() const override {
     return "Light";
   }
@@ -142,8 +150,8 @@ struct Light : IComponent {
   }
 };
 struct BoundingBox : IComponent {
-  glm::vec3 min;
-  glm::vec3 max;
+  glm::vec3 min{-.5f};
+  glm::vec3 max{.5f};
   std::string GetName() const override {
     return "BoundingBox";
   }
@@ -161,11 +169,11 @@ struct BoundingBox : IComponent {
   }
 };
 struct Mesh : IComponent {
-  unsigned int vertexArray = 0;
-  unsigned int vertexBuffer = 0;
-  unsigned int indexBuffer = 0;
-  int vertexCount = 0; // NOTE: includes duplicates if no EBO is used
-  int indexCount = 0;
+  unsigned int vertexArray{};
+  unsigned int vertexBuffer{};
+  unsigned int indexBuffer{};
+  int vertexCount{}; // NOTE: includes duplicates if no EBO is used
+  int indexCount{};
   std::string GetName() const override {
     return "Mesh";
   }
@@ -191,8 +199,8 @@ struct Mesh : IComponent {
   }
 };
 struct MeshFilter : IComponent {
-  Mesh mesh;
-  BoundingBox box;
+  Mesh mesh{};
+  BoundingBox box{};
   std::string GetName() const override {
     return "MeshFilter";
   }
@@ -205,10 +213,42 @@ struct MeshFilter : IComponent {
     box.SetProperty(property);
   }
 };
+struct Texture : IComponent {
+  unsigned int id{};
+  TextureType type{};
+  int width{};
+  int height{};
+  std::string GetName() const override {
+    return "Texture";
+  }
+  std::vector<Property> GetProperties() const override {
+    return {{"ID", id}, {"Type", type}, {"Width", width}, {"Height", height}};
+  }
+  void SetProperty(Property property) override {
+    if (std::holds_alternative<unsigned int>(property.value)) {
+      auto& value = std::get<unsigned int>(property.value);
+      if (property.name == "ID")
+        id = value;
+    } else if (std::holds_alternative<int>(property.value)) {
+      auto& value = std::get<int>(property.value);
+      if (property.name == "Width")
+        width = value;
+      else if (property.name == "Height")
+        height = value;
+    } else if (std::holds_alternative<TextureType>(property.value)) {
+      auto& value = std::get<TextureType>(property.value);
+      if (property.name == "Type")
+        type = value;
+    }
+  }
+};
 struct Material : IComponent {
-  glm::vec3 diffuse = glm::vec3(1.0f, .5f, .3f);
-  glm::vec3 specular = glm::vec3(.5f);
-  float shininess = 32.0f;
+  glm::vec3 diffuse{1.0f, .5f, .3f};
+  glm::vec3 specular{.5f};
+  float shininess{32.0f};
+  Texture diffuseMap{};
+  Texture specularMap{};
+  Texture normalMap{};
   std::string GetName() const override {
     return "Material";
   }
@@ -228,7 +268,7 @@ struct Material : IComponent {
   }
 };
 struct Shader : IComponent {
-  unsigned int id = 0;
+  unsigned int id{};
   std::string GetName() const override {
     return "Shader";
   }
@@ -243,12 +283,13 @@ struct Shader : IComponent {
   }
 };
 struct MeshRenderer : IComponent {
-  Shader shader;
-  Material material;
+  Shader shader{};
+  Material material{};
   std::string GetName() const override {
     return "MeshRenderer";
   }
   std::vector<Property> GetProperties() const override {
+    // TODO: if some properties (from different subcomponents) share the same name, ImGui will display errors; to prevent this, we can prepend the subcomponent name to its property names
     auto properties = shader.GetProperties();
     auto materialProperties = material.GetProperties();
     properties.insert(properties.end(), materialProperties.begin(), materialProperties.end());
@@ -257,29 +298,5 @@ struct MeshRenderer : IComponent {
   void SetProperty(Property property) override {
     shader.SetProperty(property);
     material.SetProperty(property);
-  }
-};
-struct Texture : IComponent {
-  unsigned int id = 0;
-  int width = 0;
-  int height = 0;
-  std::string GetName() const override {
-    return "Texture";
-  }
-  std::vector<Property> GetProperties() const override {
-    return {{"ID", id}, {"Width", width}, {"Height", height}};
-  }
-  void SetProperty(Property property) override {
-    if (std::holds_alternative<unsigned int>(property.value)) {
-      auto& value = std::get<unsigned int>(property.value);
-      if (property.name == "ID")
-        id = value;
-    } else if (std::holds_alternative<int>(property.value)) {
-      auto& value = std::get<int>(property.value);
-      if (property.name == "Width")
-        width = value;
-      else if (property.name == "Height")
-        height = value;
-    }
   }
 };
