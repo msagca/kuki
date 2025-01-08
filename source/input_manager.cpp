@@ -90,8 +90,7 @@ void InputManager::SetKeyState(int key, int action) {
     keyMask &= ~KeyToBitmask(key);
     if (releaseCallbacks.find(key) != releaseCallbacks.end())
       releaseCallbacks[key]();
-  } else if (action == GLFW_REPEAT)
-    keyMask |= KeyToBitmask(key);
+  }
 }
 void InputManager::SetButtonState(int button, int action) {
   lastInputTime = glfwGetTime();

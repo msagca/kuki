@@ -11,8 +11,8 @@
       "name": "Release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_C_FLAGS_RELEASE": "-O3 -march=native -flto",
-        "CMAKE_CXX_FLAGS_RELEASE": "-O3 -march=native -flto"
+        "CMAKE_C_FLAGS": "-O3 -march=native",
+        "CMAKE_CXX_FLAGS": "-O3 -march=native"
       }
     }
   ]

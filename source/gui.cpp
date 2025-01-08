@@ -2,12 +2,12 @@
 #include <cstring>
 #include <entity_manager.hpp>
 #include <functional>
+#include <GLFW/glfw3.h>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <gui.hpp>
 #include <imgui.h>
 #include <input_manager.hpp>
-#include <primitive.hpp>
 #include <string>
 #include <variant>
 static const auto IMGUI_NON_INTERACTABLE_FLAGS = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize;
@@ -34,31 +34,29 @@ void ShowFPS(unsigned int fps) {
   ImGui::Text("%u", fps);
   ImGui::End();
 }
-void ShowCreateMenu(EntityManager& entityManager) {
-  static const char* primitives[] = {"Cube", "Sphere", "Cylinder"};
-  static auto primID = -1;
-  ImGui::Begin("Create");
-  if (ImGui::ListBox("Primitives", &primID, primitives, IM_ARRAYSIZE(primitives))) {
-    entityManager.Spawn(primitives[primID]);
-    primID = -1;
-  }
-  ImGui::End();
-}
-static void ShowProperties(EntityManager& entityManager, unsigned int selectedEntity) {
+static void ShowProperties(EntityManager& entityManager, InputManager& inputManager, unsigned int entityID) {
   ImVec2 windowPos(ImGui::GetIO().DisplaySize.x - IMGUI_DEFAULT_WINDOW_WIDTH, 0);
   ImVec2 windowSize(IMGUI_DEFAULT_WINDOW_WIDTH, ImGui::GetIO().DisplaySize.y);
   ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
   ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
   ImGui::Begin("Properties", nullptr, IMGUI_WINDOW_FLAGS);
-  static IComponent* componentID = nullptr;
-  auto components = entityManager.GetAllComponents(selectedEntity);
+  static IComponent* selection = nullptr;
+  auto components = entityManager.GetAllComponents(entityID);
   for (const auto& component : components) {
-    auto isSelected = (componentID == component);
+    auto isSelected = (selection == component);
     if (ImGui::Selectable(component->GetName().c_str(), isSelected)) {
       if (isSelected)
-        componentID = nullptr;
+        selection = nullptr;
       else
-        componentID = entityManager.GetComponent(selectedEntity, component->GetName());
+        selection = entityManager.GetComponent(entityID, component->GetName());
+    }
+    if (ImGui::BeginPopupContextItem()) {
+      if (ImGui::MenuItem("Remove")) {
+        entityManager.RemoveComponent(entityID, component->GetName());
+        if (selection == component)
+          selection = nullptr;
+      }
+      ImGui::EndPopup();
     }
     auto properties = component->GetProperties();
     for (auto& prop : properties) {
@@ -107,15 +105,10 @@ static void ShowProperties(EntityManager& entityManager, unsigned int selectedEn
     }
     ImGui::Separator();
   }
-  if (componentID)
-    if (ImGui::Button("Remove")) {
-      entityManager.RemoveComponent(selectedEntity, componentID->GetName());
-      componentID = nullptr;
-    }
-  auto availableComponents = entityManager.GetMissingComponents(selectedEntity);
+  auto availableComponents = entityManager.GetMissingComponents(entityID);
   for (const auto& comp : availableComponents)
     if (ImGui::Selectable(comp.c_str()))
-      entityManager.AddComponent(selectedEntity, comp);
+      entityManager.AddComponent(entityID, comp);
   ImGui::End();
 }
 static void ShowEntityHierarchy(EntityManager& entityManager, unsigned int parentID, int& entityID) {
@@ -123,10 +116,8 @@ static void ShowEntityHierarchy(EntityManager& entityManager, unsigned int paren
     if (entityManager.GetParent(id) == parentID) {
       ImGuiTreeNodeFlags nodeFlags = (id == entityID ? ImGuiTreeNodeFlags_Selected : 0) | ImGuiTreeNodeFlags_OpenOnArrow;
       bool nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, entityManager.GetName(id).c_str());
-      if (ImGui::IsItemClicked()) {
+      if (ImGui::IsItemClicked())
         entityID = id;
-        ShowProperties(entityManager, entityID);
-      }
       if (nodeOpen) {
         ShowEntityHierarchy(entityManager, id, entityID);
         ImGui::TreePop();
@@ -139,32 +130,40 @@ void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManage
   ImVec2 windowSize(IMGUI_DEFAULT_WINDOW_WIDTH, ImGui::GetIO().DisplaySize.y);
   ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
   ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
-  static auto entityID = -1;
+  static auto selection = -1;
   static auto renameMode = false;
   static char newName[256] = "";
+  static const char* primitives[] = {"Empty", "Cube", "Sphere", "Cylinder", "Backpack"};
+  static int selectedPrimitive = -1;
   ImGui::Begin("Hierarchy", nullptr, IMGUI_WINDOW_FLAGS);
   entityManager.ForAll([&](unsigned int id) {
     if (!entityManager.HasParent(id)) {
-      if (ImGui::Selectable(entityManager.GetName(id).c_str(), id == entityID)) {
-        entityID = id;
-        ShowProperties(entityManager, entityID);
-      }
-      ShowEntityHierarchy(entityManager, id, entityID);
+      if (ImGui::Selectable(entityManager.GetName(id).c_str(), id == selection))
+        selection = id;
+      ShowEntityHierarchy(entityManager, id, selection);
     }
   });
   if (ImGui::BeginPopupContextWindow()) {
-    if (ImGui::MenuItem("New")) {
-      entityManager.Create();
-      entityID = -1;
+    if (ImGui::BeginMenu("New")) {
+      if (ImGui::ListBox("Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
+        if (selectedPrimitive == 0)
+          entityManager.Create();
+        else
+          entityManager.Spawn(primitives[selectedPrimitive]);
+        selection = -1;
+        selectedPrimitive = -1;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndMenu();
     }
-    if (entityID != -1) {
+    if (selection != -1) {
       if (ImGui::MenuItem("Remove")) {
-        entityManager.Remove(entityID);
-        entityID = -1;
+        entityManager.Remove(selection);
+        selection = -1;
       }
       if (ImGui::MenuItem("Rename")) {
         renameMode = true;
-        strcpy(newName, entityManager.GetName(entityID).c_str());
+        strcpy(newName, entityManager.GetName(selection).c_str());
       }
     }
     ImGui::EndPopup();
@@ -175,13 +174,13 @@ void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManage
     ImGui::Begin("Rename Entity", &renameMode);
     ImGui::SetKeyboardFocusHere();
     if (ImGui::InputText("New Name", newName, IM_ARRAYSIZE(newName), ImGuiInputTextFlags_EnterReturnsTrue)) {
-      entityManager.Rename(entityID, std::string(newName));
+      entityManager.Rename(selection, std::string(newName));
       renameMode = false;
     }
     if (!renameMode)
       inputManager.EnableKeyCallbacks();
     ImGui::End();
   }
-  if (entityID != -1)
-    ShowProperties(entityManager, entityID);
+  if (selection != -1)
+    ShowProperties(entityManager, inputManager, selection);
 }

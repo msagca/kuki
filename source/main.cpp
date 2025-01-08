@@ -26,7 +26,6 @@ double deltaTime = .0;
 static double elapsedTime = .0;
 static unsigned int frameCount = 0;
 static unsigned int fps = 0;
-bool showCreateMenu = false;
 bool showHierarchyWindow = true;
 bool showFPS = true;
 static CameraController* cameraControllerPtr;
@@ -69,13 +68,11 @@ int main() {
   light->type = LightType::Point;
   light->vector = LIGHT_POSITION;
   assetLoader.LoadModel("Backpack", "model/Survival_BackPack_2.fbx");
-  entityManager.Spawn("Backpack");
   glfwMaximizeWindow(window);
   // register callbacks
   inputManager.RegisterCallback(GLFW_KEY_F, GLFW_PRESS, []() { showFPS = !showFPS; });
   inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, []() { showHierarchyWindow = !showHierarchyWindow; });
   inputManager.RegisterCallback(GLFW_KEY_R, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); });
-  inputManager.RegisterCallback(GLFW_KEY_SPACE, GLFW_PRESS, []() { showCreateMenu = !showCreateMenu; });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
   auto timeLast = .0;
@@ -99,8 +96,6 @@ int main() {
       ShowFPS(fps);
     if (showHierarchyWindow)
       ShowHierarchyWindow(entityManager, inputManager);
-    if (showCreateMenu)
-      ShowCreateMenu(entityManager);
     if (inputManager.GetInactivityTime() > INACTIVITY_TIMEOUT)
       ShowHints();
     ImGui::Render();

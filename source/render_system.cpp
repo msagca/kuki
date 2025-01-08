@@ -1,5 +1,6 @@
 #include <asset_loader.hpp>
 #include <asset_manager.hpp>
+#include <component_types.hpp>
 #include <entity_manager.hpp>
 #include <glad/glad.h>
 #include <glm/detail/qualifier.hpp>

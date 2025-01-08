@@ -4,7 +4,6 @@
 #include <input_manager.hpp>
 #include <string>
 #include <vector>
-extern bool showCreateMenu;
 extern bool showHierarchyWindow;
 extern bool showFPS;
 struct Hint {
@@ -13,11 +12,9 @@ struct Hint {
 };
 static const std::vector<Hint> hints = {
   {"Hold down the right mouse button and use the WASD keys to fly around.", []() { return true; }},
-  {"Press [Space] to open/close the create menu.", []() { return !showCreateMenu; }},
   {"Press [H] to show/hide the hierarchy window.", []() { return !showHierarchyWindow; }},
   {"Press [R] to change the render mode.", []() { return true; }},
   {"Press [F] to display the FPS counter.", []() { return !showFPS; }}};
 void ShowHints();
 void ShowFPS(unsigned int);
-void ShowCreateMenu(EntityManager&);
 void ShowHierarchyWindow(EntityManager&, InputManager&);

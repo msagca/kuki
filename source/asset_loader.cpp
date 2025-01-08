@@ -80,10 +80,10 @@ static Material CreateMaterial(aiMaterial* material) {
   }
   return mat;
 }
+static Mesh CreateMesh(const std::vector<Vertex>&);
 static Mesh CreateMesh(const std::vector<Vertex>&, const std::vector<unsigned int>&);
 static Mesh CreateMesh(aiMesh* mesh) {
   std::vector<Vertex> vertices;
-  std::vector<unsigned int> indices;
   for (auto i = 0; i < mesh->mNumVertices; ++i) {
     Vertex vertex{};
     glm::vec3 vector{};
@@ -102,7 +102,9 @@ static Mesh CreateMesh(aiMesh* mesh) {
       vertex.texture = texCoord;
     } else
       vertex.texture = glm::vec2(.0f);
+    vertices.push_back(vertex);
   }
+  std::vector<unsigned int> indices;
   for (auto i = 0; i < mesh->mNumFaces; ++i) {
     auto& face = mesh->mFaces[i];
     for (auto j = 0; j < face.mNumIndices; ++j)
@@ -250,12 +252,12 @@ unsigned int AssetLoader::LoadMesh(const std::string& name, const std::vector<Ve
 }
 static void DecomposeMatrix(const glm::mat4& matrix, glm::vec3& position, glm::vec3& scale, glm::vec3& rotation) {
   position = glm::vec3(matrix[3][0], matrix[3][1], matrix[3][2]);
-  glm::vec3 xBasis(matrix[0][0], matrix[0][1], matrix[0][2]);
+  /*glm::vec3 xBasis(matrix[0][0], matrix[0][1], matrix[0][2]);
   glm::vec3 yBasis(matrix[1][0], matrix[1][1], matrix[1][2]);
   glm::vec3 zBasis(matrix[2][0], matrix[2][1], matrix[2][2]);
   scale.x = glm::length(xBasis);
   scale.y = glm::length(yBasis);
-  scale.z = glm::length(zBasis);
+  scale.z = glm::length(zBasis);*/
   auto rotationMatrix = matrix;
   rotationMatrix[0][0] /= scale.x;
   rotationMatrix[0][1] /= scale.x;

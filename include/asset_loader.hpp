@@ -11,6 +11,7 @@ private:
   unsigned int LoadNode(aiNode*, const aiScene*, Transform* = nullptr);
 public:
   AssetLoader(AssetManager&);
+  // NOTE: int return type is for functions that require a path to the asset, so if the read fails they can return -1
   int LoadShader(const std::string&, const std::string&, const std::string&);
   int LoadModel(const std::string&, const std::string&);
   unsigned int LoadMesh(const std::string&, const std::vector<Vertex>&);

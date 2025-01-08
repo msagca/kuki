@@ -22,7 +22,7 @@ unsigned int EntityManager::Create(std::string name) {
 }
 int EntityManager::Spawn(const std::string& name) {
   auto assetID = assetManager.GetID(name);
-  if (assetID == -1)
+  if (assetID < 0)
     return -1;
   auto entityID = Create(name);
   auto components = assetManager.GetAllComponents(assetID);
