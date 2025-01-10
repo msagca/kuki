@@ -22,12 +22,6 @@ git clone --recursive https://github.com/msagca/learning-opengl
 cd learning-opengl
 ```
 
-- Update the submodules if necessary
-
-```bash
-git submodule update --init --recursive
-```
-
 - Run the configure command
 
 ```bash
