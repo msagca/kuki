@@ -1,8 +1,8 @@
 #pragma once
 #include <component_types.hpp>
 #include <glad/glad.h>
-#include <iostream>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 template <typename T>
 class ComponentManager {
@@ -10,8 +10,7 @@ private:
   std::vector<T> components;
   std::unordered_map<unsigned int, unsigned int> entityToComponent;
   std::vector<unsigned int> componentToEntity;
-  unsigned int inactiveCount = 0;
-  // TODO: shrink the array if inactive count gets too high to reclaim some memory
+  unsigned int inactiveCount = 0; // TODO: shrink the array if inactive count gets too high to reclaim some memory
   template <typename F>
   void ForAll(F);
 public:
@@ -42,7 +41,6 @@ T& ComponentManager<T>::Add(unsigned int id) {
   auto componentID = components.size();
   if (inactiveCount > 0) {
     componentID = ActiveCount();
-    std::cout << "Reusing ID " << componentID << std::endl;
     inactiveCount--;
   } else
     components.emplace_back();
@@ -56,11 +54,11 @@ void ComponentManager<T>::Remove(unsigned int id) {
   if (it == entityToComponent.end())
     return;
   auto componentID = it->second;
-  auto lastID = components.size() - 1;
+  auto lastID = ActiveCount() - 1;
   if (componentID != lastID) {
     std::swap(components[componentID], components[lastID]);
     std::swap(componentToEntity[componentID], componentToEntity[lastID]);
-    entityToComponent.insert({componentToEntity[componentID], componentID});
+    entityToComponent[componentToEntity[componentID]] = componentID;
   }
   entityToComponent.erase(id);
   componentToEntity.pop_back();

@@ -33,7 +33,7 @@ private:
 public:
   EntityManager(AssetManager&);
   unsigned int Create(std::string = "");
-  int Spawn(const std::string&);
+  int Spawn(const std::string&, int = -1);
   void Remove(unsigned int);
   bool Rename(unsigned int, std::string);
   const std::string& GetName(unsigned int) const;

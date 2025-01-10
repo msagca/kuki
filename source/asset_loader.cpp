@@ -11,9 +11,11 @@
 #include <cstddef>
 #include <fstream>
 #include <glad/glad.h>
+#include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <iosfwd>
 #include <iostream>
@@ -114,11 +116,12 @@ static Mesh CreateMesh(aiMesh* mesh) {
 }
 static glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4&);
 static void DecomposeMatrix(const glm::mat4&, glm::vec3&, glm::vec3&, glm::vec3&);
-unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, Transform* parent) {
+unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, int parentID) {
   auto assetID = assetManager.Create(node->mName.C_Str());
   auto transform = assetManager.AddComponent<Transform>(assetID);
-  transform->parent = parent;
-  DecomposeMatrix(AssimpMatrix4x4ToGlmMat4(node->mTransformation), transform->position, transform->scale, transform->rotation);
+  transform->parent = parentID;
+  auto model = AssimpMatrix4x4ToGlmMat4(node->mTransformation);
+  DecomposeMatrix(model, transform->position, transform->scale, transform->rotation);
   for (auto i = 0; i < node->mNumMeshes; ++i) {
     auto mesh = scene->mMeshes[node->mMeshes[i]];
     auto meshComp = assetManager.AddComponent<Mesh>(assetID);
@@ -130,7 +133,7 @@ unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, Transform
     }
   }
   for (auto i = 0; i < node->mNumChildren; ++i) {
-    auto childID = LoadNode(node->mChildren[i], scene, transform);
+    auto childID = LoadNode(node->mChildren[i], scene, assetID);
     assetManager.AddChild(assetID, childID);
   }
   return assetID;
@@ -143,6 +146,7 @@ int AssetLoader::LoadModel(const std::string& name, const std::string& path) {
     return -1;
   }
   auto assetID = assetManager.Create(name);
+  assetManager.AddComponent<Transform>(assetID);
   auto childID = LoadNode(scene->mRootNode, scene);
   assetManager.AddChild(assetID, childID);
   return assetID;
@@ -251,26 +255,30 @@ unsigned int AssetLoader::LoadMesh(const std::string& name, const std::vector<Ve
   return assetID;
 }
 static void DecomposeMatrix(const glm::mat4& matrix, glm::vec3& position, glm::vec3& scale, glm::vec3& rotation) {
-  position = glm::vec3(matrix[3][0], matrix[3][1], matrix[3][2]);
-  /*glm::vec3 xBasis(matrix[0][0], matrix[0][1], matrix[0][2]);
-  glm::vec3 yBasis(matrix[1][0], matrix[1][1], matrix[1][2]);
-  glm::vec3 zBasis(matrix[2][0], matrix[2][1], matrix[2][2]);
-  scale.x = glm::length(xBasis);
-  scale.y = glm::length(yBasis);
-  scale.z = glm::length(zBasis);*/
-  auto rotationMatrix = matrix;
-  rotationMatrix[0][0] /= scale.x;
-  rotationMatrix[0][1] /= scale.x;
-  rotationMatrix[0][2] /= scale.x;
-  rotationMatrix[1][0] /= scale.y;
-  rotationMatrix[1][1] /= scale.y;
-  rotationMatrix[1][2] /= scale.y;
-  rotationMatrix[2][0] /= scale.z;
-  rotationMatrix[2][1] /= scale.z;
-  rotationMatrix[2][2] /= scale.z;
-  auto quat = glm::quat_cast(rotationMatrix);
-  auto euler = glm::eulerAngles(quat);
-  rotation = glm::degrees(euler);
+  auto localMatrix = matrix;
+  if (glm::epsilonEqual(localMatrix[3][3], .0f, glm::epsilon<float>()))
+    return;
+  for (auto i = 0; i < 4; ++i)
+    for (auto j = 0; j < 4; ++j)
+      localMatrix[i][j] /= localMatrix[3][3];
+  position = glm::vec3(localMatrix[3]);
+  localMatrix[3] = glm::vec4(0, 0, 0, localMatrix[3][3]);
+  glm::vec3 row[3]{};
+  for (auto i = 0; i < 3; ++i)
+    row[i] = localMatrix[i];
+  scale.x = glm::length(row[0]);
+  scale.y = glm::length(row[1]);
+  scale.z = glm::length(row[2]);
+  position /= scale;
+  if (scale.x != 0)
+    row[0] /= scale.x;
+  if (scale.y != 0)
+    row[1] /= scale.y;
+  if (scale.z != 0)
+    row[2] /= scale.z;
+  glm::mat3 rotationMatrix(row[0], row[1], row[2]);
+  rotation = glm::eulerAngles(glm::quat_cast(rotationMatrix));
+  scale = glm::vec3(1.0f);
 }
 static glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMat) {
   return {{aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1}, {aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2}, {aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3}, {aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4}};

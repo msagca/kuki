@@ -50,12 +50,12 @@ struct Transform : IComponent {
   glm::vec3 position{};
   glm::vec3 rotation{}; // NOTE: these should be in radians and converted to degrees when displayed in the editor
   glm::vec3 scale{1.0f};
-  Transform* parent{};
+  int parent{-1}; // parent entity/asset index
   std::string GetName() const override {
     return "Transform";
   }
   std::vector<Property> GetProperties() const override {
-    return {{"Position", position}, {"Rotation", rotation}, {"Scale", scale}};
+    return {{"Position", position}, {"Rotation", rotation}, {"Scale", scale}, {"Parent", parent}};
   }
   void SetProperty(Property property) override {
     if (std::holds_alternative<glm::vec3>(property.value)) {
@@ -66,6 +66,10 @@ struct Transform : IComponent {
         rotation = value;
       else if (property.name == "Scale")
         scale = value;
+    } else if (std::holds_alternative<int>(property.value)) {
+      auto& value = std::get<int>(property.value);
+      if (property.name == "Parent")
+        parent = value;
     }
   }
 };
@@ -243,7 +247,7 @@ struct Texture : IComponent {
   }
 };
 struct Material : IComponent {
-  glm::vec3 diffuse{1.0f, .5f, .3f};
+  glm::vec3 diffuse{.7f, .7f, .7f};
   glm::vec3 specular{.5f};
   float shininess{32.0f};
   Texture diffuseMap{};

@@ -2,6 +2,7 @@
 #include <chrono>
 #include <component_types.hpp>
 #include <entity_manager.hpp>
+#include <stack>
 #include <string>
 #include <vector>
 EntityManager::EntityManager(AssetManager& assetManager)
@@ -20,7 +21,7 @@ unsigned int EntityManager::Create(std::string name) {
   idToChildren.insert({nextID, {}});
   return nextID++;
 }
-int EntityManager::Spawn(const std::string& name) {
+int EntityManager::Spawn(const std::string& name, int parentID) {
   auto assetID = assetManager.GetID(name);
   if (assetID < 0)
     return -1;
@@ -30,6 +31,7 @@ int EntityManager::Spawn(const std::string& name) {
     if (auto t = dynamic_cast<Transform*>(c)) {
       auto transform = AddComponent<Transform>(entityID);
       *transform = *t;
+      transform->parent = parentID; // NOTE: replace the invalid (asset) ID with the parent entity ID
     } else if (auto m = dynamic_cast<Mesh*>(c)) {
       auto filter = AddComponent<MeshFilter>(entityID);
       filter->mesh = *m;
@@ -38,7 +40,7 @@ int EntityManager::Spawn(const std::string& name) {
       renderer->material = *m;
     }
   assetManager.ForEachChild(assetID, [&](unsigned int id, const std::string& name) {
-    auto childID = Spawn(name);
+    auto childID = Spawn(name, entityID);
     AddChild(entityID, childID);
   });
   return entityID;
@@ -52,6 +54,9 @@ std::string EntityManager::GenerateName(const std::string& name) {
 }
 void EntityManager::Remove(unsigned int id) {
   RemoveAllComponents(id);
+  ForEachChild(id, [&](unsigned int childID) {
+    Remove(childID);
+  });
   idToMask.erase(id);
   nameToID.erase(idToName[id]);
   idToName.erase(id);

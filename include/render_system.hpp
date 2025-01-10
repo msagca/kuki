@@ -1,9 +1,9 @@
 #pragma once
-#include <uniform_location.hpp>
 #include <asset_loader.hpp>
 #include <asset_manager.hpp>
 #include <component_types.hpp>
 #include <entity_manager.hpp>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <system.hpp>
 #include <unordered_map>
 class RenderSystem : ISystem {
@@ -17,6 +17,7 @@ private:
   unsigned int wireframeShader;
   unsigned int defaultShader;
   Mesh gridMesh;
+  glm::mat4 GetWorldTransform(const Transform*);
   void RenderGrid();
   void RenderObjects();
   void SetUniformLocations(unsigned int);

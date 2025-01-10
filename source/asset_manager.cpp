@@ -25,6 +25,9 @@ std::string AssetManager::GenerateName(const std::string& name) {
 }
 void AssetManager::Remove(unsigned int id) {
   RemoveAllComponents(id);
+  ForEachChild(id, [&](unsigned int childID) {
+    Remove(childID);
+  });
   idToMask.erase(id);
   nameToID.erase(idToName[id]);
   idToName.erase(id);

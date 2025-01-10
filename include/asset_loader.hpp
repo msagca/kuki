@@ -1,14 +1,13 @@
 #pragma once
 #include <asset_manager.hpp>
 #include <assimp/scene.h>
-#include <component_types.hpp>
 #include <primitive.hpp>
 #include <string>
 #include <vector>
 class AssetLoader {
 private:
   AssetManager& assetManager;
-  unsigned int LoadNode(aiNode*, const aiScene*, Transform* = nullptr);
+  unsigned int LoadNode(aiNode*, const aiScene*, int = -1);
 public:
   AssetLoader(AssetManager&);
   // NOTE: int return type is for functions that require a path to the asset, so if the read fails they can return -1

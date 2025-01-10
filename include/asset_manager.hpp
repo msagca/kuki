@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 /// <summary>
 /// This is very much like the EntityManager class, but for managing things that are not necessarily in a scene.
 /// </summary>

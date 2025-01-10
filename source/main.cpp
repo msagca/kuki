@@ -88,6 +88,7 @@ int main() {
       frameCount = 0;
     }
     cameraController.Update();
+    // NOTE: execution of systems that can modify the component vectors, hence trigger reallocations, and those that work on pointers to these vectors should NOT be parallelized to prevent invalid memory accesses
     renderSystem.Update();
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();

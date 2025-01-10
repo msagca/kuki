@@ -74,16 +74,16 @@ void RenderSystem::SetUniformLocations(unsigned int shader) {
     shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::POINT_QUADRATIC_0) + i * POINT_LOCS] = glGetUniformLocation(shader, ("pointLights[" + index + "].quadratic").c_str());
   }
 }
-static glm::mat4 GetWorldTransform(const Transform const* transform) {
+glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
   auto model = glm::mat4(1.0f);
   model = glm::scale(model, transform->scale);
   model = glm::rotate(model, transform->rotation.x, X_AXIS);
   model = glm::rotate(model, transform->rotation.y, Y_AXIS);
   model = glm::rotate(model, transform->rotation.z, Z_AXIS);
   model = glm::translate(model, transform->position);
-  if (transform->parent)
+  if (auto parent = entityManager.GetComponent<Transform>(transform->parent))
     // TODO: make sure there are no cyclic relations
-    return GetWorldTransform(transform->parent) * model;
+    return GetWorldTransform(parent) * model;
   return model;
 }
 void RenderSystem::RenderGrid() {
