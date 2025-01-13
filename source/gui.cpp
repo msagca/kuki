@@ -2,7 +2,6 @@
 #include <cstring>
 #include <entity_manager.hpp>
 #include <functional>
-#include <GLFW/glfw3.h>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <gui.hpp>
@@ -11,22 +10,8 @@
 #include <string>
 #include <variant>
 static const auto IMGUI_NON_INTERACTABLE_FLAGS = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize;
-static const auto IMGUI_WINDOW_FLAGS = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
-static const auto IMGUI_DEFAULT_WINDOW_WIDTH = 400;
-void ShowHints() {
-  auto displaySize = ImGui::GetIO().DisplaySize;
-  ImVec2 windowPos(IMGUI_DEFAULT_WINDOW_WIDTH, displaySize.y);
-  ImVec2 windowSize(displaySize.x - 2 * IMGUI_DEFAULT_WINDOW_WIDTH, .0f);
-  ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, ImVec2(.0f, 1.0f));
-  ImGui::SetNextWindowSize(windowSize);
-  ImGui::SetNextWindowBgAlpha(0.5f);
-  ImGui::Begin("Hints", nullptr, IMGUI_NON_INTERACTABLE_FLAGS);
-  for (const auto& hint : hints)
-    if (hint.condition())
-      ImGui::TextWrapped("%s", hint.text.c_str());
-  ImGui::End();
-}
-void ShowFPS(unsigned int fps) {
+static const auto IMGUI_WINDOW_FLAGS = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize;
+void DisplayFPS(unsigned int fps) {
   ImVec2 windowPos(ImGui::GetIO().DisplaySize.x / 2, 0);
   ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, ImVec2(1.0f, .0f));
   ImGui::SetNextWindowBgAlpha(.5f);
@@ -34,16 +19,19 @@ void ShowFPS(unsigned int fps) {
   ImGui::Text("%u", fps);
   ImGui::End();
 }
-static void ShowProperties(EntityManager& entityManager, InputManager& inputManager, unsigned int entityID) {
-  ImVec2 windowPos(ImGui::GetIO().DisplaySize.x - IMGUI_DEFAULT_WINDOW_WIDTH, 0);
-  ImVec2 windowSize(IMGUI_DEFAULT_WINDOW_WIDTH, ImGui::GetIO().DisplaySize.y);
-  ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
-  ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
+static void ShowProperties(EntityManager& entityManager, unsigned int entityID) {
   ImGui::Begin("Properties", nullptr, IMGUI_WINDOW_FLAGS);
+  auto contentRegion = ImGui::GetContentRegionAvail();
+  auto windowPos = ImGui::GetWindowPos();
+  windowPos.x = ImGui::GetIO().DisplaySize.x - contentRegion.x;
+  windowPos.y = 0;
+  ImGui::SetWindowPos(windowPos);
   static IComponent* selection = nullptr;
   auto components = entityManager.GetAllComponents(entityID);
-  for (const auto& component : components) {
+  for (auto i = 0; i < components.size(); ++i) {
+    const auto& component = components[i];
     auto isSelected = (selection == component);
+    ImGui::PushID(static_cast<int>(i));
     if (ImGui::Selectable(component->GetName().c_str(), isSelected)) {
       if (isSelected)
         selection = nullptr;
@@ -59,8 +47,10 @@ static void ShowProperties(EntityManager& entityManager, InputManager& inputMana
       ImGui::EndPopup();
     }
     auto properties = component->GetProperties();
-    for (auto& prop : properties) {
+    for (auto j = 0; j < properties.size(); ++j) {
+      auto& prop = properties[j];
       auto value = prop.value;
+      ImGui::PushID(static_cast<int>(j));
       auto isColor = (prop.name == "Ambient" || prop.name == "Diffuse" || prop.name == "Specular");
       if (std::holds_alternative<glm::vec3>(value)) {
         auto valueVec3 = std::get<glm::vec3>(value);
@@ -102,8 +92,9 @@ static void ShowProperties(EntityManager& entityManager, InputManager& inputMana
           component->SetProperty(Property(prop.name, valueEnum));
         }
       }
+      ImGui::PopID();
     }
-    ImGui::Separator();
+    ImGui::PopID();
   }
   auto availableComponents = entityManager.GetMissingComponents(entityID);
   for (const auto& comp : availableComponents)
@@ -125,11 +116,9 @@ static void ShowEntityHierarchy(EntityManager& entityManager, unsigned int paren
     }
   });
 }
-void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManager) {
+void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager) {
   ImVec2 windowPos(0, 0);
-  ImVec2 windowSize(IMGUI_DEFAULT_WINDOW_WIDTH, ImGui::GetIO().DisplaySize.y);
   ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
-  ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
   static auto selection = -1;
   static auto renameMode = false;
   static char newName[256] = "";
@@ -182,5 +171,5 @@ void ShowHierarchyWindow(EntityManager& entityManager, InputManager& inputManage
     ImGui::End();
   }
   if (selection != -1)
-    ShowProperties(entityManager, inputManager, selection);
+    ShowProperties(entityManager, selection);
 }

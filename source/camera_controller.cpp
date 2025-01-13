@@ -1,8 +1,10 @@
 #include <camera_controller.hpp>
 #include <cmath>
 #include <component_types.hpp>
+#include <entity_manager.hpp>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
@@ -43,14 +45,22 @@ void CameraController::UpdateView() {
 void CameraController::UpdateProjection() {
   camera.projection = glm::perspective(camera.fov, camera.aspect, camera.near, camera.far);
 }
-CameraController::CameraController(Camera& camera, InputManager& inputManager)
-  : camera(camera), inputManager(inputManager), moveSpeed(MOVE_SPEED), mouseSensitivity(MOUSE_SENSITIVITY) {
-  UpdateDirection();
-  UpdateView();
-  UpdateProjection();
+CameraController::CameraController(EntityManager& entityManager, InputManager& inputManager)
+  : entityManager(entityManager), inputManager(inputManager), moveSpeed(MOVE_SPEED), mouseSensitivity(MOUSE_SENSITIVITY) {}
+glm::vec3 CameraController::GetPosition() const {
+  return camera.position;
 }
-void CameraController::SetCamera(Camera& camera) {
-  this->camera = camera;
+glm::vec3 CameraController::GetFront() const {
+  return camera.front;
+}
+float CameraController::GetFOV() const {
+  return camera.fov;
+}
+glm::mat4 CameraController::GetView() const {
+  return camera.view;
+}
+glm::mat4 CameraController::GetProjection() const {
+  return camera.projection;
 }
 void CameraController::SetPosition(glm::vec3 position) {
   camera.position = position;
@@ -81,4 +91,8 @@ void CameraController::Update() {
   } else
     firstEnter = true;
   UpdatePosition();
+  auto cameraPtr = entityManager.GetFirstComponent<Camera>();
+  if (cameraPtr)
+    // NOTE: by default, all changes are applied to the local copy; they are only reflected to an actual camera component if the scene contains one
+    *cameraPtr = camera;
 }

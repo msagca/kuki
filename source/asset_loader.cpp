@@ -1,3 +1,4 @@
+#define GLM_ENABLE_EXPERIMENTAL
 #include <asset_loader.hpp>
 #include <asset_manager.hpp>
 #include <assimp/Importer.hpp>
@@ -11,12 +12,13 @@
 #include <cstddef>
 #include <fstream>
 #include <glad/glad.h>
-#include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 #include <iosfwd>
 #include <iostream>
 #include <limits>
@@ -114,14 +116,21 @@ static Mesh CreateMesh(aiMesh* mesh) {
   }
   return CreateMesh(vertices, indices);
 }
-static glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4&);
-static void DecomposeMatrix(const glm::mat4&, glm::vec3&, glm::vec3&, glm::vec3&);
+static glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMat) {
+  return {{aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1}, {aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2}, {aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3}, {aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4}};
+}
 unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, int parentID) {
+  auto model = AssimpMatrix4x4ToGlmMat4(node->mTransformation);
   auto assetID = assetManager.Create(node->mName.C_Str());
   auto transform = assetManager.AddComponent<Transform>(assetID);
+  glm::vec3 skew;
+  glm::vec4 perspective;
+  glm::quat orientation;
+  glm::decompose(model, transform->scale, orientation, transform->position, skew, perspective);
+  transform->position /= transform->scale;
+  transform->scale = glm::vec3(1.0f);
+  transform->rotation = glm::eulerAngles(orientation);
   transform->parent = parentID;
-  auto model = AssimpMatrix4x4ToGlmMat4(node->mTransformation);
-  DecomposeMatrix(model, transform->position, transform->scale, transform->rotation);
   for (auto i = 0; i < node->mNumMeshes; ++i) {
     auto mesh = scene->mMeshes[node->mMeshes[i]];
     auto meshComp = assetManager.AddComponent<Mesh>(assetID);
@@ -145,9 +154,9 @@ int AssetLoader::LoadModel(const std::string& name, const std::string& path) {
     std::cerr << "Assimp: " << importer.GetErrorString() << std::endl;
     return -1;
   }
+  auto childID = LoadNode(scene->mRootNode, scene);
   auto assetID = assetManager.Create(name);
   assetManager.AddComponent<Transform>(assetID);
-  auto childID = LoadNode(scene->mRootNode, scene);
   assetManager.AddChild(assetID, childID);
   return assetID;
 }
@@ -253,33 +262,4 @@ unsigned int AssetLoader::LoadMesh(const std::string& name, const std::vector<Ve
   auto mesh = assetManager.AddComponent<Mesh>(assetID);
   *mesh = CreateMesh(vertices, indices);
   return assetID;
-}
-static void DecomposeMatrix(const glm::mat4& matrix, glm::vec3& position, glm::vec3& scale, glm::vec3& rotation) {
-  auto localMatrix = matrix;
-  if (glm::epsilonEqual(localMatrix[3][3], .0f, glm::epsilon<float>()))
-    return;
-  for (auto i = 0; i < 4; ++i)
-    for (auto j = 0; j < 4; ++j)
-      localMatrix[i][j] /= localMatrix[3][3];
-  position = glm::vec3(localMatrix[3]);
-  localMatrix[3] = glm::vec4(0, 0, 0, localMatrix[3][3]);
-  glm::vec3 row[3]{};
-  for (auto i = 0; i < 3; ++i)
-    row[i] = localMatrix[i];
-  scale.x = glm::length(row[0]);
-  scale.y = glm::length(row[1]);
-  scale.z = glm::length(row[2]);
-  position /= scale;
-  if (scale.x != 0)
-    row[0] /= scale.x;
-  if (scale.y != 0)
-    row[1] /= scale.y;
-  if (scale.z != 0)
-    row[2] /= scale.z;
-  glm::mat3 rotationMatrix(row[0], row[1], row[2]);
-  rotation = glm::eulerAngles(glm::quat_cast(rotationMatrix));
-  scale = glm::vec3(1.0f);
-}
-static glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMat) {
-  return {{aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1}, {aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2}, {aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3}, {aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4}};
 }

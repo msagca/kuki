@@ -1,5 +1,6 @@
 #include <asset_loader.hpp>
 #include <asset_manager.hpp>
+#include <camera_controller.hpp>
 #include <component_types.hpp>
 #include <entity_manager.hpp>
 #include <glad/glad.h>
@@ -24,8 +25,8 @@ static const auto WIRE_COLOR = glm::vec3(.5f);
 static const auto CLEAR_COLOR = glm::vec4(.1f, .1f, .1f, 1.0f);
 static const auto MAX_POINT_LIGHTS = 8;
 static const auto POINT_LOCS = 7; // number of uniform locations per point light
-RenderSystem::RenderSystem(EntityManager& entityManager, AssetManager& assetManager, AssetLoader& assetLoader)
-  : entityManager(entityManager), assetManager(assetManager), assetLoader(assetLoader) {
+RenderSystem::RenderSystem(EntityManager& entityManager, AssetManager& assetManager, AssetLoader& assetLoader, CameraController& cameraController)
+  : entityManager(entityManager), assetManager(assetManager), assetLoader(assetLoader), cameraController(cameraController) {
   auto defaultShaderID = assetLoader.LoadShader("DefaultShader", "shader/default_lit.vert", "shader/default_lit.frag");
   auto wireframeShaderID = assetLoader.LoadShader("WireframeShader", "shader/wireframe.vert", "shader/wireframe.frag");
   auto gridShaderID = assetLoader.LoadShader("GridShader", "shader/grid.vert", "shader/grid.frag");
@@ -38,9 +39,6 @@ RenderSystem::RenderSystem(EntityManager& entityManager, AssetManager& assetMana
   std::vector<unsigned int> indices = {0, 2, 1, 2, 0, 3};
   auto meshID = assetLoader.LoadMesh("GridMesh", vertices, indices);
   gridMesh = *assetManager.GetComponent<Mesh>(meshID);
-}
-void RenderSystem::SetCamera(Camera* camera) {
-  this->camera = camera;
 }
 void RenderSystem::ToggleWireframeMode() {
   wireframeMode = !wireframeMode;
@@ -92,15 +90,15 @@ void RenderSystem::RenderGrid() {
   glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
   glUseProgram(gridShader);
   auto loc = glGetUniformLocation(gridShader, "view");
-  glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(camera->view));
+  glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(cameraController.GetView()));
   loc = glGetUniformLocation(gridShader, "projection");
-  glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(camera->projection));
+  glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(cameraController.GetProjection()));
   loc = glGetUniformLocation(gridShader, "cameraPos");
-  glUniform3fv(loc, 1, glm::value_ptr(camera->position));
+  glUniform3fv(loc, 1, glm::value_ptr(cameraController.GetPosition()));
   loc = glGetUniformLocation(gridShader, "cameraFront");
-  glUniform3fv(loc, 1, glm::value_ptr(camera->front));
+  glUniform3fv(loc, 1, glm::value_ptr(cameraController.GetFront()));
   loc = glGetUniformLocation(gridShader, "cameraFOV");
-  glUniform1f(loc, camera->fov);
+  glUniform1f(loc, cameraController.GetFOV());
   glBindVertexArray(gridMesh.vertexArray);
   glDrawElements(GL_TRIANGLES, gridMesh.indexCount, GL_UNSIGNED_INT, 0);
   glPolygonMode(GL_FRONT_AND_BACK, polygonMode[0]);
@@ -112,9 +110,9 @@ void RenderSystem::RenderObjects() {
     auto model = GetWorldTransform(transform);
     auto& uniformLocations = shaderToUniform[shader];
     glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MODEL_MATRIX)], 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::VIEW_MATRIX)], 1, GL_FALSE, glm::value_ptr(camera->view));
-    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::PROJ_MATRIX)], 1, GL_FALSE, glm::value_ptr(camera->projection));
-    glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::VIEW_POS)], 1, glm::value_ptr(camera->position));
+    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::VIEW_MATRIX)], 1, GL_FALSE, glm::value_ptr(cameraController.GetView()));
+    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::PROJ_MATRIX)], 1, GL_FALSE, glm::value_ptr(cameraController.GetProjection()));
+    glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::VIEW_POS)], 1, glm::value_ptr(cameraController.GetPosition()));
     glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MAT_DIFFUSE)], 1, glm::value_ptr(renderer->material.diffuse));
     glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MAT_SPECULAR)], 1, glm::value_ptr(renderer->material.specular));
     glUniform1f(uniformLocations[static_cast<unsigned int>(UniformLocation::MAT_SHININESS)], renderer->material.shininess);
@@ -148,15 +146,9 @@ void RenderSystem::RenderObjects() {
   });
 }
 void RenderSystem::Update() {
-  if (!camera) {
-    auto cameraPtr = entityManager.GetFirstComponent<Camera>();
-    if (cameraPtr)
-      SetCamera(cameraPtr);
-    if (!camera)
-      return;
-  }
   glClearColor(CLEAR_COLOR.x, CLEAR_COLOR.y, CLEAR_COLOR.z, CLEAR_COLOR.w);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  cameraController.Update();
   RenderObjects();
   RenderGrid();
 }

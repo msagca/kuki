@@ -26,8 +26,7 @@ double deltaTime = .0;
 static double elapsedTime = .0;
 static unsigned int frameCount = 0;
 static unsigned int fps = 0;
-bool showHierarchyWindow = true;
-bool showFPS = true;
+static bool showFPS = true;
 static CameraController* cameraControllerPtr;
 static GLFWwindow* InitializeGLFW();
 static void InitializeImGui(GLFWwindow*);
@@ -53,14 +52,13 @@ int main() {
   AssetManager assetManager;
   AssetLoader assetLoader(assetManager);
   EntityManager entityManager(assetManager);
-  RenderSystem renderSystem(entityManager, assetManager, assetLoader);
+  auto cameraController = CameraController(entityManager, inputManager);
+  cameraController.SetPosition(CAMERA_POSITION);
+  cameraControllerPtr = &cameraController;
+  RenderSystem renderSystem(entityManager, assetManager, assetLoader, cameraController);
   // populate the scene
   auto cameraID = entityManager.Create("MainCamera");
   auto camera = entityManager.AddComponent<Camera>(cameraID);
-  auto cameraController = CameraController(*camera, inputManager);
-  cameraController.SetPosition(CAMERA_POSITION);
-  cameraControllerPtr = &cameraController;
-  renderSystem.SetCamera(camera);
   auto lightID = entityManager.Create("MainLight");
   entityManager.AddComponent<Light>(lightID);
   lightID = entityManager.Create("PointLight");
@@ -70,8 +68,6 @@ int main() {
   assetLoader.LoadModel("Backpack", "model/Survival_BackPack_2.fbx");
   glfwMaximizeWindow(window);
   // register callbacks
-  inputManager.RegisterCallback(GLFW_KEY_F, GLFW_PRESS, []() { showFPS = !showFPS; });
-  inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, []() { showHierarchyWindow = !showHierarchyWindow; });
   inputManager.RegisterCallback(GLFW_KEY_R, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
@@ -87,18 +83,14 @@ int main() {
       elapsedTime = .0;
       frameCount = 0;
     }
-    cameraController.Update();
     // NOTE: execution of systems that can modify the component vectors, hence trigger reallocations, and those that work on pointers to these vectors should NOT be parallelized to prevent invalid memory accesses
     renderSystem.Update();
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
     if (showFPS)
-      ShowFPS(fps);
-    if (showHierarchyWindow)
-      ShowHierarchyWindow(entityManager, inputManager);
-    if (inputManager.GetInactivityTime() > INACTIVITY_TIMEOUT)
-      ShowHints();
+      DisplayFPS(fps);
+    DisplayHierarchy(entityManager, inputManager);
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     glfwSwapBuffers(window);

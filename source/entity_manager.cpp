@@ -2,7 +2,6 @@
 #include <chrono>
 #include <component_types.hpp>
 #include <entity_manager.hpp>
-#include <stack>
 #include <string>
 #include <vector>
 EntityManager::EntityManager(AssetManager& assetManager)
@@ -31,7 +30,7 @@ int EntityManager::Spawn(const std::string& name, int parentID) {
     if (auto t = dynamic_cast<Transform*>(c)) {
       auto transform = AddComponent<Transform>(entityID);
       *transform = *t;
-      transform->parent = parentID; // NOTE: replace the invalid (asset) ID with the parent entity ID
+      transform->parent = parentID; // NOTE: replace the asset ID with the entity ID
     } else if (auto m = dynamic_cast<Mesh*>(c)) {
       auto filter = AddComponent<MeshFilter>(entityID);
       filter->mesh = *m;
