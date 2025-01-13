@@ -56,6 +56,9 @@ glm::vec3 CameraController::GetFront() const {
 float CameraController::GetFOV() const {
   return camera.fov;
 }
+float CameraController::GetFar() const {
+  return camera.far;
+}
 glm::mat4 CameraController::GetView() const {
   return camera.view;
 }

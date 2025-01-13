@@ -1,10 +1,14 @@
+#define GLM_ENABLE_EXPERIMENTAL
+#include <camera_controller.hpp>
 #include <component_types.hpp>
 #include <cstring>
 #include <entity_manager.hpp>
-#include <functional>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/euler_angles.hpp>
 #include <imgui.h>
+#include <ImGuizmo.h>
 #include <input_manager.hpp>
 #include <string>
 #include <variant>
@@ -119,17 +123,27 @@ static void DisplayEntityHierarchy(EntityManager& entityManager, unsigned int pa
     }
   });
 }
-void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager) {
+void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, CameraController& cameraController) {
   ImVec2 windowPos(0, 0);
   ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
   static auto selectedEntity = -1;
   static auto clickedEntity = -1;
+  static auto selectedPrimitive = -1;
+  static auto selectedModel = -1;
   static auto renameMode = false;
   static char newName[256] = "";
   static const char* primitives[] = {"Empty", "Cube", "Sphere", "Cylinder"};
-  static int selectedPrimitive = -1;
   static const char* models[] = {"Backpack"}; // TODO: fetch a list of models from the asset manager
-  static int selectedModel = -1;
+  static auto gizmoOp(ImGuizmo::OPERATION::UNIVERSAL);
+  static auto gizmoMode(ImGuizmo::MODE::WORLD);
+  if (ImGui::IsKeyPressed(ImGuiKey_E))
+    gizmoOp = ImGuizmo::TRANSLATE;
+  if (ImGui::IsKeyPressed(ImGuiKey_R))
+    gizmoOp = ImGuizmo::ROTATE;
+  if (ImGui::IsKeyPressed(ImGuiKey_Q))
+    gizmoOp = ImGuizmo::SCALE;
+  if (ImGui::IsKeyPressed(ImGuiKey_F))
+    gizmoMode = gizmoMode == ImGuizmo::WORLD ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
   ImGui::Begin("Hierarchy", nullptr, IMGUI_WINDOW_FLAGS);
   entityManager.ForAll([&](unsigned int id) {
     if (!entityManager.HasParent(id)) {
@@ -147,7 +161,6 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager) 
         clickedEntity = -1;
         selectedEntity = -1;
       } else if (ImGui::MenuItem("Rename")) {
-        // save entity name to display in the input field later
         strcpy(newName, entityManager.GetName(clickedEntity).c_str());
         renameMode = true;
       }
@@ -190,6 +203,19 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager) 
       inputManager.EnableKeyCallbacks();
     ImGui::End();
   }
-  if (selectedEntity >= 0)
+  if (selectedEntity >= 0) {
     DisplayProperties(entityManager, selectedEntity);
+    auto transform = entityManager.GetComponent<Transform>(selectedEntity);
+    if (transform) {
+      // draw gizmo
+      glm::mat4 matrix;
+      ImGuizmo::RecomposeMatrixFromComponents(glm::value_ptr(transform->position), glm::value_ptr(transform->rotation), glm::value_ptr(transform->scale), glm::value_ptr(matrix));
+      ImGuizmo::SetOrthographic(false);
+      ImGuizmo::SetDrawlist();
+      auto displaySize = ImGui::GetIO().DisplaySize;
+      ImGuizmo::SetRect(0, 0, displaySize.x, displaySize.y);
+      ImGuizmo::Manipulate(glm::value_ptr(cameraController.GetView()), glm::value_ptr(cameraController.GetProjection()), gizmoOp, gizmoMode, glm::value_ptr(matrix));
+      ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform->position), glm::value_ptr(transform->rotation), glm::value_ptr(transform->scale));
+    }
+  }
 }

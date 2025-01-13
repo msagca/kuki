@@ -22,6 +22,7 @@ public:
   glm::vec3 GetPosition() const;
   glm::vec3 GetFront() const;
   float GetFOV() const;
+  float GetFar() const;
   glm::mat4 GetView() const;
   glm::mat4 GetProjection() const;
   void SetAspect(float);

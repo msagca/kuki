@@ -6,11 +6,14 @@
 #include <entity_manager.hpp>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <gui.hpp>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <ImGuizmo.h>
 #include <input_manager.hpp>
 #include <iostream>
 #include <ostream>
@@ -21,6 +24,7 @@ static const auto WINDOW_WIDTH = 800u;
 static const auto LIGHT_POSITION = glm::vec3(-2.0f, 1.0f, -3.0f);
 static const auto INACTIVITY_TIMEOUT = 3.0f;
 static const auto FPS_UPDATE_INTERVAL = .1;
+static const auto IDENTITY_MATRIX = glm::mat4(1.0f);
 double deltaTime = .0;
 static double elapsedTime = .0;
 static unsigned int frameCount = 0;
@@ -66,7 +70,7 @@ int main() {
   assetLoader.LoadModel("Backpack", "model/Survival_BackPack_2.fbx");
   glfwMaximizeWindow(window);
   // register callbacks
-  inputManager.RegisterCallback(GLFW_KEY_R, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); });
+  inputManager.RegisterCallback(GLFW_KEY_V, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
   auto timeLast = .0;
@@ -81,14 +85,15 @@ int main() {
       elapsedTime = .0;
       frameCount = 0;
     }
-    // NOTE: execution of systems that can modify the component vectors, hence trigger reallocations, and those that work on pointers to these vectors should NOT be parallelized to prevent invalid memory accesses
     renderSystem.Update();
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
+    ImGuizmo::DrawGrid(glm::value_ptr(cameraController.GetView()), glm::value_ptr(cameraController.GetProjection()), glm::value_ptr(IDENTITY_MATRIX), cameraController.GetFar());
     if (showFPS)
       DisplayFPS(fps);
-    DisplayHierarchy(entityManager, inputManager);
+    DisplayHierarchy(entityManager, inputManager, cameraController);
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     glfwSwapBuffers(window);

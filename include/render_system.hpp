@@ -14,13 +14,9 @@ private:
   AssetManager& assetManager;
   CameraController& cameraController;
   bool wireframeMode = false;
-  unsigned int gridShader;
-  unsigned int wireframeShader;
   unsigned int defaultShader;
-  Mesh gridMesh;
   glm::mat4 GetWorldTransform(const Transform*);
-  void RenderGrid();
-  void RenderObjects();
+  void DrawObjects();
   void SetUniformLocations(unsigned int);
   std::unordered_map<unsigned int, std::unordered_map<unsigned int, int>> shaderToUniform;
 public:
