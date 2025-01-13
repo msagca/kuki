@@ -209,13 +209,14 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, 
     if (transform) {
       // draw gizmo
       glm::mat4 matrix;
-      ImGuizmo::RecomposeMatrixFromComponents(glm::value_ptr(transform->position), glm::value_ptr(transform->rotation), glm::value_ptr(transform->scale), glm::value_ptr(matrix));
+      auto rotation = glm::degrees(transform->rotation);
+      ImGuizmo::RecomposeMatrixFromComponents(glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale), glm::value_ptr(matrix));
       ImGuizmo::SetOrthographic(false);
-      ImGuizmo::SetDrawlist();
       auto displaySize = ImGui::GetIO().DisplaySize;
       ImGuizmo::SetRect(0, 0, displaySize.x, displaySize.y);
       ImGuizmo::Manipulate(glm::value_ptr(cameraController.GetView()), glm::value_ptr(cameraController.GetProjection()), gizmoOp, gizmoMode, glm::value_ptr(matrix));
-      ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform->position), glm::value_ptr(transform->rotation), glm::value_ptr(transform->scale));
+      ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale));
+      transform->rotation = glm::radians(rotation);
     }
   }
 }
