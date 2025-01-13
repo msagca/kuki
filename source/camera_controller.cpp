@@ -62,16 +62,8 @@ glm::mat4 CameraController::GetView() const {
 glm::mat4 CameraController::GetProjection() const {
   return camera.projection;
 }
-void CameraController::SetPosition(glm::vec3 position) {
-  camera.position = position;
-  UpdateView();
-}
 void CameraController::SetAspect(float aspect) {
   camera.aspect = aspect;
-  UpdateProjection();
-}
-void CameraController::SetFOV(float fov) {
-  camera.fov = fov;
   UpdateProjection();
 }
 void CameraController::Update() {
@@ -92,7 +84,13 @@ void CameraController::Update() {
     firstEnter = true;
   UpdatePosition();
   auto cameraPtr = entityManager.GetFirstComponent<Camera>();
-  if (cameraPtr)
+  if (cameraPtr) {
     // NOTE: by default, all changes are applied to the local copy; they are only reflected to an actual camera component if the scene contains one
+    // NOTE: field of view, near and far planes are allowed to be changed through the UI, the rest are updated via the camera controller or window events
+    camera.fov = cameraPtr->fov;
+    camera.near = cameraPtr->near;
+    camera.far = cameraPtr->far;
+    UpdateProjection();
     *cameraPtr = camera;
+  }
 }

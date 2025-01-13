@@ -24,8 +24,6 @@ public:
   float GetFOV() const;
   glm::mat4 GetView() const;
   glm::mat4 GetProjection() const;
-  void SetPosition(glm::vec3);
   void SetAspect(float);
-  void SetFOV(float);
   void Update();
 };

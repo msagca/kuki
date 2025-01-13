@@ -18,7 +18,6 @@
 #include <stb_image.h>
 static const auto WINDOW_HEIGHT = 600u;
 static const auto WINDOW_WIDTH = 800u;
-static const auto CAMERA_POSITION = glm::vec3(.0f, .0f, 3.0f);
 static const auto LIGHT_POSITION = glm::vec3(-2.0f, 1.0f, -3.0f);
 static const auto INACTIVITY_TIMEOUT = 3.0f;
 static const auto FPS_UPDATE_INTERVAL = .1;
@@ -52,8 +51,7 @@ int main() {
   AssetManager assetManager;
   AssetLoader assetLoader(assetManager);
   EntityManager entityManager(assetManager);
-  auto cameraController = CameraController(entityManager, inputManager);
-  cameraController.SetPosition(CAMERA_POSITION);
+  CameraController cameraController(entityManager, inputManager);
   cameraControllerPtr = &cameraController;
   RenderSystem renderSystem(entityManager, assetManager, assetLoader, cameraController);
   // populate the scene
