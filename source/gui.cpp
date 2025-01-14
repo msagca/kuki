@@ -3,10 +3,10 @@
 #include <component_types.hpp>
 #include <cstring>
 #include <entity_manager.hpp>
+#include <GLFW/glfw3.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <glm/gtx/euler_angles.hpp>
 #include <imgui.h>
 #include <ImGuizmo.h>
 #include <input_manager.hpp>
@@ -15,11 +15,29 @@
 static const auto IMGUI_NON_INTERACTABLE_FLAGS = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize;
 static const auto IMGUI_WINDOW_FLAGS = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize;
 void DisplayFPS(unsigned int fps) {
-  ImVec2 windowPos(ImGui::GetIO().DisplaySize.x / 2, 0);
-  ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, ImVec2(1.0f, .0f));
   ImGui::SetNextWindowBgAlpha(.5f);
   ImGui::Begin("FPS", nullptr, IMGUI_NON_INTERACTABLE_FLAGS);
+  auto contentRegion = ImGui::GetContentRegionAvail();
+  auto windowPos = ImGui::GetWindowPos();
+  auto displaySize = ImGui::GetIO().DisplaySize;
+  windowPos.x = (displaySize.x - contentRegion.x) / 2;
+  windowPos.y = 0;
+  ImGui::SetWindowPos(windowPos);
   ImGui::Text("%u", fps);
+  ImGui::End();
+}
+void DisplayKeyBindings(InputManager& inputManager) {
+  auto& keyBindings = inputManager.GetKeyBindings();
+  ImGui::SetNextWindowBgAlpha(.5f);
+  ImGui::Begin("Key Bindings", nullptr, IMGUI_NON_INTERACTABLE_FLAGS);
+  auto contentRegion = ImGui::GetContentRegionAvail();
+  auto windowPos = ImGui::GetWindowPos();
+  auto displaySize = ImGui::GetIO().DisplaySize;
+  windowPos.x = (displaySize.x - contentRegion.x) / 2;
+  windowPos.y = (displaySize.y - contentRegion.y) / 2;
+  ImGui::SetWindowPos(windowPos);
+  for (const auto& pair : keyBindings)
+    ImGui::Text("%s: %s", pair.first.c_str(), pair.second.c_str());
   ImGui::End();
 }
 static void DisplayProperties(EntityManager& entityManager, unsigned int selectedEntity) {
@@ -126,22 +144,10 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, 
   ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
   static auto selectedEntity = -1;
   static auto clickedEntity = -1;
-  static auto selectedPrimitive = -1;
-  static auto selectedModel = -1;
   static auto renameMode = false;
   static char newName[256] = "";
-  static const char* primitives[] = {"Cube", "Sphere", "Cylinder"};
-  static const char* models[] = {"Backpack"}; // TODO: fetch a list of models from the asset manager
   static auto gizmoOp(ImGuizmo::OPERATION::UNIVERSAL);
   static auto gizmoMode(ImGuizmo::MODE::WORLD);
-  if (ImGui::IsKeyPressed(ImGuiKey_E))
-    gizmoOp = ImGuizmo::TRANSLATE;
-  if (ImGui::IsKeyPressed(ImGuiKey_R))
-    gizmoOp = ImGuizmo::ROTATE;
-  if (ImGui::IsKeyPressed(ImGuiKey_Q))
-    gizmoOp = ImGuizmo::SCALE;
-  if (ImGui::IsKeyPressed(ImGuiKey_F))
-    gizmoMode = gizmoMode == ImGuizmo::WORLD ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
   ImGui::Begin("Hierarchy", nullptr, IMGUI_WINDOW_FLAGS);
   entityManager.ForAll([&](unsigned int id) {
     if (!entityManager.HasParent(id))
@@ -160,32 +166,6 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, 
       ImGui::EndPopup();
     }
   ImGui::End();
-  if (ImGui::IsKeyPressed(ImGuiKey_Space))
-    ImGui::OpenPopup("Create");
-  if (ImGui::BeginPopup("Create")) {
-    if (ImGui::Selectable("Empty")) {
-      entityManager.Create();
-      ImGui::CloseCurrentPopup();
-    }
-    ImGui::Separator();
-    if (ImGui::BeginMenu("Primitive")) {
-      if (ImGui::ListBox("##Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
-        entityManager.Spawn(primitives[selectedPrimitive]);
-        selectedPrimitive = -1;
-        ImGui::CloseCurrentPopup();
-      }
-      ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Model")) {
-      if (ImGui::ListBox("##Models", &selectedModel, models, IM_ARRAYSIZE(models))) {
-        entityManager.Spawn(models[selectedModel]);
-        selectedModel = -1;
-        ImGui::CloseCurrentPopup();
-      }
-      ImGui::EndMenu();
-    }
-    ImGui::EndPopup();
-  }
   if (renameMode) {
     inputManager.DisableKeyCallbacks();
     ImGui::Begin("Rename", &renameMode);
@@ -213,5 +193,39 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, 
       ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale));
       transform->rotation = glm::radians(rotation);
     }
+  }
+}
+void DisplayCreateMenu(EntityManager& entityManager, bool& showMenu) {
+  static const char* primitives[] = {"Cube", "Sphere", "Cylinder"};
+  static const char* models[] = {"Backpack"}; // TODO: fetch a list of models from the asset manager
+  static auto selectedPrimitive = -1;
+  static auto selectedModel = -1;
+  ImGui::OpenPopup("Create");
+  if (ImGui::BeginPopup("Create")) {
+    if (ImGui::Selectable("Empty")) {
+      entityManager.Create();
+      ImGui::CloseCurrentPopup();
+      showMenu = false;
+    }
+    ImGui::Separator();
+    if (ImGui::BeginMenu("Primitive")) {
+      if (ImGui::ListBox("##Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
+        entityManager.Spawn(primitives[selectedPrimitive]);
+        selectedPrimitive = -1;
+        ImGui::CloseCurrentPopup();
+        showMenu = false;
+      }
+      ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Model")) {
+      if (ImGui::ListBox("##Models", &selectedModel, models, IM_ARRAYSIZE(models))) {
+        entityManager.Spawn(models[selectedModel]);
+        selectedModel = -1;
+        ImGui::CloseCurrentPopup();
+        showMenu = false;
+      }
+      ImGui::EndMenu();
+    }
+    ImGui::EndPopup();
   }
 }

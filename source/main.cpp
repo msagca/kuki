@@ -29,7 +29,10 @@ double deltaTime = .0;
 static double elapsedTime = .0;
 static unsigned int frameCount = 0;
 static unsigned int fps = 0;
-static bool showFPS = true;
+static bool showFPS = false;
+static bool showBindings = true;
+static bool showHierarchy = true;
+static bool showCreateMenu = false;
 static CameraController* cameraControllerPtr;
 static GLFWwindow* InitializeGLFW();
 static void InitializeImGui(GLFWwindow*);
@@ -70,7 +73,11 @@ int main() {
   assetLoader.LoadModel("Backpack", "model/Survival_BackPack_2.fbx");
   glfwMaximizeWindow(window);
   // register callbacks
-  inputManager.RegisterCallback(GLFW_KEY_V, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); });
+  inputManager.RegisterCallback(GLFW_KEY_K, GLFW_PRESS, []() { showBindings = !showBindings; }, "Show/hide key bindings");
+  inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, []() { showHierarchy = !showHierarchy; }, "Show/hide hierarchy window");
+  inputManager.RegisterCallback(GLFW_KEY_C, GLFW_PRESS, []() { showCreateMenu = !showCreateMenu; }, "Show/hide create menu");
+  inputManager.RegisterCallback(GLFW_KEY_V, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); }, "Toggle wireframe mode");
+  inputManager.RegisterCallback(GLFW_KEY_F, GLFW_PRESS, []() { showFPS = !showFPS; }, "Toggle FPS");
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
   auto timeLast = .0;
@@ -93,7 +100,12 @@ int main() {
     ImGuizmo::DrawGrid(glm::value_ptr(cameraController.GetView()), glm::value_ptr(cameraController.GetProjection()), glm::value_ptr(IDENTITY_MATRIX), cameraController.GetFar());
     if (showFPS)
       DisplayFPS(fps);
-    DisplayHierarchy(entityManager, inputManager, cameraController);
+    if (showBindings)
+      DisplayKeyBindings(inputManager);
+    if (showHierarchy)
+      DisplayHierarchy(entityManager, inputManager, cameraController);
+    if (showCreateMenu)
+      DisplayCreateMenu(entityManager, showCreateMenu);
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     glfwSwapBuffers(window);

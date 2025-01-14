@@ -1,73 +1,50 @@
-#include <cstdint>
 #include <GLFW/glfw3.h>
 #include <glm/ext/vector_float2.hpp>
 #include <input_manager.hpp>
+#include <string>
+#include <unordered_map>
 extern double deltaTime;
-enum KeyBit {
-  BitEscape,
-  BitEnter,
-  BitSpace,
-  BitBackspace,
-  BitLeftShift,
-  BitRightShift,
-  BitW,
-  BitS,
-  BitA,
-  BitD,
-  BitUp,
-  BitDown,
-  BitLeft,
-  BitRight,
-  BitH,
-  BitP
-};
-enum KeyMask {
-  MaskEscape = 1 << BitEscape,
-  MaskEnter = 1 << BitEnter,
-  MaskSpace = 1 << BitSpace,
-  MaskBackspace = 1 << BitBackspace,
-  MaskLeftShift = 1 << BitLeftShift,
-  MaskRightShift = 1 << BitRightShift,
-  MaskW = 1 << BitW,
-  MaskS = 1 << BitS,
-  MaskA = 1 << BitA,
-  MaskD = 1 << BitD,
-  MaskUp = 1 << BitUp,
-  MaskDown = 1 << BitDown,
-  MaskLeft = 1 << BitLeft,
-  MaskRight = 1 << BitRight,
-  MaskH = 1 << BitH,
-  MaskP = 1 << BitP
-};
 void InputManager::Initialize(GLFWwindow* window) {
   this->window = window;
   glfwSetKeyCallback(window, KeyCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetCursorPosCallback(window, CursorPosCallback);
+  keyStates.insert({GLFW_KEY_UP, false});
+  keyStates.insert({GLFW_KEY_DOWN, false});
+  keyStates.insert({GLFW_KEY_LEFT, false});
+  keyStates.insert({GLFW_KEY_RIGHT, false});
+  keyStates.insert({GLFW_KEY_W, false});
+  keyStates.insert({GLFW_KEY_S, false});
+  keyStates.insert({GLFW_KEY_A, false});
+  keyStates.insert({GLFW_KEY_D, false});
 }
 bool InputManager::GetKey(int key) {
-  return keyMask & KeyToBitmask(key);
-}
-bool InputManager::GetKey(int key1, int key2) {
-  return keyMask & (KeyToBitmask(key1) | KeyToBitmask(key2));
+  auto it = keyStates.find(key);
+  if (it == keyStates.end())
+    return false;
+  return it->second;
 }
 bool InputManager::GetButton(int button) {
-  return glfwGetMouseButton(window, button) == GLFW_PRESS;
+  return glfwGetMouseButton(window, button);
 }
 glm::vec2 InputManager::GetWASD() const {
   glm::vec2 wasd(.0f, .0f);
-  auto forward = (keyMask & MaskW) ? ((keyMask & MaskS) ? .0f : 1.0f) : ((keyMask & MaskS) ? -1.0f : .0f);
-  auto right = (keyMask & MaskD) ? ((keyMask & MaskA) ? .0f : 1.0f) : ((keyMask & MaskA) ? -1.0f : .0f);
-  wasd.y = forward;
-  wasd.x = right;
+  auto w = keyStates.at(GLFW_KEY_W);
+  auto s = keyStates.at(GLFW_KEY_S);
+  auto a = keyStates.at(GLFW_KEY_A);
+  auto d = keyStates.at(GLFW_KEY_D);
+  wasd.y = w ? (s ? .0f : 1.0f) : (s ? -1.0f : .0f);
+  wasd.x = d ? (a ? .0f : 1.0f) : (a ? -1.0f : .0f);
   return wasd;
 }
 glm::vec2 InputManager::GetArrow() const {
   glm::vec2 arrow(.0f, .0f);
-  auto forward = (keyMask & MaskUp) ? ((keyMask & MaskDown) ? .0f : 1.0f) : ((keyMask & MaskDown) ? -1.0f : .0f);
-  auto right = (keyMask & MaskRight) ? ((keyMask & MaskLeft) ? .0f : 1.0f) : ((keyMask & MaskLeft) ? -1.0f : .0f);
-  arrow.y = forward;
-  arrow.x = right;
+  auto up = keyStates.at(GLFW_KEY_UP);
+  auto down = keyStates.at(GLFW_KEY_DOWN);
+  auto left = keyStates.at(GLFW_KEY_LEFT);
+  auto right = keyStates.at(GLFW_KEY_RIGHT);
+  arrow.y = up ? (down ? .0f : 1.0f) : (down ? -1.0f : .0f);
+  arrow.x = right ? (left ? .0f : 1.0f) : (left ? -1.0f : .0f);
   return arrow;
 }
 glm::vec2 InputManager::GetMousePos() const {
@@ -80,17 +57,16 @@ void InputManager::SetKeyState(int key, int action) {
   lastInputTime = glfwGetTime();
   if (!keysEnabled)
     return;
+  // NOTE: key state is either true (press or repeat) or false (release)
+  keyStates[key] = action == GLFW_PRESS || action == GLFW_REPEAT;
   if (inactiveCallbacks.find(key) != inactiveCallbacks.end())
     return;
   if (action == GLFW_PRESS) {
-    keyMask |= KeyToBitmask(key);
     if (pressCallbacks.find(key) != pressCallbacks.end())
       pressCallbacks[key]();
-  } else if (action == GLFW_RELEASE) {
-    keyMask &= ~KeyToBitmask(key);
+  } else if (action == GLFW_RELEASE)
     if (releaseCallbacks.find(key) != releaseCallbacks.end())
       releaseCallbacks[key]();
-  }
 }
 void InputManager::SetButtonState(int button, int action) {
   lastInputTime = glfwGetTime();
@@ -109,11 +85,15 @@ void InputManager::SetMousePos(double xpos, double ypos) {
   mousePos.x = xpos;
   mousePos.y = ypos;
 }
-void InputManager::RegisterCallback(int key, int action, std::function<void()> callback) {
+void InputManager::RegisterCallback(int key, int action, std::function<void()> callback, std::string description) {
   if (action == GLFW_PRESS)
     pressCallbacks[key] = callback;
   else if (action == GLFW_RELEASE)
     releaseCallbacks[key] = callback;
+  if (description.empty())
+    return;
+  keyDescriptions[key] = description;
+  updateBindings = true;
 }
 void InputManager::UnregisterCallback(int key, int action) {
   inactiveCallbacks.erase(key);
@@ -121,6 +101,29 @@ void InputManager::UnregisterCallback(int key, int action) {
     pressCallbacks.erase(key);
   else if (action == GLFW_RELEASE)
     releaseCallbacks.erase(key);
+  keyDescriptions.erase(key);
+  updateBindings = true;
+}
+void InputManager::RegisterKey(int key, std::string description) {
+  keyDescriptions[key] = description;
+  updateBindings = true;
+}
+void InputManager::UnregisterKey(int key) {
+  keyDescriptions.erase(key);
+  updateBindings = true;
+}
+static std::string GLFWKeyToString(int);
+const std::unordered_map<std::string, std::string>& InputManager::GetKeyBindings() {
+  if (updateBindings) {
+    updateBindings = false;
+    keyBindings.clear();
+    for (const auto& pair : keyDescriptions) {
+      auto key = GLFWKeyToString(pair.first);
+      if (!key.empty())
+        keyBindings[key] = pair.second;
+    }
+  }
+  return keyBindings;
 }
 void InputManager::DisableCallback(int key) {
   if (pressCallbacks.find(key) != pressCallbacks.end())
@@ -138,41 +141,65 @@ void InputManager::DisableKeyCallbacks() {
 void InputManager::EnableKeyCallbacks() {
   keysEnabled = true;
 }
-uint32_t InputManager::KeyToBitmask(int key) {
+static std::string GLFWKeyToString(int key) {
   switch (key) {
-  case GLFW_KEY_ESCAPE:
-    return MaskEscape;
-  case GLFW_KEY_ENTER:
-    return MaskEnter;
-  case GLFW_KEY_SPACE:
-    return MaskSpace;
-  case GLFW_KEY_BACKSPACE:
-    return MaskBackspace;
-  case GLFW_KEY_LEFT_SHIFT:
-    return MaskLeftShift;
-  case GLFW_KEY_RIGHT_SHIFT:
-    return MaskRightShift;
-  case GLFW_KEY_W:
-    return MaskW;
   case GLFW_KEY_A:
-    return MaskA;
-  case GLFW_KEY_S:
-    return MaskS;
+    return "A";
+  case GLFW_KEY_B:
+    return "B";
+  case GLFW_KEY_C:
+    return "C";
   case GLFW_KEY_D:
-    return MaskD;
-  case GLFW_KEY_UP:
-    return MaskUp;
-  case GLFW_KEY_DOWN:
-    return MaskDown;
-  case GLFW_KEY_LEFT:
-    return MaskLeft;
-  case GLFW_KEY_RIGHT:
-    return MaskRight;
+    return "D";
+  case GLFW_KEY_E:
+    return "E";
+  case GLFW_KEY_F:
+    return "F";
+  case GLFW_KEY_G:
+    return "G";
   case GLFW_KEY_H:
-    return MaskH;
+    return "H";
+  case GLFW_KEY_I:
+    return "I";
+  case GLFW_KEY_J:
+    return "J";
+  case GLFW_KEY_K:
+    return "K";
+  case GLFW_KEY_L:
+    return "L";
+  case GLFW_KEY_M:
+    return "M";
+  case GLFW_KEY_N:
+    return "N";
+  case GLFW_KEY_O:
+    return "O";
   case GLFW_KEY_P:
-    return MaskP;
+    return "P";
+  case GLFW_KEY_Q:
+    return "Q";
+  case GLFW_KEY_R:
+    return "R";
+  case GLFW_KEY_S:
+    return "S";
+  case GLFW_KEY_T:
+    return "T";
+  case GLFW_KEY_U:
+    return "U";
+  case GLFW_KEY_V:
+    return "V";
+  case GLFW_KEY_W:
+    return "W";
+  case GLFW_KEY_X:
+    return "X";
+  case GLFW_KEY_Y:
+    return "Y";
+  case GLFW_KEY_Z:
+    return "Z";
+  case GLFW_KEY_TAB:
+    return "TAB";
+  case GLFW_KEY_SPACE:
+    return "SPACE";
   default:
-    return 0;
+    return "";
   }
 }
