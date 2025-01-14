@@ -119,9 +119,10 @@ static Mesh CreateMesh(aiMesh* mesh) {
 static glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMat) {
   return {{aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1}, {aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2}, {aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3}, {aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4}};
 }
-unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, int parentID) {
+unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, int parentID, const std::string& nodeName) {
   auto model = AssimpMatrix4x4ToGlmMat4(node->mTransformation);
-  auto assetID = assetManager.Create(node->mName.C_Str());
+  auto name = nodeName.empty() ? node->mName.C_Str() : nodeName;
+  auto assetID = assetManager.Create(name);
   auto transform = assetManager.AddComponent<Transform>(assetID);
   glm::vec3 skew;
   glm::vec4 perspective;
@@ -154,11 +155,7 @@ int AssetLoader::LoadModel(const std::string& name, const std::string& path) {
     std::cerr << "Assimp: " << importer.GetErrorString() << std::endl;
     return -1;
   }
-  auto childID = LoadNode(scene->mRootNode, scene);
-  auto assetID = assetManager.Create(name);
-  assetManager.AddComponent<Transform>(assetID);
-  assetManager.AddChild(assetID, childID);
-  return assetID;
+  return LoadNode(scene->mRootNode, scene, -1, name);
 }
 static std::string ReadShader(const std::string& filename) {
   std::ifstream shaderFile(filename);
@@ -187,7 +184,7 @@ static void CompileShader(GLuint& shaderID, const char* shaderText, int shaderTy
 int AssetLoader::LoadShader(const std::string& name, const std::string& vertPath, const std::string& fragPath) {
   auto vertText = ReadShader(vertPath);
   auto fragText = ReadShader(fragPath);
-  if (vertText == "" || fragText == "")
+  if (vertText.empty() || fragText.empty())
     return -1;
   GLuint vertID, fragID;
   CompileShader(vertID, vertText.c_str(), GL_VERTEX_SHADER);

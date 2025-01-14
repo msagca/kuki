@@ -105,23 +105,21 @@ static void DisplayProperties(EntityManager& entityManager, unsigned int selecte
       entityManager.AddComponent(selectedEntity, comp);
   ImGui::End();
 }
-static void DisplayEntityHierarchy(EntityManager& entityManager, unsigned int parentID, int& selectedEntity, int& clickedEntity) {
-  entityManager.ForAll([&](unsigned int id) {
-    if (entityManager.GetParent(id) == parentID) {
-      auto hasChildren = entityManager.HasChildren(id);
-      ImGuiTreeNodeFlags nodeFlags = (id == selectedEntity ? ImGuiTreeNodeFlags_Selected : 0) | (hasChildren ? ImGuiTreeNodeFlags_OpenOnArrow : ImGuiTreeNodeFlags_Leaf);
-      bool nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, entityManager.GetName(id).c_str());
-      if (ImGui::IsItemClicked())
-        selectedEntity = id;
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
-        clickedEntity = id;
-      if (nodeOpen) {
-        if (hasChildren)
-          DisplayEntityHierarchy(entityManager, id, selectedEntity, clickedEntity);
-        ImGui::TreePop();
-      }
-    }
-  });
+static void DisplayEntityHierarchy(EntityManager& entityManager, unsigned int id, int& selectedEntity, int& clickedEntity) {
+  auto name = entityManager.GetName(id).c_str();
+  auto hasChildren = entityManager.HasChildren(id);
+  ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth | (id == selectedEntity ? ImGuiTreeNodeFlags_Selected : 0) | (hasChildren ? ImGuiTreeNodeFlags_OpenOnArrow : ImGuiTreeNodeFlags_Leaf);
+  auto nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, name);
+  if (ImGui::IsItemClicked())
+    selectedEntity = id;
+  if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+    clickedEntity = id;
+  if (nodeOpen) {
+    entityManager.ForEachChild(id, [&](unsigned int childID) {
+      DisplayEntityHierarchy(entityManager, childID, selectedEntity, clickedEntity);
+    });
+    ImGui::TreePop();
+  }
 }
 void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, CameraController& cameraController) {
   ImVec2 windowPos(0, 0);
@@ -132,7 +130,7 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, 
   static auto selectedModel = -1;
   static auto renameMode = false;
   static char newName[256] = "";
-  static const char* primitives[] = {"Empty", "Cube", "Sphere", "Cylinder"};
+  static const char* primitives[] = {"Cube", "Sphere", "Cylinder"};
   static const char* models[] = {"Backpack"}; // TODO: fetch a list of models from the asset manager
   static auto gizmoOp(ImGuizmo::OPERATION::UNIVERSAL);
   static auto gizmoMode(ImGuizmo::MODE::WORLD);
@@ -146,13 +144,8 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, 
     gizmoMode = gizmoMode == ImGuizmo::WORLD ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
   ImGui::Begin("Hierarchy", nullptr, IMGUI_WINDOW_FLAGS);
   entityManager.ForAll([&](unsigned int id) {
-    if (!entityManager.HasParent(id)) {
-      if (ImGui::Selectable(entityManager.GetName(id).c_str(), id == selectedEntity))
-        selectedEntity = id;
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
-        clickedEntity = id;
+    if (!entityManager.HasParent(id))
       DisplayEntityHierarchy(entityManager, id, selectedEntity, clickedEntity);
-    }
   });
   if (clickedEntity >= 0)
     if (ImGui::BeginPopupContextWindow()) {
@@ -170,12 +163,14 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, 
   if (ImGui::IsKeyPressed(ImGuiKey_Space))
     ImGui::OpenPopup("Create");
   if (ImGui::BeginPopup("Create")) {
+    if (ImGui::Selectable("Empty")) {
+      entityManager.Create();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::Separator();
     if (ImGui::BeginMenu("Primitive")) {
       if (ImGui::ListBox("##Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
-        if (selectedPrimitive == 0)
-          entityManager.Create();
-        else
-          entityManager.Spawn(primitives[selectedPrimitive]);
+        entityManager.Spawn(primitives[selectedPrimitive]);
         selectedPrimitive = -1;
         ImGui::CloseCurrentPopup();
       }

@@ -7,7 +7,7 @@
 class AssetLoader {
 private:
   AssetManager& assetManager;
-  unsigned int LoadNode(aiNode*, const aiScene*, int = -1);
+  unsigned int LoadNode(aiNode*, const aiScene*, int = -1, const std::string& = "");
 public:
   AssetLoader(AssetManager&);
   // NOTE: int return type is for functions that require a path to the asset, so if the read fails they can return -1
