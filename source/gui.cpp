@@ -1,9 +1,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <camera_controller.hpp>
-#include <component_types.hpp>
 #include <cstring>
 #include <entity_manager.hpp>
-#include <GLFW/glfw3.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -34,7 +32,7 @@ void DisplayKeyBindings(InputManager& inputManager) {
   auto windowPos = ImGui::GetWindowPos();
   auto displaySize = ImGui::GetIO().DisplaySize;
   windowPos.x = (displaySize.x - contentRegion.x) / 2;
-  windowPos.y = (displaySize.y - contentRegion.y) / 2;
+  windowPos.y = displaySize.y - contentRegion.y * 2;
   ImGui::SetWindowPos(windowPos);
   for (const auto& pair : keyBindings)
     ImGui::Text("%s: %s", pair.first.c_str(), pair.second.c_str());
@@ -139,7 +137,7 @@ static void DisplayEntityHierarchy(EntityManager& entityManager, unsigned int id
     ImGui::TreePop();
   }
 }
-void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, CameraController& cameraController) {
+void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, CameraController& cameraController, bool showGizmo) {
   ImVec2 windowPos(0, 0);
   ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
   static auto selectedEntity = -1;
@@ -181,7 +179,7 @@ void DisplayHierarchy(EntityManager& entityManager, InputManager& inputManager, 
   if (selectedEntity >= 0) {
     DisplayProperties(entityManager, selectedEntity);
     auto transform = entityManager.GetComponent<Transform>(selectedEntity);
-    if (transform) {
+    if (showGizmo && transform) {
       // draw gizmo
       glm::mat4 matrix;
       auto rotation = glm::degrees(transform->rotation);
@@ -207,7 +205,6 @@ void DisplayCreateMenu(EntityManager& entityManager, bool& showMenu) {
       ImGui::CloseCurrentPopup();
       showMenu = false;
     }
-    ImGui::Separator();
     if (ImGui::BeginMenu("Primitive")) {
       if (ImGui::ListBox("##Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
         entityManager.Spawn(primitives[selectedPrimitive]);
@@ -217,15 +214,15 @@ void DisplayCreateMenu(EntityManager& entityManager, bool& showMenu) {
       }
       ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("Model")) {
-      if (ImGui::ListBox("##Models", &selectedModel, models, IM_ARRAYSIZE(models))) {
-        entityManager.Spawn(models[selectedModel]);
-        selectedModel = -1;
-        ImGui::CloseCurrentPopup();
-        showMenu = false;
-      }
-      ImGui::EndMenu();
-    }
+    // if (ImGui::BeginMenu("Model")) {
+    //   if (ImGui::ListBox("##Models", &selectedModel, models, IM_ARRAYSIZE(models))) {
+    //     entityManager.Spawn(models[selectedModel]);
+    //     selectedModel = -1;
+    //     ImGui::CloseCurrentPopup();
+    //     showMenu = false;
+    //   }
+    //   ImGui::EndMenu();
+    // }
     ImGui::EndPopup();
   }
 }

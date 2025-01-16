@@ -1,6 +1,11 @@
 #pragma once
+#include "component/component.hpp"
+#include "component/material.hpp"
+#include "component/mesh.hpp"
+#include "component/shader.hpp"
+#include "component/texture.hpp"
+#include "component/transform.hpp"
 #include <component_manager.hpp>
-#include <component_types.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -15,10 +20,11 @@ private:
   std::unordered_map<unsigned int, std::string> idToName;
   std::unordered_map<std::string, unsigned int> nameToID;
   std::unordered_map<unsigned int, std::unordered_set<unsigned int>> idToChildren;
-  ComponentManager<Transform> transformManager;
+  ComponentManager<Material> materialManager;
   ComponentManager<Mesh> meshManager;
   ComponentManager<Shader> shaderManager;
-  ComponentManager<Material> materialManager;
+  ComponentManager<Texture> textureManager;
+  ComponentManager<Transform> transformManager;
   std::string GenerateName(const std::string&);
   template <typename T>
   ComponentManager<T>& GetManager();
@@ -84,8 +90,8 @@ void AssetManager::ForEachChild(unsigned int parent, F func) {
     func(child, idToName[child]);
 }
 template <>
-inline ComponentManager<Transform>& AssetManager::GetManager() {
-  return transformManager;
+inline ComponentManager<Material>& AssetManager::GetManager() {
+  return materialManager;
 }
 template <>
 inline ComponentManager<Mesh>& AssetManager::GetManager() {
@@ -96,12 +102,16 @@ inline ComponentManager<Shader>& AssetManager::GetManager() {
   return shaderManager;
 }
 template <>
-inline ComponentManager<Material>& AssetManager::GetManager() {
-  return materialManager;
+inline ComponentManager<Texture>& AssetManager::GetManager() {
+  return textureManager;
 }
 template <>
-inline size_t AssetManager::GetComponentMask<Transform>() const {
-  return static_cast<size_t>(ComponentMask::TransformMask);
+inline ComponentManager<Transform>& AssetManager::GetManager() {
+  return transformManager;
+}
+template <>
+inline size_t AssetManager::GetComponentMask<Material>() const {
+  return static_cast<size_t>(ComponentMask::MaterialMask);
 }
 template <>
 inline size_t AssetManager::GetComponentMask<Mesh>() const {
@@ -112,6 +122,10 @@ inline size_t AssetManager::GetComponentMask<Shader>() const {
   return static_cast<size_t>(ComponentMask::ShaderMask);
 }
 template <>
-inline size_t AssetManager::GetComponentMask<Material>() const {
-  return static_cast<size_t>(ComponentMask::MaterialMask);
+inline size_t AssetManager::GetComponentMask<Texture>() const {
+  return static_cast<size_t>(ComponentMask::TextureMask);
+}
+template <>
+inline size_t AssetManager::GetComponentMask<Transform>() const {
+  return static_cast<size_t>(ComponentMask::TransformMask);
 }

@@ -8,7 +8,12 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <assimp/types.h>
-#include <component_types.hpp>
+#include <component/component.hpp>
+#include <component/material.hpp>
+#include <component/mesh.hpp>
+#include <component/shader.hpp>
+#include <component/texture.hpp>
+#include <component/transform.hpp>
 #include <cstddef>
 #include <fstream>
 #include <glad/glad.h>
@@ -21,7 +26,6 @@
 #include <glm/gtx/matrix_decompose.hpp>
 #include <iosfwd>
 #include <iostream>
-#include <limits>
 #include <ostream>
 #include <primitive.hpp>
 #include <sstream>
@@ -30,57 +34,137 @@
 #include <vector>
 AssetLoader::AssetLoader(AssetManager& assetManager)
   : assetManager(assetManager) {
-  auto id = LoadMesh("Cube", Primitive::Cube());
+  LoadShader("DefaultShader", "shader/default_lit.vert", "shader/default_lit.frag");
+  auto id = LoadMaterial("DefaultMaterial", "image/T_umonab2dy_1K_B.jpg", "image/T_umonab2dy_1K_N.jpg", "image/T_umonab2dy_1K_ORM.jpg");
+  Material material;
+  auto materialPtr = assetManager.GetComponent<Material>(id);
+  if (!materialPtr)
+    std::cerr << "Unable to load the default material." << std::endl;
+  else
+    material = *materialPtr;
+  id = LoadMesh("Cube", Primitive::Cube());
   assetManager.AddComponent<Transform>(id);
-  assetManager.AddComponent<Material>(id);
+  *assetManager.AddComponent<Material>(id) = material;
   id = LoadMesh("Sphere", Primitive::Sphere());
   assetManager.AddComponent<Transform>(id);
-  assetManager.AddComponent<Material>(id);
+  *assetManager.AddComponent<Material>(id) = material;
   id = LoadMesh("Cylinder", Primitive::Cylinder());
   assetManager.AddComponent<Transform>(id);
-  assetManager.AddComponent<Material>(id);
+  *assetManager.AddComponent<Material>(id) = material;
 }
-static Texture CreateTexture(const std::string& path, TextureType type) {
-  Texture texture;
+int AssetLoader::LoadMaterial(const std::string& name, const std::string& basePath, const std::string& normalPath, const std::string& ormPath) {
+  auto textureID = LoadTexture(basePath, name + "Base", TextureType::Base);
+  auto texture = assetManager.GetComponent<Texture>(textureID);
+  if (!texture)
+    return -1;
+  auto assetID = assetManager.Create(name);
+  auto material = assetManager.AddComponent<Material>(assetID);
+  material->base = texture->id;
+  if (!normalPath.empty()) {
+    textureID = LoadTexture(normalPath, name + "Normal", TextureType::Normal);
+    texture = assetManager.GetComponent<Texture>(textureID);
+    if (texture)
+      material->normal = texture->id;
+  }
+  if (!ormPath.empty()) {
+    textureID = LoadTexture(ormPath, name + "ORM", TextureType::ORM);
+    texture = assetManager.GetComponent<Texture>(textureID);
+    if (texture)
+      material->orm = texture->id;
+  }
+  return assetID;
+}
+int AssetLoader::LoadTexture(const std::string& path, const std::string& name, TextureType type) {
+  auto it = pathToID.find(path);
+  if (it != pathToID.end())
+    return it->second;
   int width, height, nrComponents;
   auto data = stbi_load(path.c_str(), &width, &height, &nrComponents, 0);
-  if (data) {
-    GLenum format = 0;
-    if (nrComponents == 1)
-      format = GL_RED;
-    else if (nrComponents == 3)
-      format = GL_RGB;
-    else if (nrComponents == 4)
-      format = GL_RGBA;
-    unsigned int id;
-    glGenTextures(1, &id);
-    glBindTexture(GL_TEXTURE_2D, id);
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+  if (!data) {
+    std::cerr << "Failed to load the texture at " << path << "." << std::endl;
+    return -1;
+  }
+  GLint internalFormat;
+  GLenum format;
+  switch (nrComponents) {
+  case 1:
+    internalFormat = GL_R8;
+    format = GL_RED;
+    break;
+  case 3:
+    internalFormat = (type == TextureType::Base) ? GL_SRGB8 : GL_RGB8;
+    format = GL_RGB;
+    break;
+  case 4:
+    internalFormat = (type == TextureType::Base) ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+    format = GL_RGBA;
+    break;
+  default:
+    std::cerr << "Unexpected number of components in texture (" << nrComponents << ")." << std::endl;
+    stbi_image_free(data);
+    return -1;
+  }
+  unsigned int id;
+  glGenTextures(1, &id);
+  glBindTexture(GL_TEXTURE_2D, id);
+  glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+  switch (type) {
+  case TextureType::Normal:
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    break;
+  default:
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    stbi_image_free(data);
-    texture.id = id;
-    texture.width = width;
-    texture.height = height;
-    texture.type = type;
-  } else
-    std::cerr << "Failed to load the texture at " << path << "." << std::endl;
-  return texture;
-}
-static Material CreateMaterial(aiMaterial* material) {
-  Material mat;
-  for (auto i = 0; i < material->GetTextureCount(aiTextureType_DIFFUSE); ++i) {
-    aiString path;
-    material->GetTexture(aiTextureType_DIFFUSE, i, &path);
-    mat.diffuseMap = CreateTexture(path.C_Str(), TextureType::DiffuseMap);
   }
-  for (auto i = 0; i < material->GetTextureCount(aiTextureType_SPECULAR); ++i) {
-    aiString path;
-    material->GetTexture(aiTextureType_SPECULAR, i, &path);
-    mat.specularMap = CreateTexture(path.C_Str(), TextureType::SpecularMap);
+  stbi_image_free(data);
+  auto assetID = assetManager.Create(name);
+  auto texture = assetManager.AddComponent<Texture>(assetID);
+  texture->id = id;
+  texture->type = type;
+  pathToID[path] = assetID;
+  return assetID;
+}
+Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& name) {
+  Material mat;
+  aiString path;
+  if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
+    material->GetTexture(aiTextureType_DIFFUSE, 0, &path);
+    auto id = LoadTexture(path.C_Str(), name + "Base", TextureType::Base);
+    auto texture = assetManager.GetComponent<Texture>(id);
+    if (texture)
+      mat.base = texture->id;
+  }
+  if (material->GetTextureCount(aiTextureType_NORMALS) > 0) {
+    material->GetTexture(aiTextureType_NORMALS, 0, &path);
+    auto id = LoadTexture(path.C_Str(), name + "Normal", TextureType::Normal);
+    auto texture = assetManager.GetComponent<Texture>(id);
+    if (texture)
+      mat.normal = texture->id;
+  }
+  if (material->GetTextureCount(aiTextureType_METALNESS) > 0) {
+    material->GetTexture(aiTextureType_METALNESS, 0, &path);
+    auto id = LoadTexture(path.C_Str(), name + "Metalness", TextureType::Metalness);
+    auto texture = assetManager.GetComponent<Texture>(id);
+    if (texture)
+      mat.metalness = texture->id;
+  }
+  if (material->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
+    material->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
+    auto id = LoadTexture(path.C_Str(), name + "Occlusion", TextureType::Occlusion);
+    auto texture = assetManager.GetComponent<Texture>(id);
+    if (texture)
+      mat.occlusion = texture->id;
+  }
+  if (material->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
+    material->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
+    auto id = LoadTexture(path.C_Str(), name + "Roughness", TextureType::Roughness);
+    auto texture = assetManager.GetComponent<Texture>(id);
+    if (texture)
+      mat.roughness = texture->id;
   }
   return mat;
 }
@@ -139,7 +223,7 @@ unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, int paren
     if (mesh->mMaterialIndex >= 0) {
       auto material = scene->mMaterials[mesh->mMaterialIndex];
       auto materialComp = assetManager.AddComponent<Material>(assetID);
-      *materialComp = CreateMaterial(material);
+      *materialComp = CreateMaterial(material, name);
     }
   }
   for (auto i = 0; i < node->mNumChildren; ++i) {
@@ -157,16 +241,16 @@ int AssetLoader::LoadModel(const std::string& name, const std::string& path) {
   }
   return LoadNode(scene->mRootNode, scene, -1, name);
 }
-static std::string ReadShader(const std::string& filename) {
-  std::ifstream shaderFile(filename);
+static std::string ReadShader(const std::string& path) {
+  std::ifstream shaderFile(path);
   if (!shaderFile) {
-    std::cerr << "Could not open the file: " << filename << "." << std::endl;
+    std::cerr << "Could not open the file: " << path << "." << std::endl;
     return "";
   }
   std::stringstream shaderStream;
   shaderStream << shaderFile.rdbuf();
   if (shaderFile.fail()) {
-    std::cerr << "Failed to read the file: " << filename << "." << std::endl;
+    std::cerr << "Failed to read the file: " << path << "." << std::endl;
     return "";
   }
   shaderFile.close();
@@ -237,16 +321,6 @@ static Mesh CreateMesh(const std::vector<Vertex>& vertices, const std::vector<un
   auto mesh = CreateMesh(vertices);
   CreateIndexBuffer(mesh, indices);
   return mesh;
-}
-static BoundingBox CalculateBoundingBox(const std::vector<Vertex>& vertices) {
-  BoundingBox box;
-  box.min = glm::vec3(std::numeric_limits<float>::max());
-  box.max = glm::vec3(std::numeric_limits<float>::lowest());
-  for (const auto& v : vertices) {
-    box.min = glm::min(box.min, v.position);
-    box.max = glm::max(box.max, v.position);
-  }
-  return box;
 }
 unsigned int AssetLoader::LoadMesh(const std::string& name, const std::vector<Vertex>& vertices) {
   auto assetID = assetManager.Create(name);

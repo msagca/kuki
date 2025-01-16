@@ -1,5 +1,7 @@
 #pragma once
-#include <component_types.hpp>
+#include "component/mesh.hpp"
+#include "component/shader.hpp"
+#include "component/texture.hpp"
 #include <glad/glad.h>
 #include <unordered_map>
 #include <utility>
@@ -101,18 +103,16 @@ inline void ComponentManager<Mesh>::CleanUp() {
   });
 }
 template <>
-inline void ComponentManager<Material>::CleanUp() {
-  ForAll([](const Material& material) {
-    glBindTexture(GL_TEXTURE_2D, material.diffuseMap.id);
-    glDeleteTextures(1, &material.diffuseMap.id);
-    glBindTexture(GL_TEXTURE_2D, material.specularMap.id);
-    glDeleteTextures(1, &material.specularMap.id);
-    glBindTexture(GL_TEXTURE_2D, 0);
-  });
-}
-template <>
 inline void ComponentManager<Shader>::CleanUp() {
   ForAll([](const Shader& shader) {
     glDeleteProgram(shader.id);
+  });
+}
+template <>
+inline void ComponentManager<Texture>::CleanUp() {
+  ForAll([](const Texture& texture) {
+    glBindTexture(GL_TEXTURE_2D, texture.id);
+    glDeleteTextures(1, &texture.id);
+    glBindTexture(GL_TEXTURE_2D, 0);
   });
 }

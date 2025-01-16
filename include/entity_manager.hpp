@@ -1,12 +1,16 @@
 #pragma once
+#include "component/camera.hpp"
+#include "component/component.hpp"
+#include "component/light.hpp"
+#include "component/mesh_filter.hpp"
+#include "component/mesh_renderer.hpp"
+#include "component/transform.hpp"
 #include <asset_manager.hpp>
 #include <component_manager.hpp>
-#include <component_types.hpp>
 #include <string>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 /// <summary>
 /// Manages entities and their components in a scene
@@ -20,11 +24,11 @@ private:
   std::unordered_map<std::string, unsigned int> nameToID;
   std::unordered_map<unsigned int, std::unordered_set<unsigned int>> idToChildren;
   std::unordered_map<unsigned int, unsigned int> idToParent;
-  ComponentManager<Transform> transformManager;
-  ComponentManager<MeshFilter> filterManager;
-  ComponentManager<MeshRenderer> rendererManager;
   ComponentManager<Camera> cameraManager;
   ComponentManager<Light> lightManager;
+  ComponentManager<MeshFilter> filterManager;
+  ComponentManager<MeshRenderer> rendererManager;
+  ComponentManager<Transform> transformManager;
   template <typename T>
   ComponentManager<T>& GetManager();
   template <typename T>
@@ -151,8 +155,12 @@ void EntityManager::ForAll(F func) {
     func(id);
 }
 template <>
-inline ComponentManager<Transform>& EntityManager::GetManager() {
-  return transformManager;
+inline ComponentManager<Camera>& EntityManager::GetManager() {
+  return cameraManager;
+}
+template <>
+inline ComponentManager<Light>& EntityManager::GetManager() {
+  return lightManager;
 }
 template <>
 inline ComponentManager<MeshFilter>& EntityManager::GetManager() {
@@ -163,16 +171,16 @@ inline ComponentManager<MeshRenderer>& EntityManager::GetManager() {
   return rendererManager;
 }
 template <>
-inline ComponentManager<Camera>& EntityManager::GetManager() {
-  return cameraManager;
+inline ComponentManager<Transform>& EntityManager::GetManager() {
+  return transformManager;
 }
 template <>
-inline ComponentManager<Light>& EntityManager::GetManager() {
-  return lightManager;
+inline size_t EntityManager::GetComponentMask<Camera>() const {
+  return static_cast<size_t>(ComponentMask::CameraMask);
 }
 template <>
-inline size_t EntityManager::GetComponentMask<Transform>() const {
-  return static_cast<size_t>(ComponentMask::TransformMask);
+inline size_t EntityManager::GetComponentMask<Light>() const {
+  return static_cast<size_t>(ComponentMask::LightMask);
 }
 template <>
 inline size_t EntityManager::GetComponentMask<MeshFilter>() const {
@@ -183,10 +191,6 @@ inline size_t EntityManager::GetComponentMask<MeshRenderer>() const {
   return static_cast<size_t>(ComponentMask::MeshRendererMask);
 }
 template <>
-inline size_t EntityManager::GetComponentMask<Camera>() const {
-  return static_cast<size_t>(ComponentMask::CameraMask);
-}
-template <>
-inline size_t EntityManager::GetComponentMask<Light>() const {
-  return static_cast<size_t>(ComponentMask::LightMask);
+inline size_t EntityManager::GetComponentMask<Transform>() const {
+  return static_cast<size_t>(ComponentMask::TransformMask);
 }

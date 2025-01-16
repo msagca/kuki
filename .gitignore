@@ -10,6 +10,7 @@
 !external/assimp
 !external/glfw
 !external/glm
+!external/json
 !include/**/*.h
 !include/**/*.hpp
 !include/**/*.inl
@@ -19,6 +20,9 @@
 !source/image/**/*.jpg
 !source/image/**/*.png
 !source/model/**/*.fbx
+!source/model/**/*.gltf
+!source/model/**/*.bin
+!source/model/**/*.obj
 !source/shader/**/*.frag
 !source/shader/**/*.glsl
 !source/shader/**/*.vert

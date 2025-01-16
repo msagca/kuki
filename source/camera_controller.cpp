@@ -1,6 +1,5 @@
 #include <camera_controller.hpp>
 #include <cmath>
-#include <component_types.hpp>
 #include <entity_manager.hpp>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_clip_space.hpp>

@@ -1,5 +1,5 @@
 #pragma once
-#include <component_types.hpp>
+#include "component/camera.hpp"
 #include <entity_manager.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>

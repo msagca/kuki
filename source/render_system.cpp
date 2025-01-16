@@ -1,7 +1,13 @@
-#include <asset_loader.hpp>
 #include <asset_manager.hpp>
 #include <camera_controller.hpp>
-#include <component_types.hpp>
+#include <component/component.hpp>
+#include <component/light.hpp>
+#include <component/material.hpp>
+#include <component/mesh.hpp>
+#include <component/mesh_filter.hpp>
+#include <component/mesh_renderer.hpp>
+#include <component/shader.hpp>
+#include <component/transform.hpp>
 #include <entity_manager.hpp>
 #include <glad/glad.h>
 #include <glm/detail/qualifier.hpp>
@@ -16,6 +22,7 @@
 #include <render_system.hpp>
 #include <string>
 #include <uniform_location.hpp>
+#include <unordered_map>
 static const auto X_AXIS = glm::vec3(1.0f, 0.0f, 0.0f);
 static const auto Y_AXIS = glm::vec3(0.0f, 1.0f, 0.0f);
 static const auto Z_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
@@ -23,11 +30,9 @@ static const auto WIRE_COLOR = glm::vec3(.5f);
 static const auto CLEAR_COLOR = glm::vec4(.1f, .1f, .1f, 1.0f);
 static const auto MAX_POINT_LIGHTS = 8;
 static const auto POINT_LOCS = 7; // number of uniform locations per point light
-RenderSystem::RenderSystem(EntityManager& entityManager, AssetManager& assetManager, AssetLoader& assetLoader, CameraController& cameraController)
-  : entityManager(entityManager), assetManager(assetManager), assetLoader(assetLoader), cameraController(cameraController) {
-  auto defaultShaderID = assetLoader.LoadShader("DefaultShader", "shader/default_lit.vert", "shader/default_lit.frag");
-  // NOTE: LoadShader returns the asset ID, not the shader ID; so, we have to retrieve it from the shader component
-  defaultShader = assetManager.GetComponent<Shader>(defaultShaderID)->id;
+RenderSystem::RenderSystem(EntityManager& entityManager, AssetManager& assetManager, CameraController& cameraController)
+  : entityManager(entityManager), assetManager(assetManager), cameraController(cameraController) {
+  defaultShader = assetManager.GetComponent<Shader>(assetManager.GetID("DefaultShader"))->id;
   SetUniformLocations(defaultShader);
 }
 void RenderSystem::ToggleWireframeMode() {
@@ -38,19 +43,22 @@ void RenderSystem::ToggleWireframeMode() {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 void RenderSystem::SetUniformLocations(unsigned int shader) {
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MODEL_MATRIX)] = glGetUniformLocation(shader, "model");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::VIEW_MATRIX)] = glGetUniformLocation(shader, "view");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::PROJ_MATRIX)] = glGetUniformLocation(shader, "projection");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MATRIX_MODEL)] = glGetUniformLocation(shader, "model");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MATRIX_VIEW)] = glGetUniformLocation(shader, "view");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MATRIX_PROJ)] = glGetUniformLocation(shader, "projection");
   shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::VIEW_POS)] = glGetUniformLocation(shader, "viewPos");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MAT_DIFFUSE)] = glGetUniformLocation(shader, "material.diffuse");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MAT_SPECULAR)] = glGetUniformLocation(shader, "material.specular");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MAT_SHININESS)] = glGetUniformLocation(shader, "material.shininess");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::SUN_DIRECTION)] = glGetUniformLocation(shader, "directionalLight.direction");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::SUN_AMBIENT)] = glGetUniformLocation(shader, "directionalLight.ambient");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::SUN_DIFFUSE)] = glGetUniformLocation(shader, "directionalLight.diffuse");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::SUN_SPECULAR)] = glGetUniformLocation(shader, "directionalLight.specular");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::HAS_SUN)] = glGetUniformLocation(shader, "hasDirectionalLight");
-  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::NUM_POINT_LIGHTS)] = glGetUniformLocation(shader, "numPointLights");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MATERIAL_BASE)] = glGetUniformLocation(shader, "material.base");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MATERIAL_NORMAL)] = glGetUniformLocation(shader, "material.normal");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MATERIAL_ORM)] = glGetUniformLocation(shader, "material.orm");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MATERIAL_METALNESS)] = glGetUniformLocation(shader, "material.metalness");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MATERIAL_OCCLUSION)] = glGetUniformLocation(shader, "material.occlusion");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::MATERIAL_ROUGHNESS)] = glGetUniformLocation(shader, "material.roughness");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::SUN_DIRECTION)] = glGetUniformLocation(shader, "dirLight.direction");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::SUN_AMBIENT)] = glGetUniformLocation(shader, "dirLight.ambient");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::SUN_DIFFUSE)] = glGetUniformLocation(shader, "dirLight.diffuse");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::SUN_SPECULAR)] = glGetUniformLocation(shader, "dirLight.specular");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::HAS_SUN)] = glGetUniformLocation(shader, "hasDirLight");
+  shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::POINT_COUNT)] = glGetUniformLocation(shader, "pointLightCount");
   for (auto i = 0; i < MAX_POINT_LIGHTS; ++i) {
     auto index = std::to_string(i);
     shaderToUniform[shader][static_cast<unsigned int>(UniformLocation::POINT_POS_0) + i * POINT_LOCS] = glGetUniformLocation(shader, ("pointLights[" + index + "].position").c_str());
@@ -76,18 +84,33 @@ glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
 }
 void RenderSystem::DrawObjects() {
   entityManager.ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform* transform, MeshFilter* filter, MeshRenderer* renderer) {
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.base);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.normal);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.orm);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.metalness);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.occlusion);
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.roughness);
     auto shader = defaultShader;
     glUseProgram(shader);
     auto model = GetWorldTransform(transform);
     auto& uniformLocations = shaderToUniform[shader];
-    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MODEL_MATRIX)], 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::VIEW_MATRIX)], 1, GL_FALSE, glm::value_ptr(cameraController.GetView()));
-    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::PROJ_MATRIX)], 1, GL_FALSE, glm::value_ptr(cameraController.GetProjection()));
+    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MATRIX_MODEL)], 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MATRIX_VIEW)], 1, GL_FALSE, glm::value_ptr(cameraController.GetView()));
+    glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MATRIX_PROJ)], 1, GL_FALSE, glm::value_ptr(cameraController.GetProjection()));
     glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::VIEW_POS)], 1, glm::value_ptr(cameraController.GetPosition()));
-    glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MAT_DIFFUSE)], 1, glm::value_ptr(renderer->material.diffuse));
-    glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MAT_SPECULAR)], 1, glm::value_ptr(renderer->material.specular));
-    glUniform1f(uniformLocations[static_cast<unsigned int>(UniformLocation::MAT_SHININESS)], renderer->material.shininess);
-    auto hasDirectionalLight = false;
+    glUniform1ui(uniformLocations[static_cast<unsigned int>(UniformLocation::MATERIAL_BASE)], renderer->material.base);
+    glUniform1ui(uniformLocations[static_cast<unsigned int>(UniformLocation::MATERIAL_NORMAL)], renderer->material.normal);
+    glUniform1ui(uniformLocations[static_cast<unsigned int>(UniformLocation::MATERIAL_ORM)], renderer->material.orm);
+    glUniform1ui(uniformLocations[static_cast<unsigned int>(UniformLocation::MATERIAL_METALNESS)], renderer->material.metalness);
+    glUniform1ui(uniformLocations[static_cast<unsigned int>(UniformLocation::MATERIAL_OCCLUSION)], renderer->material.occlusion);
+    glUniform1ui(uniformLocations[static_cast<unsigned int>(UniformLocation::MATERIAL_ROUGHNESS)], renderer->material.roughness);
+    auto hasDirLight = false;
     auto pointLightCount = 0;
     entityManager.ForEach<Light>([&](Light* light) {
       if (light->type == LightType::Point) {
@@ -104,11 +127,11 @@ void RenderSystem::DrawObjects() {
         glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::SUN_AMBIENT)], 1, glm::value_ptr(light->ambient));
         glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::SUN_DIFFUSE)], 1, glm::value_ptr(light->diffuse));
         glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::SUN_SPECULAR)], 1, glm::value_ptr(light->specular));
-        hasDirectionalLight = true;
+        hasDirLight = true;
       }
     });
-    glUniform1i(uniformLocations[static_cast<unsigned int>(UniformLocation::HAS_SUN)], hasDirectionalLight);
-    glUniform1i(uniformLocations[static_cast<unsigned int>(UniformLocation::NUM_POINT_LIGHTS)], pointLightCount);
+    glUniform1i(uniformLocations[static_cast<unsigned int>(UniformLocation::HAS_SUN)], hasDirLight);
+    glUniform1i(uniformLocations[static_cast<unsigned int>(UniformLocation::POINT_COUNT)], pointLightCount);
     glBindVertexArray(filter->mesh.vertexArray);
     if (filter->mesh.indexCount > 0)
       glDrawElements(GL_TRIANGLES, filter->mesh.indexCount, GL_UNSIGNED_INT, 0);

@@ -54,7 +54,7 @@ std::vector<Vertex> Primitive::Sphere(int level) {
   for (const auto& t : triangles) {
     glm::vec3 verts[3] = {t.v1, t.v2, t.v3};
     for (const auto& v : verts) {
-      Vertex vertex{};
+      Vertex vertex;
       vertex.position = v * .5f;
       vertex.normal = glm::normalize(v);
       auto theta = atan2(v.z, v.x);

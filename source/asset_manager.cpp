@@ -1,10 +1,9 @@
 #include <asset_manager.hpp>
 #include <chrono>
-#include <component_types.hpp>
 #include <string>
 #include <vector>
 unsigned int AssetManager::Create(std::string name) {
-  if (name.size() > 0) {
+  if (!name.empty()) {
     auto& assetName = name;
     if (nameToID.find(name) != nameToID.end())
       assetName = GenerateName(name);
@@ -13,7 +12,7 @@ unsigned int AssetManager::Create(std::string name) {
     idToName[nextID] = GenerateName("Asset#");
   nameToID[idToName[nextID]] = nextID;
   idToMask[nextID] = 0;
-  idToChildren.insert({nextID, {}});
+  idToChildren[nextID] = {};
   return nextID++;
 }
 std::string AssetManager::GenerateName(const std::string& name) {
@@ -69,24 +68,29 @@ void AssetManager::RemoveChild(unsigned int parent, unsigned int child) {
 void AssetManager::RemoveAllComponents(unsigned int id) {
   if (idToMask.find(id) == idToMask.end())
     return;
-  transformManager.Remove(id);
-  meshManager.Remove(id);
   materialManager.Remove(id);
+  meshManager.Remove(id);
   shaderManager.Remove(id);
+  textureManager.Remove(id);
+  transformManager.Remove(id);
   idToMask[id] = 0;
 }
 std::vector<IComponent*> AssetManager::GetAllComponents(unsigned int id) {
   std::vector<IComponent*> components;
-  if (HasComponent<Transform>(id))
-    components.emplace_back(GetComponent<Transform>(id));
-  if (HasComponent<Mesh>(id))
-    components.emplace_back(GetComponent<Mesh>(id));
   if (HasComponent<Material>(id))
     components.emplace_back(GetComponent<Material>(id));
+  if (HasComponent<Mesh>(id))
+    components.emplace_back(GetComponent<Mesh>(id));
+  if (HasComponent<Shader>(id))
+    components.emplace_back(GetComponent<Shader>(id));
+  if (HasComponent<Texture>(id))
+    components.emplace_back(GetComponent<Texture>(id));
+  if (HasComponent<Transform>(id))
+    components.emplace_back(GetComponent<Transform>(id));
   return components;
 }
 void AssetManager::CleanUp() {
   meshManager.CleanUp();
-  materialManager.CleanUp();
   shaderManager.CleanUp();
+  textureManager.CleanUp();
 }

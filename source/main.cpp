@@ -2,7 +2,9 @@
 #include <asset_loader.hpp>
 #include <asset_manager.hpp>
 #include <camera_controller.hpp>
-#include <component_types.hpp>
+#include <component/camera.hpp>
+#include <component/component.hpp>
+#include <component/light.hpp>
 #include <entity_manager.hpp>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -33,6 +35,7 @@ static bool showFPS = false;
 static bool showBindings = true;
 static bool showHierarchy = true;
 static bool showCreateMenu = false;
+static bool showGizmo = true;
 static CameraController* cameraControllerPtr;
 static GLFWwindow* InitializeGLFW();
 static void InitializeImGui(GLFWwindow*);
@@ -60,7 +63,7 @@ int main() {
   EntityManager entityManager(assetManager);
   CameraController cameraController(entityManager, inputManager);
   cameraControllerPtr = &cameraController;
-  RenderSystem renderSystem(entityManager, assetManager, assetLoader, cameraController);
+  RenderSystem renderSystem(entityManager, assetManager, cameraController);
   // populate the scene
   auto cameraID = entityManager.Create("MainCamera");
   auto camera = entityManager.AddComponent<Camera>(cameraID);
@@ -70,13 +73,14 @@ int main() {
   auto light = entityManager.AddComponent<Light>(lightID);
   light->type = LightType::Point;
   light->vector = LIGHT_POSITION;
-  assetLoader.LoadModel("Backpack", "model/Survival_BackPack_2.fbx");
+  // assetLoader.LoadModel("Backpack", "model/scene.gltf");
   glfwMaximizeWindow(window);
   // register callbacks
-  inputManager.RegisterCallback(GLFW_KEY_K, GLFW_PRESS, []() { showBindings = !showBindings; }, "Show/hide key bindings");
+  inputManager.RegisterCallback(GLFW_KEY_G, GLFW_PRESS, []() { showBindings = !showBindings; }, "Show/hide key bindings");
   inputManager.RegisterCallback(GLFW_KEY_H, GLFW_PRESS, []() { showHierarchy = !showHierarchy; }, "Show/hide hierarchy window");
-  inputManager.RegisterCallback(GLFW_KEY_C, GLFW_PRESS, []() { showCreateMenu = !showCreateMenu; }, "Show/hide create menu");
-  inputManager.RegisterCallback(GLFW_KEY_V, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); }, "Toggle wireframe mode");
+  inputManager.RegisterCallback(GLFW_KEY_E, GLFW_PRESS, []() { showCreateMenu = !showCreateMenu; }, "Show/hide create menu");
+  inputManager.RegisterCallback(GLFW_KEY_Q, GLFW_PRESS, []() { showGizmo = !showGizmo; }, "Toggle transform gizmo");
+  inputManager.RegisterCallback(GLFW_KEY_R, GLFW_PRESS, [&renderSystem]() { renderSystem.ToggleWireframeMode(); }, "Toggle wireframe mode");
   inputManager.RegisterCallback(GLFW_KEY_F, GLFW_PRESS, []() { showFPS = !showFPS; }, "Toggle FPS");
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); });
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&window]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); });
@@ -92,7 +96,6 @@ int main() {
       elapsedTime = .0;
       frameCount = 0;
     }
-    renderSystem.Update();
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -103,9 +106,10 @@ int main() {
     if (showBindings)
       DisplayKeyBindings(inputManager);
     if (showHierarchy)
-      DisplayHierarchy(entityManager, inputManager, cameraController);
+      DisplayHierarchy(entityManager, inputManager, cameraController, showGizmo);
     if (showCreateMenu)
       DisplayCreateMenu(entityManager, showCreateMenu);
+    renderSystem.Update();
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     glfwSwapBuffers(window);
