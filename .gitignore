@@ -7,9 +7,13 @@
 !CMakePresets.json
 !LICENSE
 !README.md
+!build.cmd
+!build.ps1
+!build.sh
 !external/assimp
 !external/glfw
 !external/glm
+!external/imgui
 !external/json
 !include/**/*.h
 !include/**/*.hpp
@@ -19,9 +23,9 @@
 !source/**/*.cpp
 !source/image/**/*.jpg
 !source/image/**/*.png
+!source/model/**/*.bin
 !source/model/**/*.fbx
 !source/model/**/*.gltf
-!source/model/**/*.bin
 !source/model/**/*.obj
 !source/shader/**/*.frag
 !source/shader/**/*.glsl

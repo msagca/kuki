@@ -1,5 +1,7 @@
 #include <camera_controller.hpp>
 #include <cmath>
+#include <component/camera.hpp>
+#include <component/component.hpp>
 #include <entity_manager.hpp>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_clip_space.hpp>
@@ -24,8 +26,8 @@ void CameraController::UpdateRotation(glm::vec2 mouseDiff) {
   UpdateView();
 }
 void CameraController::UpdatePosition() {
-  auto wasd = inputManager.GetWASD();
-  auto doubleSpeed = inputManager.GetKey(GLFW_KEY_LEFT_SHIFT);
+  auto wasd = InputManager::GetInstance().GetWASD();
+  auto doubleSpeed = InputManager::GetInstance().GetKey(GLFW_KEY_LEFT_SHIFT);
   float velocity = moveSpeed * (doubleSpeed ? 2 : 1) * deltaTime;
   camera.position += (camera.front * wasd.y + camera.right * wasd.x) * velocity;
   UpdateView();
@@ -42,10 +44,16 @@ void CameraController::UpdateView() {
   camera.view = glm::lookAt(camera.position, camera.position + camera.front, camera.up);
 }
 void CameraController::UpdateProjection() {
-  camera.projection = glm::perspective(camera.fov, camera.aspect, camera.near, camera.far);
+  if (camera.type == CameraType::Perspective)
+    camera.projection = glm::perspective(camera.fov, camera.aspect, camera.near, camera.far);
+  else {
+    auto left = camera.size * camera.aspect;
+    auto bottom = camera.size;
+    camera.projection = glm::ortho(left, -left, bottom, -bottom, camera.near, camera.far);
+  }
 }
-CameraController::CameraController(EntityManager& entityManager, InputManager& inputManager)
-  : entityManager(entityManager), inputManager(inputManager), moveSpeed(MOVE_SPEED), mouseSensitivity(MOUSE_SENSITIVITY) {}
+CameraController::CameraController(EntityManager& entityManager)
+  : entityManager(entityManager), moveSpeed(MOVE_SPEED), mouseSensitivity(MOUSE_SENSITIVITY) {}
 glm::vec3 CameraController::GetPosition() const {
   return camera.position;
 }
@@ -72,8 +80,8 @@ void CameraController::Update() {
   static auto firstEnter = true;
   static glm::vec2 mousePos;
   static glm::vec2 mouseLast;
-  if (inputManager.GetButton(GLFW_MOUSE_BUTTON_2)) {
-    mousePos = inputManager.GetMousePos();
+  if (InputManager::GetInstance().GetButton(GLFW_MOUSE_BUTTON_2)) {
+    mousePos = InputManager::GetInstance().GetMousePos();
     if (firstEnter)
       mouseLast = mousePos;
     firstEnter = false;
@@ -88,10 +96,12 @@ void CameraController::Update() {
   auto cameraPtr = entityManager.GetFirstComponent<Camera>();
   if (cameraPtr) {
     // NOTE: by default, all changes are applied to the local copy; they are only reflected to an actual camera component if the scene contains one
-    // NOTE: field of view, near and far planes are allowed to be changed through the UI, the rest are updated via the camera controller or window events
+    // NOTE: the following components are allowed to be changed through the UI, the rest are updated via the camera controller or window events
+    camera.type = cameraPtr->type;
     camera.fov = cameraPtr->fov;
     camera.near = cameraPtr->near;
     camera.far = cameraPtr->far;
+    camera.size = cameraPtr->size;
     UpdateProjection();
     *cameraPtr = camera;
   }

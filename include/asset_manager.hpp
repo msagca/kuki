@@ -20,6 +20,8 @@ private:
   std::unordered_map<unsigned int, std::string> idToName;
   std::unordered_map<std::string, unsigned int> nameToID;
   std::unordered_map<unsigned int, std::unordered_set<unsigned int>> idToChildren;
+  // TODO: assets shall only become components when they are loaded into a scene, relevant OpenGL buffers shall only be created then
+  // TODO: keep a separate set for each asset type to store paths to assets of that type; define load functions for each asset
   ComponentManager<Material> materialManager;
   ComponentManager<Mesh> meshManager;
   ComponentManager<Shader> shaderManager;

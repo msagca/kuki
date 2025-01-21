@@ -4,11 +4,15 @@
 #include <string>
 #include <unordered_map>
 extern double deltaTime;
-void InputManager::Initialize(GLFWwindow* window) {
-  this->window = window;
-  glfwSetKeyCallback(window, KeyCallback);
-  glfwSetMouseButtonCallback(window, MouseButtonCallback);
-  glfwSetCursorPosCallback(window, CursorPosCallback);
+InputManager& InputManager::GetInstance() {
+  static InputManager instance;
+  return instance;
+}
+InputManager::InputManager() {
+  keysEnabled = true;
+  updateBindings = false;
+  lastInputTime = .0;
+  mousePos = glm::vec2(.0f);
   keyStates.insert({GLFW_KEY_UP, false});
   keyStates.insert({GLFW_KEY_DOWN, false});
   keyStates.insert({GLFW_KEY_LEFT, false});
@@ -18,6 +22,11 @@ void InputManager::Initialize(GLFWwindow* window) {
   keyStates.insert({GLFW_KEY_A, false});
   keyStates.insert({GLFW_KEY_D, false});
 }
+void InputManager::SetWindowCallbacks(GLFWwindow* window) {
+  glfwSetKeyCallback(window, KeyCallback);
+  glfwSetMouseButtonCallback(window, MouseButtonCallback);
+  glfwSetCursorPosCallback(window, CursorPosCallback);
+}
 bool InputManager::GetKey(int key) {
   auto it = keyStates.find(key);
   if (it == keyStates.end())
@@ -25,9 +34,12 @@ bool InputManager::GetKey(int key) {
   return it->second;
 }
 bool InputManager::GetButton(int button) {
-  return glfwGetMouseButton(window, button);
+  auto it = buttonStates.find(button);
+  if (it == buttonStates.end())
+    return false;
+  return it->second;
 }
-glm::vec2 InputManager::GetWASD() const {
+glm::vec2 InputManager::GetWASD() {
   glm::vec2 wasd(.0f, .0f);
   auto w = keyStates.at(GLFW_KEY_W);
   auto s = keyStates.at(GLFW_KEY_S);
@@ -37,7 +49,7 @@ glm::vec2 InputManager::GetWASD() const {
   wasd.x = d ? (a ? .0f : 1.0f) : (a ? -1.0f : .0f);
   return wasd;
 }
-glm::vec2 InputManager::GetArrow() const {
+glm::vec2 InputManager::GetArrow() {
   glm::vec2 arrow(.0f, .0f);
   auto up = keyStates.at(GLFW_KEY_UP);
   auto down = keyStates.at(GLFW_KEY_DOWN);
@@ -52,6 +64,15 @@ glm::vec2 InputManager::GetMousePos() const {
 }
 double InputManager::GetInactivityTime() const {
   return glfwGetTime() - lastInputTime;
+}
+void InputManager::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+  GetInstance().SetKeyState(key, action);
+}
+void InputManager::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+  GetInstance().SetButtonState(button, action);
+}
+void InputManager::CursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
+  GetInstance().SetMousePos(xpos, ypos);
 }
 void InputManager::SetKeyState(int key, int action) {
   lastInputTime = glfwGetTime();
@@ -70,6 +91,7 @@ void InputManager::SetKeyState(int key, int action) {
 }
 void InputManager::SetButtonState(int button, int action) {
   lastInputTime = glfwGetTime();
+  buttonStates[button] = action == GLFW_PRESS || action == GLFW_REPEAT;
   if (inactiveCallbacks.find(button) != inactiveCallbacks.end())
     return;
   if (action == GLFW_PRESS) {

@@ -27,12 +27,25 @@ if(CMAKE_GENERATOR MATCHES "Visual Studio")
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${CONFIG_UPPER} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
   endforeach()
 endif()
+add_library(imgui INTERFACE)
+target_include_directories(imgui INTERFACE ${CMAKE_SOURCE_DIR}/external/imgui ${CMAKE_SOURCE_DIR}/external/imgui/backends)
+target_sources(
+  imgui
+  INTERFACE
+    ${CMAKE_SOURCE_DIR}/external/imgui/imgui.cpp
+    ${CMAKE_SOURCE_DIR}/external/imgui/imgui_demo.cpp
+    ${CMAKE_SOURCE_DIR}/external/imgui/imgui_draw.cpp
+    ${CMAKE_SOURCE_DIR}/external/imgui/imgui_tables.cpp
+    ${CMAKE_SOURCE_DIR}/external/imgui/imgui_widgets.cpp
+    ${CMAKE_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp
+    ${CMAKE_SOURCE_DIR}/external/imgui/backends/imgui_impl_opengl3.cpp
+)
 file(GLOB_RECURSE CPP_SOURCES "${CMAKE_SOURCE_DIR}/source/*.cpp")
 file(GLOB_RECURSE C_SOURCES "${CMAKE_SOURCE_DIR}/source/*.c")
 add_executable(${PROJECT_NAME} ${CPP_SOURCES} ${C_SOURCES})
 target_link_libraries(
   ${PROJECT_NAME}
-  PRIVATE OpenGL::GL glfw glm assimp nlohmann_json
+  PRIVATE OpenGL::GL glfw glm imgui assimp nlohmann_json
 )
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/third-party)
 if(UNIX)

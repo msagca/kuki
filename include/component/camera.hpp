@@ -7,7 +7,7 @@
 #include <variant>
 #include <vector>
 struct Camera : IComponent {
-  // TODO: add the orthogonal projection option
+  CameraType type{CameraType::Perspective};
   glm::mat4 view{};
   glm::mat4 projection{};
   glm::vec3 position{.0f, .0f, 3.0f};
@@ -20,11 +20,12 @@ struct Camera : IComponent {
   float aspect{1.0f};
   float near{.1f};
   float far{100.0f};
+  float size{10.0f}; // orthographic size
   std::string GetName() const override {
     return "Camera";
   }
   std::vector<Property> GetProperties() const override {
-    return {{"Position", position}, {"Pitch", pitch}, {"Yaw", yaw}, {"FOV", fov}, {"Aspect", aspect}, {"Near", near}, {"Far", far}};
+    return {{"Type", type}, {"Position", position}, {"Pitch", pitch}, {"Yaw", yaw}, {"FOV", fov}, {"Aspect", aspect}, {"Near", near}, {"Far", far}, {"Size", size}};
   }
   void SetProperty(Property property) override {
     if (std::holds_alternative<float>(property.value)) {
@@ -41,8 +42,13 @@ struct Camera : IComponent {
         near = value;
       else if (property.name == "Far")
         far = value;
-    } else if (std::holds_alternative<glm::vec3>(property.value))
+      else if (property.name == "Size")
+        size = value;
+    } else if (std::holds_alternative<glm::vec3>(property.value)) {
       if (property.name == "Position")
         position = std::get<glm::vec3>(property.value);
+    } else if (std::holds_alternative<CameraType>(property.value)) {
+      type = std::get<CameraType>(property.value);
+    }
   }
 };

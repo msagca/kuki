@@ -13,12 +13,19 @@ private:
   CameraController& cameraController;
   bool wireframeMode = false;
   unsigned int defaultShader;
+  unsigned int fbo;
+  unsigned int rbo;
+  unsigned int colorTexture;
+  bool ResizeBuffers(int, int);
   glm::mat4 GetWorldTransform(const Transform*);
   void DrawObjects();
+  void DrawGizmos(int);
   void SetUniformLocations(unsigned int);
   std::unordered_map<unsigned int, std::unordered_map<unsigned int, int>> shaderToUniform;
 public:
   RenderSystem(EntityManager&, AssetManager&, CameraController&);
   void ToggleWireframeMode();
   void Update() override;
+  void CleanUp() override;
+  int RenderToTexture(int, int, int);
 };

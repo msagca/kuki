@@ -19,14 +19,17 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <imgui.h>
+#include <ImGuizmo.h>
+#include <iostream>
 #include <render_system.hpp>
 #include <string>
 #include <uniform_location.hpp>
 #include <unordered_map>
+static const auto IDENTITY_MATRIX = glm::mat4(1.0f);
 static const auto X_AXIS = glm::vec3(1.0f, 0.0f, 0.0f);
 static const auto Y_AXIS = glm::vec3(0.0f, 1.0f, 0.0f);
 static const auto Z_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
-static const auto WIRE_COLOR = glm::vec3(.5f);
 static const auto CLEAR_COLOR = glm::vec4(.1f, .1f, .1f, 1.0f);
 static const auto MAX_POINT_LIGHTS = 8;
 static const auto POINT_LOCS = 7; // number of uniform locations per point light
@@ -34,6 +37,31 @@ RenderSystem::RenderSystem(EntityManager& entityManager, AssetManager& assetMana
   : entityManager(entityManager), assetManager(assetManager), cameraController(cameraController) {
   defaultShader = assetManager.GetComponent<Shader>(assetManager.GetID("DefaultShader"))->id;
   SetUniformLocations(defaultShader);
+  ResizeBuffers(800, 600);
+}
+bool RenderSystem::ResizeBuffers(int width, int height) {
+  // create color texture
+  glGenTextures(1, &colorTexture);
+  glBindTexture(GL_TEXTURE_2D, colorTexture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+  // create depth buffer
+  glGenRenderbuffers(1, &rbo);
+  glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+  // create framebuffer
+  glGenFramebuffers(1, &fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  // attach to framebuffer
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    std::cerr << "Framebuffer is not complete." << std::endl;
+    return false;
+  }
+  return true;
 }
 void RenderSystem::ToggleWireframeMode() {
   wireframeMode = !wireframeMode;
@@ -84,17 +112,18 @@ glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
 }
 void RenderSystem::DrawObjects() {
   entityManager.ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform* transform, MeshFilter* filter, MeshRenderer* renderer) {
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderer->material.base);
+    // NOTE: GL_TEXTURE0 is reserved for the render texture
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderer->material.normal);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.base);
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, renderer->material.orm);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.normal);
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, renderer->material.metalness);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.orm);
     glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D, renderer->material.occlusion);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.metalness);
     glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, renderer->material.occlusion);
+    glActiveTexture(GL_TEXTURE6);
     glBindTexture(GL_TEXTURE_2D, renderer->material.roughness);
     auto shader = defaultShader;
     glUseProgram(shader);
@@ -139,9 +168,49 @@ void RenderSystem::DrawObjects() {
       glDrawArrays(GL_TRIANGLES, 0, filter->mesh.vertexCount);
   });
 }
+void RenderSystem::DrawGizmos(int entity) {
+  ImGuizmo::BeginFrame();
+  ImGuizmo::DrawGrid(glm::value_ptr(cameraController.GetView()), glm::value_ptr(cameraController.GetProjection()), glm::value_ptr(IDENTITY_MATRIX), cameraController.GetFar());
+  if (entity < 0)
+    return;
+  auto transform = entityManager.GetComponent<Transform>(entity);
+  if (!transform)
+    return;
+  glm::mat4 matrix;
+  auto rotation = glm::degrees(transform->rotation);
+  ImGuizmo::RecomposeMatrixFromComponents(glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale), glm::value_ptr(matrix));
+  ImGuizmo::SetOrthographic(false);
+  auto displaySize = ImGui::GetIO().DisplaySize;
+  ImGuizmo::SetRect(0, 0, displaySize.x, displaySize.y);
+  ImGuizmo::Manipulate(glm::value_ptr(cameraController.GetView()), glm::value_ptr(cameraController.GetProjection()), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(matrix));
+  ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale));
+  transform->rotation = glm::radians(rotation);
+}
 void RenderSystem::Update() {
+  cameraController.Update();
   glClearColor(CLEAR_COLOR.x, CLEAR_COLOR.y, CLEAR_COLOR.z, CLEAR_COLOR.w);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  cameraController.Update();
   DrawObjects();
+}
+int RenderSystem::RenderToTexture(int width, int height, int entity) {
+  static int currentWidth, currentHeight;
+  if (width != currentWidth || height != currentHeight) {
+    currentWidth = width;
+    currentHeight = height;
+    if (!ResizeBuffers(width, height))
+      return -1;
+  }
+  cameraController.Update();
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glClearColor(CLEAR_COLOR.x, CLEAR_COLOR.y, CLEAR_COLOR.z, CLEAR_COLOR.w);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  DrawObjects();
+  DrawGizmos(entity);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  return colorTexture;
+}
+void RenderSystem::CleanUp() {
+  glDeleteFramebuffers(1, &fbo);
+  glDeleteRenderbuffers(1, &rbo);
+  glDeleteTextures(1, &colorTexture);
 }

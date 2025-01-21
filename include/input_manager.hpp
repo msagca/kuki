@@ -7,42 +7,34 @@
 #include <unordered_set>
 class InputManager {
 private:
-  InputManager() = default;
+  InputManager();
   InputManager(const InputManager&) = delete;
   InputManager& operator=(const InputManager&) = delete;
-  GLFWwindow* window = nullptr;
-  double lastInputTime = .0;
-  glm::vec2 mousePos = glm::vec2(.0f);
-  void SetKeyState(int, int);
-  void SetButtonState(int, int);
-  void SetMousePos(double, double);
+  void Init();
+  bool keysEnabled;
+  bool updateBindings;
+  double lastInputTime;
+  glm::vec2 mousePos;
   std::unordered_map<int, bool> keyStates;
+  std::unordered_map<int, bool> buttonStates;
   std::unordered_map<int, std::function<void()>> pressCallbacks;
   std::unordered_map<int, std::function<void()>> releaseCallbacks;
   std::unordered_set<int> inactiveCallbacks;
   std::unordered_map<int, std::string> keyDescriptions;
   std::unordered_map<std::string, std::string> keyBindings;
-  bool updateBindings = false;
-  bool keysEnabled = true;
-  static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    GetInstance().SetKeyState(key, action);
-  }
-  static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-    GetInstance().SetButtonState(button, action);
-  }
-  static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
-    GetInstance().SetMousePos(xpos, ypos);
-  }
+  void SetKeyState(int, int);
+  void SetButtonState(int, int);
+  void SetMousePos(double, double);
+  static void KeyCallback(GLFWwindow*, int, int, int, int);
+  static void MouseButtonCallback(GLFWwindow*, int, int, int);
+  static void CursorPosCallback(GLFWwindow*, double, double);
 public:
-  static InputManager& GetInstance() {
-    static InputManager instance;
-    return instance;
-  }
-  void Initialize(GLFWwindow*);
+  static InputManager& GetInstance();
+  void SetWindowCallbacks(GLFWwindow*);
   bool GetKey(int);
   bool GetButton(int);
-  glm::vec2 GetWASD() const;
-  glm::vec2 GetArrow() const;
+  glm::vec2 GetWASD();
+  glm::vec2 GetArrow();
   glm::vec2 GetMousePos() const;
   double GetInactivityTime() const;
   void RegisterCallback(int, int, std::function<void()>, std::string = "");

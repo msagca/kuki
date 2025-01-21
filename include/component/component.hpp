@@ -25,6 +25,10 @@ enum class ComponentMask : size_t {
   TextureMask = 1 << static_cast<unsigned int>(ComponentID::TextureID),
   TransformMask = 1 << static_cast<unsigned int>(ComponentID::TransformID)
 };
+enum class CameraType : unsigned int {
+  Perspective,
+  Orthographic
+};
 enum class LightType : unsigned int {
   Directional,
   Point
@@ -39,7 +43,7 @@ enum class TextureType : unsigned int {
 };
 struct Property {
   std::string name;
-  std::variant<int, unsigned int, float, bool, glm::vec3, LightType, TextureType> value;
+  std::variant<int, unsigned int, float, bool, glm::vec3, CameraType, LightType, TextureType> value;
 };
 struct IComponent {
   virtual ~IComponent() = default;
