@@ -29,9 +29,10 @@ struct adl_serializer<Transform> {
 template <>
 struct adl_serializer<Camera> {
   static void to_json(nlohmann::json& j, const Camera& obj) {
-    j = nlohmann::json{{"Position", obj.position}, {"Front", obj.front}, {"Up", obj.up}, {"Right", obj.right}, {"Pitch", obj.pitch}, {"Yaw", obj.yaw}, {"FOV", obj.fov}, {"Aspect", obj.aspect}, {"Near", obj.near}, {"Far", obj.far}};
+    j = nlohmann::json{{"Type", obj.type}, {"Position", obj.position}, {"Front", obj.front}, {"Up", obj.up}, {"Right", obj.right}, {"Pitch", obj.pitch}, {"Yaw", obj.yaw}, {"FOV", obj.fov}, {"Aspect", obj.aspect}, {"Near", obj.near}, {"Far", obj.far}, {"Size", obj.size}};
   }
   static void from_json(const nlohmann::json& j, Camera& obj) {
+    j.at("Type").get_to(obj.type);
     j.at("Position").get_to(obj.position);
     j.at("Front").get_to(obj.front);
     j.at("Up").get_to(obj.up);
@@ -42,6 +43,7 @@ struct adl_serializer<Camera> {
     j.at("Aspect").get_to(obj.aspect);
     j.at("Near").get_to(obj.near);
     j.at("Far").get_to(obj.far);
+    j.at("Type").get_to(obj.size);
   }
 };
 template <>
