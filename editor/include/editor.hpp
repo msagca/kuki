@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 class Editor : public Application {
 private:
+  InputManager inputManager;
   CameraController cameraController;
   GLFWwindow* window;
   int selectedEntity = -1;
@@ -24,4 +25,9 @@ private:
   void Shutdown() override;
   static void WindowCloseCallback(GLFWwindow*);
   static void FramebufferSizeCallback(GLFWwindow*, int, int);
+  static void KeyCallback(GLFWwindow*, int, int, int, int);
+  static void MouseButtonCallback(GLFWwindow*, int, int, int);
+  static void CursorPosCallback(GLFWwindow*, double, double);
+public:
+  Editor();
 };

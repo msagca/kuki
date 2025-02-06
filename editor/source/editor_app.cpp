@@ -13,6 +13,7 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <ImGuizmo.h>
 #include <input_manager.hpp>
 #include <iostream>
 #include <primitive.hpp>
@@ -20,16 +21,19 @@
 #include <scene.hpp>
 #include <stb_image.h>
 static const auto WINDOW_FLAGS = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+Editor::Editor()
+  : inputManager(), cameraController(inputManager) {}
 void Editor::Start() {
-  auto& inputManager = InputManager::GetInstance();
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
   auto width = 800;
   auto height = 600;
   InitOpenGL(width, height);
-  inputManager.SetWindowCallbacks(window);
+  glfwSetKeyCallback(window, KeyCallback);
+  glfwSetMouseButtonCallback(window, MouseButtonCallback);
+  glfwSetCursorPosCallback(window, CursorPosCallback);
   InitImGui();
-  assetLoader.InitGL((GLADloadproc)glfwGetProcAddress);
+  ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
   LoadDefaultAssets();
   LoadDefaultScene();
   CreateSystem<RenderSystem>(assetManager);
@@ -49,6 +53,21 @@ void Editor::Shutdown() {
   ImGui::DestroyContext();
   glfwDestroyWindow(window);
   glfwTerminate();
+}
+void Editor::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+  auto instance = static_cast<Editor*>(glfwGetWindowUserPointer(window));
+  if (instance)
+    instance->inputManager.KeyCallback(window, key, scancode, action, mods);
+}
+void Editor::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+  auto instance = static_cast<Editor*>(glfwGetWindowUserPointer(window));
+  if (instance)
+    instance->inputManager.MouseButtonCallback(window, button, action, mods);
+}
+void Editor::CursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
+  auto instance = static_cast<Editor*>(glfwGetWindowUserPointer(window));
+  if (instance)
+    instance->inputManager.CursorPosCallback(window, xpos, ypos);
 }
 void Editor::UpdateView() {
   ImGui_ImplOpenGL3_NewFrame();

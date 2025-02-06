@@ -14,7 +14,7 @@
 /// <summary>
 /// This is very much like the EntityManager class, but for managing things that are not necessarily in a scene.
 /// </summary>
-class ENGINE_EXPORT AssetManager {
+class ENGINE_API AssetManager {
 private:
   unsigned int nextID = 0;
   std::unordered_map<unsigned int, size_t> idToMask;

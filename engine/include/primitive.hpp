@@ -16,7 +16,7 @@ struct Triangle {
 /// <summary>
 /// Contains static functions that return vertex arrays for common primitive shapes.
 /// </summary>
-class ENGINE_EXPORT Primitive {
+class ENGINE_API Primitive {
 private:
   static std::vector<Triangle> CreateOctahedron();
   static std::vector<Triangle> CreateIcosahedron();

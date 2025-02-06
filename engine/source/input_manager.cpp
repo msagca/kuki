@@ -3,43 +3,34 @@
 #include <input_manager.hpp>
 #include <string>
 #include <unordered_map>
-InputManager& InputManager::GetInstance() {
-  static InputManager instance;
-  return instance;
-}
-void InputManager::SetWindowCallbacks(GLFWwindow* window) {
-  glfwSetKeyCallback(window, KeyCallback);
-  glfwSetMouseButtonCallback(window, MouseButtonCallback);
-  glfwSetCursorPosCallback(window, CursorPosCallback);
-}
-bool InputManager::GetKey(int key) {
+bool InputManager::GetKey(int key) const {
   auto it = keyStates.find(key);
   if (it == keyStates.end())
     return false;
   return it->second;
 }
-bool InputManager::GetButton(int button) {
+bool InputManager::GetButton(int button) const {
   auto it = buttonStates.find(button);
   if (it == buttonStates.end())
     return false;
   return it->second;
 }
-glm::vec2 InputManager::GetWASD() {
+glm::vec2 InputManager::GetWASD() const {
   glm::vec2 wasd(.0f, .0f);
-  auto w = keyStates[GLFW_KEY_W];
-  auto s = keyStates[GLFW_KEY_S];
-  auto a = keyStates[GLFW_KEY_A];
-  auto d = keyStates[GLFW_KEY_D];
+  auto w = GetKey(GLFW_KEY_W);
+  auto s = GetKey(GLFW_KEY_S);
+  auto a = GetKey(GLFW_KEY_A);
+  auto d = GetKey(GLFW_KEY_D);
   wasd.y = w ? (s ? .0f : 1.0f) : (s ? -1.0f : .0f);
   wasd.x = d ? (a ? .0f : 1.0f) : (a ? -1.0f : .0f);
   return wasd;
 }
-glm::vec2 InputManager::GetArrow() {
+glm::vec2 InputManager::GetArrow() const {
   glm::vec2 arrow(.0f, .0f);
-  auto up = keyStates[GLFW_KEY_UP];
-  auto down = keyStates[GLFW_KEY_DOWN];
-  auto left = keyStates[GLFW_KEY_LEFT];
-  auto right = keyStates[GLFW_KEY_RIGHT];
+  auto up = GetKey(GLFW_KEY_UP);
+  auto down = GetKey(GLFW_KEY_DOWN);
+  auto left = GetKey(GLFW_KEY_LEFT);
+  auto right = GetKey(GLFW_KEY_RIGHT);
   arrow.y = up ? (down ? .0f : 1.0f) : (down ? -1.0f : .0f);
   arrow.x = right ? (left ? .0f : 1.0f) : (left ? -1.0f : .0f);
   return arrow;
@@ -51,13 +42,13 @@ double InputManager::GetInactivityTime() const {
   return glfwGetTime() - lastInputTime;
 }
 void InputManager::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-  GetInstance().SetKeyState(key, action);
+  SetKeyState(key, action);
 }
 void InputManager::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-  GetInstance().SetButtonState(button, action);
+  SetButtonState(button, action);
 }
 void InputManager::CursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
-  GetInstance().SetMousePos(xpos, ypos);
+  SetMousePos(xpos, ypos);
 }
 void InputManager::SetKeyState(int key, int action) {
   lastInputTime = glfwGetTime();

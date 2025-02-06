@@ -6,14 +6,13 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-class ENGINE_EXPORT InputManager {
+class ENGINE_API InputManager {
 private:
-  InputManager() = default;
   bool keysEnabled = true;
-  bool updateBindings = false;
-  double lastInputTime = .0;
-  glm::vec2 mousePos = glm::vec2(.0f);
-  std::unordered_map<int, bool> keyStates{{GLFW_KEY_W, false}, {GLFW_KEY_S, false}, {GLFW_KEY_A, false}, {GLFW_KEY_D, false}, {GLFW_KEY_UP, false}, {GLFW_KEY_DOWN, false}, {GLFW_KEY_LEFT, false}, {GLFW_KEY_RIGHT, false}};
+  bool updateBindings;
+  double lastInputTime;
+  glm::vec2 mousePos;
+  std::unordered_map<int, bool> keyStates;
   std::unordered_map<int, bool> buttonStates;
   std::unordered_map<int, std::function<void()>> pressCallbacks;
   std::unordered_map<int, std::function<void()>> releaseCallbacks;
@@ -24,20 +23,11 @@ private:
   void SetButtonState(int, int);
   void SetMousePos(double, double);
   std::string GLFWKeyToString(int);
-  static void KeyCallback(GLFWwindow*, int, int, int, int);
-  static void MouseButtonCallback(GLFWwindow*, int, int, int);
-  static void CursorPosCallback(GLFWwindow*, double, double);
 public:
-  InputManager(const InputManager&) = delete;
-  InputManager& operator=(const InputManager&) = delete;
-  InputManager(InputManager&&) = delete;
-  InputManager& operator=(InputManager&&) = delete;
-  static InputManager& GetInstance();
-  void SetWindowCallbacks(GLFWwindow*);
-  bool GetKey(int);
-  bool GetButton(int);
-  glm::vec2 GetWASD();
-  glm::vec2 GetArrow();
+  bool GetKey(int) const;
+  bool GetButton(int) const;
+  glm::vec2 GetWASD() const;
+  glm::vec2 GetArrow() const;
   glm::vec2 GetMousePos() const;
   double GetInactivityTime() const;
   void RegisterCallback(int, int, std::function<void()>, std::string = "");
@@ -49,4 +39,7 @@ public:
   void EnableCallback(int);
   void DisableKeyCallbacks();
   void EnableKeyCallbacks();
+  void KeyCallback(GLFWwindow*, int, int, int, int);
+  void MouseButtonCallback(GLFWwindow*, int, int, int);
+  void CursorPosCallback(GLFWwindow*, double, double);
 };

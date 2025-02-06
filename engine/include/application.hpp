@@ -3,7 +3,7 @@
 #include <scene.hpp>
 #include <system.hpp>
 #include <vector>
-class ENGINE_EXPORT Application {
+class ENGINE_API Application {
 protected:
   float deltaTime = .0f;
   std::vector<Scene*> scenes;

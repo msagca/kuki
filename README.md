@@ -25,7 +25,7 @@ cd learning-opengl
 - Run the configure command
 
 ```bash
-cmake -B build .
+cmake -B build
 ```
 
 - Run the build command
@@ -34,4 +34,4 @@ cmake -B build .
 cmake --build build
 ```
 
-> Before running the program, you need to download [this material](https://www.fab.com/listings/bb875143-5df0-42be-a8f7-5937b25660e4) (1K resolution) and copy the contents of the textures folder to `source/image` folder since this is the default material used for rendering.
+> Before running the editor, you need to download [this material](https://www.fab.com/listings/bb875143-5df0-42be-a8f7-5937b25660e4) (1K resolution) and copy the contents of the textures folder to `editor/source/image` folder since this is the default material used for rendering.

@@ -11,6 +11,8 @@
 #include <input_manager.hpp>
 static const auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);
 static const auto PITCH_LIMIT = 89.99f;
+CameraController::CameraController(InputManager& inputManager)
+  : inputManager(inputManager) {}
 void CameraController::UpdateRotation(glm::vec2 mouseDiff) {
   camera.yaw += mouseDiff.x;
   camera.pitch += mouseDiff.y;
@@ -22,7 +24,6 @@ void CameraController::UpdateRotation(glm::vec2 mouseDiff) {
   UpdateView();
 }
 void CameraController::UpdatePosition(float deltaTime) {
-  auto& inputManager = InputManager::GetInstance();
   auto wasd = inputManager.GetWASD();
   auto doubleSpeed = inputManager.GetKey(GLFW_KEY_LEFT_SHIFT);
   auto velocity = moveSpeed * (doubleSpeed ? 2 : 1) * deltaTime;
@@ -81,7 +82,6 @@ void CameraController::Update(float deltaTime) {
   static auto firstEnter = true;
   static glm::vec2 mousePos;
   static glm::vec2 mouseLast;
-  auto& inputManager = InputManager::GetInstance();
   if (inputManager.GetButton(GLFW_MOUSE_BUTTON_2)) {
     mousePos = inputManager.GetMousePos();
     if (firstEnter)

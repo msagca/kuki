@@ -35,10 +35,6 @@
 #include <vector>
 AssetLoader::AssetLoader(AssetManager& assetManager)
   : assetManager(assetManager) {}
-void AssetLoader::InitGL(GLADloadproc loader) {
-  if (!gladLoadGLLoader(loader))
-    std::cerr << "AssetLoader: Failed to initialize GLAD." << std::endl;
-}
 int AssetLoader::LoadMaterial(const std::string& name, const std::string& basePath, const std::string& normalPath, const std::string& ormPath) {
   auto textureID = LoadTexture(basePath, name + "Base", TextureType::Base);
   auto texture = assetManager.GetComponent<Texture>(textureID);

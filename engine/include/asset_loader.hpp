@@ -11,7 +11,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-class ENGINE_EXPORT AssetLoader {
+class ENGINE_API AssetLoader {
 private:
   AssetManager& assetManager;
   unsigned int LoadNode(aiNode*, const aiScene*, int = -1, const std::string& = "");
@@ -27,7 +27,6 @@ private:
   glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4&);
 public:
   AssetLoader(AssetManager&);
-  void InitGL(GLADloadproc);
   // NOTE: int return type is for functions that require a path to the asset, so if the read fails they can return -1
   int LoadShader(const std::string&, const std::string&, const std::string&);
   int LoadModel(const std::string&, const std::string&);

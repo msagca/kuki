@@ -19,6 +19,8 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <imgui.h>
+#include <ImGuizmo.h>
 #include <iostream>
 #include <render_system.hpp>
 #include <scene.hpp>
@@ -184,7 +186,27 @@ void RenderSystem::DrawObjects(Camera& camera) {
       glDrawArrays(GL_TRIANGLES, 0, filter->mesh.vertexCount);
   });
 }
-int RenderSystem::RenderToTexture(Camera& camera, int width, int height) {
+void RenderSystem::DrawGizmos(Camera& camera, int entity) {
+  // FIXME: for this to work, engine and editor should share the same ImGui globals (editor should pass its ImGui context to engine)
+  ImGuizmo::BeginFrame();
+  ImGuizmo::DrawGrid(glm::value_ptr(camera.view), glm::value_ptr(camera.projection), glm::value_ptr(IDENTITY_MATRIX), camera.far);
+  if (entity < 0)
+    return;
+  auto& entityManager = activeScene->GetEntityManager();
+  auto transform = entityManager.GetComponent<Transform>(entity);
+  if (!transform)
+    return;
+  glm::mat4 matrix;
+  auto rotation = glm::degrees(transform->rotation);
+  ImGuizmo::RecomposeMatrixFromComponents(glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale), glm::value_ptr(matrix));
+  ImGuizmo::SetOrthographic(false);
+  auto displaySize = ImGui::GetIO().DisplaySize;
+  ImGuizmo::SetRect(0, 0, displaySize.x, displaySize.y);
+  ImGuizmo::Manipulate(glm::value_ptr(camera.view), glm::value_ptr(camera.projection), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(matrix));
+  ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale));
+  transform->rotation = glm::radians(rotation);
+}
+int RenderSystem::RenderToTexture(Camera& camera, int width, int height, int entity) {
   static int currentWidth, currentHeight;
   if (width != currentWidth || height != currentHeight) {
     currentWidth = width;
@@ -196,6 +218,7 @@ int RenderSystem::RenderToTexture(Camera& camera, int width, int height) {
   glClearColor(CLEAR_COLOR.x, CLEAR_COLOR.y, CLEAR_COLOR.z, CLEAR_COLOR.w);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   DrawObjects(camera);
+  //DrawGizmos(camera, entity);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return colorTexture;
 }

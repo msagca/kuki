@@ -22,7 +22,7 @@ void Editor::DisplayScene() {
   auto scene = GetActiveScene();
   auto renderSystem = GetSystem<RenderSystem>();
   if (renderSystem) {
-    auto texture = renderSystem->RenderToTexture(cameraController.GetCamera(), contentRegion.x, contentRegion.y);
+    auto texture = renderSystem->RenderToTexture(cameraController.GetCamera(), contentRegion.x, contentRegion.y, selectedEntity);
     if (texture >= 0)
       ImGui::Image(texture, ImVec2(contentRegion.x, contentRegion.y), uv0, uv1);
   }
@@ -55,7 +55,7 @@ void Editor::DisplayHierarchy() {
   }
   ImGui::End();
   if (renameMode) {
-    InputManager::GetInstance().DisableKeyCallbacks();
+    inputManager.DisableKeyCallbacks();
     ImGui::Begin("Rename", &renameMode);
     ImGui::SetKeyboardFocusHere();
     if (ImGui::InputText("New Name", newName, IM_ARRAYSIZE(newName), ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -63,7 +63,7 @@ void Editor::DisplayHierarchy() {
       renameMode = false;
     }
     if (!renameMode)
-      InputManager::GetInstance().EnableKeyCallbacks();
+      inputManager.EnableKeyCallbacks();
     ImGui::End();
   }
   if (selectedEntity >= 0)

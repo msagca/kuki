@@ -3,7 +3,7 @@
 #include <asset_loader.hpp>
 #include <entity_manager.hpp>
 #include <spawn_manager.hpp>
-class ENGINE_EXPORT Scene {
+class ENGINE_API Scene {
 private:
   AssetManager& assetManager;
   EntityManager entityManager;

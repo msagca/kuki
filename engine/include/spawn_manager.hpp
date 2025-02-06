@@ -2,7 +2,7 @@
 #include <engine_export.h>
 #include <asset_manager.hpp>
 #include <entity_manager.hpp>
-class ENGINE_EXPORT SpawnManager {
+class ENGINE_API SpawnManager {
 private:
   EntityManager& entityManager;
   AssetManager& assetManager;

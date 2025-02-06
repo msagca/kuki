@@ -4,10 +4,12 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <input_manager.hpp>
 class CameraController {
 private:
   Camera camera;
   Camera* cameraPtr;
+  InputManager& inputManager;
   float moveSpeed = 2.5f;
   float mouseSensitivity = .1f;
   void UpdateRotation(glm::vec2);
@@ -16,6 +18,7 @@ private:
   void UpdateView();
   void UpdateProjection();
 public:
+  CameraController(InputManager&);
   Camera& GetCamera();
   void SetCamera(Camera*);
   glm::vec3 GetPosition() const;

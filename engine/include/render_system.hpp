@@ -6,7 +6,7 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <system.hpp>
 #include <unordered_map>
-class ENGINE_EXPORT RenderSystem : public System {
+class ENGINE_API RenderSystem : public System {
 private:
   AssetManager assetManager;
   bool wireframeMode = false;
@@ -18,6 +18,7 @@ private:
   bool ResizeBuffers(int, int);
   glm::mat4 GetWorldTransform(const Transform*);
   void DrawObjects(Camera&);
+  void DrawGizmos(Camera&, int = -1);
   void SetUniformLocations(unsigned int);
   std::unordered_map<unsigned int, std::unordered_map<unsigned int, int>> shaderToUniform;
 public:
@@ -26,5 +27,5 @@ public:
   void Start() override;
   void Update(float, Scene*) override;
   void Shutdown() override;
-  int RenderToTexture(Camera&, int, int);
+  int RenderToTexture(Camera&, int, int, int = -1);
 };

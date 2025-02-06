@@ -1,2 +1,2 @@
-cmake -B build
+cmake -B build --preset Debug
 cmake --build build

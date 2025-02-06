@@ -15,7 +15,7 @@
 /// <summary>
 /// Manages entities and their components in a scene
 /// </summary>
-class ENGINE_EXPORT EntityManager {
+class ENGINE_API EntityManager {
 private:
   unsigned int nextID = 0;
   std::unordered_map<unsigned int, size_t> idToMask;
