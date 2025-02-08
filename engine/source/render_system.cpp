@@ -36,12 +36,18 @@ static const auto POINT_LOCS = 7; // number of uniform locations per point light
 RenderSystem::RenderSystem(AssetManager& assetManager)
   : assetManager(assetManager) {}
 void RenderSystem::Start() {
-  auto defaultShader = assetManager.GetComponent<Shader>(assetManager.GetID("DefaultShader"));
-  if (defaultShader) {
-    defaultShaderID = defaultShader->id;
-    SetUniformLocations(defaultShaderID);
+  auto shader = assetManager.GetComponent<Shader>(assetManager.GetID("DefaultLit"));
+  if (shader) {
+    defaultLit = shader->id;
+    SetUniformLocations(defaultLit);
   } else
-    std::cerr << "Default shader asset is not loaded." << std::endl;
+    std::cerr << "'Default Lit' shader is not loaded." << std::endl;
+  shader = assetManager.GetComponent<Shader>(assetManager.GetID("DefaultUnlit"));
+  if (shader) {
+    defaultUnlit = shader->id;
+    SetUniformLocations(defaultUnlit);
+  } else
+    std::cerr << "'Default Unlit' shader is not loaded." << std::endl;
   auto width = 800;
   auto height = 600;
   ResizeBuffers(width, height);
@@ -143,7 +149,7 @@ void RenderSystem::DrawObjects(Camera& camera) {
     glBindTexture(GL_TEXTURE_2D, renderer->material.occlusion);
     glActiveTexture(GL_TEXTURE5);
     glBindTexture(GL_TEXTURE_2D, renderer->material.roughness);
-    auto shader = defaultShaderID;
+    auto shader = defaultLit;
     glUseProgram(shader);
     auto model = GetWorldTransform(transform);
     auto& uniformLocations = shaderToUniform[shader];
@@ -186,6 +192,25 @@ void RenderSystem::DrawObjects(Camera& camera) {
       glDrawArrays(GL_TRIANGLES, 0, filter->mesh.vertexCount);
   });
 }
+void RenderSystem::DrawAsset(unsigned int id) {
+  auto [transform, mesh, material] = assetManager.GetComponents<Transform, Mesh, Material>(id);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, material->base);
+  auto shader = defaultUnlit;
+  glUseProgram(shader);
+  auto model = GetWorldTransform(transform);
+  auto& uniformLocations = shaderToUniform[shader];
+  glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MATRIX_MODEL)], 1, GL_FALSE, glm::value_ptr(model));
+  glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MATRIX_VIEW)], 1, GL_FALSE, glm::value_ptr(assetCam.view));
+  glUniformMatrix4fv(uniformLocations[static_cast<unsigned int>(UniformLocation::MATRIX_PROJ)], 1, GL_FALSE, glm::value_ptr(assetCam.projection));
+  glUniform3fv(uniformLocations[static_cast<unsigned int>(UniformLocation::VIEW_POS)], 1, glm::value_ptr(assetCam.position));
+  glUniform1ui(uniformLocations[static_cast<unsigned int>(UniformLocation::MATERIAL_BASE)], 0);
+  glBindVertexArray(mesh->vertexArray);
+  if (mesh->indexCount > 0)
+    glDrawElements(GL_TRIANGLES, mesh->indexCount, GL_UNSIGNED_INT, 0);
+  else
+    glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
+}
 void RenderSystem::DrawGizmos(Camera& camera, int entity) {
   // FIXME: for this to work, engine and editor should share the same ImGui globals (editor should pass its ImGui context to engine)
   ImGuizmo::BeginFrame();
@@ -206,7 +231,7 @@ void RenderSystem::DrawGizmos(Camera& camera, int entity) {
   ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale));
   transform->rotation = glm::radians(rotation);
 }
-int RenderSystem::RenderToTexture(Camera& camera, int width, int height, int entity) {
+int RenderSystem::RenderSceneToTexture(Camera& camera, int width, int height, int entity) {
   static int currentWidth, currentHeight;
   if (width != currentWidth || height != currentHeight) {
     currentWidth = width;
@@ -219,6 +244,20 @@ int RenderSystem::RenderToTexture(Camera& camera, int width, int height, int ent
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   DrawObjects(camera);
   //DrawGizmos(camera, entity);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  return colorTexture;
+}
+int RenderSystem::RenderAssetToTexture(unsigned int id, int size) {
+  static int currentSize;
+  if (size != currentSize) {
+    currentSize = size;
+    if (!ResizeBuffers(size, size))
+      return -1;
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glClearColor(CLEAR_COLOR.x, CLEAR_COLOR.y, CLEAR_COLOR.z, CLEAR_COLOR.w);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  DrawAsset(id);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return colorTexture;
 }

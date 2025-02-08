@@ -37,6 +37,7 @@ void AssetManager::Delete(unsigned int id) {
   nameToID.erase(idToName[id]);
   idToName.erase(id);
   idToChildren.erase(id);
+  idToParent.erase(id);
 }
 bool AssetManager::Rename(unsigned int id, std::string name) {
   if (idToName.find(id) == idToName.end() || name.size() == 0 || nameToID.find(name) != nameToID.end())
@@ -64,12 +65,14 @@ void AssetManager::AddChild(unsigned int parent, unsigned int child) {
   if (it == idToChildren.end())
     return;
   it->second.insert(child);
+  idToParent[child] = parent;
 }
 void AssetManager::RemoveChild(unsigned int parent, unsigned int child) {
   auto it = idToChildren.find(parent);
   if (it == idToChildren.end())
     return;
   it->second.erase(child);
+  idToParent.erase(child);
 }
 void AssetManager::RemoveAllComponents(unsigned int id) {
   if (idToMask.find(id) == idToMask.end())
@@ -80,6 +83,18 @@ void AssetManager::RemoveAllComponents(unsigned int id) {
   textureManager.Remove(id);
   transformManager.Remove(id);
   idToMask[id] = 0;
+}
+bool AssetManager::HasChildren(unsigned int id) const {
+  auto it = idToChildren.find(id);
+  if (it == idToChildren.end())
+    return false;
+  return it->second.size() > 0;
+}
+bool AssetManager::HasParent(unsigned int id) const {
+  auto it = idToParent.find(id);
+  if (it == idToParent.end())
+    return false;
+  return true;
 }
 std::vector<IComponent*> AssetManager::GetAllComponents(unsigned int id) {
   std::vector<IComponent*> components;

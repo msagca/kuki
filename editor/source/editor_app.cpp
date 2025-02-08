@@ -10,11 +10,11 @@
 #include <entity_manager.hpp>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <imfilebrowser.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <ImGuizmo.h>
-#include <imfilebrowser.h>
 #include <input_manager.hpp>
 #include <iostream>
 #include <primitive.hpp>
@@ -97,7 +97,8 @@ void Editor::LoadDefaultScene() {
   entityManager.AddComponent<Light>(lightID);
 }
 void Editor::LoadDefaultAssets() {
-  assetLoader.LoadShader("DefaultShader", "shader/default_lit.vert", "shader/default_lit.frag");
+  assetLoader.LoadShader("DefaultLit", "shader/default_lit.vert", "shader/default_lit.frag");
+  assetLoader.LoadShader("DefaultUnlit", "shader/default_unlit.vert", "shader/default_unlit.frag");
   auto id = assetLoader.LoadMaterial("DefaultMaterial", "image/T_umonab2dy_1K_B.jpg", "image/T_umonab2dy_1K_N.jpg", "image/T_umonab2dy_1K_ORM.jpg");
   Material material;
   auto materialPtr = assetManager.GetComponent<Material>(id);

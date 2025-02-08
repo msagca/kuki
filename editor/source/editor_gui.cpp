@@ -1,8 +1,11 @@
-#include <iostream>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <application.hpp>
+#include <asset_manager.hpp>
 #include <camera_controller.hpp>
 #include <component/component.hpp>
+#include <component/material.hpp>
+#include <component/mesh.hpp>
+#include <component/transform.hpp>
 #include <cstring>
 #include <editor.hpp>
 #include <entity_manager.hpp>
@@ -23,13 +26,14 @@ void Editor::DisplayScene() {
   auto scene = GetActiveScene();
   auto renderSystem = GetSystem<RenderSystem>();
   if (renderSystem) {
-    auto texture = renderSystem->RenderToTexture(cameraController.GetCamera(), contentRegion.x, contentRegion.y, selectedEntity);
+    auto texture = renderSystem->RenderSceneToTexture(cameraController.GetCamera(), contentRegion.x, contentRegion.y, selectedEntity);
     if (texture >= 0)
       ImGui::Image(texture, ImVec2(contentRegion.x, contentRegion.y), uv0, uv1);
   }
   ImGui::End();
 }
 void Editor::DisplayResources() {
+  const static auto tileSize = ImVec2(96.0f, 96.0f);
   ImGui::Begin("Resources");
   if (ImGui::BeginPopupContextWindow()) {
     if (ImGui::BeginMenu("Import")) {
@@ -38,6 +42,21 @@ void Editor::DisplayResources() {
       ImGui::EndMenu();
     }
     ImGui::EndPopup();
+  }
+  auto renderSystem = GetSystem<RenderSystem>();
+  if (renderSystem) {
+    auto contentRegion = ImGui::GetContentRegionAvail();
+    auto tilesPerRow = static_cast<int>(contentRegion.x / tileSize.x);
+    auto tileCount = 0;
+    assetManager.ForAll([&](unsigned int id) {
+      if (!assetManager.HasParent(id) && assetManager.HasComponents<Transform, Mesh, Material>(id)) {
+        ImVec2 tilePos((tileCount % tilesPerRow) * tileSize.x, (tileCount / tilesPerRow) * tileSize.x);
+        ImGui::SetCursorPos(tilePos);
+        auto texture = renderSystem->RenderAssetToTexture(id, tileSize.x);
+        ImGui::Image(texture, tileSize);
+        tileCount++;
+      }
+    });
   }
   ImGui::End();
   fileDialog.Display();

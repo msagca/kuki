@@ -21,6 +21,7 @@ private:
   std::unordered_map<unsigned int, std::string> idToName;
   std::unordered_map<std::string, unsigned int> nameToID;
   std::unordered_map<unsigned int, std::unordered_set<unsigned int>> idToChildren;
+  std::unordered_map<unsigned int, unsigned int> idToParent;
   // TODO: assets shall only become components when they are loaded into a scene, relevant OpenGL buffers shall only be created then
   // TODO: keep a separate set for each asset type to store paths to assets of that type; define load functions for each asset
   ComponentManager<Material> materialManager;
@@ -48,11 +49,19 @@ public:
   template <typename T>
   void RemoveComponent(unsigned int);
   void RemoveAllComponents(unsigned int);
+  bool HasChildren(unsigned int) const;
+  bool HasParent(unsigned int) const;
   template <typename T>
   bool HasComponent(unsigned int);
+  template <typename... T>
+  bool HasComponents(unsigned int);
   template <typename T>
   T* GetComponent(unsigned int);
+  template <typename... T>
+  std::tuple<T*...> GetComponents(unsigned int);
   std::vector<IComponent*> GetAllComponents(unsigned int);
+  template <typename F>
+  void ForAll(F);
   void CleanUp();
 };
 template <typename T>
@@ -79,10 +88,22 @@ bool AssetManager::HasComponent(unsigned int id) {
     return false;
   return (idToMask[id] & GetComponentMask<T>()) != 0;
 }
+template <typename... T>
+bool AssetManager::HasComponents(unsigned int id) {
+  auto it = idToMask.find(id);
+  if (it == idToMask.end())
+    return false;
+  auto combinedMask = (GetComponentMask<T>() | ...);
+  return (it->second & combinedMask) == combinedMask;
+}
 template <typename T>
 T* AssetManager::GetComponent(unsigned int id) {
   auto& manager = GetManager<T>();
   return manager.Get(id);
+}
+template <typename... T>
+std::tuple<T*...> AssetManager::GetComponents(unsigned int id) {
+  return std::make_tuple(GetComponent<T>(id)...);
 }
 template <typename F>
 void AssetManager::ForEachChild(unsigned int parent, F func) {
@@ -91,6 +112,11 @@ void AssetManager::ForEachChild(unsigned int parent, F func) {
     return;
   for (auto child : it->second)
     func(child, idToName[child]);
+}
+template <typename F>
+void AssetManager::ForAll(F func) {
+  for (const auto& [id, _] : idToMask)
+    func(id);
 }
 template <>
 inline ComponentManager<Material>& AssetManager::GetManager() {
