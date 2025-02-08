@@ -16,6 +16,7 @@
 #include <component/texture.hpp>
 #include <component/transform.hpp>
 #include <cstddef>
+#include <filesystem>
 #include <fstream>
 #include <glad/glad.h>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -35,8 +36,8 @@
 #include <vector>
 AssetLoader::AssetLoader(AssetManager& assetManager)
   : assetManager(assetManager) {}
-int AssetLoader::LoadMaterial(const std::string& name, const std::string& basePath, const std::string& normalPath, const std::string& ormPath) {
-  auto textureID = LoadTexture(basePath, name + "Base", TextureType::Base);
+int AssetLoader::LoadMaterial(const std::string& name, const std::filesystem::path& basePath, const std::filesystem::path& normalPath, const std::filesystem::path& ormPath) {
+  auto textureID = LoadTexture(name + "Base", basePath, TextureType::Base);
   auto texture = assetManager.GetComponent<Texture>(textureID);
   if (!texture)
     return -1;
@@ -44,25 +45,26 @@ int AssetLoader::LoadMaterial(const std::string& name, const std::string& basePa
   auto material = assetManager.AddComponent<Material>(assetID);
   material->base = texture->id;
   if (!normalPath.empty()) {
-    textureID = LoadTexture(normalPath, name + "Normal", TextureType::Normal);
+    textureID = LoadTexture(name + "Normal", normalPath, TextureType::Normal);
     texture = assetManager.GetComponent<Texture>(textureID);
     if (texture)
       material->normal = texture->id;
   }
   if (!ormPath.empty()) {
-    textureID = LoadTexture(ormPath, name + "ORM", TextureType::ORM);
+    textureID = LoadTexture(name + "ORM", ormPath, TextureType::ORM);
     texture = assetManager.GetComponent<Texture>(textureID);
     if (texture)
       material->orm = texture->id;
   }
   return assetID;
 }
-int AssetLoader::LoadTexture(const std::string& path, const std::string& name, TextureType type) {
-  auto it = pathToID.find(path);
+int AssetLoader::LoadTexture(const std::string& name, const std::filesystem::path& path, TextureType type) {
+  auto pathStr = path.string();
+  auto it = pathToID.find(pathStr);
   if (it != pathToID.end())
     return it->second;
   int width, height, nrComponents;
-  auto data = stbi_load(path.c_str(), &width, &height, &nrComponents, 0);
+  auto data = stbi_load(pathStr.c_str(), &width, &height, &nrComponents, 0);
   if (!data) {
     std::cerr << "Failed to load the texture at " << path << "." << std::endl;
     return -1;
@@ -108,43 +110,48 @@ int AssetLoader::LoadTexture(const std::string& path, const std::string& name, T
   auto texture = assetManager.AddComponent<Texture>(assetID);
   texture->id = id;
   texture->type = type;
-  pathToID[path] = assetID;
+  pathToID[pathStr] = assetID;
   return assetID;
 }
-Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& name) {
+Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& name, const std::filesystem::path& root) {
   Material mat;
   aiString path;
   if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
     material->GetTexture(aiTextureType_DIFFUSE, 0, &path);
-    auto id = LoadTexture(path.C_Str(), name + "Base", TextureType::Base);
+    auto fullPath = root / path.C_Str();
+    auto id = LoadTexture(name + "Base", fullPath, TextureType::Base);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       mat.base = texture->id;
   }
   if (material->GetTextureCount(aiTextureType_NORMALS) > 0) {
     material->GetTexture(aiTextureType_NORMALS, 0, &path);
-    auto id = LoadTexture(path.C_Str(), name + "Normal", TextureType::Normal);
+    auto fullPath = root / path.C_Str();
+    auto id = LoadTexture(name + "Normal", fullPath, TextureType::Normal);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       mat.normal = texture->id;
   }
   if (material->GetTextureCount(aiTextureType_METALNESS) > 0) {
     material->GetTexture(aiTextureType_METALNESS, 0, &path);
-    auto id = LoadTexture(path.C_Str(), name + "Metalness", TextureType::Metalness);
+    auto fullPath = root / path.C_Str();
+    auto id = LoadTexture(name + "Metalness", fullPath, TextureType::Metalness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       mat.metalness = texture->id;
   }
   if (material->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
     material->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
-    auto id = LoadTexture(path.C_Str(), name + "Occlusion", TextureType::Occlusion);
+    auto fullPath = root / path.C_Str();
+    auto id = LoadTexture(name + "Occlusion", fullPath, TextureType::Occlusion);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       mat.occlusion = texture->id;
   }
   if (material->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
     material->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
-    auto id = LoadTexture(path.C_Str(), name + "Roughness", TextureType::Roughness);
+    auto fullPath = root / path.C_Str();
+    auto id = LoadTexture(name + "Roughness", fullPath, TextureType::Roughness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       mat.roughness = texture->id;
@@ -184,7 +191,7 @@ Mesh AssetLoader::CreateMesh(aiMesh* mesh) {
 glm::mat4 AssetLoader::AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMat) {
   return {{aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1}, {aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2}, {aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3}, {aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4}};
 }
-unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, int parentID, const std::string& nodeName) {
+unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, const std::filesystem::path& root, int parentID, const std::string& nodeName) {
   auto model = AssimpMatrix4x4ToGlmMat4(node->mTransformation);
   auto name = nodeName.empty() ? node->mName.C_Str() : nodeName;
   auto assetID = assetManager.Create(name);
@@ -204,25 +211,25 @@ unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, int paren
     if (mesh->mMaterialIndex >= 0) {
       auto material = scene->mMaterials[mesh->mMaterialIndex];
       auto materialComp = assetManager.AddComponent<Material>(assetID);
-      *materialComp = CreateMaterial(material, name);
+      *materialComp = CreateMaterial(material, name, root);
     }
   }
   for (auto i = 0; i < node->mNumChildren; ++i) {
-    auto childID = LoadNode(node->mChildren[i], scene, assetID);
+    auto childID = LoadNode(node->mChildren[i], scene, root, assetID);
     assetManager.AddChild(assetID, childID);
   }
   return assetID;
 }
-int AssetLoader::LoadModel(const std::string& name, const std::string& path) {
+int AssetLoader::LoadModel(const std::string& name, const std::filesystem::path& path) {
   Assimp::Importer importer;
-  const auto scene = importer.ReadFile(path, aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
+  const auto scene = importer.ReadFile(path.string(), aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
   if (!scene || !scene->mRootNode) {
     std::cerr << "Assimp: " << importer.GetErrorString() << std::endl;
     return -1;
   }
-  return LoadNode(scene->mRootNode, scene, -1, name);
+  return LoadNode(scene->mRootNode, scene, path.parent_path(), -1, name);
 }
-std::string AssetLoader::ReadShader(const std::string& path) {
+std::string AssetLoader::ReadShader(const std::filesystem::path& path) {
   std::ifstream shaderFile(path);
   if (!shaderFile) {
     std::cerr << "Could not open the file: " << path << "." << std::endl;
@@ -247,7 +254,7 @@ unsigned int AssetLoader::CompileShader(const char* shaderText, int shaderType) 
     std::cerr << "Failed to compile shader." << std::endl;
   return shaderID;
 }
-int AssetLoader::LoadShader(const std::string& name, const std::string& vertPath, const std::string& fragPath) {
+int AssetLoader::LoadShader(const std::string& name, const std::filesystem::path& vertPath, const std::filesystem::path& fragPath) {
   auto vertText = ReadShader(vertPath);
   auto fragText = ReadShader(fragPath);
   if (vertText.empty() || fragText.empty())

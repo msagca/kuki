@@ -1,3 +1,4 @@
+#include <iostream>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <application.hpp>
 #include <camera_controller.hpp>
@@ -27,6 +28,28 @@ void Editor::DisplayScene() {
       ImGui::Image(texture, ImVec2(contentRegion.x, contentRegion.y), uv0, uv1);
   }
   ImGui::End();
+}
+void Editor::DisplayResources() {
+  ImGui::Begin("Resources");
+  if (ImGui::BeginPopupContextWindow()) {
+    if (ImGui::BeginMenu("Import")) {
+      if (ImGui::Selectable("Model"))
+        fileDialog.Open();
+      ImGui::EndMenu();
+    }
+    ImGui::EndPopup();
+  }
+  ImGui::End();
+  fileDialog.Display();
+  if (fileDialog.HasSelected()) {
+    auto filepath = fileDialog.GetSelected();
+    auto filename = filepath.stem().string();
+    assetLoader.LoadModel(filename, filepath.string());
+    auto scene = GetActiveScene();
+    auto& spawnManager = scene->GetSpawnManager();
+    spawnManager.Spawn(filename);
+    fileDialog.ClearSelected();
+  }
 }
 void Editor::DisplayHierarchy() {
   static auto clickedEntity = -1;
@@ -178,21 +201,20 @@ void Editor::DisplayProperties(unsigned int selectedEntity) {
 void Editor::DisplayCreateMenu() {
   static const char* primitives[] = {"Cube", "Sphere", "Cylinder"};
   static auto selectedPrimitive = -1;
-  auto scene = GetActiveScene();
-  auto& entityManager = scene->GetEntityManager();
-  auto& spawnManager = scene->GetSpawnManager();
   ImGui::OpenPopup("Create");
   if (ImGui::BeginPopup("Create")) {
     if (ImGui::Selectable("Empty")) {
-      entityManager.Create();
+      auto scene = GetActiveScene();
+      scene->GetEntityManager().Create();
       ImGui::CloseCurrentPopup();
     }
     if (ImGui::BeginMenu("Primitive")) {
-      if (ImGui::ListBox("##Primitives", &selectedPrimitive, primitives, IM_ARRAYSIZE(primitives))) {
-        spawnManager.Spawn(primitives[selectedPrimitive]);
-        selectedPrimitive = -1;
-        ImGui::CloseCurrentPopup();
-      }
+      for (int i = 0; i < IM_ARRAYSIZE(primitives); ++i)
+        if (ImGui::Selectable(primitives[i])) {
+          auto scene = GetActiveScene();
+          scene->GetSpawnManager().Spawn(primitives[i]);
+          ImGui::CloseCurrentPopup();
+        }
       ImGui::EndMenu();
     }
     ImGui::EndPopup();

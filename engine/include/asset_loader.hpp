@@ -5,6 +5,7 @@
 #include <component/component.hpp>
 #include <component/material.hpp>
 #include <engine_export.h>
+#include <filesystem>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <primitive.hpp>
@@ -14,10 +15,10 @@
 class ENGINE_API AssetLoader {
 private:
   AssetManager& assetManager;
-  unsigned int LoadNode(aiNode*, const aiScene*, int = -1, const std::string& = "");
-  Material CreateMaterial(aiMaterial*, const std::string&);
+  unsigned int LoadNode(aiNode*, const aiScene*, const std::filesystem::path&, int = -1, const std::string& = "");
+  Material CreateMaterial(aiMaterial*, const std::string&, const std::filesystem::path&);
   std::unordered_map<std::string, unsigned int> pathToID;
-  std::string ReadShader(const std::string&);
+  std::string ReadShader(const std::filesystem::path&);
   unsigned int CompileShader(const char*, int);
   Mesh CreateVertexBuffer(const std::vector<Vertex>&);
   void CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>&);
@@ -28,10 +29,10 @@ private:
 public:
   AssetLoader(AssetManager&);
   // NOTE: int return type is for functions that require a path to the asset, so if the read fails they can return -1
-  int LoadShader(const std::string&, const std::string&, const std::string&);
-  int LoadModel(const std::string&, const std::string&);
-  int LoadMaterial(const std::string&, const std::string&, const std::string& = "", const std::string& = "");
-  int LoadTexture(const std::string&, const std::string&, TextureType);
+  int LoadShader(const std::string&, const std::filesystem::path&, const std::filesystem::path&);
+  int LoadModel(const std::string&, const std::filesystem::path&);
+  int LoadMaterial(const std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
+  int LoadTexture(const std::string&, const std::filesystem::path&, TextureType);
   unsigned int LoadMesh(const std::string&, const std::vector<Vertex>&);
   unsigned int LoadMesh(const std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
 };

@@ -1,5 +1,7 @@
 #pragma once
 #include <application.hpp>
+#include <imgui.h>
+#include <imfilebrowser.h>
 #include <camera_controller.hpp>
 #include <GLFW/glfw3.h>
 class Editor : public Application {
@@ -8,6 +10,7 @@ private:
   CameraController cameraController;
   GLFWwindow* window;
   int selectedEntity = -1;
+  ImGui::FileBrowser fileDialog;
   void InitOpenGL(int, int);
   void InitImGui();
   void SetWindowIcon(const char*);
@@ -17,6 +20,7 @@ private:
   void DisplayHierarchy();
   void DisplayEntityHierarchy(unsigned int, int&, int&);
   void DisplayProperties(unsigned int);
+  void DisplayResources();
   void DisplayCreateMenu();
   void Start() override;
   bool Status() override;

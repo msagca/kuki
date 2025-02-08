@@ -35,16 +35,16 @@ set(
   ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_opengl3.cpp
 )
-add_library(ImGui STATIC ${IMGUI_CPP_SOURCES})
+add_library(imgui STATIC ${IMGUI_CPP_SOURCES})
 target_include_directories(
-  ImGui
+  imgui
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui
     ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends
 )
-target_link_libraries(ImGui PUBLIC glfw OpenGL::GL)
+target_link_libraries(imgui PUBLIC OpenGL::GL glfw)
 set_target_properties(
-  ImGui
+  imgui
   PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/imgui
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/imgui
@@ -55,33 +55,33 @@ set(
   IMGUIZMO_CPP_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/ImGuizmo.cpp
 )
-add_library(ImGuizmo STATIC ${IMGUIZMO_CPP_SOURCES})
+add_library(imguizmo STATIC ${IMGUIZMO_CPP_SOURCES})
 target_include_directories(
-  ImGuizmo
+  imguizmo
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo
 )
-target_link_libraries(ImGuizmo PUBLIC ImGui)
+target_link_libraries(imguizmo PUBLIC imgui)
 set_target_properties(
-  ImGuizmo
+  imguizmo
   PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/imguizmo
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/imguizmo
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/imguizmo
 )
 # Glad
-add_library(Glad SHARED ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/src/glad.c)
+add_library(glad SHARED ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/src/glad.c)
 target_include_directories(
-  Glad
+  glad
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/include
 )
-target_link_libraries(Glad PUBLIC OpenGL::GL)
+target_link_libraries(glad PUBLIC OpenGL::GL)
 target_compile_definitions(
-  Glad
+  glad
   PRIVATE GLAD_GLAPI_EXPORT_BUILD
   PUBLIC GLAD_GLAPI_EXPORT
 )
 set_target_properties(
-  Glad
+  glad
   PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/glad
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/glad
@@ -92,6 +92,12 @@ add_library(stb INTERFACE)
 target_include_directories(
   stb
   INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
+)
+# ImGui file browser
+add_library(imgui_filebrowser INTERFACE)
+target_include_directories(
+  imgui_filebrowser
+  INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui-filebrowser
 )
 # engine, editor, game
 add_subdirectory(engine)

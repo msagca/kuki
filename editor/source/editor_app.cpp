@@ -14,6 +14,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <ImGuizmo.h>
+#include <imfilebrowser.h>
 #include <input_manager.hpp>
 #include <iostream>
 #include <primitive.hpp>
@@ -34,6 +35,8 @@ void Editor::Start() {
   glfwSetCursorPosCallback(window, CursorPosCallback);
   InitImGui();
   ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
+  fileDialog.SetTitle("Browse Files");
+  fileDialog.SetTypeFilters({".gltf", ".fbx"});
   LoadDefaultAssets();
   LoadDefaultScene();
   CreateSystem<RenderSystem>(assetManager);
@@ -74,6 +77,7 @@ void Editor::UpdateView() {
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
   ImGui::DockSpaceOverViewport(ImGui::GetID("DockSpace"));
+  DisplayResources();
   DisplayHierarchy();
   auto scene = GetActiveScene();
   cameraController.SetCamera(scene->GetEntityManager().GetFirstComponent<Camera>());
