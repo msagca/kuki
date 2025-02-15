@@ -19,6 +19,8 @@ unsigned int AssetManager::Create(std::string name) {
   nameToID[idToName[nextID]] = nextID;
   idToMask[nextID] = 0;
   idToChildren[nextID] = {};
+  for (auto& callback : callbacks)
+    callback();
   return nextID++;
 }
 std::string AssetManager::GenerateName(const std::string& name) {
@@ -109,6 +111,12 @@ std::vector<IComponent*> AssetManager::GetAllComponents(unsigned int id) {
   if (HasComponent<Transform>(id))
     components.emplace_back(GetComponent<Transform>(id));
   return components;
+}
+void AssetManager::RegisterCallback(std::function<void()> callback) {
+  callbacks.push_back(callback);
+}
+void AssetManager::UnregisterCallbacks() {
+  callbacks.clear();
 }
 void AssetManager::CleanUp() {
   meshManager.CleanUp();

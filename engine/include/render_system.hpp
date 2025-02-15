@@ -13,11 +13,14 @@ private:
   Camera assetCam;
   unsigned int defaultLit = 0;
   unsigned int defaultUnlit = 0;
-  unsigned int fbo = 0;
-  unsigned int rbo = 0;
-  unsigned int colorTexture = 0;
+  unsigned int sceneFBO = 0;
+  unsigned int sceneRBO = 0;
+  unsigned int assetFBO = 0;
+  unsigned int assetRBO = 0;
+  unsigned int sceneTexture = 0;
   Scene* activeScene = nullptr;
-  bool ResizeBuffers(int, int);
+  bool ResizeSceneBuffers(int, int);
+  bool ResizeAssetBuffers(unsigned int, int);
   glm::mat4 GetWorldTransform(const Transform*);
   void DrawObjects(Camera&);
   void DrawAsset(unsigned int);
@@ -30,6 +33,6 @@ public:
   void Start() override;
   void Update(float, Scene*) override;
   void Shutdown() override;
-  int RenderAssetToTexture(unsigned int, int);
   int RenderSceneToTexture(Camera&, int, int, int = -1);
+  bool RenderAssetToTexture(unsigned int, unsigned int, int);
 };

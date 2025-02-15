@@ -23,7 +23,7 @@
 #include <stb_image.h>
 static const auto WINDOW_FLAGS = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 Editor::Editor()
-  : inputManager(), cameraController(inputManager) {}
+  : inputManager(), cameraController(inputManager), texturePool(CreateTexture, DeleteTexture, 16) {}
 void Editor::Start() {
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
@@ -192,4 +192,15 @@ void Editor::SetWindowIcon(const char* iconPath) {
     stbi_image_free(data);
   } else
     std::cerr << "Failed to load the icon at " << iconPath << "." << std::endl;
+}
+unsigned int Editor::CreateTexture() {
+  unsigned int id;
+  glGenTextures(1, &id);
+  return id;
+}
+void Editor::DeleteTexture(unsigned int id) {
+  glDeleteTextures(1, &id);
+}
+void Editor::AssetAdditionHandler() {
+  updateThumbnails = true;
 }

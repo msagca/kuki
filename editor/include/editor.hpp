@@ -1,4 +1,5 @@
 #pragma once
+#include "pool.hpp"
 #include <application.hpp>
 #include <imgui.h>
 #include <imfilebrowser.h>
@@ -10,7 +11,9 @@ private:
   CameraController cameraController;
   GLFWwindow* window;
   int selectedEntity = -1;
+  bool updateThumbnails = true;
   ImGui::FileBrowser fileDialog;
+  Pool<unsigned int> texturePool;
   void InitOpenGL(int, int);
   void InitImGui();
   void SetWindowIcon(const char*);
@@ -27,6 +30,9 @@ private:
   void Update() override;
   void UpdateView();
   void Shutdown() override;
+  void AssetAdditionHandler();
+  static unsigned int CreateTexture();
+  static void DeleteTexture(unsigned int);
   static void WindowCloseCallback(GLFWwindow*);
   static void FramebufferSizeCallback(GLFWwindow*, int, int);
   static void KeyCallback(GLFWwindow*, int, int, int, int);

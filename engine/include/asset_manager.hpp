@@ -34,6 +34,7 @@ private:
   ComponentManager<T>& GetManager();
   template <typename T>
   size_t GetComponentMask() const;
+  std::vector<std::function<void()>> callbacks;
 public:
   unsigned int Create(std::string = "");
   void Delete(unsigned int);
@@ -62,6 +63,8 @@ public:
   std::vector<IComponent*> GetAllComponents(unsigned int);
   template <typename F>
   void ForAll(F);
+  void RegisterCallback(std::function<void()>);
+  void UnregisterCallbacks();
   void CleanUp();
 };
 template <typename T>

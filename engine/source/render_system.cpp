@@ -48,40 +48,61 @@ void RenderSystem::Start() {
     SetUniformLocations(defaultUnlit);
   } else
     std::cerr << "'Default Unlit' shader is not loaded." << std::endl;
-  auto width = 800;
-  auto height = 600;
-  ResizeBuffers(width, height);
+  assetCam.view = glm::lookAt(assetCam.position, assetCam.position + assetCam.front, assetCam.up);
+  assetCam.projection = glm::perspective(assetCam.fov, assetCam.aspect, assetCam.near, assetCam.far);
 }
 void RenderSystem::Update(float deltaTime, Scene* scene) {
   activeScene = scene;
 }
 void RenderSystem::Shutdown() {
-  glDeleteFramebuffers(1, &fbo);
-  glDeleteRenderbuffers(1, &rbo);
-  glDeleteTextures(1, &colorTexture);
+  glDeleteFramebuffers(1, &sceneFBO);
+  glDeleteRenderbuffers(1, &sceneRBO);
+  glDeleteTextures(1, &sceneTexture);
 }
-bool RenderSystem::ResizeBuffers(int width, int height) {
+bool RenderSystem::ResizeSceneBuffers(int width, int height) {
   // create color texture
-  glGenTextures(1, &colorTexture);
-  glBindTexture(GL_TEXTURE_2D, colorTexture);
+  glGenTextures(1, &sceneTexture);
+  glBindTexture(GL_TEXTURE_2D, sceneTexture);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
   glBindTexture(GL_TEXTURE_2D, 0);
   // create depth buffer
-  glGenRenderbuffers(1, &rbo);
-  glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+  glGenRenderbuffers(1, &sceneRBO);
+  glBindRenderbuffer(GL_RENDERBUFFER, sceneRBO);
   glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
   // create framebuffer
-  glGenFramebuffers(1, &fbo);
-  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glGenFramebuffers(1, &sceneFBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
   // attach to framebuffer
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneTexture, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, sceneRBO);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "Framebuffer is not complete." << std::endl;
+    std::cerr << "Scene: Framebuffer is not complete." << std::endl;
+    return false;
+  }
+  return true;
+}
+bool RenderSystem::ResizeAssetBuffers(unsigned int id, int size) {
+  glGenTextures(1, &id);
+  glBindTexture(GL_TEXTURE_2D, id);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  glGenRenderbuffers(1, &assetRBO);
+  glBindRenderbuffer(GL_RENDERBUFFER, assetRBO);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, size, size);
+  glBindRenderbuffer(GL_RENDERBUFFER, 0);
+  glGenFramebuffers(1, &assetFBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, id, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, assetRBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    std::cerr << "Asset: Framebuffer is not complete." << std::endl;
     return false;
   }
   return true;
@@ -236,28 +257,29 @@ int RenderSystem::RenderSceneToTexture(Camera& camera, int width, int height, in
   if (width != currentWidth || height != currentHeight) {
     currentWidth = width;
     currentHeight = height;
-    if (!ResizeBuffers(width, height))
+    if (!ResizeSceneBuffers(width, height))
       return -1;
   }
-  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
   glClearColor(CLEAR_COLOR.x, CLEAR_COLOR.y, CLEAR_COLOR.z, CLEAR_COLOR.w);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   DrawObjects(camera);
   //DrawGizmos(camera, entity);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  return colorTexture;
+  return sceneTexture;
 }
-int RenderSystem::RenderAssetToTexture(unsigned int id, int size) {
+bool RenderSystem::RenderAssetToTexture(unsigned int assetID, unsigned int textureID, int size) {
   static int currentSize;
   if (size != currentSize) {
     currentSize = size;
-    if (!ResizeBuffers(size, size))
-      return -1;
+    if (!ResizeAssetBuffers(textureID, size))
+      return false;
   }
-  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
   glClearColor(CLEAR_COLOR.x, CLEAR_COLOR.y, CLEAR_COLOR.z, CLEAR_COLOR.w);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  DrawAsset(id);
+  DrawAsset(assetID);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  return colorTexture;
+  return true;
 }

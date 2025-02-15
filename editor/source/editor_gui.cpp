@@ -16,6 +16,7 @@
 #include <render_system.hpp>
 #include <scene.hpp>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 void Editor::DisplayScene() {
@@ -43,21 +44,35 @@ void Editor::DisplayResources() {
     }
     ImGui::EndPopup();
   }
+  static std::unordered_map<unsigned int, size_t> assetToTexture;
+  if (updateThumbnails)
+    for (auto& pair : assetToTexture)
+      texturePool.Release(pair.second);
   auto renderSystem = GetSystem<RenderSystem>();
   if (renderSystem) {
     auto contentRegion = ImGui::GetContentRegionAvail();
     auto tilesPerRow = static_cast<int>(contentRegion.x / tileSize.x);
     auto tileCount = 0;
-    assetManager.ForAll([&](unsigned int id) {
-      if (!assetManager.HasParent(id) && assetManager.HasComponents<Transform, Mesh, Material>(id)) {
-        ImVec2 tilePos((tileCount % tilesPerRow) * tileSize.x, (tileCount / tilesPerRow) * tileSize.x);
+    assetManager.ForAll([&](unsigned int assetID) {
+      if (assetManager.HasComponents<Transform, Mesh, Material>(assetID)) {
+        ImVec2 tilePos((tileCount % tilesPerRow) * tileSize.x, (tileCount / tilesPerRow) * tileSize.y);
         ImGui::SetCursorPos(tilePos);
-        auto texture = renderSystem->RenderAssetToTexture(id, tileSize.x);
-        ImGui::Image(texture, tileSize);
+        auto it = assetToTexture.find(assetID);
+        unsigned int textureID;
+        if (it == assetToTexture.end()) {
+          auto itemID = texturePool.Request();
+          assetToTexture[assetID] = itemID;
+          textureID = texturePool.GetCopy(itemID);
+        } else
+          textureID = texturePool.GetCopy(it->second);
+        if (updateThumbnails)
+          renderSystem->RenderAssetToTexture(assetID, textureID, tileSize.x);
+        ImGui::Image(textureID, tileSize);
         tileCount++;
       }
     });
   }
+  updateThumbnails = false;
   ImGui::End();
   fileDialog.Display();
   if (fileDialog.HasSelected()) {
