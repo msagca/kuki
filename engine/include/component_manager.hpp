@@ -6,8 +6,15 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+class IComponentManager {
+public:
+  virtual ~IComponentManager() = default;
+  virtual void Remove(unsigned int) = 0;
+  virtual bool Has(unsigned int) = 0;
+  virtual IComponent* GetBase(unsigned int) = 0;
+};
 template <typename T>
-class ComponentManager {
+class ComponentManager : public IComponentManager {
 private:
   std::vector<T> components;
   std::unordered_map<unsigned int, unsigned int> entityToComponent;
@@ -19,8 +26,9 @@ public:
   unsigned int ActiveCount();
   unsigned int InactiveCount();
   T& Add(unsigned int);
-  void Remove(unsigned int);
-  bool Has(unsigned int);
+  void Remove(unsigned int) override;
+  bool Has(unsigned int) override;
+  IComponent* GetBase(unsigned int) override;
   T* Get(unsigned int);
   T* GetFirst();
   template <typename F>
@@ -68,6 +76,10 @@ void ComponentManager<T>::Remove(unsigned int id) {
 template <typename T>
 bool ComponentManager<T>::Has(unsigned int id) {
   return entityToComponent.find(id) != entityToComponent.end();
+}
+template <typename T>
+IComponent* ComponentManager<T>::GetBase(unsigned int id) {
+  return static_cast<IComponent*>(Get(id));
 }
 template <typename T>
 T* ComponentManager<T>::Get(unsigned int id) {

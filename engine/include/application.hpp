@@ -9,7 +9,7 @@ protected:
   std::vector<Scene*> scenes;
   std::vector<System*> systems;
   unsigned int activeSceneID = 0;
-  AssetManager assetManager;
+  EntityManager assetManager;
   AssetLoader assetLoader;
 public:
   Application();

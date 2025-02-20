@@ -8,6 +8,10 @@
 #include <entity_manager.hpp>
 #include <string>
 #include <vector>
+EntityManager::~EntityManager() {
+  for (auto& [type, manager] : managers)
+    delete manager;
+}
 unsigned int EntityManager::Create(std::string name) {
   if (!name.empty()) {
     auto& entityName = name;
@@ -30,7 +34,7 @@ std::string EntityManager::GenerateName(const std::string& name) {
 }
 void EntityManager::Delete(unsigned int id) {
   RemoveAllComponents(id);
-  ForEachChild(id, [&](unsigned int childID) {
+  ForEachChild(id, [&](unsigned int childID, std::string& _) {
     Delete(childID);
   });
   idToMask.erase(id);
@@ -167,11 +171,8 @@ void EntityManager::RemoveComponent(unsigned int id, const std::string& name) {
 void EntityManager::RemoveAllComponents(unsigned int id) {
   if (idToMask.find(id) == idToMask.end())
     return;
-  cameraManager.Remove(id);
-  lightManager.Remove(id);
-  filterManager.Remove(id);
-  rendererManager.Remove(id);
-  transformManager.Remove(id);
+  for (auto& [type, manager] : managers)
+    manager->Remove(id);
   idToMask[id] = 0;
 }
 IComponent* EntityManager::GetComponent(unsigned int id, const std::string& name) {
@@ -190,16 +191,9 @@ IComponent* EntityManager::GetComponent(unsigned int id, const std::string& name
 }
 std::vector<IComponent*> EntityManager::GetAllComponents(unsigned int id) {
   std::vector<IComponent*> components;
-  if (HasComponent<Transform>(id))
-    components.emplace_back(transformManager.Get(id));
-  if (HasComponent<MeshFilter>(id))
-    components.emplace_back(filterManager.Get(id));
-  if (HasComponent<MeshRenderer>(id))
-    components.emplace_back(rendererManager.Get(id));
-  if (HasComponent<Camera>(id))
-    components.emplace_back(cameraManager.Get(id));
-  if (HasComponent<Light>(id))
-    components.emplace_back(lightManager.Get(id));
+  for (auto& [type, manager] : managers)
+    if (manager->Has(id))
+      components.emplace_back(manager->GetBase(id));
   return components;
 }
 std::vector<std::string> EntityManager::GetMissingComponents(unsigned int id) {

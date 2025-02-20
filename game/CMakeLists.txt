@@ -2,6 +2,24 @@ project(Game)
 file(GLOB_RECURSE C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/source/*.c")
 file(GLOB_RECURSE CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp")
 add_executable(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(
+  ${PROJECT_NAME}
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
 target_link_libraries(${PROJECT_NAME} PRIVATE Engine)
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES $<TARGET_FILE:Engine> DESTINATION ${CMAKE_INSTALL_BINDIR})
+add_custom_command(
+  TARGET ${PROJECT_NAME}
+  POST_BUILD
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:Engine>/shader
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Engine>
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>
+  COMMAND
+    ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:Engine>
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>
+  COMMAND_EXPAND_LISTS
+)

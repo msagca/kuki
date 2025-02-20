@@ -1,7 +1,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #define STB_IMAGE_IMPLEMENTATION
 #include <asset_loader.hpp>
-#include <asset_manager.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/material.h>
 #include <assimp/matrix4x4.h>
@@ -17,7 +16,6 @@
 #include <component/transform.hpp>
 #include <cstddef>
 #include <filesystem>
-#include <fstream>
 #include <glad/glad.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/quaternion_float.hpp>
@@ -26,16 +24,13 @@
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
-#include <iosfwd>
 #include <iostream>
-#include <ostream>
 #include <primitive.hpp>
-#include <sstream>
 #include <stb_image.h>
 #include <string>
-#include <vector>
 #include <variant>
-AssetLoader::AssetLoader(AssetManager& assetManager)
+#include <vector>
+AssetLoader::AssetLoader(EntityManager& assetManager)
   : assetManager(assetManager) {}
 int AssetLoader::LoadMaterial(const std::string& name, const std::filesystem::path& basePath, const std::filesystem::path& normalPath, const std::filesystem::path& metalnessPath, const std::filesystem::path& occlusionPath, const std::filesystem::path& roughnessPath) {
   auto textureID = LoadTexture(name + "Base", basePath, TextureType::Base);
@@ -128,89 +123,89 @@ int AssetLoader::LoadTexture(const std::string& name, const std::filesystem::pat
   pathToID[pathStr] = assetID;
   return assetID;
 }
-Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& name, const std::filesystem::path& root) {
-  Material mat;
-  mat.material = PBRMaterial{};
-  auto& pbrMat = std::get<PBRMaterial>(mat.material);
+Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::string& name, const std::filesystem::path& root) {
+  Material material;
+  material.material = PBRMaterial{};
+  auto& pbrMaterial = std::get<PBRMaterial>(material.material);
   aiString path;
-  if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
-    material->GetTexture(aiTextureType_DIFFUSE, 0, &path);
+  if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
+    aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &path);
     auto fullPath = root / path.C_Str();
     auto id = LoadTexture(name + "Base", fullPath, TextureType::Base);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMat.base = texture->id;
+      pbrMaterial.base = texture->id;
   }
-  if (material->GetTextureCount(aiTextureType_NORMALS) > 0) {
-    material->GetTexture(aiTextureType_NORMALS, 0, &path);
+  if (aiMaterial->GetTextureCount(aiTextureType_NORMALS) > 0) {
+    aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &path);
     auto fullPath = root / path.C_Str();
     auto id = LoadTexture(name + "Normal", fullPath, TextureType::Normal);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMat.normal = texture->id;
+      pbrMaterial.normal = texture->id;
   }
-  if (material->GetTextureCount(aiTextureType_METALNESS) > 0) {
-    material->GetTexture(aiTextureType_METALNESS, 0, &path);
+  if (aiMaterial->GetTextureCount(aiTextureType_METALNESS) > 0) {
+    aiMaterial->GetTexture(aiTextureType_METALNESS, 0, &path);
     auto fullPath = root / path.C_Str();
     auto id = LoadTexture(name + "Metalness", fullPath, TextureType::Metalness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMat.metalness = texture->id;
+      pbrMaterial.metalness = texture->id;
   }
-  if (material->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
-    material->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
+  if (aiMaterial->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
+    aiMaterial->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
     auto fullPath = root / path.C_Str();
     auto id = LoadTexture(name + "Occlusion", fullPath, TextureType::Occlusion);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMat.occlusion = texture->id;
+      pbrMaterial.occlusion = texture->id;
   }
-  if (material->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
-    material->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
+  if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
+    aiMaterial->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
     auto fullPath = root / path.C_Str();
     auto id = LoadTexture(name + "Roughness", fullPath, TextureType::Roughness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMat.roughness = texture->id;
+      pbrMaterial.roughness = texture->id;
   }
-  return mat;
+  return material;
 }
-Mesh AssetLoader::CreateMesh(aiMesh* mesh) {
+Mesh AssetLoader::CreateMesh(aiMesh* aiMesh) {
   std::vector<Vertex> vertices;
-  for (auto i = 0; i < mesh->mNumVertices; ++i) {
+  for (auto i = 0; i < aiMesh->mNumVertices; ++i) {
     Vertex vertex{};
     glm::vec3 vector{};
-    vector.x = mesh->mVertices[i].x;
-    vector.y = mesh->mVertices[i].y;
-    vector.z = mesh->mVertices[i].z;
+    vector.x = aiMesh->mVertices[i].x;
+    vector.y = aiMesh->mVertices[i].y;
+    vector.z = aiMesh->mVertices[i].z;
     vertex.position = vector;
-    vector.x = mesh->mNormals[i].x;
-    vector.y = mesh->mNormals[i].y;
-    vector.z = mesh->mNormals[i].z;
+    vector.x = aiMesh->mNormals[i].x;
+    vector.y = aiMesh->mNormals[i].y;
+    vector.z = aiMesh->mNormals[i].z;
     vertex.normal = vector;
-    if (mesh->mTextureCoords[0]) {
+    if (aiMesh->mTextureCoords[0]) {
       glm::vec2 texCoord{};
-      texCoord.x = mesh->mTextureCoords[0][i].x;
-      texCoord.y = mesh->mTextureCoords[0][i].y;
+      texCoord.x = aiMesh->mTextureCoords[0][i].x;
+      texCoord.y = aiMesh->mTextureCoords[0][i].y;
       vertex.texture = texCoord;
     } else
       vertex.texture = glm::vec2(.0f);
     vertices.push_back(vertex);
   }
   std::vector<unsigned int> indices;
-  for (auto i = 0; i < mesh->mNumFaces; ++i) {
-    auto& face = mesh->mFaces[i];
+  for (auto i = 0; i < aiMesh->mNumFaces; ++i) {
+    auto& face = aiMesh->mFaces[i];
     for (auto j = 0; j < face.mNumIndices; ++j)
       indices.push_back(face.mIndices[j]);
   }
   return CreateMesh(vertices, indices);
 }
-glm::mat4 AssetLoader::AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMat) {
-  return {{aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1}, {aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2}, {aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3}, {aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4}};
+glm::mat4 AssetLoader::AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMatrix) {
+  return {{aiMatrix.a1, aiMatrix.b1, aiMatrix.c1, aiMatrix.d1}, {aiMatrix.a2, aiMatrix.b2, aiMatrix.c2, aiMatrix.d2}, {aiMatrix.a3, aiMatrix.b3, aiMatrix.c3, aiMatrix.d3}, {aiMatrix.a4, aiMatrix.b4, aiMatrix.c4, aiMatrix.d4}};
 }
-unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, const std::filesystem::path& root, int parentID, const std::string& nodeName) {
-  auto model = AssimpMatrix4x4ToGlmMat4(node->mTransformation);
-  auto name = nodeName.empty() ? node->mName.C_Str() : nodeName;
+unsigned int AssetLoader::LoadNode(aiNode* aiNode, const aiScene* aiScene, const std::filesystem::path& root, int parentID, const std::string& nodeName) {
+  auto model = AssimpMatrix4x4ToGlmMat4(aiNode->mTransformation);
+  auto name = nodeName.empty() ? aiNode->mName.C_Str() : nodeName;
   auto assetID = assetManager.Create(name);
   auto transform = assetManager.AddComponent<Transform>(assetID);
   glm::vec3 skew;
@@ -221,18 +216,18 @@ unsigned int AssetLoader::LoadNode(aiNode* node, const aiScene* scene, const std
   transform->scale = glm::vec3(1.0f);
   transform->rotation = glm::eulerAngles(orientation);
   transform->parent = parentID;
-  for (auto i = 0; i < node->mNumMeshes; ++i) {
-    auto mesh = scene->mMeshes[node->mMeshes[i]];
+  for (auto i = 0; i < aiNode->mNumMeshes; ++i) {
+    auto mesh = aiScene->mMeshes[aiNode->mMeshes[i]];
     auto meshComp = assetManager.AddComponent<Mesh>(assetID);
     *meshComp = CreateMesh(mesh);
     if (mesh->mMaterialIndex >= 0) {
-      auto material = scene->mMaterials[mesh->mMaterialIndex];
+      auto material = aiScene->mMaterials[mesh->mMaterialIndex];
       auto materialComp = assetManager.AddComponent<Material>(assetID);
       *materialComp = CreateMaterial(material, name, root);
     }
   }
-  for (auto i = 0; i < node->mNumChildren; ++i) {
-    auto childID = LoadNode(node->mChildren[i], scene, root, assetID);
+  for (auto i = 0; i < aiNode->mNumChildren; ++i) {
+    auto childID = LoadNode(aiNode->mChildren[i], aiScene, root, assetID);
     assetManager.AddChild(assetID, childID);
   }
   return assetID;
@@ -245,31 +240,6 @@ int AssetLoader::LoadModel(const std::string& name, const std::filesystem::path&
     return -1;
   }
   return LoadNode(scene->mRootNode, scene, path.parent_path(), -1, name);
-}
-std::string AssetLoader::ReadShader(const std::filesystem::path& path) {
-  std::ifstream shaderFile(path);
-  if (!shaderFile) {
-    std::cerr << "Could not open the file: " << path << "." << std::endl;
-    return "";
-  }
-  std::stringstream shaderStream;
-  shaderStream << shaderFile.rdbuf();
-  if (shaderFile.fail()) {
-    std::cerr << "Failed to read the file: " << path << "." << std::endl;
-    return "";
-  }
-  shaderFile.close();
-  return shaderStream.str();
-}
-unsigned int AssetLoader::CompileShader(const char* shaderText, int shaderType) {
-  auto shaderID = glCreateShader(shaderType);
-  glShaderSource(shaderID, 1, &shaderText, nullptr);
-  glCompileShader(shaderID);
-  int success;
-  glGetShaderiv(shaderID, GL_COMPILE_STATUS, &success);
-  if (!success)
-    std::cerr << "Failed to compile shader." << std::endl;
-  return shaderID;
 }
 Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   Mesh mesh;

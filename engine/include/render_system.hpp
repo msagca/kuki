@@ -1,5 +1,4 @@
 #pragma once
-#include <asset_manager.hpp>
 #include <component/transform.hpp>
 #include <engine_export.h>
 #include <entity_manager.hpp>
@@ -7,7 +6,7 @@
 #include <system.hpp>
 class ENGINE_API RenderSystem : public System {
 private:
-  AssetManager assetManager;
+  EntityManager assetManager;
   bool wireframeMode = false;
   Camera assetCam;
   Shader phongShader;
@@ -27,7 +26,7 @@ private:
   void DrawAsset(unsigned int);
   void DrawGizmos(const Camera&, int = -1);
 public:
-  RenderSystem(AssetManager&);
+  RenderSystem(EntityManager&);
   void ToggleWireframeMode();
   void Start() override;
   void Update(float, Scene*) override;

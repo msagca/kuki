@@ -1,4 +1,3 @@
-#include <asset_manager.hpp>
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/light.hpp>
@@ -32,7 +31,7 @@ static const auto Z_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
 static const auto CLEAR_COLOR = glm::vec4(.1f, .1f, .1f, 1.0f);
 static const auto MAX_POINT_LIGHTS = 8;
 static const auto POINT_LOCS = 7; // number of uniform locations per point light
-RenderSystem::RenderSystem(AssetManager& assetManager)
+RenderSystem::RenderSystem(EntityManager& assetManager)
   : assetManager(assetManager), phongShader("shader/phong.vert", "shader/phong.frag"), pbrShader("shader/pbr.vert", "shader/pbr.frag"), unlitShader("shader/unlit.vert", "shader/unlit.frag") {}
 void RenderSystem::Start() {
   assetCam.view = glm::lookAt(assetCam.position, assetCam.position + assetCam.front, assetCam.up);

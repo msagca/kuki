@@ -8,7 +8,7 @@
 class CameraController {
 private:
   Camera camera;
-  Camera* cameraPtr;
+  Camera* cameraPtr = nullptr;
   InputManager& inputManager;
   float moveSpeed = 2.5f;
   float mouseSensitivity = .1f;

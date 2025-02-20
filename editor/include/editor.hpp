@@ -1,15 +1,15 @@
 #pragma once
 #include "pool.hpp"
 #include <application.hpp>
-#include <imgui.h>
-#include <imfilebrowser.h>
 #include <camera_controller.hpp>
 #include <GLFW/glfw3.h>
+#include <imgui.h>
+#include <imfilebrowser.h>
 class Editor : public Application {
 private:
   InputManager inputManager;
   CameraController cameraController;
-  GLFWwindow* window;
+  GLFWwindow* window = nullptr;
   int selectedEntity = -1;
   bool updateThumbnails = true;
   ImGui::FileBrowser fileDialog;

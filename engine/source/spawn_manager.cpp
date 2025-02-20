@@ -1,4 +1,3 @@
-#include <asset_manager.hpp>
 #include <component/material.hpp>
 #include <component/mesh.hpp>
 #include <component/mesh_filter.hpp>
@@ -7,7 +6,7 @@
 #include <entity_manager.hpp>
 #include <spawn_manager.hpp>
 #include <string>
-SpawnManager::SpawnManager(EntityManager& entityManager, AssetManager& assetManager)
+SpawnManager::SpawnManager(EntityManager& entityManager, EntityManager& assetManager)
   : entityManager(entityManager), assetManager(assetManager) {}
 int SpawnManager::Spawn(const std::string& name, int parentID) {
   auto assetID = assetManager.GetID(name);

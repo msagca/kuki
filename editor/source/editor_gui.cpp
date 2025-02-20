@@ -1,6 +1,5 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <application.hpp>
-#include <asset_manager.hpp>
 #include <camera_controller.hpp>
 #include <component/component.hpp>
 #include <component/material.hpp>
@@ -139,7 +138,7 @@ void Editor::DisplayEntityHierarchy(unsigned int id, int& selectedEntity, int& c
   if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
     clickedEntity = id;
   if (nodeOpen) {
-    entityManager.ForEachChild(id, [&](unsigned int childID) {
+    entityManager.ForEachChild(id, [&](unsigned int childID, std::string& _) {
       DisplayEntityHierarchy(childID, selectedEntity, clickedEntity);
     });
     ImGui::TreePop();

@@ -1,7 +1,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <application.hpp>
 #include <asset_loader.hpp>
-#include <asset_manager.hpp>
 #include <component/camera.hpp>
 #include <component/light.hpp>
 #include <component/material.hpp>
