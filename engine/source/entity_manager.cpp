@@ -97,15 +97,15 @@ size_t EntityManager::GetCount() const {
 }
 IComponent* EntityManager::AddComponent(unsigned int id, ComponentID componentID) {
   switch (componentID) {
-  case ComponentID::CameraID:
+  case ComponentID::Camera:
     return AddComponent<Camera>(id);
-  case ComponentID::LightID:
+  case ComponentID::Light:
     return AddComponent<Light>(id);
-  case ComponentID::MeshFilterID:
+  case ComponentID::MeshFilter:
     return AddComponent<MeshFilter>(id);
-  case ComponentID::MeshRendererID:
+  case ComponentID::MeshRenderer:
     return AddComponent<MeshRenderer>(id);
-  case ComponentID::TransformID:
+  case ComponentID::Transform:
     return AddComponent<Transform>(id);
   default:
     return nullptr;
@@ -114,34 +114,34 @@ IComponent* EntityManager::AddComponent(unsigned int id, ComponentID componentID
 IComponent* EntityManager::AddComponent(unsigned int id, const std::string& name) {
   ComponentID componentID;
   if (name == "Camera")
-    componentID = ComponentID::CameraID;
+    componentID = ComponentID::Camera;
   else if (name == "Light")
-    componentID = ComponentID::LightID;
+    componentID = ComponentID::Light;
   else if (name == "MeshFilter")
-    componentID = ComponentID::MeshFilterID;
+    componentID = ComponentID::MeshFilter;
   else if (name == "MeshRenderer")
-    componentID = ComponentID::MeshRendererID;
+    componentID = ComponentID::MeshRenderer;
   else if (name == "Transform")
-    componentID = ComponentID::TransformID;
+    componentID = ComponentID::Transform;
   else
     return nullptr;
   return AddComponent(id, componentID);
 }
 void EntityManager::RemoveComponent(unsigned int id, ComponentID componentID) {
   switch (componentID) {
-  case ComponentID::CameraID:
+  case ComponentID::Camera:
     RemoveComponent<Camera>(id);
     break;
-  case ComponentID::LightID:
+  case ComponentID::Light:
     RemoveComponent<Light>(id);
     break;
-  case ComponentID::MeshFilterID:
+  case ComponentID::MeshFilter:
     RemoveComponent<MeshFilter>(id);
     break;
-  case ComponentID::MeshRendererID:
+  case ComponentID::MeshRenderer:
     RemoveComponent<MeshRenderer>(id);
     break;
-  case ComponentID::TransformID:
+  case ComponentID::Transform:
     RemoveComponent<Transform>(id);
     break;
   default:
@@ -151,15 +151,15 @@ void EntityManager::RemoveComponent(unsigned int id, ComponentID componentID) {
 void EntityManager::RemoveComponent(unsigned int id, const std::string& name) {
   ComponentID componentID;
   if (name == "Camera")
-    componentID = ComponentID::CameraID;
+    componentID = ComponentID::Camera;
   else if (name == "Light")
-    componentID = ComponentID::LightID;
+    componentID = ComponentID::Light;
   else if (name == "MeshFilter")
-    componentID = ComponentID::MeshFilterID;
+    componentID = ComponentID::MeshFilter;
   else if (name == "MeshRenderer")
-    componentID = ComponentID::MeshRendererID;
+    componentID = ComponentID::MeshRenderer;
   else if (name == "Transform")
-    componentID = ComponentID::TransformID;
+    componentID = ComponentID::Transform;
   else
     return;
   return RemoveComponent(id, componentID);

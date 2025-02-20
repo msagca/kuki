@@ -4,26 +4,24 @@
 #include <variant>
 #include <vector>
 enum class ComponentID : unsigned int {
-  CameraID,
-  LightID,
-  MaterialID,
-  MeshFilterID,
-  MeshID,
-  MeshRendererID,
-  ShaderID,
-  TextureID,
-  TransformID
+  Camera,
+  Light,
+  Material,
+  MeshFilter,
+  Mesh,
+  MeshRenderer,
+  Texture,
+  Transform
 };
 enum class ComponentMask : size_t {
-  CameraMask = 1 << static_cast<unsigned int>(ComponentID::CameraID),
-  LightMask = 1 << static_cast<unsigned int>(ComponentID::LightID),
-  MaterialMask = 1 << static_cast<unsigned int>(ComponentID::MaterialID),
-  MeshFilterMask = 1 << static_cast<unsigned int>(ComponentID::MeshFilterID),
-  MeshMask = 1 << static_cast<unsigned int>(ComponentID::MeshID),
-  MeshRendererMask = 1 << static_cast<unsigned int>(ComponentID::MeshRendererID),
-  ShaderMask = 1 << static_cast<unsigned int>(ComponentID::ShaderID),
-  TextureMask = 1 << static_cast<unsigned int>(ComponentID::TextureID),
-  TransformMask = 1 << static_cast<unsigned int>(ComponentID::TransformID)
+  Camera = 1 << static_cast<unsigned int>(ComponentID::Camera),
+  Light = 1 << static_cast<unsigned int>(ComponentID::Light),
+  Material = 1 << static_cast<unsigned int>(ComponentID::Material),
+  MeshFilter = 1 << static_cast<unsigned int>(ComponentID::MeshFilter),
+  Mesh = 1 << static_cast<unsigned int>(ComponentID::Mesh),
+  MeshRenderer = 1 << static_cast<unsigned int>(ComponentID::MeshRenderer),
+  Texture = 1 << static_cast<unsigned int>(ComponentID::Texture),
+  Transform = 1 << static_cast<unsigned int>(ComponentID::Transform)
 };
 enum class CameraType : unsigned int {
   Perspective,
@@ -36,7 +34,6 @@ enum class LightType : unsigned int {
 enum class TextureType : unsigned int {
   Base,
   Normal,
-  ORM,
   Metalness,
   Occlusion,
   Roughness

@@ -1,20 +1,32 @@
 #pragma once
-#include "component.hpp"
+#include "component/camera.hpp"
+#include "component/light.hpp"
+#include <engine_export.h>
+#include <filesystem>
+#include <glad/glad.h>
+#include <glm/ext/matrix_float3x3.hpp>
 #include <string>
-#include <variant>
-#include <vector>
-struct Shader : IComponent {
-  unsigned int id{};
-  std::string GetName() const override {
-    return "Shader";
-  }
-  std::vector<Property> GetProperties() const override {
-    // TODO: the editor should display a friendly name instead of a shader ID; also, a preview of the shader would be nice
-    return {{"ID", id}};
-  }
-  void SetProperty(Property property) override {
-    if (std::holds_alternative<unsigned int>(property.value))
-      if (property.name == "ID")
-        id = std::get<unsigned int>(property.value);
-  }
+class ENGINE_API Shader {
+private:
+  GLuint id;
+  std::unordered_map<std::string, GLint> locations;
+  std::string Read(const std::filesystem::path&);
+  GLuint Compile(const char*, GLenum);
+  void CacheLocations();
+public:
+  Shader(const std::filesystem::path&, const std::filesystem::path&);
+  GLuint GetID() const;
+  void Use() const;
+  void SetUniform(const std::string&, const glm::mat4&);
+  void SetUniform(const std::string&, const glm::vec3&);
+  void SetUniform(const std::string&, float);
+  void SetUniform(const std::string&, int);
+  void SetUniform(const std::string&, unsigned int);
+  void SetUniform(GLint, const glm::mat4&);
+  void SetUniform(GLint, const glm::vec3&);
+  void SetUniform(GLint, float);
+  void SetUniform(GLint, int);
+  void SetUniform(GLint, unsigned int);
+  void SetMVP(const glm::mat4&, const Camera&);
+  void SetLight(const Light*, unsigned int = 0);
 };

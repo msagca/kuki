@@ -29,9 +29,8 @@ private:
 public:
   AssetLoader(AssetManager&);
   // NOTE: int return type is for functions that require a path to the asset, so if the read fails they can return -1
-  int LoadShader(const std::string&, const std::filesystem::path&, const std::filesystem::path&);
   int LoadModel(const std::string&, const std::filesystem::path&);
-  int LoadMaterial(const std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
+  int LoadMaterial(const std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
   int LoadTexture(const std::string&, const std::filesystem::path&, TextureType);
   unsigned int LoadMesh(const std::string&, const std::vector<Vertex>&);
   unsigned int LoadMesh(const std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);

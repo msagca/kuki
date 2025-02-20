@@ -25,7 +25,6 @@ public:
   T* GetFirst();
   template <typename F>
   void ForEach(F);
-  void CleanUp();
 };
 template <typename T>
 unsigned int ComponentManager<T>::ActiveCount() {
@@ -65,7 +64,6 @@ void ComponentManager<T>::Remove(unsigned int id) {
   entityToComponent.erase(id);
   componentToEntity.pop_back();
   inactiveCount++;
-  // TODO: delete unreferenced OpenGL buffers
 }
 template <typename T>
 bool ComponentManager<T>::Has(unsigned int id) {
@@ -93,27 +91,4 @@ template <typename F>
 void ComponentManager<T>::ForAll(F func) {
   for (const auto& c : components)
     func(c);
-}
-// TODO: remove graphics API specific code in the following functions
-template <>
-inline void ComponentManager<Mesh>::CleanUp() {
-  ForAll([](const Mesh& mesh) {
-    glDeleteBuffers(1, &mesh.vertexBuffer);
-    glDeleteBuffers(1, &mesh.indexBuffer);
-    glDeleteVertexArrays(1, &mesh.vertexArray);
-  });
-}
-template <>
-inline void ComponentManager<Shader>::CleanUp() {
-  ForAll([](const Shader& shader) {
-    glDeleteProgram(shader.id);
-  });
-}
-template <>
-inline void ComponentManager<Texture>::CleanUp() {
-  ForAll([](const Texture& texture) {
-    glBindTexture(GL_TEXTURE_2D, texture.id);
-    glDeleteTextures(1, &texture.id);
-    glBindTexture(GL_TEXTURE_2D, 0);
-  });
 }

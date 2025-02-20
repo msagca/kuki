@@ -173,21 +173,21 @@ inline ComponentManager<Transform>& EntityManager::GetManager() {
 }
 template <>
 inline size_t EntityManager::GetComponentMask<Camera>() const {
-  return static_cast<size_t>(ComponentMask::CameraMask);
+  return static_cast<size_t>(ComponentMask::Camera);
 }
 template <>
 inline size_t EntityManager::GetComponentMask<Light>() const {
-  return static_cast<size_t>(ComponentMask::LightMask);
+  return static_cast<size_t>(ComponentMask::Light);
 }
 template <>
 inline size_t EntityManager::GetComponentMask<MeshFilter>() const {
-  return static_cast<size_t>(ComponentMask::MeshFilterMask);
+  return static_cast<size_t>(ComponentMask::MeshFilter);
 }
 template <>
 inline size_t EntityManager::GetComponentMask<MeshRenderer>() const {
-  return static_cast<size_t>(ComponentMask::MeshRendererMask);
+  return static_cast<size_t>(ComponentMask::MeshRenderer);
 }
 template <>
 inline size_t EntityManager::GetComponentMask<Transform>() const {
-  return static_cast<size_t>(ComponentMask::TransformMask);
+  return static_cast<size_t>(ComponentMask::Transform);
 }

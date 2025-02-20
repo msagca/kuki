@@ -52,7 +52,6 @@ void Application::Shutdown() {
   for (auto system : systems)
     system->Shutdown();
   systems.clear();
-  assetManager.CleanUp();
 };
 void Application::Run() {
   Start();

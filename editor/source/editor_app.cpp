@@ -97,24 +97,18 @@ void Editor::LoadDefaultScene() {
   entityManager.AddComponent<Light>(lightID);
 }
 void Editor::LoadDefaultAssets() {
-  assetLoader.LoadShader("DefaultLit", "shader/default_lit.vert", "shader/default_lit.frag");
-  assetLoader.LoadShader("DefaultUnlit", "shader/default_unlit.vert", "shader/default_unlit.frag");
-  auto id = assetLoader.LoadMaterial("DefaultMaterial", "image/T_umonab2dy_1K_B.jpg", "image/T_umonab2dy_1K_N.jpg", "image/T_umonab2dy_1K_ORM.jpg");
-  Material material;
-  auto materialPtr = assetManager.GetComponent<Material>(id);
-  if (!materialPtr)
-    std::cerr << "Unable to load the default material." << std::endl;
-  else
-    material = *materialPtr;
-  id = assetLoader.LoadMesh("Cube", Primitive::Cube());
+  auto id = assetLoader.LoadMesh("Cube", Primitive::Cube());
   assetManager.AddComponent<Transform>(id);
-  *assetManager.AddComponent<Material>(id) = material;
+  auto material = assetManager.AddComponent<Material>(id);
+  material->material = PhongMaterial{};
   id = assetLoader.LoadMesh("Sphere", Primitive::Sphere());
   assetManager.AddComponent<Transform>(id);
-  *assetManager.AddComponent<Material>(id) = material;
+  material = assetManager.AddComponent<Material>(id);
+  material->material = PhongMaterial{};
   id = assetLoader.LoadMesh("Cylinder", Primitive::Cylinder());
   assetManager.AddComponent<Transform>(id);
-  *assetManager.AddComponent<Material>(id) = material;
+  material = assetManager.AddComponent<Material>(id);
+  material->material = PhongMaterial{};
 }
 void Editor::InitOpenGL(int width, int height) {
   glfwInit();

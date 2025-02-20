@@ -8,7 +8,6 @@ out vec4 color;
 struct Material {
     sampler2D base;
     sampler2D normal;
-    sampler2D orm;
     sampler2D metalness;
     sampler2D occlusion;
     sampler2D roughness;
@@ -102,7 +101,6 @@ vec3 CalculatePointLight(PointLight light, Material material, vec3 N, vec3 V, ve
     float distance = length(light.position - fragPos);
     float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * distance * distance);
     vec3 base = texture(material.base, texCoord).rgb;
-    //vec3 orm = texture(material.orm, texCoord).rgb;
     vec3 metalness = texture(material.metalness, texCoord).rgb;
     vec3 occlusion = texture(material.occlusion, texCoord).rgb;
     vec3 roughness = texture(material.roughness, texCoord).rgb;

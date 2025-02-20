@@ -81,7 +81,6 @@ void AssetManager::RemoveAllComponents(unsigned int id) {
     return;
   materialManager.Remove(id);
   meshManager.Remove(id);
-  shaderManager.Remove(id);
   textureManager.Remove(id);
   transformManager.Remove(id);
   idToMask[id] = 0;
@@ -104,8 +103,6 @@ std::vector<IComponent*> AssetManager::GetAllComponents(unsigned int id) {
     components.emplace_back(GetComponent<Material>(id));
   if (HasComponent<Mesh>(id))
     components.emplace_back(GetComponent<Mesh>(id));
-  if (HasComponent<Shader>(id))
-    components.emplace_back(GetComponent<Shader>(id));
   if (HasComponent<Texture>(id))
     components.emplace_back(GetComponent<Texture>(id));
   if (HasComponent<Transform>(id))
@@ -117,9 +114,4 @@ void AssetManager::RegisterCallback(std::function<void()> callback) {
 }
 void AssetManager::UnregisterCallbacks() {
   callbacks.clear();
-}
-void AssetManager::CleanUp() {
-  meshManager.CleanUp();
-  shaderManager.CleanUp();
-  textureManager.CleanUp();
 }

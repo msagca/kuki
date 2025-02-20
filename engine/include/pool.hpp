@@ -18,7 +18,6 @@ public:
   size_t Request();
   void Release(size_t);
   T* Get(size_t);
-  T GetCopy(size_t);
   template <typename F>
   void ForEach(F);
   void Clear();
@@ -60,13 +59,6 @@ T* Pool<T>::Get(size_t index) {
   if (index >= last)
     return nullptr;
   return &memory[index];
-}
-template <typename T>
-T Pool<T>::GetCopy(size_t index) {
-  static T defaultCopy;
-  if (index >= last)
-    return defaultCopy;
-  return memory[index];
 }
 template <typename T>
 template <typename F>

@@ -53,24 +53,25 @@ void Editor::DisplayResources() {
     auto contentRegion = ImGui::GetContentRegionAvail();
     auto tilesPerRow = static_cast<int>(contentRegion.x / tileSize.x);
     auto tileCount = 0;
-    assetManager.ForAll([&](unsigned int assetID) {
-      if (assetManager.HasComponents<Transform, Mesh, Material>(assetID)) {
-        ImVec2 tilePos((tileCount % tilesPerRow) * tileSize.x, (tileCount / tilesPerRow) * tileSize.y);
-        ImGui::SetCursorPos(tilePos);
-        auto it = assetToTexture.find(assetID);
-        unsigned int textureID;
-        if (it == assetToTexture.end()) {
-          auto itemID = texturePool.Request();
-          assetToTexture[assetID] = itemID;
-          textureID = texturePool.GetCopy(itemID);
-        } else
-          textureID = texturePool.GetCopy(it->second);
-        if (updateThumbnails)
-          renderSystem->RenderAssetToTexture(assetID, textureID, tileSize.x);
-        ImGui::Image(textureID, tileSize);
-        tileCount++;
-      }
-    });
+    if (tilesPerRow > 0)
+      assetManager.ForAll([&](unsigned int assetID) {
+        if (assetManager.HasComponents<Transform, Mesh, Material>(assetID)) {
+          ImVec2 tilePos((tileCount % tilesPerRow) * tileSize.x, (tileCount / tilesPerRow) * tileSize.y);
+          ImGui::SetCursorPos(tilePos);
+          auto it = assetToTexture.find(assetID);
+          unsigned int textureID;
+          if (it == assetToTexture.end()) {
+            auto itemID = texturePool.Request();
+            assetToTexture[assetID] = itemID;
+            textureID = *texturePool.Get(itemID);
+          } else
+            textureID = *texturePool.Get(it->second);
+          if (updateThumbnails)
+            renderSystem->RenderAssetToTexture(assetID, textureID, tileSize.x);
+          ImGui::Image(textureID, tileSize);
+          tileCount++;
+        }
+      });
   }
   updateThumbnails = false;
   ImGui::End();
@@ -103,7 +104,7 @@ void Editor::DisplayHierarchy() {
         clickedEntity = -1;
         selectedEntity = -1;
       } else if (ImGui::MenuItem("Rename")) {
-        strcpy(newName, entityManager.GetName(clickedEntity).c_str());
+        strcpy_s(newName, entityManager.GetName(clickedEntity).c_str());
         renameMode = true;
       }
     } else

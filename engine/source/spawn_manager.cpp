@@ -19,7 +19,7 @@ int SpawnManager::Spawn(const std::string& name, int parentID) {
     if (auto t = dynamic_cast<Transform*>(c)) {
       auto transform = entityManager.AddComponent<Transform>(entityID);
       *transform = *t;
-      transform->parent = parentID; // NOTE: replace the asset ID with the entity ID
+      transform->parent = parentID;
     } else if (auto m = dynamic_cast<Mesh*>(c)) {
       auto filter = entityManager.AddComponent<MeshFilter>(entityID);
       filter->mesh = *m;

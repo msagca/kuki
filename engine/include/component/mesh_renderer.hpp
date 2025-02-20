@@ -1,24 +1,13 @@
 #pragma once
 #include "component.hpp"
-#include "material.hpp"
-#include "shader.hpp"
+#include "component/material.hpp"
+#include <engine_export.h>
 #include <string>
 #include <vector>
-struct MeshRenderer : IComponent {
-  Shader shader{};
+struct ENGINE_API MeshRenderer : IComponent {
+  unsigned int shader{};
   Material material{};
-  std::string GetName() const override {
-    return "MeshRenderer";
-  }
-  std::vector<Property> GetProperties() const override {
-    auto properties = shader.GetProperties();
-    auto materialProperties = material.GetProperties();
-    properties.insert(properties.end(), materialProperties.begin(), materialProperties.end());
-    return properties;
-  }
-  void SetProperty(Property property) override {
-    // FIXME: if two subcomponents share a property with the same name, both will be overwritten
-    shader.SetProperty(property);
-    material.SetProperty(property);
-  }
+  std::string GetName() const override;
+  std::vector<Property> GetProperties() const override;
+  void SetProperty(Property) override;
 };

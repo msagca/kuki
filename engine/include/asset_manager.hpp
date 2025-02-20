@@ -26,7 +26,6 @@ private:
   // TODO: keep a separate set for each asset type to store paths to assets of that type; define load functions for each asset
   ComponentManager<Material> materialManager;
   ComponentManager<Mesh> meshManager;
-  ComponentManager<Shader> shaderManager;
   ComponentManager<Texture> textureManager;
   ComponentManager<Transform> transformManager;
   std::string GenerateName(const std::string&);
@@ -65,7 +64,6 @@ public:
   void ForAll(F);
   void RegisterCallback(std::function<void()>);
   void UnregisterCallbacks();
-  void CleanUp();
 };
 template <typename T>
 T* AssetManager::AddComponent(unsigned int id) {
@@ -130,10 +128,6 @@ inline ComponentManager<Mesh>& AssetManager::GetManager() {
   return meshManager;
 }
 template <>
-inline ComponentManager<Shader>& AssetManager::GetManager() {
-  return shaderManager;
-}
-template <>
 inline ComponentManager<Texture>& AssetManager::GetManager() {
   return textureManager;
 }
@@ -143,21 +137,17 @@ inline ComponentManager<Transform>& AssetManager::GetManager() {
 }
 template <>
 inline size_t AssetManager::GetComponentMask<Material>() const {
-  return static_cast<size_t>(ComponentMask::MaterialMask);
+  return static_cast<size_t>(ComponentMask::Material);
 }
 template <>
 inline size_t AssetManager::GetComponentMask<Mesh>() const {
-  return static_cast<size_t>(ComponentMask::MeshMask);
-}
-template <>
-inline size_t AssetManager::GetComponentMask<Shader>() const {
-  return static_cast<size_t>(ComponentMask::ShaderMask);
+  return static_cast<size_t>(ComponentMask::Mesh);
 }
 template <>
 inline size_t AssetManager::GetComponentMask<Texture>() const {
-  return static_cast<size_t>(ComponentMask::TextureMask);
+  return static_cast<size_t>(ComponentMask::Texture);
 }
 template <>
 inline size_t AssetManager::GetComponentMask<Transform>() const {
-  return static_cast<size_t>(ComponentMask::TransformMask);
+  return static_cast<size_t>(ComponentMask::Transform);
 }

@@ -34,27 +34,42 @@
 #include <stb_image.h>
 #include <string>
 #include <vector>
+#include <variant>
 AssetLoader::AssetLoader(AssetManager& assetManager)
   : assetManager(assetManager) {}
-int AssetLoader::LoadMaterial(const std::string& name, const std::filesystem::path& basePath, const std::filesystem::path& normalPath, const std::filesystem::path& ormPath) {
+int AssetLoader::LoadMaterial(const std::string& name, const std::filesystem::path& basePath, const std::filesystem::path& normalPath, const std::filesystem::path& metalnessPath, const std::filesystem::path& occlusionPath, const std::filesystem::path& roughnessPath) {
   auto textureID = LoadTexture(name + "Base", basePath, TextureType::Base);
   auto texture = assetManager.GetComponent<Texture>(textureID);
   if (!texture)
     return -1;
   auto assetID = assetManager.Create(name);
   auto material = assetManager.AddComponent<Material>(assetID);
-  material->base = texture->id;
+  material->material = PBRMaterial{};
+  auto& pbrMat = std::get<PBRMaterial>(material->material);
+  pbrMat.base = texture->id;
   if (!normalPath.empty()) {
     textureID = LoadTexture(name + "Normal", normalPath, TextureType::Normal);
     texture = assetManager.GetComponent<Texture>(textureID);
     if (texture)
-      material->normal = texture->id;
+      pbrMat.normal = texture->id;
   }
-  if (!ormPath.empty()) {
-    textureID = LoadTexture(name + "ORM", ormPath, TextureType::ORM);
+  if (!metalnessPath.empty()) {
+    textureID = LoadTexture(name + "Metalness", metalnessPath, TextureType::Metalness);
     texture = assetManager.GetComponent<Texture>(textureID);
     if (texture)
-      material->orm = texture->id;
+      pbrMat.metalness = texture->id;
+  }
+  if (!occlusionPath.empty()) {
+    textureID = LoadTexture(name + "Occlusion", occlusionPath, TextureType::Occlusion);
+    texture = assetManager.GetComponent<Texture>(textureID);
+    if (texture)
+      pbrMat.occlusion = texture->id;
+  }
+  if (!roughnessPath.empty()) {
+    textureID = LoadTexture(name + "Roughness", roughnessPath, TextureType::Roughness);
+    texture = assetManager.GetComponent<Texture>(textureID);
+    if (texture)
+      pbrMat.roughness = texture->id;
   }
   return assetID;
 }
@@ -115,6 +130,8 @@ int AssetLoader::LoadTexture(const std::string& name, const std::filesystem::pat
 }
 Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& name, const std::filesystem::path& root) {
   Material mat;
+  mat.material = PBRMaterial{};
+  auto& pbrMat = std::get<PBRMaterial>(mat.material);
   aiString path;
   if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
     material->GetTexture(aiTextureType_DIFFUSE, 0, &path);
@@ -122,7 +139,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& na
     auto id = LoadTexture(name + "Base", fullPath, TextureType::Base);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      mat.base = texture->id;
+      pbrMat.base = texture->id;
   }
   if (material->GetTextureCount(aiTextureType_NORMALS) > 0) {
     material->GetTexture(aiTextureType_NORMALS, 0, &path);
@@ -130,7 +147,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& na
     auto id = LoadTexture(name + "Normal", fullPath, TextureType::Normal);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      mat.normal = texture->id;
+      pbrMat.normal = texture->id;
   }
   if (material->GetTextureCount(aiTextureType_METALNESS) > 0) {
     material->GetTexture(aiTextureType_METALNESS, 0, &path);
@@ -138,7 +155,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& na
     auto id = LoadTexture(name + "Metalness", fullPath, TextureType::Metalness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      mat.metalness = texture->id;
+      pbrMat.metalness = texture->id;
   }
   if (material->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
     material->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
@@ -146,7 +163,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& na
     auto id = LoadTexture(name + "Occlusion", fullPath, TextureType::Occlusion);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      mat.occlusion = texture->id;
+      pbrMat.occlusion = texture->id;
   }
   if (material->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
     material->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
@@ -154,7 +171,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* material, const std::string& na
     auto id = LoadTexture(name + "Roughness", fullPath, TextureType::Roughness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      mat.roughness = texture->id;
+      pbrMat.roughness = texture->id;
   }
   return mat;
 }
@@ -253,30 +270,6 @@ unsigned int AssetLoader::CompileShader(const char* shaderText, int shaderType) 
   if (!success)
     std::cerr << "Failed to compile shader." << std::endl;
   return shaderID;
-}
-int AssetLoader::LoadShader(const std::string& name, const std::filesystem::path& vertPath, const std::filesystem::path& fragPath) {
-  auto vertText = ReadShader(vertPath);
-  auto fragText = ReadShader(fragPath);
-  if (vertText.empty() || fragText.empty())
-    return -1;
-  auto vertID = CompileShader(vertText.c_str(), GL_VERTEX_SHADER);
-  auto fragID = CompileShader(fragText.c_str(), GL_FRAGMENT_SHADER);
-  auto id = glCreateProgram();
-  glAttachShader(id, vertID);
-  glAttachShader(id, fragID);
-  glLinkProgram(id);
-  int success;
-  glGetProgramiv(id, GL_LINK_STATUS, &success);
-  glDeleteShader(vertID);
-  glDeleteShader(fragID);
-  if (!success) {
-    std::cerr << "Failed to link the shader program: '" << name << "'." << std::endl;
-    return -1;
-  }
-  auto assetID = assetManager.Create(name);
-  auto shader = assetManager.AddComponent<Shader>(assetID);
-  shader->id = id;
-  return assetID;
 }
 Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   Mesh mesh;
