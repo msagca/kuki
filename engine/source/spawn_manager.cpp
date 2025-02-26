@@ -8,7 +8,7 @@
 #include <string>
 SpawnManager::SpawnManager(EntityManager& entityManager, EntityManager& assetManager)
   : entityManager(entityManager), assetManager(assetManager) {}
-int SpawnManager::Spawn(const std::string& name, int parentID) {
+int SpawnManager::Spawn(std::string& name, int parentID) {
   auto assetID = assetManager.GetID(name);
   if (assetID < 0)
     return -1;
@@ -26,7 +26,8 @@ int SpawnManager::Spawn(const std::string& name, int parentID) {
       auto renderer = entityManager.AddComponent<MeshRenderer>(entityID);
       renderer->material = *m;
     }
-  assetManager.ForEachChild(assetID, [&](unsigned int id, const std::string& name) {
+  assetManager.ForEachChild(assetID, [&](unsigned int id) {
+    auto name = entityManager.GetName(id);
     auto childID = Spawn(name, entityID);
     entityManager.AddChild(entityID, childID);
   });

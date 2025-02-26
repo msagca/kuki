@@ -15,6 +15,7 @@
 #include <component/texture.hpp>
 #include <component/transform.hpp>
 #include <cstddef>
+#include <entity_manager.hpp>
 #include <filesystem>
 #include <glad/glad.h>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -32,8 +33,9 @@
 #include <vector>
 AssetLoader::AssetLoader(EntityManager& assetManager)
   : assetManager(assetManager) {}
-int AssetLoader::LoadMaterial(const std::string& name, const std::filesystem::path& basePath, const std::filesystem::path& normalPath, const std::filesystem::path& metalnessPath, const std::filesystem::path& occlusionPath, const std::filesystem::path& roughnessPath) {
-  auto textureID = LoadTexture(name + "Base", basePath, TextureType::Base);
+int AssetLoader::LoadMaterial(std::string& name, const std::filesystem::path& basePath, const std::filesystem::path& normalPath, const std::filesystem::path& metalnessPath, const std::filesystem::path& occlusionPath, const std::filesystem::path& roughnessPath) {
+  auto fullName = name + "Base";
+  auto textureID = LoadTexture(fullName, basePath, TextureType::Base);
   auto texture = assetManager.GetComponent<Texture>(textureID);
   if (!texture)
     return -1;
@@ -43,38 +45,41 @@ int AssetLoader::LoadMaterial(const std::string& name, const std::filesystem::pa
   auto& pbrMat = std::get<PBRMaterial>(material->material);
   pbrMat.base = texture->id;
   if (!normalPath.empty()) {
-    textureID = LoadTexture(name + "Normal", normalPath, TextureType::Normal);
+    fullName = name + "Normal";
+    textureID = LoadTexture(fullName, normalPath, TextureType::Normal);
     texture = assetManager.GetComponent<Texture>(textureID);
     if (texture)
       pbrMat.normal = texture->id;
   }
   if (!metalnessPath.empty()) {
-    textureID = LoadTexture(name + "Metalness", metalnessPath, TextureType::Metalness);
+    fullName = name + "Metalness";
+    textureID = LoadTexture(fullName, metalnessPath, TextureType::Metalness);
     texture = assetManager.GetComponent<Texture>(textureID);
     if (texture)
       pbrMat.metalness = texture->id;
   }
   if (!occlusionPath.empty()) {
-    textureID = LoadTexture(name + "Occlusion", occlusionPath, TextureType::Occlusion);
+    fullName = name + "Occlusion";
+    textureID = LoadTexture(fullName, occlusionPath, TextureType::Occlusion);
     texture = assetManager.GetComponent<Texture>(textureID);
     if (texture)
       pbrMat.occlusion = texture->id;
   }
   if (!roughnessPath.empty()) {
-    textureID = LoadTexture(name + "Roughness", roughnessPath, TextureType::Roughness);
+    fullName = name + "Roughness";
+    textureID = LoadTexture(fullName, roughnessPath, TextureType::Roughness);
     texture = assetManager.GetComponent<Texture>(textureID);
     if (texture)
       pbrMat.roughness = texture->id;
   }
   return assetID;
 }
-int AssetLoader::LoadTexture(const std::string& name, const std::filesystem::path& path, TextureType type) {
-  auto pathStr = path.string();
-  auto it = pathToID.find(pathStr);
+int AssetLoader::LoadTexture(std::string& name, const std::filesystem::path& path, TextureType type) {
+  auto it = pathToID.find(path);
   if (it != pathToID.end())
     return it->second;
   int width, height, nrComponents;
-  auto data = stbi_load(pathStr.c_str(), &width, &height, &nrComponents, 0);
+  auto data = stbi_load(path.string().c_str(), &width, &height, &nrComponents, 0);
   if (!data) {
     std::cerr << "Failed to load the texture at " << path << "." << std::endl;
     return -1;
@@ -120,10 +125,10 @@ int AssetLoader::LoadTexture(const std::string& name, const std::filesystem::pat
   auto texture = assetManager.AddComponent<Texture>(assetID);
   texture->id = id;
   texture->type = type;
-  pathToID[pathStr] = assetID;
+  pathToID[path] = assetID;
   return assetID;
 }
-Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::string& name, const std::filesystem::path& root) {
+Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, std::string& name, const std::filesystem::path& root) {
   Material material;
   material.material = PBRMaterial{};
   auto& pbrMaterial = std::get<PBRMaterial>(material.material);
@@ -131,7 +136,8 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::string& 
   if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
     aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &path);
     auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(name + "Base", fullPath, TextureType::Base);
+    auto fullName = name + "Base";
+    auto id = LoadTexture(fullName, fullPath, TextureType::Base);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       pbrMaterial.base = texture->id;
@@ -139,7 +145,8 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::string& 
   if (aiMaterial->GetTextureCount(aiTextureType_NORMALS) > 0) {
     aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &path);
     auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(name + "Normal", fullPath, TextureType::Normal);
+    auto fullName = name + "Normal";
+    auto id = LoadTexture(fullName, fullPath, TextureType::Normal);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       pbrMaterial.normal = texture->id;
@@ -147,7 +154,8 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::string& 
   if (aiMaterial->GetTextureCount(aiTextureType_METALNESS) > 0) {
     aiMaterial->GetTexture(aiTextureType_METALNESS, 0, &path);
     auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(name + "Metalness", fullPath, TextureType::Metalness);
+    auto fullName = name + "Metalness";
+    auto id = LoadTexture(fullName, fullPath, TextureType::Metalness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       pbrMaterial.metalness = texture->id;
@@ -155,7 +163,8 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::string& 
   if (aiMaterial->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
     aiMaterial->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
     auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(name + "Occlusion", fullPath, TextureType::Occlusion);
+    auto fullName = name + "Occlusion";
+    auto id = LoadTexture(fullName, fullPath, TextureType::Occlusion);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       pbrMaterial.occlusion = texture->id;
@@ -163,7 +172,8 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::string& 
   if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
     aiMaterial->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
     auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(name + "Roughness", fullPath, TextureType::Roughness);
+    auto fullName = name + "Roughness";
+    auto id = LoadTexture(fullName, fullPath, TextureType::Roughness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
       pbrMaterial.roughness = texture->id;
@@ -203,7 +213,7 @@ Mesh AssetLoader::CreateMesh(aiMesh* aiMesh) {
 glm::mat4 AssetLoader::AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMatrix) {
   return {{aiMatrix.a1, aiMatrix.b1, aiMatrix.c1, aiMatrix.d1}, {aiMatrix.a2, aiMatrix.b2, aiMatrix.c2, aiMatrix.d2}, {aiMatrix.a3, aiMatrix.b3, aiMatrix.c3, aiMatrix.d3}, {aiMatrix.a4, aiMatrix.b4, aiMatrix.c4, aiMatrix.d4}};
 }
-unsigned int AssetLoader::LoadNode(aiNode* aiNode, const aiScene* aiScene, const std::filesystem::path& root, int parentID, const std::string& nodeName) {
+int AssetLoader::LoadNode(aiNode* aiNode, const aiScene* aiScene, const std::filesystem::path& path, int parentID, const std::string& nodeName) {
   auto model = AssimpMatrix4x4ToGlmMat4(aiNode->mTransformation);
   auto name = nodeName.empty() ? aiNode->mName.C_Str() : nodeName;
   auto assetID = assetManager.Create(name);
@@ -223,23 +233,28 @@ unsigned int AssetLoader::LoadNode(aiNode* aiNode, const aiScene* aiScene, const
     if (mesh->mMaterialIndex >= 0) {
       auto material = aiScene->mMaterials[mesh->mMaterialIndex];
       auto materialComp = assetManager.AddComponent<Material>(assetID);
-      *materialComp = CreateMaterial(material, name, root);
+      *materialComp = CreateMaterial(material, name, path);
     }
   }
   for (auto i = 0; i < aiNode->mNumChildren; ++i) {
-    auto childID = LoadNode(aiNode->mChildren[i], aiScene, root, assetID);
+    auto childID = LoadNode(aiNode->mChildren[i], aiScene, path, assetID);
     assetManager.AddChild(assetID, childID);
   }
   return assetID;
 }
-int AssetLoader::LoadModel(const std::string& name, const std::filesystem::path& path) {
+int AssetLoader::LoadModel(std::string& name, const std::filesystem::path& path) {
+  auto it = pathToID.find(path);
+  if (it != pathToID.end())
+    return it->second;
   Assimp::Importer importer;
   const auto scene = importer.ReadFile(path.string(), aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
   if (!scene || !scene->mRootNode) {
     std::cerr << "Assimp: " << importer.GetErrorString() << std::endl;
     return -1;
   }
-  return LoadNode(scene->mRootNode, scene, path.parent_path(), -1, name);
+  auto assetID = LoadNode(scene->mRootNode, scene, path.parent_path(), -1, name);
+  pathToID[path] = assetID;
+  return assetID;
 }
 Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   Mesh mesh;
@@ -273,13 +288,13 @@ Mesh AssetLoader::CreateMesh(const std::vector<Vertex>& vertices, const std::vec
   CreateIndexBuffer(mesh, indices);
   return mesh;
 }
-unsigned int AssetLoader::LoadMesh(const std::string& name, const std::vector<Vertex>& vertices) {
+int AssetLoader::LoadMesh(std::string& name, const std::vector<Vertex>& vertices) {
   auto assetID = assetManager.Create(name);
   auto mesh = assetManager.AddComponent<Mesh>(assetID);
   *mesh = CreateMesh(vertices);
   return assetID;
 }
-unsigned int AssetLoader::LoadMesh(const std::string& name, const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices) {
+int AssetLoader::LoadMesh(std::string& name, const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices) {
   auto assetID = assetManager.Create(name);
   auto mesh = assetManager.AddComponent<Mesh>(assetID);
   *mesh = CreateMesh(vertices, indices);

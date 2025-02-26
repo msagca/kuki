@@ -1,4 +1,3 @@
-#include <chrono>
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/light.hpp>
@@ -11,44 +10,46 @@
 EntityManager::~EntityManager() {
   for (auto& [type, manager] : managers)
     delete manager;
+  names.Clear();
 }
-unsigned int EntityManager::Create(std::string name) {
-  if (!name.empty()) {
-    auto& entityName = name;
-    if (nameToID.find(name) != nameToID.end())
-      entityName = GenerateName(name);
-    idToName[nextID] = entityName;
-  } else
-    idToName[nextID] = GenerateName("Entity#");
+unsigned int EntityManager::Create(std::string& name) {
+  names.Insert(name);
+  idToName[nextID] = name;
+  ids.insert(nextID);
   nameToID[idToName[nextID]] = nextID;
   idToMask[nextID] = 0;
-  idToChildren[nextID] = {};
   return nextID++;
 }
-std::string EntityManager::GenerateName(const std::string& name) {
-  auto now = std::chrono::high_resolution_clock::now();
-  auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-  std::hash<std::string> hashFunc;
-  auto hash = hashFunc(name + std::to_string(timestamp));
-  return name + std::to_string(hash);
-}
-void EntityManager::Delete(unsigned int id) {
-  RemoveAllComponents(id);
-  ForEachChild(id, [&](unsigned int childID, std::string& _) {
-    Delete(childID);
-  });
+void EntityManager::DeleteRecords(unsigned int id) {
+  auto it = idToName.find(id);
+  if (it == idToName.end())
+    return;
+  names.Delete(it->second);
+  nameToID.erase(it->second);
+  ids.erase(id);
   idToMask.erase(id);
-  nameToID.erase(idToName[id]);
   idToName.erase(id);
   idToChildren.erase(id);
   idToParent.erase(id);
 }
-bool EntityManager::Rename(unsigned int id, std::string name) {
-  if (idToName.find(id) == idToName.end() || name.size() == 0 || nameToID.find(name) != nameToID.end())
+void EntityManager::Delete(unsigned int id) {
+  if (ids.find(id) == ids.end())
+    return;
+  RemoveAllComponents(id);
+  ForEachChild(id, [&](unsigned int childID) {
+    Delete(childID);
+  });
+  DeleteRecords(id);
+}
+bool EntityManager::Rename(unsigned int id, std::string& name) {
+  auto it = idToName.find(id);
+  if (it == idToName.end())
     return false;
-  nameToID.erase(idToName[id]);
-  nameToID[name] = id;
+  names.Delete(it->second);
+  nameToID.erase(it->second);
+  names.Insert(name);
   idToName[id] = name;
+  nameToID[name] = id;
   return true;
 }
 const std::string& EntityManager::GetName(unsigned int id) const {
@@ -65,17 +66,22 @@ int EntityManager::GetID(const std::string& name) {
   return -1;
 }
 void EntityManager::AddChild(unsigned int parent, unsigned int child) {
-  auto it = idToChildren.find(parent);
-  if (it == idToChildren.end())
+  if (ids.find(parent) == ids.end() || ids.find(child) == ids.end())
     return;
-  it->second.insert(child);
+  if (idToChildren.find(parent) == idToChildren.end())
+    idToChildren[nextID] = {};
+  idToChildren[nextID].insert(child);
   idToParent[child] = parent;
 }
 void EntityManager::RemoveChild(unsigned int parent, unsigned int child) {
+  if (ids.find(parent) == ids.end() || ids.find(child) == ids.end())
+    return;
   auto it = idToChildren.find(parent);
   if (it == idToChildren.end())
     return;
   it->second.erase(child);
+  if (it->second.empty())
+    idToChildren.erase(it->first);
   idToParent.erase(child);
 }
 bool EntityManager::HasChildren(unsigned int id) const {
@@ -86,9 +92,7 @@ bool EntityManager::HasChildren(unsigned int id) const {
 }
 bool EntityManager::HasParent(unsigned int id) const {
   auto it = idToParent.find(id);
-  if (it == idToParent.end())
-    return false;
-  return true;
+  return it != idToParent.end();
 }
 int EntityManager::GetParent(unsigned int id) const {
   auto it = idToParent.find(id);
@@ -97,7 +101,7 @@ int EntityManager::GetParent(unsigned int id) const {
   return it->second;
 }
 size_t EntityManager::GetCount() const {
-  return idToMask.size();
+  return ids.size();
 }
 IComponent* EntityManager::AddComponent(unsigned int id, ComponentID componentID) {
   switch (componentID) {
@@ -169,11 +173,12 @@ void EntityManager::RemoveComponent(unsigned int id, const std::string& name) {
   return RemoveComponent(id, componentID);
 }
 void EntityManager::RemoveAllComponents(unsigned int id) {
-  if (idToMask.find(id) == idToMask.end())
+  auto it = idToMask.find(id);
+  if (it == idToMask.end())
     return;
   for (auto& [type, manager] : managers)
     manager->Remove(id);
-  idToMask[id] = 0;
+  it->second = 0;
 }
 IComponent* EntityManager::GetComponent(unsigned int id, const std::string& name) {
   if (name == "Transform")

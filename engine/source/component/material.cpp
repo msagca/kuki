@@ -1,6 +1,7 @@
 #include <component/component.hpp>
 #include <component/material.hpp>
 #include <component/shader.hpp>
+#include <glad/glad.h>
 #include <string>
 #include <variant>
 #include <vector>

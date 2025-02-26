@@ -1,11 +1,16 @@
+#include <component/camera.hpp>
+#include <component/component.hpp>
+#include <component/light.hpp>
 #include <component/shader.hpp>
 #include <filesystem>
 #include <fstream>
+#include <glad/glad.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <iosfwd>
 #include <iostream>
+#include <string>
 Shader::Shader(const std::filesystem::path& vert, const std::filesystem::path& frag) {
   auto vertText = Read(vert);
   auto fragText = Read(frag);

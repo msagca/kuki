@@ -7,5 +7,5 @@ private:
   EntityManager& assetManager;
 public:
   SpawnManager(EntityManager&, EntityManager&);
-  int Spawn(const std::string&, int = -1);
+  int Spawn(std::string&, int = -1);
 };

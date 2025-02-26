@@ -34,13 +34,13 @@ template <typename T, typename... Z>
 T* Application::CreateSystem(Z&&... args) {
   static_assert(std::is_base_of_v<System, T>, "T must inherit from System.");
   auto system = new T(std::forward<Z>(args)...);
-  systems.push_back(dynamic_cast<System*>(system));
+  systems.push_back(static_cast<System*>(system));
   return system;
 }
 template <typename T>
 void Application::DeleteSystem() {
   auto it = std::remove_if(systems.begin(), systems.end(), [](System* system) {
-    auto casted = dynamic_cast<T*>(system);
+    auto casted = static_cast<T*>(system);
     if (casted) {
       delete casted;
       return true;
@@ -52,7 +52,7 @@ void Application::DeleteSystem() {
 template <typename T>
 T* Application::GetSystem() {
   for (auto system : systems) {
-    auto casted = dynamic_cast<T*>(system);
+    auto casted = static_cast<T*>(system);
     if (casted)
       return casted;
   }

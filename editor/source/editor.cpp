@@ -9,10 +9,11 @@
 #include <entity_manager.hpp>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <imfilebrowser.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <imgui_internal.h>
+#include <imfilebrowser.h>
 #include <ImGuizmo.h>
 #include <input_manager.hpp>
 #include <iostream>
@@ -20,22 +21,19 @@
 #include <render_system.hpp>
 #include <scene.hpp>
 #include <stb_image.h>
-static const auto WINDOW_FLAGS = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+#include <string>
 Editor::Editor()
   : inputManager(), cameraController(inputManager), texturePool(CreateTexture, DeleteTexture, 16) {}
 void Editor::Start() {
+  static const auto WINDOW_WIDTH = 800.0f;
+  static const auto WINDOW_HEIGHT = 600.0f;
+  InitOpenGL(WINDOW_WIDTH, WINDOW_HEIGHT);
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
-  auto width = 800;
-  auto height = 600;
-  InitOpenGL(width, height);
   glfwSetKeyCallback(window, KeyCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetCursorPosCallback(window, CursorPosCallback);
   InitImGui();
-  ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
-  fileDialog.SetTitle("Browse Files");
-  fileDialog.SetTypeFilters({".gltf", ".fbx"});
   LoadDefaultAssets();
   LoadDefaultScene();
   CreateSystem<RenderSystem>(assetManager);
@@ -76,6 +74,7 @@ void Editor::UpdateView() {
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
   ImGui::DockSpaceOverViewport(ImGui::GetID("DockSpace"));
+  InitLayout();
   DisplayResources();
   DisplayHierarchy();
   auto scene = GetActiveScene();
@@ -87,24 +86,51 @@ void Editor::UpdateView() {
   glfwSwapBuffers(window);
   glfwPollEvents();
 }
+void Editor::InitLayout() {
+  static bool firstRun = true;
+  if (!firstRun)
+    return;
+  firstRun = false;
+  auto viewport = ImGui::GetMainViewport();
+  auto dockspaceID = ImGui::GetID("DockSpace");
+  auto viewportSize = viewport->Size;
+  auto viewportPos = viewport->Pos;
+  ImGui::DockBuilderRemoveNode(dockspaceID);
+  ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_DockSpace);
+  ImGui::DockBuilderSetNodeSize(dockspaceID, viewportSize);
+  auto mainID = dockspaceID;
+  ImGui::DockBuilderDockWindow("Scene", mainID);
+  auto rightID = ImGui::DockBuilderSplitNode(mainID, ImGuiDir_Right, .3f, nullptr, &mainID);
+  ImGui::DockBuilderDockWindow("Hierarchy", rightID);
+  auto rightBottomID = ImGui::DockBuilderSplitNode(rightID, ImGuiDir_Down, .5f, nullptr, &rightID);
+  ImGui::DockBuilderDockWindow("Properties", rightBottomID);
+  auto bottomID = ImGui::DockBuilderSplitNode(mainID, ImGuiDir_Down, .3f, nullptr, &mainID);
+  ImGui::DockBuilderDockWindow("Resources", bottomID);
+  ImGui::DockBuilderFinish(dockspaceID);
+}
 void Editor::LoadDefaultScene() {
   auto scene = CreateScene();
   auto& entityManager = scene->GetEntityManager();
-  auto cameraID = entityManager.Create("MainCamera");
+  std::string entityName = "MainCamera";
+  auto cameraID = entityManager.Create(entityName);
   entityManager.AddComponent<Camera>(cameraID);
-  auto lightID = entityManager.Create("MainLight");
+  entityName = "MainLight";
+  auto lightID = entityManager.Create(entityName);
   entityManager.AddComponent<Light>(lightID);
 }
 void Editor::LoadDefaultAssets() {
-  auto id = assetLoader.LoadMesh("Cube", Primitive::Cube());
+  std::string assetName = "Cube";
+  auto id = assetLoader.LoadMesh(assetName, Primitive::Cube());
   assetManager.AddComponent<Transform>(id);
   auto material = assetManager.AddComponent<Material>(id);
   material->material = PhongMaterial{};
-  id = assetLoader.LoadMesh("Sphere", Primitive::Sphere());
+  assetName = "Sphere";
+  id = assetLoader.LoadMesh(assetName, Primitive::Sphere());
   assetManager.AddComponent<Transform>(id);
   material = assetManager.AddComponent<Material>(id);
   material->material = PhongMaterial{};
-  id = assetLoader.LoadMesh("Cylinder", Primitive::Cylinder());
+  assetName = "Cylinder";
+  id = assetLoader.LoadMesh(assetName, Primitive::Cylinder());
   assetManager.AddComponent<Transform>(id);
   material = assetManager.AddComponent<Material>(id);
   material->material = PhongMaterial{};
@@ -162,16 +188,20 @@ void Editor::InitImGui() {
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_DockingEnable;
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init();
+  ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
+  fileBrowser.SetTitle("Browse Files");
+  fileBrowser.SetTypeFilters({".gltf"});
 }
 void Editor::WindowCloseCallback(GLFWwindow* window) {
   glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
 void Editor::FramebufferSizeCallback(GLFWwindow* window, int width, int height) {
   glViewport(0, 0, width, height);
-  auto ratio = static_cast<float>(width) / height;
   auto editor = static_cast<Editor*>(glfwGetWindowUserPointer(window));
-  if (editor)
+  if (editor) {
+    auto ratio = static_cast<float>(width) / height;
     editor->cameraController.SetAspect(ratio);
+  }
 }
 void Editor::SetWindowIcon(const char* iconPath) {
   int width, height, channels;
@@ -184,7 +214,7 @@ void Editor::SetWindowIcon(const char* iconPath) {
     glfwSetWindowIcon(window, 1, images);
     stbi_image_free(data);
   } else
-    std::cerr << "Failed to load the icon at " << iconPath << "." << std::endl;
+    std::cerr << "Failed to load the window icon at '" << iconPath << "'." << std::endl;
 }
 unsigned int Editor::CreateTexture() {
   unsigned int id;
@@ -194,6 +224,6 @@ unsigned int Editor::CreateTexture() {
 void Editor::DeleteTexture(unsigned int id) {
   glDeleteTextures(1, &id);
 }
-void Editor::AssetAdditionHandler() {
+void Editor::UpdateThumbnails() {
   updateThumbnails = true;
 }

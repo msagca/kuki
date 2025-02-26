@@ -1,43 +1,45 @@
 #pragma once
-#include "pool.hpp"
 #include <application.hpp>
 #include <camera_controller.hpp>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <imfilebrowser.h>
+#include <pool.hpp>
 class Editor : public Application {
 private:
-  InputManager inputManager;
-  CameraController cameraController;
   GLFWwindow* window = nullptr;
-  int selectedEntity = -1;
-  bool updateThumbnails = true;
-  ImGui::FileBrowser fileDialog;
+  CameraController cameraController;
+  ImGui::FileBrowser fileBrowser;
+  InputManager inputManager;
   Pool<unsigned int> texturePool;
-  void InitOpenGL(int, int);
-  void InitImGui();
-  void SetWindowIcon(const char*);
-  void LoadDefaultScene();
-  void LoadDefaultAssets();
-  void DisplayScene();
-  void DisplayHierarchy();
-  void DisplayEntityHierarchy(unsigned int, int&, int&);
-  void DisplayProperties(unsigned int);
-  void DisplayResources();
-  void DisplayCreateMenu();
-  void Start() override;
-  bool Status() override;
-  void Update() override;
-  void UpdateView();
-  void Shutdown() override;
-  void AssetAdditionHandler();
+  int clickedEntity = -1;
+  int selectedEntity = -1;
+  int entityToDelete = -1;
   static unsigned int CreateTexture();
   static void DeleteTexture(unsigned int);
-  static void WindowCloseCallback(GLFWwindow*);
+  static void CursorPosCallback(GLFWwindow*, double, double);
   static void FramebufferSizeCallback(GLFWwindow*, int, int);
   static void KeyCallback(GLFWwindow*, int, int, int, int);
   static void MouseButtonCallback(GLFWwindow*, int, int, int);
-  static void CursorPosCallback(GLFWwindow*, double, double);
+  static void WindowCloseCallback(GLFWwindow*);
+  bool Status() override;
+  bool updateThumbnails = true;
+  void DisplayEntity(unsigned int, EntityManager&);
+  void DisplayHierarchy();
+  void DisplayProperties(unsigned int);
+  void DisplayResources();
+  void DisplayScene();
+  void InitImGui();
+  void InitLayout();
+  void InitOpenGL(int, int);
+  void LoadDefaultAssets();
+  void LoadDefaultScene();
+  void SetWindowIcon(const char*);
+  void Shutdown() override;
+  void Start() override;
+  void Update() override;
+  void UpdateThumbnails();
+  void UpdateView();
 public:
   Editor();
 };

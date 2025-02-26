@@ -8,6 +8,7 @@
 #include <component_manager.hpp>
 #include <engine_export.h>
 #include <string>
+#include <trie.hpp>
 #include <tuple>
 #include <typeindex>
 #include <unordered_map>
@@ -19,6 +20,8 @@
 class ENGINE_API EntityManager {
 private:
   unsigned int nextID = 0;
+  std::unordered_set<unsigned int> ids;
+  Trie names;
   std::unordered_map<unsigned int, size_t> idToMask;
   std::unordered_map<unsigned int, std::string> idToName;
   std::unordered_map<std::string, unsigned int> nameToID;
@@ -29,15 +32,21 @@ private:
   ComponentManager<T>* GetManager();
   template <typename T>
   size_t GetComponentMask() const;
-  std::string GenerateName(const std::string&);
+  void DeleteRecords(unsigned int);
 public:
   ~EntityManager();
-  unsigned int Create(std::string = "");
+  unsigned int Create(std::string&);
   void Delete(unsigned int);
-  bool Rename(unsigned int, std::string);
+  bool Rename(unsigned int, std::string&);
   const std::string& GetName(unsigned int) const;
   int GetID(const std::string&);
+  /// <summary>
+  /// Create parent-child relationship between the given entities
+  /// </summary>
   void AddChild(unsigned int, unsigned int);
+  /// <summary>
+  /// Remove the parent-child relationship between the given entities
+  /// </summary>
   void RemoveChild(unsigned int, unsigned int);
   bool HasChildren(unsigned int) const;
   bool HasParent(unsigned int) const;
@@ -65,14 +74,32 @@ public:
   IComponent* GetComponent(unsigned int, const std::string&);
   template <typename... T>
   std::tuple<T*...> GetComponents(unsigned int);
+  /// <summary>
+  /// Get the first component of the specified type
+  /// </summary>
+  /// <returns>A pointer to the first component or nullptr if no such component exists</returns>
   template <typename T>
   T* GetFirstComponent();
   std::vector<IComponent*> GetAllComponents(unsigned int);
   std::vector<std::string> GetMissingComponents(unsigned int);
+  /// <summary>
+  /// Execute a function on entities with specified components
+  /// </summary>
   template <typename... T, typename F>
   void ForEach(F);
+  /// <summary>
+  /// Execute a function on all children of a given entity
+  /// </summary>
   template <typename F>
   void ForEachChild(unsigned int, F);
+  /// <summary>
+  /// Execute a function on all root entities
+  /// </summary>
+  template <typename F>
+  void ForEachRoot(F);
+  /// <summary>
+  /// Execute a function on all entities
+  /// </summary>
   template <typename F>
   void ForAll(F);
 };
@@ -130,7 +157,7 @@ T* EntityManager::GetFirstComponent() {
 }
 template <typename... T, typename F>
 void EntityManager::ForEach(F func) {
-  for (const auto& [id, _] : idToMask)
+  for (const auto& id : ids)
     if (HasComponents<T...>(id)) {
       auto components = GetComponents<T...>(id);
       std::apply([&](T*... args) { func(args...); }, components);
@@ -142,11 +169,17 @@ void EntityManager::ForEachChild(unsigned int parent, F func) {
   if (it == idToChildren.end())
     return;
   for (auto child : it->second)
-    func(child, idToName[child]);
+    func(child);
+}
+template <typename F>
+void EntityManager::ForEachRoot(F func) {
+  for (const auto& id : ids)
+    if (!HasParent(id))
+      func(id);
 }
 template <typename F>
 void EntityManager::ForAll(F func) {
-  for (const auto& [id, _] : idToMask)
+  for (const auto& id : ids)
     func(id);
 }
 template <typename T>

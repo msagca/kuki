@@ -12,7 +12,7 @@ This is where I experiment with `OpenGL`.
 
 ### Instructions
 
-- Clone this repository with all its submodules
+- Clone this repository with its submodules
 
 ```bash
 git clone --recursive https://github.com/msagca/learning-opengl

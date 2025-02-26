@@ -15,9 +15,9 @@
 class ENGINE_API AssetLoader {
 private:
   EntityManager& assetManager;
-  std::unordered_map<std::string, unsigned int> pathToID;
-  unsigned int LoadNode(aiNode*, const aiScene*, const std::filesystem::path&, int = -1, const std::string& = "");
-  Material CreateMaterial(aiMaterial*, const std::string&, const std::filesystem::path&);
+  std::unordered_map<std::filesystem::path, unsigned int> pathToID;
+  int LoadNode(aiNode*, const aiScene*, const std::filesystem::path&, int = -1, const std::string& = "");
+  Material CreateMaterial(aiMaterial*, std::string&, const std::filesystem::path&);
   Mesh CreateVertexBuffer(const std::vector<Vertex>&);
   void CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>&);
   Mesh CreateMesh(const std::vector<Vertex>&);
@@ -26,10 +26,9 @@ private:
   glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4&);
 public:
   AssetLoader(EntityManager&);
-  // NOTE: int return type is for functions that require a path to the asset, so if the read fails they can return -1
-  int LoadModel(const std::string&, const std::filesystem::path&);
-  int LoadMaterial(const std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
-  int LoadTexture(const std::string&, const std::filesystem::path&, TextureType);
-  unsigned int LoadMesh(const std::string&, const std::vector<Vertex>&);
-  unsigned int LoadMesh(const std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
+  int LoadMaterial(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
+  int LoadMesh(std::string&, const std::vector<Vertex>&);
+  int LoadMesh(std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
+  int LoadModel(std::string&, const std::filesystem::path&);
+  int LoadTexture(std::string&, const std::filesystem::path&, TextureType);
 };

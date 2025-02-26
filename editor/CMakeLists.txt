@@ -1,4 +1,4 @@
-project(Editor)
+project(editor)
 file(GLOB_RECURSE C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/source/*.c")
 file(GLOB_RECURSE CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp")
 add_executable(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
@@ -6,9 +6,9 @@ target_include_directories(
   ${PROJECT_NAME}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE Engine)
+target_link_libraries(${PROJECT_NAME} PRIVATE engine)
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES $<TARGET_FILE:Engine> DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES $<TARGET_FILE:engine> DESTINATION ${CMAKE_INSTALL_BINDIR})
 set(IMAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/source/image)
 install(DIRECTORY ${IMAGE_SOURCE_DIR} DESTINATION ${CMAKE_INSTALL_BINDIR})
 file(GLOB_RECURSE JPG_SOURCES "${IMAGE_SOURCE_DIR}/*.jpg")
@@ -22,13 +22,16 @@ add_custom_command(
     ${CMAKE_COMMAND} -E copy_directory ${IMAGE_SOURCE_DIR}
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/image DEPENDS ${IMAGE_SOURCES}
   COMMAND
-    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:Engine>/shader
+    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:engine>/shader
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
   COMMAND
-    ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Engine>
+    ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:engine>
     $<TARGET_FILE_DIR:${PROJECT_NAME}>
   COMMAND
-    ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:Engine>
+    ${CMAKE_COMMAND} -E copy_if_different $<TARGET_PDB_FILE:engine>
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>
+  COMMAND
+    ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:engine>
     $<TARGET_FILE_DIR:${PROJECT_NAME}>
   COMMAND_EXPAND_LISTS
 )

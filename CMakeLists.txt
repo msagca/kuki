@@ -1,10 +1,14 @@
 cmake_minimum_required(VERSION 3.21)
 project(LearningOpenGL)
+option(BUILD_TESTS "Build the tests" ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+if(BUILD_TESTS)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/googletest)
+endif()
 # GLFW
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
 # GLM
@@ -99,11 +103,13 @@ target_include_directories(
   imgui_filebrowser
   INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui-filebrowser
 )
-# engine, editor, game
 add_subdirectory(engine)
 add_subdirectory(editor)
 add_subdirectory(game)
+if(BUILD_TESTS)
+  add_subdirectory(test)
+endif()
 set_property(
   DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  PROPERTY VS_STARTUP_PROJECT "Editor"
+  PROPERTY VS_STARTUP_PROJECT "editor"
 )

@@ -9,11 +9,10 @@
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <input_manager.hpp>
-static const auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);
-static const auto PITCH_LIMIT = 89.99f;
 CameraController::CameraController(InputManager& inputManager)
   : inputManager(inputManager) {}
 void CameraController::UpdateRotation(glm::vec2 mouseDiff) {
+  static const auto PITCH_LIMIT = 89.99f;
   camera.yaw += mouseDiff.x;
   camera.pitch += mouseDiff.y;
   if (camera.pitch > PITCH_LIMIT)
@@ -31,6 +30,7 @@ void CameraController::UpdatePosition(float deltaTime) {
   UpdateView();
 }
 void CameraController::UpdateDirection() {
+  static const auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);
   camera.front.x = cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
   camera.front.y = sin(glm::radians(camera.pitch));
   camera.front.z = sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));

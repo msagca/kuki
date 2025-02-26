@@ -100,20 +100,20 @@ void RenderSystem::ToggleWireframeMode() {
   else
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
-glm::mat4 RenderSystem::GetWorldTransform(const Transform& transform) {
+glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
   auto model = glm::mat4(1.0f);
-  model = glm::scale(model, transform.scale);
-  model = glm::rotate(model, transform.rotation.x, X_AXIS);
-  model = glm::rotate(model, transform.rotation.y, Y_AXIS);
-  model = glm::rotate(model, transform.rotation.z, Z_AXIS);
-  model = glm::translate(model, transform.position);
+  model = glm::scale(model, transform->scale);
+  model = glm::rotate(model, transform->rotation.x, X_AXIS);
+  model = glm::rotate(model, transform->rotation.y, Y_AXIS);
+  model = glm::rotate(model, transform->rotation.z, Z_AXIS);
+  model = glm::translate(model, transform->position);
   auto& entityManager = activeScene->GetEntityManager();
-  if (auto parent = entityManager.GetComponent<Transform>(transform.parent))
+  if (auto parent = entityManager.GetComponent<Transform>(transform->parent))
     // TODO: make sure there are no cyclic relations
-    return GetWorldTransform(*parent) * model;
+    return GetWorldTransform(parent) * model;
   return model;
 }
-void RenderSystem::DrawObject(const Transform& transform, const Mesh& mesh, const Material& material, const Camera& camera, EntityManager& entityManager) {
+void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, const Material& material, const Camera& camera, EntityManager& entityManager) {
   auto& shader = pbrShader;
   if (std::holds_alternative<PhongMaterial>(material.material))
     shader = phongShader;
@@ -141,7 +141,7 @@ void RenderSystem::DrawObject(const Transform& transform, const Mesh& mesh, cons
 void RenderSystem::DrawScene(const Camera& camera) {
   auto& entityManager = activeScene->GetEntityManager();
   entityManager.ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform* transform, MeshFilter* filter, MeshRenderer* renderer) {
-    DrawObject(*transform, filter->mesh, renderer->material, camera, entityManager);
+    DrawObject(transform, filter->mesh, renderer->material, camera, entityManager);
   });
 }
 void RenderSystem::DrawAsset(unsigned int id) {

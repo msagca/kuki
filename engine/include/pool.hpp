@@ -1,4 +1,5 @@
 #pragma once
+#include <cassert>
 #include <functional>
 #include <vector>
 template <typename T>
@@ -14,9 +15,14 @@ private:
 public:
   Pool(std::function<T()>, std::function<void(T)>, size_t = 2);
   size_t GetCapacity();
-  size_t GetCount();
+  /// <returns>The number of items currently in use</returns>
+  size_t GetActive();
+  /// <returns>The number of items ready for use</returns>
+  size_t GetInactive();
+  /// <returns>The index of the next available item</returns>
   size_t Request();
   void Release(size_t);
+  /// <returns>A pointer to the item at the given index</returns>
   T* Get(size_t);
   template <typename F>
   void ForEach(F);
@@ -32,8 +38,12 @@ size_t Pool<T>::GetCapacity() {
   return capacity;
 }
 template <typename T>
-size_t Pool<T>::GetCount() {
+size_t Pool<T>::GetActive() {
   return last;
+}
+template <typename T>
+size_t Pool<T>::GetInactive() {
+  return count - last;
 }
 template <typename T>
 void Pool<T>::Resize() {
@@ -42,9 +52,10 @@ void Pool<T>::Resize() {
 }
 template <typename T>
 size_t Pool<T>::Request() {
+  assert(last <= count && "Pool: Last index cannot be greater than the item count.");
   if (last >= memory.size())
     Resize();
-  if (last >= count) // NOTE: last can't be greater than count, an assert statement can be added here
+  if (last >= count)
     memory[count++] = generator();
   return last++;
 }
