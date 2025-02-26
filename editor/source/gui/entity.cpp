@@ -50,7 +50,7 @@ void Editor::DisplayEntity(unsigned int id, EntityManager& entityManager) {
       ImGui::EndPopup();
     }
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-      strcpy_s(newName, entityManager.GetName(id).c_str());
+      strcpy(newName, entityManager.GetName(id).c_str());
       renameMode = true;
       renamedEntity = id;
     }

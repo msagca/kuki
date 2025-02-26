@@ -14,9 +14,6 @@ add_custom_command(
     ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:engine>
     $<TARGET_FILE_DIR:${PROJECT_NAME}>
   COMMAND
-    ${CMAKE_COMMAND} -E copy_if_different $<TARGET_PDB_FILE:engine>
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>
-  COMMAND
     ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:engine>
     $<TARGET_FILE_DIR:${PROJECT_NAME}>
   COMMAND_EXPAND_LISTS

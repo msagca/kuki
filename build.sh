@@ -1,3 +1,3 @@
-#!/bin/bash
-cmake -B build --preset Debug
+#!/usr/bin/bash
+cmake -B build
 cmake --build build
