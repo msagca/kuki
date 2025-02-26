@@ -18,8 +18,7 @@ private:
   unsigned int assetRBO = 0;
   unsigned int sceneTexture = 0;
   Scene* activeScene = nullptr;
-  bool ResizeSceneBuffers(int, int);
-  bool ResizeAssetBuffers(unsigned int, int);
+  bool ResizeBuffers(unsigned int&, unsigned int&, unsigned int&, int, int);
   glm::mat4 GetWorldTransform(const Transform*);
   void DrawObject(const Transform*, const Mesh&, const Material&, const Camera&, EntityManager&);
   void DrawScene(const Camera&);

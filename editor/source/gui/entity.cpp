@@ -1,4 +1,3 @@
-#include <cstring>
 #include <editor.hpp>
 #include <entity_manager.hpp>
 #include <imgui.h>
@@ -36,8 +35,8 @@ void Editor::DisplayEntity(unsigned int id, EntityManager& entityManager) {
       selectedEntity = id;
       clickedEntity = id;
     }
-    auto popupName = "EntityContextMenu#" + std::to_string(id);
-    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(1)) {
+    auto popupName = "EntityContext#" + std::to_string(id);
+    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
       selectedEntity = id;
       ImGui::OpenPopup(popupName.c_str());
     }
@@ -50,7 +49,7 @@ void Editor::DisplayEntity(unsigned int id, EntityManager& entityManager) {
       }
       ImGui::EndPopup();
     }
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
       strcpy_s(newName, entityManager.GetName(id).c_str());
       renameMode = true;
       renamedEntity = id;

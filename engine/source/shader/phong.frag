@@ -26,9 +26,9 @@ struct PointLight {
 };
 uniform vec3 viewPos;
 uniform Material material;
-uniform bool hasDirLight;
+uniform bool dirExists;
 uniform DirectionalLight dirLight;
-uniform int numPointLights;
+uniform int pointCount;
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
 vec3 CalculateDirectionalLight(DirectionalLight light, Material material, vec3 normalDir, vec3 viewDir) {
     vec3 lightDir = normalize(light.direction);
@@ -56,9 +56,9 @@ void main() {
     vec3 normalDir = normalize(normal);
     vec3 viewDir = normalize(viewPos - position);
     vec3 finalColor;
-    if (hasDirLight)
+    if (dirExists)
         finalColor += CalculateDirectionalLight(dirLight, material, normalDir, viewDir);
-    for (int i = 0; i < numPointLights; ++i)
+    for (int i = 0; i < pointCount; ++i)
         finalColor += CalculatePointLight(pointLights[i], material, normalDir, viewDir, position);
     color = vec4(finalColor, 1.0);
 }

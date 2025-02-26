@@ -60,4 +60,4 @@ jobs:
       - name: Test
         run: |
           cd build/test
-          ./test.exe
+          ./test

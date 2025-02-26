@@ -44,51 +44,35 @@ void RenderSystem::Shutdown() {
   glDeleteFramebuffers(1, &sceneFBO);
   glDeleteRenderbuffers(1, &sceneRBO);
   glDeleteTextures(1, &sceneTexture);
+  glDeleteFramebuffers(1, &assetFBO);
+  glDeleteRenderbuffers(1, &assetRBO);
 }
-bool RenderSystem::ResizeSceneBuffers(int width, int height) {
-  // create color texture
-  glGenTextures(1, &sceneTexture);
-  glBindTexture(GL_TEXTURE_2D, sceneTexture);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+bool RenderSystem::ResizeBuffers(unsigned int& fbo, unsigned int& rbo, unsigned int& texture, int width, int height) {
+  if (texture == 0) {
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  } else
+    glBindTexture(GL_TEXTURE_2D, texture);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
   glBindTexture(GL_TEXTURE_2D, 0);
-  // create depth buffer
-  glGenRenderbuffers(1, &sceneRBO);
-  glBindRenderbuffer(GL_RENDERBUFFER, sceneRBO);
+  if (rbo == 0)
+    glGenRenderbuffers(1, &rbo);
+  glBindRenderbuffer(GL_RENDERBUFFER, rbo);
   glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
-  // create framebuffer
-  glGenFramebuffers(1, &sceneFBO);
-  glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
-  // attach to framebuffer
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneTexture, 0);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, sceneRBO);
+  if (fbo == 0) {
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+  } else
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "Scene: Framebuffer is not complete." << std::endl;
-    return false;
-  }
-  return true;
-}
-bool RenderSystem::ResizeAssetBuffers(unsigned int id, int size) {
-  glGenTextures(1, &id);
-  glBindTexture(GL_TEXTURE_2D, id);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-  glBindTexture(GL_TEXTURE_2D, 0);
-  glGenRenderbuffers(1, &assetRBO);
-  glBindRenderbuffer(GL_RENDERBUFFER, assetRBO);
-  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, size, size);
-  glBindRenderbuffer(GL_RENDERBUFFER, 0);
-  glGenFramebuffers(1, &assetFBO);
-  glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, id, 0);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, assetRBO);
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "Asset: Framebuffer is not complete." << std::endl;
+  if (status != GL_FRAMEBUFFER_COMPLETE) {
+    std::cerr << "Framebuffer: " << status << std::endl;
     return false;
   }
   return true;
@@ -121,17 +105,17 @@ void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, cons
   material.Apply(shader);
   auto model = GetWorldTransform(transform);
   shader.SetMVP(model, camera);
-  auto hasDirLight = false;
-  auto pointLightCount = 0;
+  auto dirExists = false;
+  auto pointCount = 0;
   entityManager.ForEach<Light>([&](Light* light) {
-    shader.SetLight(light, pointLightCount);
+    shader.SetLight(light, pointCount);
     if (light->type == LightType::Directional)
-      hasDirLight = true;
+      dirExists = true;
     else
-      pointLightCount++;
+      pointCount++;
   });
-  shader.SetUniform("hasDirLight", hasDirLight);
-  shader.SetUniform("pointLightCount", pointLightCount);
+  shader.SetUniform("dirExists", dirExists);
+  shader.SetUniform("pointCount", pointCount);
   glBindVertexArray(mesh.vertexArray);
   if (mesh.indexCount > 0)
     glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);
@@ -172,7 +156,7 @@ int RenderSystem::RenderSceneToTexture(const Camera& camera, int width, int heig
   if (width != currentWidth || height != currentHeight) {
     currentWidth = width;
     currentHeight = height;
-    if (!ResizeSceneBuffers(width, height))
+    if (!ResizeBuffers(sceneFBO, sceneRBO, sceneTexture, width, height))
       return -1;
   }
   glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
@@ -187,7 +171,7 @@ bool RenderSystem::RenderAssetToTexture(unsigned int assetID, unsigned int textu
   static int currentSize;
   if (size != currentSize) {
     currentSize = size;
-    if (!ResizeAssetBuffers(textureID, size))
+    if (!ResizeBuffers(assetFBO, assetRBO, textureID, size, size))
       return false;
   }
   glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);

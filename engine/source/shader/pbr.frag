@@ -29,9 +29,9 @@ struct PointLight {
 };
 uniform vec3 viewPos;
 uniform Material material;
-uniform bool hasDirLight;
+uniform bool dirExists;
 uniform DirLight dirLight;
-uniform int pointLightCount;
+uniform int pointCount;
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
 vec3 getNormalFromMap() {
     vec3 tangentNormal = texture(material.normal, texCoord).xyz * 2.0 - 1.0;
@@ -123,9 +123,9 @@ void main() {
     vec3 N = getNormalFromMap();
     vec3 V = normalize(viewPos - position);
     vec3 finalColor = vec3(0.0);
-    if (hasDirLight)
+    if (dirExists)
         finalColor += CalculateDirectionalLight(dirLight, material, N, V);
-    for (int i = 0; i < pointLightCount; ++i)
+    for (int i = 0; i < pointCount; ++i)
         finalColor += CalculatePointLight(pointLights[i], material, N, V, position);
     finalColor = finalColor / (finalColor + vec3(1.0));
     finalColor = pow(finalColor, vec3(1.0 / 2.2));

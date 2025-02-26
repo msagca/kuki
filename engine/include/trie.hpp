@@ -1,8 +1,7 @@
 #include <engine_export.h>
 #include <unordered_map>
 #include <string>
-class ENGINE_API TrieNode {
-public:
+struct ENGINE_API TrieNode {
   std::unordered_map<char, TrieNode*> children;
   /// <summary>
   /// The next number suffix available that can be appended to this node

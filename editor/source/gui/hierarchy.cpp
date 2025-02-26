@@ -9,7 +9,7 @@ void Editor::DisplayHierarchy() {
   auto scene = GetActiveScene();
   auto& entityManager = scene->GetEntityManager();
   ImGui::Begin("Hierarchy");
-  if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered()) {
+  if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered()) {
     selectedEntity = -1;
     clickedEntity = -1;
   }
@@ -24,8 +24,8 @@ void Editor::DisplayHierarchy() {
       DisplayEntity(id, entityManager);
   });
   if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseClicked(1))
-    ImGui::OpenPopup("HierarchyBackgroundMenu");
-  if (ImGui::BeginPopup("HierarchyBackgroundMenu")) {
+    ImGui::OpenPopup("CreateMenu");
+  if (ImGui::BeginPopup("CreateMenu")) {
     if (ImGui::BeginMenu("Create")) {
       if (ImGui::MenuItem("Empty")) {
         std::string name = "Entity";
