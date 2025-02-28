@@ -27,7 +27,7 @@ private:
   void DisplayEntity(unsigned int, EntityManager&);
   void DisplayHierarchy();
   void DisplayProperties(unsigned int);
-  void DisplayResources();
+  void DisplayAssets();
   void DisplayScene();
   void InitImGui();
   void InitLayout();

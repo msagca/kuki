@@ -72,7 +72,7 @@ bool RenderSystem::ResizeBuffers(unsigned int& fbo, unsigned int& rbo, unsigned 
   auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   if (status != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "Framebuffer: " << status << std::endl;
+    std::cerr << "Framebuffer is incomplete." << std::endl;
     return false;
   }
   return true;

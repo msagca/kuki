@@ -11,10 +11,10 @@
 #include <render_system.hpp>
 #include <unordered_map>
 #include <utility>
-void Editor::DisplayResources() {
+void Editor::DisplayAssets() {
   static const auto THUMBNAIL_SIZE = 96.0f;
   static const auto TILE_SIZE = ImVec2(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
-  ImGui::Begin("Resources");
+  ImGui::Begin("Assets");
   if (ImGui::BeginPopupContextWindow()) {
     if (ImGui::BeginMenu("Import")) {
       if (ImGui::Selectable("Model"))
@@ -57,8 +57,7 @@ void Editor::DisplayResources() {
   fileBrowser.Display();
   if (fileBrowser.HasSelected()) {
     auto filepath = fileBrowser.GetSelected();
-    auto filename = filepath.stem().string();
-    assetLoader.LoadModel(filename, filepath);
+    assetLoader.LoadModel(filepath);
     fileBrowser.ClearSelected();
   }
 }

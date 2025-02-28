@@ -26,7 +26,7 @@ int SpawnManager::Spawn(std::string& name, int parentID) {
       auto renderer = entityManager.AddComponent<MeshRenderer>(entityID);
       renderer->material = *m;
     }
-  assetManager.ForEachChild(assetID, [&](unsigned int id) {
+  assetManager.ForEachChild(assetID, [this, &entityID](unsigned int id) {
     auto name = entityManager.GetName(id);
     auto childID = Spawn(name, entityID);
     entityManager.AddChild(entityID, childID);

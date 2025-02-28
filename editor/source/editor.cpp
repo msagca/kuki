@@ -75,7 +75,7 @@ void Editor::UpdateView() {
   ImGui::NewFrame();
   ImGui::DockSpaceOverViewport(ImGui::GetID("DockSpace"));
   InitLayout();
-  DisplayResources();
+  DisplayAssets();
   DisplayHierarchy();
   auto scene = GetActiveScene();
   cameraController.SetCamera(scene->GetEntityManager().GetFirstComponent<Camera>());
@@ -105,7 +105,7 @@ void Editor::InitLayout() {
   auto rightBottomID = ImGui::DockBuilderSplitNode(rightID, ImGuiDir_Down, .5f, nullptr, &rightID);
   ImGui::DockBuilderDockWindow("Properties", rightBottomID);
   auto bottomID = ImGui::DockBuilderSplitNode(mainID, ImGuiDir_Down, .3f, nullptr, &mainID);
-  ImGui::DockBuilderDockWindow("Resources", bottomID);
+  ImGui::DockBuilderDockWindow("Assets", bottomID);
   ImGui::DockBuilderFinish(dockspaceID);
 }
 void Editor::LoadDefaultScene() {

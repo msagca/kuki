@@ -5,9 +5,9 @@
 #include <scene.hpp>
 #include <string>
 void Editor::DisplayHierarchy() {
-  static const char* primitives[] = {"Cube", "Sphere", "Cylinder"};
   auto scene = GetActiveScene();
   auto& entityManager = scene->GetEntityManager();
+  auto& spawnManager = scene->GetSpawnManager();
   ImGui::Begin("Hierarchy");
   if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered()) {
     selectedEntity = -1;
@@ -29,16 +29,17 @@ void Editor::DisplayHierarchy() {
     if (ImGui::BeginMenu("Create")) {
       if (ImGui::MenuItem("Empty")) {
         std::string name = "Entity";
-        scene->GetEntityManager().Create(name);
+        entityManager.Create(name);
         ImGui::CloseCurrentPopup();
       }
-      if (ImGui::BeginMenu("Primitive")) {
-        for (auto i = 0; i < IM_ARRAYSIZE(primitives); ++i)
-          if (ImGui::MenuItem(primitives[i])) {
-            std::string name = primitives[i];
-            scene->GetSpawnManager().Spawn(name);
+      if (ImGui::BeginMenu("Asset")) {
+        assetManager.ForEachRoot([this, &scene, &spawnManager](unsigned int id) {
+          auto name = assetManager.GetName(id);
+          if (ImGui::MenuItem(name.c_str())) {
+            spawnManager.Spawn(name);
             ImGui::CloseCurrentPopup();
           }
+        });
         ImGui::EndMenu();
       }
       ImGui::EndMenu();
