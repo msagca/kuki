@@ -4,8 +4,8 @@
 #include <string>
 #include <variant>
 #include <vector>
-std::string Camera::GetName() const {
-  return "Camera";
+const std::string Camera::GetName() const {
+  return ComponentTraits<Camera>::GetName();
 }
 std::vector<Property> Camera::GetProperties() const {
   return {{"Type", type}, {"Position", position}, {"Pitch", pitch}, {"Yaw", yaw}, {"FOV", fov}, {"Aspect", aspect}, {"Near", near}, {"Far", far}, {"Size", size}};

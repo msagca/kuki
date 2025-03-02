@@ -3,8 +3,8 @@
 #include <string>
 #include <variant>
 #include <vector>
-std::string MeshRenderer::GetName() const {
-  return "MeshRenderer";
+const std::string MeshRenderer::GetName() const {
+  return ComponentTraits<MeshRenderer>::GetName();
 }
 std::vector<Property> MeshRenderer::GetProperties() const {
   std::vector<Property> properties = {{"Shader", shader}};

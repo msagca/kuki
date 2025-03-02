@@ -4,6 +4,7 @@
 *.filters
 *.ilk
 *.in
+*.ini
 *.lib
 *.ninja
 *.pc

@@ -129,7 +129,14 @@ void RenderSystem::DrawScene(const Camera& camera) {
   });
 }
 void RenderSystem::DrawAsset(unsigned int id) {
-  auto [transform, mesh, material] = assetManager.GetComponents<Transform, Mesh, Material>(id);
+  auto& entityManager = activeScene->GetEntityManager();
+  if (assetManager.HasComponents<Transform, Mesh, Material>(id)) {
+    auto [transform, mesh, material] = assetManager.GetComponents<Transform, Mesh, Material>(id);
+    DrawObject(transform, *mesh, *material, assetCam, entityManager);
+  }
+  assetManager.ForEachChild(id, [this](unsigned int childID) {
+    DrawAsset(childID);
+  });
 }
 void RenderSystem::DrawGizmos(const Camera& camera, int entity) {
   // FIXME: for this to work, engine and editor should share the same ImGui globals (editor should pass its ImGui context to engine)

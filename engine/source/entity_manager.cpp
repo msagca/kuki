@@ -1,16 +1,32 @@
-#include <component/camera.hpp>
 #include <component/component.hpp>
-#include <component/light.hpp>
-#include <component/mesh_filter.hpp>
-#include <component/mesh_renderer.hpp>
-#include <component/transform.hpp>
+#include <component_manager.hpp>
 #include <entity_manager.hpp>
 #include <string>
+#include <typeindex>
+#include <unordered_map>
 #include <vector>
 EntityManager::~EntityManager() {
-  for (auto& [type, manager] : managers)
+  for (const auto& [type, manager] : typeToManager)
     delete manager;
   names.Clear();
+}
+IComponentManager* EntityManager::GetManager(std::type_index type) {
+  auto it = typeToManager.find(type);
+  if (it == typeToManager.end())
+    return nullptr;
+  return it->second;
+}
+IComponentManager* EntityManager::GetManager(const std::string& name) {
+  auto it = nameToType.find(name);
+  if (it == nameToType.end())
+    return nullptr;
+  return GetManager(it->second);
+}
+IComponentManager* EntityManager::GetManager(ComponentID id) {
+  auto it = idToType.find(id);
+  if (it == idToType.end())
+    return nullptr;
+  return GetManager(it->second);
 }
 unsigned int EntityManager::Create(std::string& name) {
   names.Insert(name);
@@ -36,7 +52,7 @@ void EntityManager::Delete(unsigned int id) {
   if (ids.find(id) == ids.end())
     return;
   RemoveAllComponents(id);
-  ForEachChild(id, [&](unsigned int childID) {
+  ForEachChild(id, [this](unsigned int childID) {
     Delete(childID);
   });
   DeleteRecords(id);
@@ -104,114 +120,72 @@ size_t EntityManager::GetCount() const {
   return ids.size();
 }
 IComponent* EntityManager::AddComponent(unsigned int id, ComponentID componentID) {
-  switch (componentID) {
-  case ComponentID::Camera:
-    return AddComponent<Camera>(id);
-  case ComponentID::Light:
-    return AddComponent<Light>(id);
-  case ComponentID::MeshFilter:
-    return AddComponent<MeshFilter>(id);
-  case ComponentID::MeshRenderer:
-    return AddComponent<MeshRenderer>(id);
-  case ComponentID::Transform:
-    return AddComponent<Transform>(id);
-  default:
+  if (ids.find(id) == ids.end())
     return nullptr;
-  }
+  auto manager = GetManager(componentID);
+  if (!manager)
+    return nullptr;
+  return &manager->AddBase(id);
 }
 IComponent* EntityManager::AddComponent(unsigned int id, const std::string& name) {
-  ComponentID componentID;
-  if (name == "Camera")
-    componentID = ComponentID::Camera;
-  else if (name == "Light")
-    componentID = ComponentID::Light;
-  else if (name == "MeshFilter")
-    componentID = ComponentID::MeshFilter;
-  else if (name == "MeshRenderer")
-    componentID = ComponentID::MeshRenderer;
-  else if (name == "Transform")
-    componentID = ComponentID::Transform;
-  else
+  if (ids.find(id) == ids.end())
     return nullptr;
-  return AddComponent(id, componentID);
+  auto manager = GetManager(name);
+  if (!manager)
+    return nullptr;
+  return &manager->AddBase(id);
 }
 void EntityManager::RemoveComponent(unsigned int id, ComponentID componentID) {
-  switch (componentID) {
-  case ComponentID::Camera:
-    RemoveComponent<Camera>(id);
-    break;
-  case ComponentID::Light:
-    RemoveComponent<Light>(id);
-    break;
-  case ComponentID::MeshFilter:
-    RemoveComponent<MeshFilter>(id);
-    break;
-  case ComponentID::MeshRenderer:
-    RemoveComponent<MeshRenderer>(id);
-    break;
-  case ComponentID::Transform:
-    RemoveComponent<Transform>(id);
-    break;
-  default:
-    break;
-  }
+  if (ids.find(id) == ids.end())
+    return;
+  auto manager = GetManager(componentID);
+  if (!manager)
+    return;
+  manager->Remove(id);
 }
 void EntityManager::RemoveComponent(unsigned int id, const std::string& name) {
-  ComponentID componentID;
-  if (name == "Camera")
-    componentID = ComponentID::Camera;
-  else if (name == "Light")
-    componentID = ComponentID::Light;
-  else if (name == "MeshFilter")
-    componentID = ComponentID::MeshFilter;
-  else if (name == "MeshRenderer")
-    componentID = ComponentID::MeshRenderer;
-  else if (name == "Transform")
-    componentID = ComponentID::Transform;
-  else
+  if (ids.find(id) == ids.end())
     return;
-  return RemoveComponent(id, componentID);
+  auto manager = GetManager(name);
+  if (!manager)
+    return;
+  manager->Remove(id);
 }
 void EntityManager::RemoveAllComponents(unsigned int id) {
   auto it = idToMask.find(id);
   if (it == idToMask.end())
     return;
-  for (auto& [type, manager] : managers)
+  for (const auto& [type, manager] : typeToManager)
     manager->Remove(id);
   it->second = 0;
 }
+bool EntityManager::HasComponent(unsigned int id, std::type_index type) {
+  auto it = typeToManager.find(type);
+  if (it == typeToManager.end())
+    return false;
+  return it->second->Has(id);
+}
 IComponent* EntityManager::GetComponent(unsigned int id, const std::string& name) {
-  if (name == "Transform")
-    return GetComponent<Transform>(id);
-  else if (name == "MeshFilter")
-    return GetComponent<MeshFilter>(id);
-  else if (name == "MeshRenderer")
-    return GetComponent<MeshRenderer>(id);
-  else if (name == "Camera")
-    return GetComponent<Camera>(id);
-  else if (name == "Light")
-    return GetComponent<Light>(id);
-  else
+  if (ids.find(id) == ids.end())
     return nullptr;
+  auto manager = GetManager(name);
+  if (!manager)
+    return nullptr;
+  return manager->GetBase(id);
 }
 std::vector<IComponent*> EntityManager::GetAllComponents(unsigned int id) {
   std::vector<IComponent*> components;
-  for (auto& [type, manager] : managers)
-    if (manager->Has(id))
-      components.emplace_back(manager->GetBase(id));
+  if (ids.find(id) != ids.end())
+    for (const auto& [type, manager] : typeToManager)
+      if (manager->Has(id))
+        components.emplace_back(manager->GetBase(id));
   return components;
 }
 std::vector<std::string> EntityManager::GetMissingComponents(unsigned int id) {
   std::vector<std::string> components;
-  if (!HasComponent<Transform>(id))
-    components.emplace_back("Transform");
-  if (!HasComponent<MeshFilter>(id))
-    components.emplace_back("MeshFilter");
-  if (!HasComponent<MeshRenderer>(id))
-    components.emplace_back("MeshRenderer");
-  if (!HasComponent<Camera>(id))
-    components.emplace_back("Camera");
-  if (!HasComponent<Light>(id))
-    components.emplace_back("Light");
+  if (ids.find(id) != ids.end())
+    for (const auto& [name, type] : nameToType)
+      if (!HasComponent(id, type))
+        components.emplace_back(name);
   return components;
 }

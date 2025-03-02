@@ -3,8 +3,8 @@
 #include <string>
 #include <variant>
 #include <vector>
-std::string Mesh::GetName() const {
-  return "Mesh";
+const std::string Mesh::GetName() const {
+  return ComponentTraits<Mesh>::GetName();
 }
 std::vector<Property> Mesh::GetProperties() const {
   return {{"VertexArray", vertexArray}, {"VertexBuffer", vertexBuffer}, {"IndexBuffer", indexBuffer}, {"VertexCount", vertexCount}, {"IndexCount", indexCount}};

@@ -5,12 +5,24 @@
 #include <string>
 #include <variant>
 #include <vector>
+void Material::Apply(Shader& shader) const {
+  std::visit([&shader](const auto& mat) { mat.Apply(shader); }, material);
+}
+const std::string Material::GetName() const {
+  return ComponentTraits<Material>::GetName();
+}
+std::vector<Property> Material::GetProperties() const {
+  return std::visit([](const auto& mat) { return mat.GetProperties(); }, material);
+}
+void Material::SetProperty(Property property) {
+  std::visit([&property](auto& mat) { mat.SetProperty(property); }, material);
+}
 void PhongMaterial::Apply(Shader& shader) const {
   shader.SetUniform("material.diffuse", diffuse);
   shader.SetUniform("material.specular", specular);
   shader.SetUniform("material.shininess", shininess);
 }
-std::string PhongMaterial::GetName() const {
+const std::string PhongMaterial::GetName() const {
   return "PhongMaterial";
 }
 std::vector<Property> PhongMaterial::GetProperties() const {
@@ -46,7 +58,7 @@ void PBRMaterial::Apply(Shader& shader) const {
   shader.SetUniform("material.occlusion", 3);
   shader.SetUniform("material.roughness", 4);
 }
-std::string PBRMaterial::GetName() const {
+const std::string PBRMaterial::GetName() const {
   return "PBRMaterial";
 }
 std::vector<Property> PBRMaterial::GetProperties() const {
@@ -66,16 +78,4 @@ void PBRMaterial::SetProperty(Property property) {
     else if (property.name == "Roughness")
       roughness = value;
   }
-}
-void Material::Apply(Shader& shader) const {
-  std::visit([&shader](const auto& mat) { mat.Apply(shader); }, material);
-}
-std::string Material::GetName() const {
-  return std::visit([](const auto& mat) { return mat.GetName(); }, material);
-}
-std::vector<Property> Material::GetProperties() const {
-  return std::visit([](const auto& mat) { return mat.GetProperties(); }, material);
-}
-void Material::SetProperty(Property property) {
-  std::visit([&property](auto& mat) { mat.SetProperty(property); }, material);
 }

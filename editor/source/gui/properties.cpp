@@ -18,15 +18,16 @@ void Editor::DisplayProperties(unsigned int selectedEntity) {
     const auto& component = components[i];
     auto isSelected = (selectedComponent == component);
     ImGui::PushID(static_cast<int>(i));
-    if (ImGui::Selectable(component->GetName().c_str(), isSelected)) {
+    auto name = component->GetName();
+    if (ImGui::Selectable(name.c_str(), isSelected)) {
       if (isSelected)
         selectedComponent = nullptr;
       else
-        selectedComponent = entityManager.GetComponent(selectedEntity, component->GetName());
+        selectedComponent = entityManager.GetComponent(selectedEntity, name);
     }
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove")) {
-        entityManager.RemoveComponent(selectedEntity, component->GetName());
+        entityManager.RemoveComponent(selectedEntity, name);
         if (selectedComponent == component)
           selectedComponent = nullptr;
       }

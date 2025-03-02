@@ -2,7 +2,6 @@
 #include <chrono>
 #include <scene.hpp>
 #include <system.hpp>
-#include <vector>
 Application::Application()
   : assetManager(), assetLoader(assetManager) {}
 Scene* Application::CreateScene() {

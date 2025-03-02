@@ -1,3 +1,7 @@
+#include "camera.hpp"
+#include "light.hpp"
+#include "texture.hpp"
+#include "transform.hpp"
 #include <glm/detail/type_vec3.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <nlohmann/json.hpp>

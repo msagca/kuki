@@ -2,7 +2,6 @@
 #include "component.hpp"
 #include <engine_export.h>
 #include <glad/glad.h>
-#include <string>
 #include <vector>
 struct ENGINE_API Mesh : IComponent {
   unsigned int vertexArray{};
@@ -10,7 +9,7 @@ struct ENGINE_API Mesh : IComponent {
   unsigned int indexBuffer{};
   int vertexCount{}; // NOTE: includes duplicates if no EBO is used
   int indexCount{};
-  std::string GetName() const override;
+  const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;
 };

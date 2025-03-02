@@ -49,6 +49,11 @@ void Editor::DisplayEntity(unsigned int id, EntityManager& entityManager) {
       }
       ImGui::EndPopup();
     }
+    if (inputManager.GetKey(GLFW_KEY_DELETE) && selectedEntity == id) {
+      entityToDelete = id;
+      selectedEntity = -1;
+      clickedEntity = -1;
+    }
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
       strcpy(newName, entityManager.GetName(id).c_str());
       renameMode = true;

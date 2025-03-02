@@ -26,7 +26,6 @@
 #include <primitive.hpp>
 #include <stb_image.h>
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 AssetLoader::AssetLoader(EntityManager& assetManager)

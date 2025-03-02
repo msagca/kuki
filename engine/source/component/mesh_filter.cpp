@@ -2,8 +2,8 @@
 #include <component/mesh_filter.hpp>
 #include <string>
 #include <vector>
-std::string MeshFilter::GetName() const {
-  return "MeshFilter";
+const std::string MeshFilter::GetName() const {
+  return ComponentTraits<MeshFilter>::GetName();
 }
 std::vector<Property> MeshFilter::GetProperties() const {
   return mesh.GetProperties();

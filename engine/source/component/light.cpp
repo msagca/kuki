@@ -4,8 +4,8 @@
 #include <string>
 #include <variant>
 #include <vector>
-std::string Light::GetName() const {
-  return "Light";
+const std::string Light::GetName() const {
+  return ComponentTraits<Light>::GetName();
 }
 std::vector<Property> Light::GetProperties() const {
   return {{"Type", type}, {"Vector", vector}, {"Ambient", ambient}, {"Diffuse", diffuse}, {"Specular", specular}, {"Constant", constant}, {"Linear", linear}, {"Quadratic", quadratic}};

@@ -1,6 +1,6 @@
 #pragma once
-#include "component/camera.hpp"
-#include "component/light.hpp"
+#include "camera.hpp"
+#include "light.hpp"
 #include <engine_export.h>
 #include <filesystem>
 #include <glad/glad.h>

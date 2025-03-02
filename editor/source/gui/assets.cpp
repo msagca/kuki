@@ -1,19 +1,16 @@
 #include <application.hpp>
 #include <asset_loader.hpp>
-#include <component/material.hpp>
-#include <component/mesh.hpp>
-#include <component/transform.hpp>
 #include <editor.hpp>
 #include <entity_manager.hpp>
-#include <filesystem>
 #include <imgui.h>
 #include <list>
 #include <render_system.hpp>
 #include <unordered_map>
-#include <utility>
+#include <string>
+#include <vector>
 void Editor::DisplayAssets() {
   static const auto THUMBNAIL_SIZE = 96.0f;
-  static const auto TILE_SIZE = ImVec2(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+  static const ImVec2 TILE_SIZE(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
   ImGui::Begin("Assets");
   if (ImGui::BeginPopupContextWindow()) {
     if (ImGui::BeginMenu("Import")) {
@@ -23,34 +20,97 @@ void Editor::DisplayAssets() {
     }
     ImGui::EndPopup();
   }
-  static std::unordered_map<unsigned int, size_t> assetToTexture;
-  if (updateThumbnails)
-    for (auto& pair : assetToTexture)
-      texturePool.Release(pair.second);
   auto renderSystem = GetSystem<RenderSystem>();
-  if (renderSystem) {
-    auto contentRegion = ImGui::GetContentRegionAvail();
-    auto tilesPerRow = static_cast<int>(contentRegion.x / TILE_SIZE.x);
-    auto tileCount = 0;
-    if (tilesPerRow > 0)
-      assetManager.ForAll([&](unsigned int assetID) {
-        if (assetManager.HasComponents<Transform, Mesh, Material>(assetID)) {
-          ImVec2 tilePos((tileCount % tilesPerRow) * TILE_SIZE.x, (tileCount / tilesPerRow) * TILE_SIZE.y);
-          ImGui::SetCursorPos(tilePos);
-          auto it = assetToTexture.find(assetID);
-          unsigned int textureID;
-          if (it == assetToTexture.end()) {
-            auto itemID = texturePool.Request();
-            assetToTexture[assetID] = itemID;
-            textureID = *texturePool.Get(itemID);
-          } else
-            textureID = *texturePool.Get(it->second);
-          if (updateThumbnails)
-            renderSystem->RenderAssetToTexture(assetID, textureID, TILE_SIZE.x);
-          ImGui::Image(textureID, TILE_SIZE);
-          tileCount++;
+  if (!renderSystem) {
+    ImGui::Text("Render system unavailable");
+    ImGui::End();
+    return;
+  }
+  static std::unordered_map<unsigned int, size_t> assetToTexture;
+  static std::unordered_map<unsigned int, float> lastUsedTime;
+  static const auto CACHE_TIMEOUT = 30.0f;
+  if (updateThumbnails) {
+    std::vector<unsigned int> assetsToUpdate;
+    assetManager.ForEachRoot([&assetsToUpdate](unsigned int assetID) {
+      assetsToUpdate.push_back(assetID);
+    });
+    for (auto it = assetToTexture.begin(); it != assetToTexture.end();)
+      if (std::find(assetsToUpdate.begin(), assetsToUpdate.end(), it->first) == assetsToUpdate.end()) {
+        texturePool.Release(it->second);
+        it = assetToTexture.erase(it);
+        lastUsedTime.erase(it->first);
+      } else
+        ++it;
+  }
+  const auto contentRegion = ImGui::GetContentRegionAvail();
+  const auto tilesPerRow = std::max(1, static_cast<int>(contentRegion.x / TILE_SIZE.x));
+  const auto scrollY = ImGui::GetScrollY();
+  const auto visibleHeight = ImGui::GetWindowHeight();
+  struct AssetInfo {
+    unsigned int id;
+    ImVec2 position;
+  };
+  std::vector<AssetInfo> visibleAssets;
+  int tileCount = 0;
+  assetManager.ForEachRoot([&](unsigned int assetID) {
+    ImVec2 tilePos((tileCount % tilesPerRow) * TILE_SIZE.x, (tileCount / tilesPerRow) * TILE_SIZE.y);
+    auto tileTop = tilePos.y;
+    auto tileBottom = tilePos.y + TILE_SIZE.y;
+    if (tileBottom >= scrollY && tileTop <= scrollY + visibleHeight)
+      visibleAssets.push_back({assetID, tilePos});
+    tileCount++;
+  });
+  auto contentHeight = ((tileCount + tilesPerRow - 1) / tilesPerRow) * TILE_SIZE.y;
+  ImGui::SetCursorPosY(contentHeight);
+  ImGui::Dummy(ImVec2(1, 1));
+  ImGui::SetCursorPos(ImVec2(0, 0));
+  const auto currentTime = ImGui::GetTime();
+  for (const auto& asset : visibleAssets) {
+    auto assetID = asset.id;
+    auto tilePos = asset.position;
+    ImGui::SetCursorPos(tilePos);
+    ImGui::PushID(assetID);
+    auto textureID = 0;
+    auto it = assetToTexture.find(assetID);
+    if (it == assetToTexture.end()) {
+      auto itemID = texturePool.Request();
+      assetToTexture[assetID] = itemID;
+      textureID = *texturePool.Get(itemID);
+      renderSystem->RenderAssetToTexture(assetID, textureID, TILE_SIZE.x);
+    } else {
+      textureID = *texturePool.Get(it->second);
+      if (updateThumbnails)
+        renderSystem->RenderAssetToTexture(assetID, textureID, TILE_SIZE.x);
+    }
+    lastUsedTime[assetID] = currentTime;
+    auto& assetName = assetManager.GetName(assetID);
+    if (ImGui::ImageButton(std::to_string(textureID).c_str(), textureID, TILE_SIZE, ImVec2(0, 0), ImVec2(1, 1))) {}
+    //SelectAsset(assetID);
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      ImGui::Text("%s", assetName.c_str());
+      ImGui::EndTooltip();
+    }
+    if (ImGui::BeginDragDropSource()) {
+      ImGui::SetDragDropPayload("ASSET_ID", &assetID, sizeof(unsigned int));
+      ImGui::Image(textureID, ImVec2(TILE_SIZE.x * .7f, TILE_SIZE.y * .7f));
+      ImGui::EndDragDropSource();
+    }
+    ImGui::PopID();
+  }
+  static auto lastCleanupTime = 0;
+  if (currentTime - lastCleanupTime > 5.0f) {
+    for (auto it = lastUsedTime.begin(); it != lastUsedTime.end();)
+      if (currentTime - it->second > CACHE_TIMEOUT) {
+        auto textureIt = assetToTexture.find(it->first);
+        if (textureIt != assetToTexture.end()) {
+          texturePool.Release(textureIt->second);
+          assetToTexture.erase(textureIt);
         }
-      });
+        it = lastUsedTime.erase(it);
+      } else
+        ++it;
+    lastCleanupTime = currentTime;
   }
   updateThumbnails = false;
   ImGui::End();
@@ -59,5 +119,6 @@ void Editor::DisplayAssets() {
     auto filepath = fileBrowser.GetSelected();
     assetLoader.LoadModel(filepath);
     fileBrowser.ClearSelected();
+    updateThumbnails = true;
   }
 }

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include <trie.hpp>
 #include <string>
+#include <utility/trie.hpp>
 TEST(TrieTest, TestInsertDelete) {
   Trie trie;
   trie.Insert("Cube");

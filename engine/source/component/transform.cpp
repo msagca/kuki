@@ -4,8 +4,8 @@
 #include <string>
 #include <variant>
 #include <vector>
-std::string Transform::GetName() const {
-  return "Transform";
+const std::string Transform::GetName() const {
+  return ComponentTraits<Transform>::GetName();
 }
 std::vector<Property> Transform::GetProperties() const {
   return {{"Position", position}, {"Rotation", rotation}, {"Scale", scale}, {"Parent", parent}};

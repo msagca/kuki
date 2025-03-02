@@ -1,5 +1,4 @@
 #pragma once
-#include <component/transform.hpp>
 #include <engine_export.h>
 #include <entity_manager.hpp>
 #include <glm/ext/matrix_float4x4.hpp>

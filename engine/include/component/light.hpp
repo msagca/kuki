@@ -2,7 +2,6 @@
 #include "component.hpp"
 #include <engine_export.h>
 #include <glm/ext/vector_float3.hpp>
-#include <string>
 #include <vector>
 struct ENGINE_API Light : IComponent {
   LightType type{LightType::Directional};
@@ -14,7 +13,7 @@ struct ENGINE_API Light : IComponent {
   float constant{1.0f};
   float linear{.09f};
   float quadratic{.032f};
-  std::string GetName() const override;
+  const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;
 };

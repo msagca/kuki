@@ -11,6 +11,7 @@ public:
   virtual ~IComponentManager() = default;
   virtual void Remove(unsigned int) = 0;
   virtual bool Has(unsigned int) = 0;
+  virtual IComponent& AddBase(unsigned int) = 0;
   virtual IComponent* GetBase(unsigned int) = 0;
 };
 template <typename T>
@@ -28,6 +29,7 @@ public:
   T& Add(unsigned int);
   void Remove(unsigned int) override;
   bool Has(unsigned int) override;
+  IComponent& AddBase(unsigned int) override;
   IComponent* GetBase(unsigned int) override;
   T* Get(unsigned int);
   T* GetFirst();
@@ -76,6 +78,10 @@ void ComponentManager<T>::Remove(unsigned int id) {
 template <typename T>
 bool ComponentManager<T>::Has(unsigned int id) {
   return entityToComponent.find(id) != entityToComponent.end();
+}
+template <typename T>
+IComponent& ComponentManager<T>::AddBase(unsigned int id) {
+  return static_cast<IComponent&>(Add(id));
 }
 template <typename T>
 IComponent* ComponentManager<T>::GetBase(unsigned int id) {

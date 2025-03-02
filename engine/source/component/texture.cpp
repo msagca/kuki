@@ -3,8 +3,8 @@
 #include <string>
 #include <variant>
 #include <vector>
-std::string Texture::GetName() const {
-  return "Texture";
+const std::string Texture::GetName() const {
+  return ComponentTraits<Texture>::GetName();
 }
 std::vector<Property> Texture::GetProperties() const {
   return {{"Type", type}, {"ID", id}};

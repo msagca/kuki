@@ -1,8 +1,6 @@
-#include <new>
-#include <utility>
-#include <trie.hpp>
 #include <list>
 #include <string>
+#include <utility/trie.hpp>
 Trie::Trie() {
   root = new TrieNode();
 }

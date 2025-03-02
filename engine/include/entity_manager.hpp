@@ -8,11 +8,11 @@
 #include <component_manager.hpp>
 #include <engine_export.h>
 #include <string>
-#include <trie.hpp>
 #include <tuple>
 #include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility/trie.hpp>
 #include <vector>
 /// <summary>
 /// Manages entities and their components in a scene
@@ -22,14 +22,20 @@ private:
   unsigned int nextID = 0;
   std::unordered_set<unsigned int> ids;
   Trie names;
+  std::unordered_map<ComponentID, std::type_index> idToType; // NOTE: this is component type ID, not entity ID
+  std::unordered_map<std::string, std::type_index> nameToType;
+  std::unordered_map<std::string, unsigned int> nameToID;
+  std::unordered_map<std::type_index, ComponentMask> typeToMask;
+  std::unordered_map<std::type_index, IComponentManager*> typeToManager;
   std::unordered_map<unsigned int, size_t> idToMask;
   std::unordered_map<unsigned int, std::string> idToName;
-  std::unordered_map<std::string, unsigned int> nameToID;
   std::unordered_map<unsigned int, std::unordered_set<unsigned int>> idToChildren;
   std::unordered_map<unsigned int, unsigned int> idToParent;
-  std::unordered_map<std::type_index, IComponentManager*> managers;
   template <typename T>
   ComponentManager<T>* GetManager();
+  IComponentManager* GetManager(std::type_index);
+  IComponentManager* GetManager(const std::string&);
+  IComponentManager* GetManager(ComponentID);
   template <typename T>
   size_t GetComponentMask() const;
   void DeleteRecords(unsigned int);
@@ -67,6 +73,7 @@ public:
   void RemoveAllComponents(unsigned int);
   template <typename T>
   bool HasComponent(unsigned int);
+  bool HasComponent(unsigned int, std::type_index);
   template <typename... T>
   bool HasComponents(unsigned int);
   template <typename T>
@@ -184,40 +191,21 @@ void EntityManager::ForAll(F func) {
 }
 template <typename T>
 ComponentManager<T>* EntityManager::GetManager() {
-  auto it = managers.find(std::type_index(typeid(T)));
-  if (it == managers.end())
-    managers[std::type_index(typeid(T))] = new ComponentManager<T>();
-  return static_cast<ComponentManager<T>*>(managers[std::type_index(typeid(T))]);
+  static_assert(std::is_base_of<IComponent, T>::value, "T must inherit from IComponent");
+  auto type = std::type_index(typeid(T));
+  auto it = typeToManager.find(type);
+  if (it == typeToManager.end()) {
+    typeToManager.emplace(type, new ComponentManager<T>());
+    nameToType.emplace(ComponentTraits<T>::GetName(), type);
+    idToType.emplace(ComponentTraits<T>::GetID(), type);
+    typeToMask.emplace(type, ComponentTraits<T>::GetMask());
+  }
+  return static_cast<ComponentManager<T>*>(typeToManager[type]);
 }
-template <>
-inline size_t EntityManager::GetComponentMask<Camera>() const {
-  return static_cast<size_t>(ComponentMask::Camera);
-}
-template <>
-inline size_t EntityManager::GetComponentMask<Light>() const {
-  return static_cast<size_t>(ComponentMask::Light);
-}
-template <>
-inline size_t EntityManager::GetComponentMask<Material>() const {
-  return static_cast<size_t>(ComponentMask::Material);
-}
-template <>
-inline size_t EntityManager::GetComponentMask<MeshFilter>() const {
-  return static_cast<size_t>(ComponentMask::MeshFilter);
-}
-template <>
-inline size_t EntityManager::GetComponentMask<Mesh>() const {
-  return static_cast<size_t>(ComponentMask::Mesh);
-}
-template <>
-inline size_t EntityManager::GetComponentMask<MeshRenderer>() const {
-  return static_cast<size_t>(ComponentMask::MeshRenderer);
-}
-template <>
-inline size_t EntityManager::GetComponentMask<Texture>() const {
-  return static_cast<size_t>(ComponentMask::Texture);
-}
-template <>
-inline size_t EntityManager::GetComponentMask<Transform>() const {
-  return static_cast<size_t>(ComponentMask::Transform);
+template <typename T>
+size_t EntityManager::GetComponentMask() const {
+  auto it = typeToMask.find(std::type_index(typeid(T)));
+  if (it == typeToMask.end())
+    return 0;
+  return static_cast<size_t>(it->second);
 }
