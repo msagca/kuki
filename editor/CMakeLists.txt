@@ -6,7 +6,10 @@ target_include_directories(
   ${PROJECT_NAME}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE engine)
+target_link_libraries(
+  ${PROJECT_NAME}
+  PRIVATE engine imgui imgui_filebrowser imguizmo
+)
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES $<TARGET_FILE:engine> DESTINATION ${CMAKE_INSTALL_BINDIR})
 set(IMAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/source/image)

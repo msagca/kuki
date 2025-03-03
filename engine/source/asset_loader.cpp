@@ -17,10 +17,8 @@
 #include <filesystem>
 #include <glad/glad.h>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <iostream>
 #include <primitive.hpp>
@@ -53,14 +51,12 @@ int AssetLoader::LoadNode(aiNode* aiNode, const aiScene* aiScene, const std::fil
   if (parentID >= 0)
     assetManager.AddChild(parentID, assetID);
   auto transform = assetManager.AddComponent<Transform>(assetID);
+  transform->parent = parentID;
   glm::vec3 skew;
   glm::vec4 perspective;
-  glm::quat orientation;
-  glm::decompose(model, transform->scale, orientation, transform->position, skew, perspective);
+  glm::decompose(model, transform->scale, transform->rotation, transform->position, skew, perspective);
   // transform->position /= transform->scale;
   // transform->scale = glm::vec3(1.0f);
-  transform->rotation = glm::eulerAngles(orientation);
-  transform->parent = parentID;
   for (auto i = 0; i < aiNode->mNumMeshes; ++i) {
     auto mesh = aiScene->mMeshes[aiNode->mMeshes[i]];
     auto meshComp = assetManager.AddComponent<Mesh>(assetID);

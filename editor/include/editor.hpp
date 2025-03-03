@@ -15,6 +15,7 @@ private:
   int clickedEntity = -1;
   int selectedEntity = -1;
   int entityToDelete = -1;
+  bool updateThumbnails = true;
   static unsigned int CreateTexture();
   static void DeleteTexture(unsigned int);
   static void CursorPosCallback(GLFWwindow*, double, double);
@@ -22,8 +23,8 @@ private:
   static void KeyCallback(GLFWwindow*, int, int, int, int);
   static void MouseButtonCallback(GLFWwindow*, int, int, int);
   static void WindowCloseCallback(GLFWwindow*);
+  static void GizmoDrawCallback(const Camera&, Transform*);
   bool Status() override;
-  bool updateThumbnails = true;
   void DisplayEntity(unsigned int, EntityManager&);
   void DisplayHierarchy();
   void DisplayProperties(unsigned int);

@@ -1,10 +1,12 @@
 #pragma once
 #include <engine_export.h>
 #include <entity_manager.hpp>
+#include <functional>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <system.hpp>
 class ENGINE_API RenderSystem : public System {
 private:
+  inline static const auto CLEAR_COLOR = glm::vec4(.1f, .1f, .1f, 1.0f);
   EntityManager assetManager;
   bool wireframeMode = false;
   Camera assetCam;
@@ -22,7 +24,7 @@ private:
   void DrawObject(const Transform*, const Mesh&, const Material&, const Camera&, EntityManager&);
   void DrawScene(const Camera&);
   void DrawAsset(unsigned int);
-  void DrawGizmos(const Camera&, int = -1);
+  std::function<void(const Camera&, Transform*)> gizmoDrawCallback;
 public:
   RenderSystem(EntityManager&);
   void ToggleWireframeMode();
@@ -31,4 +33,5 @@ public:
   void Shutdown() override;
   int RenderSceneToTexture(const Camera&, int, int, int = -1);
   bool RenderAssetToTexture(unsigned int, unsigned int, int);
+  void SetGizmoDrawCallback(std::function<void(const Camera&, Transform*)>);
 };

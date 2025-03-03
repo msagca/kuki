@@ -151,6 +151,8 @@ bool EntityManager::HasComponents(unsigned int id) {
 template <typename T>
 T* EntityManager::GetComponent(unsigned int id) {
   auto manager = GetManager<T>();
+  if (!manager)
+    return nullptr;
   return manager->Get(id);
 }
 template <typename... T>
@@ -160,6 +162,8 @@ std::tuple<T*...> EntityManager::GetComponents(unsigned int id) {
 template <typename T>
 T* EntityManager::GetFirstComponent() {
   auto manager = GetManager<T>();
+  if (!manager)
+    return nullptr;
   return manager->GetFirst();
 }
 template <typename... T, typename F>

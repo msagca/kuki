@@ -35,8 +35,8 @@ bool Application::Status() {
   return true;
 };
 void Application::Update() {
-  static auto timeLast = std::chrono::high_resolution_clock::now();
   auto timeNow = std::chrono::high_resolution_clock::now();
+  static auto timeLast = timeNow;
   deltaTime = std::chrono::duration<float>(timeNow - timeLast).count();
   timeLast = timeNow;
   auto activeScene = GetActiveScene();

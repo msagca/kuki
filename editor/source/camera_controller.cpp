@@ -43,11 +43,11 @@ void CameraController::UpdateView() {
 }
 void CameraController::UpdateProjection() {
   if (camera.type == CameraType::Perspective)
-    camera.projection = glm::perspective(camera.fov, camera.aspect, camera.near, camera.far);
+    camera.projection = glm::perspective(camera.fov, camera.aspectRatio, camera.nearPlane, camera.farPlane);
   else {
-    auto left = camera.size * camera.aspect;
-    auto bottom = camera.size;
-    camera.projection = glm::ortho(left, -left, bottom, -bottom, camera.near, camera.far);
+    auto left = camera.orthoSize * camera.aspectRatio;
+    auto bottom = camera.orthoSize;
+    camera.projection = glm::ortho(left, -left, bottom, -bottom, camera.nearPlane, camera.farPlane);
   }
 }
 glm::vec3 CameraController::GetPosition() const {
@@ -55,6 +55,9 @@ glm::vec3 CameraController::GetPosition() const {
 }
 Camera& CameraController::GetCamera() {
   return camera;
+}
+Camera* CameraController::GetCameraPtr() {
+  return cameraPtr;
 }
 void CameraController::SetCamera(Camera* cameraPtr) {
   this->cameraPtr = cameraPtr;
@@ -66,7 +69,7 @@ float CameraController::GetFOV() const {
   return camera.fov;
 }
 float CameraController::GetFar() const {
-  return camera.far;
+  return camera.farPlane;
 }
 glm::mat4 CameraController::GetView() const {
   return camera.view;
@@ -75,7 +78,7 @@ glm::mat4 CameraController::GetProjection() const {
   return camera.projection;
 }
 void CameraController::SetAspect(float aspect) {
-  camera.aspect = aspect;
+  camera.aspectRatio = aspect;
   UpdateProjection();
 }
 void CameraController::Update(float deltaTime) {
@@ -100,9 +103,9 @@ void CameraController::Update(float deltaTime) {
     // NOTE: the following components are allowed to be changed through the UI, the rest are updated via the camera controller or window events
     camera.type = cameraPtr->type;
     camera.fov = cameraPtr->fov;
-    camera.near = cameraPtr->near;
-    camera.far = cameraPtr->far;
-    camera.size = cameraPtr->size;
+    camera.nearPlane = cameraPtr->nearPlane;
+    camera.farPlane = cameraPtr->farPlane;
+    camera.orthoSize = cameraPtr->orthoSize;
     UpdateProjection();
     *cameraPtr = camera;
   }

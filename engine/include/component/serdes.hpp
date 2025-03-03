@@ -19,6 +19,18 @@ struct adl_serializer<glm::vec3> {
   }
 };
 template <>
+struct adl_serializer<glm::quat> {
+  static void to_json(nlohmann::json& j, const glm::quat& obj) {
+    j = nlohmann::json{{"w", obj.w}, {"x", obj.x}, {"y", obj.y}, {"z", obj.z}};
+  }
+  static void from_json(const nlohmann::json& j, glm::quat& obj) {
+    j.at("w").get_to(obj.w);
+    j.at("x").get_to(obj.x);
+    j.at("y").get_to(obj.y);
+    j.at("z").get_to(obj.z);
+  }
+};
+template <>
 struct adl_serializer<Transform> {
   static void to_json(nlohmann::json& j, const Transform& obj) {
     j = nlohmann::json{{"Position", obj.position}, {"Rotation", obj.rotation}, {"Scale", obj.scale}, {"Parent", obj.parent}};

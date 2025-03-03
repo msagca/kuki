@@ -20,6 +20,7 @@ private:
 public:
   CameraController(InputManager&);
   Camera& GetCamera();
+  Camera* GetCameraPtr();
   void SetCamera(Camera*);
   glm::vec3 GetPosition() const;
   glm::vec3 GetFront() const;

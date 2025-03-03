@@ -12,7 +12,7 @@ void Editor::DisplayScene() {
   auto renderSystem = GetSystem<RenderSystem>();
   if (renderSystem) {
     auto texture = renderSystem->RenderSceneToTexture(cameraController.GetCamera(), contentRegion.x, contentRegion.y, selectedEntity);
-    if (texture >= 0)
+    if (texture > 0)
       ImGui::Image(texture, ImVec2(contentRegion.x, contentRegion.y), uv0, uv1);
   }
   ImGui::End();

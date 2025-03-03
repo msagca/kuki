@@ -36,7 +36,8 @@ void Editor::Start() {
   InitImGui();
   LoadDefaultAssets();
   LoadDefaultScene();
-  CreateSystem<RenderSystem>(assetManager);
+  auto renderSystem = CreateSystem<RenderSystem>(assetManager);
+  renderSystem->SetGizmoDrawCallback(GizmoDrawCallback);
   Application::Start();
 }
 bool Editor::Status() {

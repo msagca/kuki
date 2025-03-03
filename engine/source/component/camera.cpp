@@ -8,7 +8,7 @@ const std::string Camera::GetName() const {
   return ComponentTraits<Camera>::GetName();
 }
 std::vector<Property> Camera::GetProperties() const {
-  return {{"Type", type}, {"Position", position}, {"Pitch", pitch}, {"Yaw", yaw}, {"FOV", fov}, {"Aspect", aspect}, {"Near", near}, {"Far", far}, {"Size", size}};
+  return {{"Type", type}, {"Position", position}, {"Pitch", pitch}, {"Yaw", yaw}, {"FOV", fov}, {"AspectRatio", aspectRatio}, {"NearPlane", nearPlane}, {"FarPlane", farPlane}, {"OrthoSize", orthoSize}};
 }
 void Camera::SetProperty(Property property) {
   if (std::holds_alternative<float>(property.value)) {
@@ -19,14 +19,14 @@ void Camera::SetProperty(Property property) {
       yaw = value;
     else if (property.name == "FOV")
       fov = value;
-    else if (property.name == "Aspect")
-      aspect = value;
-    else if (property.name == "Near")
-      near = value;
-    else if (property.name == "Far")
-      far = value;
-    else if (property.name == "Size")
-      size = value;
+    else if (property.name == "AspectRatio")
+      aspectRatio = value;
+    else if (property.name == "NearPlane")
+      nearPlane = value;
+    else if (property.name == "FarPlane")
+      farPlane = value;
+    else if (property.name == "OrthoSize")
+      orthoSize = value;
   } else if (std::holds_alternative<glm::vec3>(property.value)) {
     if (property.name == "Position")
       position = std::get<glm::vec3>(property.value);
