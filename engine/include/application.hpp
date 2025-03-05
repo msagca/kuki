@@ -40,9 +40,8 @@ T* Application::CreateSystem(Z&&... args) {
 template <typename T>
 void Application::DeleteSystem() {
   auto it = std::remove_if(systems.begin(), systems.end(), [](System* system) {
-    auto casted = static_cast<T*>(system);
-    if (casted) {
-      delete casted;
+    if (auto systemT = static_cast<T*>(system)) {
+      delete systemT;
       return true;
     }
     return false;
@@ -51,10 +50,8 @@ void Application::DeleteSystem() {
 }
 template <typename T>
 T* Application::GetSystem() {
-  for (auto system : systems) {
-    auto casted = static_cast<T*>(system);
-    if (casted)
-      return casted;
-  }
+  for (auto system : systems)
+    if (auto systemT = static_cast<T*>(system))
+      return systemT;
   return nullptr;
 }

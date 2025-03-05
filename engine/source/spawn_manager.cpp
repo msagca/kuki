@@ -27,7 +27,7 @@ int SpawnManager::Spawn(std::string& name, int parentID) {
       renderer->material = *m;
     }
   assetManager.ForEachChild(assetID, [this, &entityID](unsigned int id) {
-    auto name = entityManager.GetName(id);
+    auto name = assetManager.GetName(id);
     auto childID = Spawn(name, entityID);
     entityManager.AddChild(entityID, childID);
   });

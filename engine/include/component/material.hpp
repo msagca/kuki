@@ -7,7 +7,7 @@ struct IMaterial : IComponent {
   virtual void Apply(Shader& shader) const = 0;
 };
 struct ENGINE_API PhongMaterial : IMaterial {
-  glm::vec3 diffuse = glm::vec3(1.0f, .0f, .0f);
+  glm::vec3 diffuse = glm::vec3(.5f, .5f, .5f);
   glm::vec3 specular = glm::vec3(1.0f);
   float shininess = .5f;
   void Apply(Shader&) const override;

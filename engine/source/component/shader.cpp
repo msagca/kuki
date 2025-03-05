@@ -11,6 +11,10 @@
 #include <iosfwd>
 #include <iostream>
 #include <string>
+Shader::Shader(std::string name, const std::filesystem::path& vert, const std::filesystem::path& frag)
+  : Shader(vert, frag) {
+  this->name = name;
+}
 Shader::Shader(const std::filesystem::path& vert, const std::filesystem::path& frag) {
   auto vertText = Read(vert);
   auto fragText = Read(frag);
@@ -31,6 +35,9 @@ Shader::Shader(const std::filesystem::path& vert, const std::filesystem::path& f
 }
 GLuint Shader::GetID() const {
   return id;
+}
+const std::string& Shader::GetName() const {
+  return name;
 }
 void Shader::Use() const {
   glUseProgram(id);

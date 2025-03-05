@@ -14,7 +14,7 @@ struct Triangle {
   glm::vec3 v3;
 };
 /// <summary>
-/// Contains static functions that return vertex arrays for common primitive shapes.
+/// A container class for functions that construct primitive shapes
 /// </summary>
 class ENGINE_API Primitive {
 private:

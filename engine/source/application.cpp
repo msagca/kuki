@@ -35,7 +35,7 @@ bool Application::Status() {
   return true;
 };
 void Application::Update() {
-  auto timeNow = std::chrono::high_resolution_clock::now();
+  const auto timeNow = std::chrono::high_resolution_clock::now();
   static auto timeLast = timeNow;
   deltaTime = std::chrono::duration<float>(timeNow - timeLast).count();
   timeLast = timeNow;

@@ -34,5 +34,5 @@ add_custom_command(
   POST_BUILD
   COMMAND
     ${CMAKE_COMMAND} -E copy_directory ${SHADER_SOURCE_DIR}
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader DEPENDS ${SHADER_SOURCES}
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
 )

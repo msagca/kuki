@@ -1,18 +1,13 @@
 #pragma once
 #include <engine_export.h>
 #include <entity_manager.hpp>
-#include <functional>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <system.hpp>
 class ENGINE_API RenderSystem : public System {
 private:
-  inline static const auto CLEAR_COLOR = glm::vec4(.1f, .1f, .1f, 1.0f);
   EntityManager assetManager;
-  bool wireframeMode = false;
+  std::unordered_map<std::string, Shader*> shaders;
   Camera assetCam;
-  Shader phongShader;
-  Shader pbrShader;
-  Shader unlitShader;
   unsigned int sceneFBO = 0;
   unsigned int sceneRBO = 0;
   unsigned int assetFBO = 0;
@@ -24,14 +19,13 @@ private:
   void DrawObject(const Transform*, const Mesh&, const Material&, const Camera&, EntityManager&);
   void DrawScene(const Camera&);
   void DrawAsset(unsigned int);
-  std::function<void(const Camera&, Transform*)> gizmoDrawCallback;
 public:
   RenderSystem(EntityManager&);
-  void ToggleWireframeMode();
+  ~RenderSystem();
   void Start() override;
   void Update(float, Scene*) override;
   void Shutdown() override;
-  int RenderSceneToTexture(const Camera&, int, int, int = -1);
+  int RenderSceneToTexture(const Camera&, int, int);
   bool RenderAssetToTexture(unsigned int, unsigned int, int);
-  void SetGizmoDrawCallback(std::function<void(const Camera&, Transform*)>);
+  static void ToggleWireframeMode();
 };

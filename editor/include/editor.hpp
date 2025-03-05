@@ -23,12 +23,12 @@ private:
   static void KeyCallback(GLFWwindow*, int, int, int, int);
   static void MouseButtonCallback(GLFWwindow*, int, int, int);
   static void WindowCloseCallback(GLFWwindow*);
-  static void GizmoDrawCallback(const Camera&, Transform*);
   bool Status() override;
   void DisplayEntity(unsigned int, EntityManager&);
   void DisplayHierarchy();
   void DisplayProperties(unsigned int);
   void DisplayAssets();
+  void DisplayGizmos(Transform*);
   void DisplayScene();
   void InitImGui();
   void InitLayout();

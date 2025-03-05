@@ -27,7 +27,6 @@ private:
   std::unordered_map<std::string, unsigned int> nameToID;
   std::unordered_map<std::type_index, ComponentMask> typeToMask;
   std::unordered_map<std::type_index, IComponentManager*> typeToManager;
-  std::unordered_map<unsigned int, size_t> idToMask;
   std::unordered_map<unsigned int, std::string> idToName;
   std::unordered_map<unsigned int, std::unordered_set<unsigned int>> idToChildren;
   std::unordered_map<unsigned int, unsigned int> idToParent;
@@ -112,41 +111,44 @@ public:
 };
 template <typename T>
 T* EntityManager::AddComponent(unsigned int id) {
-  if (idToMask.find(id) == idToMask.end())
-    return nullptr;
   auto manager = GetManager<T>();
-  idToMask[id] |= GetComponentMask<T>();
+  if (!manager)
+    return nullptr;
+  if (manager->Has(id))
+    return manager->Get(id);
   return &manager->Add(id);
 }
 template <typename... T>
 std::tuple<T*...> EntityManager::AddComponents(unsigned int id) {
+  if (ids.find(id) == ids.end())
+    return std::tuple<T*...>{};
   return std::tie(AddComponent<T>(id)...);
 }
 template <typename T>
 void EntityManager::RemoveComponent(unsigned int id) {
-  if (idToMask.find(id) == idToMask.end())
-    return;
-  idToMask[id] &= ~GetComponentMask<T>();
   auto manager = GetManager<T>();
+  if (!manager)
+    return;
   manager->Remove(id);
 }
 template <typename... T>
 void EntityManager::RemoveComponents(unsigned int id) {
+  if (ids.find(id) == ids.end())
+    return;
   (RemoveComponent<T>(id), ...);
 }
 template <typename T>
 bool EntityManager::HasComponent(unsigned int id) {
-  if (idToMask.find(id) == idToMask.end())
+  auto manager = GetManager<T>();
+  if (!manager)
     return false;
-  return (idToMask[id] & GetComponentMask<T>()) != 0;
+  return manager->Has(id);
 }
 template <typename... T>
 bool EntityManager::HasComponents(unsigned int id) {
-  auto it = idToMask.find(id);
-  if (it == idToMask.end())
+  if (ids.find(id) == ids.end())
     return false;
-  auto combinedMask = (GetComponentMask<T>() | ...);
-  return (it->second & combinedMask) == combinedMask;
+  return (HasComponent<T>(id) && ...);
 }
 template <typename T>
 T* EntityManager::GetComponent(unsigned int id) {
@@ -195,7 +197,7 @@ void EntityManager::ForAll(F func) {
 }
 template <typename T>
 ComponentManager<T>* EntityManager::GetManager() {
-  static_assert(std::is_base_of<IComponent, T>::value, "T must inherit from IComponent");
+  static_assert(std::is_base_of<IComponent, T>::value, "T must inherit from IComponent.");
   auto type = std::type_index(typeid(T));
   auto it = typeToManager.find(type);
   if (it == typeToManager.end()) {

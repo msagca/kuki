@@ -24,7 +24,6 @@
 #include <primitive.hpp>
 #include <stb_image.h>
 #include <string>
-#include <variant>
 #include <vector>
 AssetLoader::AssetLoader(EntityManager& assetManager)
   : assetManager(assetManager) {}
@@ -55,8 +54,9 @@ int AssetLoader::LoadNode(aiNode* aiNode, const aiScene* aiScene, const std::fil
   glm::vec3 skew;
   glm::vec4 perspective;
   glm::decompose(model, transform->scale, transform->rotation, transform->position, skew, perspective);
-  // transform->position /= transform->scale;
-  // transform->scale = glm::vec3(1.0f);
+  transform->position /= transform->scale;
+  transform->scale = glm::vec3(1.0f);
+  // NOTE: is there a better way to normalize the scale?
   for (auto i = 0; i < aiNode->mNumMeshes; ++i) {
     auto mesh = aiScene->mMeshes[aiNode->mMeshes[i]];
     auto meshComp = assetManager.AddComponent<Mesh>(assetID);
@@ -69,45 +69,6 @@ int AssetLoader::LoadNode(aiNode* aiNode, const aiScene* aiScene, const std::fil
   }
   for (auto i = 0; i < aiNode->mNumChildren; ++i)
     LoadNode(aiNode->mChildren[i], aiScene, path, assetID);
-  return assetID;
-}
-int AssetLoader::LoadMaterial(const std::filesystem::path& basePath, const std::filesystem::path& normalPath, const std::filesystem::path& metalnessPath, const std::filesystem::path& occlusionPath, const std::filesystem::path& roughnessPath) {
-  if (!std::filesystem::exists(basePath))
-    return -1;
-  auto textureID = LoadTexture(basePath, TextureType::Base);
-  auto texture = assetManager.GetComponent<Texture>(textureID);
-  if (!texture)
-    return -1;
-  std::string name = "Material";
-  auto assetID = assetManager.Create(name);
-  auto material = assetManager.AddComponent<Material>(assetID);
-  material->material = PBRMaterial{};
-  auto& pbrMat = std::get<PBRMaterial>(material->material);
-  pbrMat.base = texture->id;
-  if (std::filesystem::exists(normalPath)) {
-    textureID = LoadTexture(normalPath, TextureType::Normal);
-    texture = assetManager.GetComponent<Texture>(textureID);
-    if (texture)
-      pbrMat.normal = texture->id;
-  }
-  if (std::filesystem::exists(metalnessPath)) {
-    textureID = LoadTexture(metalnessPath, TextureType::Metalness);
-    texture = assetManager.GetComponent<Texture>(textureID);
-    if (texture)
-      pbrMat.metalness = texture->id;
-  }
-  if (std::filesystem::exists(occlusionPath)) {
-    textureID = LoadTexture(occlusionPath, TextureType::Occlusion);
-    texture = assetManager.GetComponent<Texture>(textureID);
-    if (texture)
-      pbrMat.occlusion = texture->id;
-  }
-  if (std::filesystem::exists(roughnessPath)) {
-    textureID = LoadTexture(roughnessPath, TextureType::Roughness);
-    texture = assetManager.GetComponent<Texture>(textureID);
-    if (texture)
-      pbrMat.roughness = texture->id;
-  }
   return assetID;
 }
 int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type) {

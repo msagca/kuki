@@ -25,7 +25,7 @@ public:
   bool Search(const std::string&);
   bool StartsWith(const std::string&);
   /// <summary>
-  /// Releases the memory occupied by trie nodes
+  /// Release the memory occupied by trie nodes
   /// </summary>
   void Clear();
 };

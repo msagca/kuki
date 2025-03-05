@@ -16,6 +16,7 @@
 .ninja_deps
 .ninja_log
 .vs/
+.vscode/
 CMakeCache.txt
 CMakeFiles/
 [Bb]uild/

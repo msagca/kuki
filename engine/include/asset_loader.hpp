@@ -6,7 +6,6 @@
 #include <engine_export.h>
 #include <entity_manager.hpp>
 #include <filesystem>
-#include <GLFW/glfw3.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <primitive.hpp>
 #include <string>
@@ -23,10 +22,10 @@ private:
   Mesh CreateMesh(const std::vector<Vertex>&);
   Mesh CreateMesh(const std::vector<Vertex>&, const std::vector<unsigned int>&);
   Mesh CreateVertexBuffer(const std::vector<Vertex>&);
-  void CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>&);
+  void CreateIndexBuffer(Mesh&, const std::vector<unsigned int>&);
+  void CalculateBounds(Mesh&, const std::vector<Vertex>&);
 public:
   AssetLoader(EntityManager&);
-  int LoadMaterial(const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
   int LoadMesh(std::string&, const std::vector<Vertex>&);
   int LoadMesh(std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
   int LoadModel(const std::filesystem::path&);

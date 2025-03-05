@@ -9,13 +9,16 @@
 class ENGINE_API Shader {
 private:
   GLuint id;
+  std::string name;
   std::unordered_map<std::string, GLint> locations;
   std::string Read(const std::filesystem::path&);
   GLuint Compile(const char*, GLenum);
   void CacheLocations();
 public:
+  Shader(std::string name, const std::filesystem::path&, const std::filesystem::path&);
   Shader(const std::filesystem::path&, const std::filesystem::path&);
   GLuint GetID() const;
+  const std::string& GetName() const;
   void Use() const;
   void SetUniform(const std::string&, const glm::mat4&);
   void SetUniform(const std::string&, const glm::vec3&);

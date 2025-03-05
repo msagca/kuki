@@ -5,11 +5,13 @@
 #include <imgui.h>
 #include <list>
 #include <render_system.hpp>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 void Editor::DisplayAssets() {
   static const auto THUMBNAIL_SIZE = 96.0f;
+  static const auto CLEANUP_PERIOD = 5.0f;
+  static const auto CACHE_TIMEOUT = 30.0f;
   static const ImVec2 TILE_SIZE(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
   ImGui::Begin("Assets");
   if (ImGui::BeginPopupContextWindow()) {
@@ -28,7 +30,6 @@ void Editor::DisplayAssets() {
   }
   static std::unordered_map<unsigned int, size_t> assetToTexture;
   static std::unordered_map<unsigned int, float> lastUsedTime;
-  static const auto CACHE_TIMEOUT = 30.0f;
   if (updateThumbnails) {
     std::vector<unsigned int> assetsToUpdate;
     assetManager.ForEachRoot([&assetsToUpdate](unsigned int assetID) {
@@ -51,7 +52,7 @@ void Editor::DisplayAssets() {
     ImVec2 position;
   };
   std::vector<AssetInfo> visibleAssets;
-  int tileCount = 0;
+  auto tileCount = 0;
   assetManager.ForEachRoot([&](unsigned int assetID) {
     ImVec2 tilePos((tileCount % tilesPerRow) * TILE_SIZE.x, (tileCount / tilesPerRow) * TILE_SIZE.y);
     auto tileTop = tilePos.y;
@@ -62,8 +63,8 @@ void Editor::DisplayAssets() {
   });
   auto contentHeight = ((tileCount + tilesPerRow - 1) / tilesPerRow) * TILE_SIZE.y;
   ImGui::SetCursorPosY(contentHeight);
-  ImGui::Dummy(ImVec2(1, 1));
-  ImGui::SetCursorPos(ImVec2(0, 0));
+  ImGui::Dummy(ImVec2(1.0f, 1.0f));
+  ImGui::SetCursorPos(ImVec2(.0f, .0f));
   const auto currentTime = ImGui::GetTime();
   for (const auto& asset : visibleAssets) {
     auto assetID = asset.id;
@@ -84,7 +85,7 @@ void Editor::DisplayAssets() {
     }
     lastUsedTime[assetID] = currentTime;
     auto& assetName = assetManager.GetName(assetID);
-    if (ImGui::ImageButton(std::to_string(textureID).c_str(), textureID, TILE_SIZE, ImVec2(0, 0), ImVec2(1, 1))) {}
+    if (ImGui::ImageButton(std::to_string(textureID).c_str(), textureID, TILE_SIZE, ImVec2(.0f, .0f), ImVec2(1.0f, 1.0f))) {}
     //SelectAsset(assetID);
     if (ImGui::IsItemHovered()) {
       ImGui::BeginTooltip();
@@ -93,13 +94,13 @@ void Editor::DisplayAssets() {
     }
     if (ImGui::BeginDragDropSource()) {
       ImGui::SetDragDropPayload("ASSET_ID", &assetID, sizeof(unsigned int));
-      ImGui::Image(textureID, ImVec2(TILE_SIZE.x * .7f, TILE_SIZE.y * .7f));
+      ImGui::Image(textureID, TILE_SIZE);
       ImGui::EndDragDropSource();
     }
     ImGui::PopID();
   }
-  static auto lastCleanupTime = 0;
-  if (currentTime - lastCleanupTime > 5.0f) {
+  static auto lastCleanupTime = .0f;
+  if (currentTime - lastCleanupTime > CLEANUP_PERIOD) {
     for (auto it = lastUsedTime.begin(); it != lastUsedTime.end();)
       if (currentTime - it->second > CACHE_TIMEOUT) {
         auto textureIt = assetToTexture.find(it->first);

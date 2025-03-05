@@ -30,14 +30,14 @@ void Editor::Start() {
   InitOpenGL(WINDOW_WIDTH, WINDOW_HEIGHT);
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
   inputManager.RegisterCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
+  inputManager.RegisterCallback(GLFW_KEY_V, GLFW_PRESS, RenderSystem::ToggleWireframeMode, "Toggle wireframe mode.");
   glfwSetKeyCallback(window, KeyCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetCursorPosCallback(window, CursorPosCallback);
   InitImGui();
   LoadDefaultAssets();
   LoadDefaultScene();
-  auto renderSystem = CreateSystem<RenderSystem>(assetManager);
-  renderSystem->SetGizmoDrawCallback(GizmoDrawCallback);
+  CreateSystem<RenderSystem>(assetManager);
   Application::Start();
 }
 bool Editor::Status() {

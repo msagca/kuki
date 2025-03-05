@@ -9,7 +9,6 @@
 #include <component/shader.hpp>
 #include <component/transform.hpp>
 #include <entity_manager.hpp>
-#include <functional>
 #include <glad/glad.h>
 #include <glm/detail/qualifier.hpp>
 #include <glm/detail/type_mat4x4.hpp>
@@ -23,8 +22,19 @@
 #include <scene.hpp>
 #include <variant>
 RenderSystem::RenderSystem(EntityManager& assetManager)
-  : assetManager(assetManager), phongShader("shader/phong.vert", "shader/phong.frag"), pbrShader("shader/pbr.vert", "shader/pbr.frag"), unlitShader("shader/unlit.vert", "shader/unlit.frag") {}
+  : assetManager(assetManager) {}
+RenderSystem::~RenderSystem() {
+  for (const auto& [_, shader] : shaders)
+    delete shader;
+  shaders.clear();
+}
 void RenderSystem::Start() {
+  auto phongShader = new Shader("Phong", "shader/phong.vert", "shader/phong.frag");
+  auto pbrShader = new Shader("PBR", "shader/pbr.vert", "shader/pbr.frag");
+  auto unlitShader = new Shader("Unlit", "shader/unlit.vert", "shader/unlit.frag");
+  shaders.insert({phongShader->GetName(), phongShader});
+  shaders.insert({pbrShader->GetName(), pbrShader});
+  shaders.insert({unlitShader->GetName(), unlitShader});
   assetCam.view = glm::lookAt(assetCam.position, assetCam.position + assetCam.front, assetCam.up);
   assetCam.projection = glm::perspective(assetCam.fov, assetCam.aspectRatio, assetCam.nearPlane, assetCam.farPlane);
 }
@@ -69,8 +79,9 @@ bool RenderSystem::ResizeBuffers(unsigned int& fbo, unsigned int& rbo, unsigned 
   return true;
 }
 void RenderSystem::ToggleWireframeMode() {
-  wireframeMode = !wireframeMode;
-  if (wireframeMode)
+  static auto enabled = false;
+  enabled = !enabled;
+  if (enabled)
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
   else
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -86,24 +97,26 @@ glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
   return model;
 }
 void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, const Material& material, const Camera& camera, EntityManager& entityManager) {
-  auto& shader = pbrShader;
+  auto shader = shaders["PBR"];
   if (std::holds_alternative<PhongMaterial>(material.material))
-    shader = phongShader;
-  shader.Use();
-  material.Apply(shader);
+    shader = shaders["Phong"];
+  if (!shader)
+    return;
+  shader->Use();
+  material.Apply(*shader);
   auto model = GetWorldTransform(transform);
-  shader.SetMVP(model, camera);
+  shader->SetMVP(model, camera);
   auto dirExists = false;
   auto pointCount = 0;
   entityManager.ForEach<Light>([&](Light* light) {
-    shader.SetLight(light, pointCount);
+    shader->SetLight(light, pointCount);
     if (light->type == LightType::Directional)
       dirExists = true;
     else
       pointCount++;
   });
-  shader.SetUniform("dirExists", dirExists);
-  shader.SetUniform("pointCount", pointCount);
+  shader->SetUniform("dirExists", dirExists);
+  shader->SetUniform("pointCount", pointCount);
   glBindVertexArray(mesh.vertexArray);
   if (mesh.indexCount > 0)
     glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);
@@ -126,7 +139,7 @@ void RenderSystem::DrawAsset(unsigned int id) {
     DrawAsset(childID);
   });
 }
-int RenderSystem::RenderSceneToTexture(const Camera& camera, int width, int height, int selectedEntity) {
+int RenderSystem::RenderSceneToTexture(const Camera& camera, int width, int height) {
   static int currentWidth, currentHeight;
   if (width != currentWidth || height != currentHeight) {
     currentWidth = width;
@@ -135,14 +148,9 @@ int RenderSystem::RenderSceneToTexture(const Camera& camera, int width, int heig
       return -1;
   }
   glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
-  glClearColor(CLEAR_COLOR.x, CLEAR_COLOR.y, CLEAR_COLOR.z, CLEAR_COLOR.w);
+  glClearColor(.0f, .0f, .0f, .0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   DrawScene(camera);
-  auto& entityManager = activeScene->GetEntityManager();
-  auto entityTransform = entityManager.GetComponent<Transform>(selectedEntity);
-  // NOTE: if no entity is selected, this will return nullptr, but the draw function will handle this case
-  if (gizmoDrawCallback)
-    gizmoDrawCallback(camera, entityTransform);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return sceneTexture;
 }
@@ -155,12 +163,9 @@ bool RenderSystem::RenderAssetToTexture(unsigned int assetID, unsigned int textu
   }
   glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
-  glClearColor(CLEAR_COLOR.x, CLEAR_COLOR.y, CLEAR_COLOR.z, CLEAR_COLOR.w);
+  glClearColor(.0f, .0f, .0f, .0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   DrawAsset(assetID);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return true;
-}
-void RenderSystem::SetGizmoDrawCallback(std::function<void(const Camera&, Transform*)> callback) {
-  gizmoDrawCallback = callback;
 }

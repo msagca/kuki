@@ -23,7 +23,7 @@ add_custom_command(
   POST_BUILD
   COMMAND
     ${CMAKE_COMMAND} -E copy_directory ${IMAGE_SOURCE_DIR}
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>/image DEPENDS ${IMAGE_SOURCES}
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/image
   COMMAND
     ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:engine>/shader
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader

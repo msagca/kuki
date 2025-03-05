@@ -2,6 +2,7 @@
 #include <component/material.hpp>
 #include <component/shader.hpp>
 #include <glad/glad.h>
+#include <glm/ext/vector_float3.hpp>
 #include <string>
 #include <variant>
 #include <vector>
@@ -44,18 +45,18 @@ void PhongMaterial::SetProperty(Property property) {
 void PBRMaterial::Apply(Shader& shader) const {
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, base);
+  shader.SetUniform("material.base", 0);
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_2D, normal);
+  shader.SetUniform("material.normal", 1);
   glActiveTexture(GL_TEXTURE2);
   glBindTexture(GL_TEXTURE_2D, metalness);
+  shader.SetUniform("material.metalness", 2);
   glActiveTexture(GL_TEXTURE3);
   glBindTexture(GL_TEXTURE_2D, occlusion);
+  shader.SetUniform("material.occlusion", 3);
   glActiveTexture(GL_TEXTURE4);
   glBindTexture(GL_TEXTURE_2D, roughness);
-  shader.SetUniform("material.base", 0);
-  shader.SetUniform("material.normal", 1);
-  shader.SetUniform("material.metalness", 2);
-  shader.SetUniform("material.occlusion", 3);
   shader.SetUniform("material.roughness", 4);
 }
 const std::string PBRMaterial::GetName() const {

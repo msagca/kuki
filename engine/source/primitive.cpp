@@ -151,10 +151,10 @@ std::vector<Triangle> Primitive::Subdivide(const std::vector<Triangle>& triangle
   return result;
 }
 /// <summary>
-/// Flips the winding order (clockwise &lt;--&gt; counter-clockwise) of faces in a mesh. Use it if normal directions are interpreted incorrectly in applications like backface culling.
+/// Flip the winding order (clockwise &lt;--&gt; counter-clockwise) of faces in a mesh
 /// </summary>
 void Primitive::FlipWindingOrder(std::vector<Vertex>& vertices) {
   for (auto i = 0; i < vertices.size(); i += 3)
     // swap vertex #0 and vertex #1 of the triangle
-    std::swap(vertices[i], vertices[i + 1]);
+    std::swap(vertices[i], vertices[i + 1]); // FIXME: it is not guaranteed that the index i+1 is valid
 }

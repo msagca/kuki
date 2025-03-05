@@ -16,6 +16,7 @@
 #include <primitive.hpp>
 #include <variant>
 #include <vector>
+#include <limits>
 Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesystem::path& root) {
   Material material;
   material.material = PBRMaterial{};
@@ -95,6 +96,7 @@ Mesh AssetLoader::CreateMesh(aiMesh* aiMesh) {
 }
 Mesh AssetLoader::CreateMesh(const std::vector<Vertex>& vertices) {
   auto mesh = CreateVertexBuffer(vertices);
+  CalculateBounds(mesh, vertices);
   return mesh;
 }
 Mesh AssetLoader::CreateMesh(const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices) {
@@ -124,4 +126,12 @@ void AssetLoader::CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>&
   glGenBuffers(1, &mesh.indexBuffer);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.indexBuffer);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+}
+void AssetLoader::CalculateBounds(Mesh& mesh, const std::vector<Vertex>& vertices) {
+  mesh.minBound = glm::vec3(std::numeric_limits<float>::max());
+  mesh.maxBound = glm::vec3(std::numeric_limits<float>::min());
+  for (const auto& vertex : vertices) {
+    mesh.minBound = glm::min(mesh.minBound, vertex.position);
+    mesh.maxBound = glm::max(mesh.maxBound, vertex.position);
+  }
 }

@@ -33,7 +33,6 @@ unsigned int EntityManager::Create(std::string& name) {
   idToName[nextID] = name;
   ids.insert(nextID);
   nameToID[idToName[nextID]] = nextID;
-  idToMask[nextID] = 0;
   return nextID++;
 }
 void EntityManager::DeleteRecords(unsigned int id) {
@@ -43,7 +42,6 @@ void EntityManager::DeleteRecords(unsigned int id) {
   names.Delete(it->second);
   nameToID.erase(it->second);
   ids.erase(id);
-  idToMask.erase(id);
   idToName.erase(id);
   idToChildren.erase(id);
   idToParent.erase(id);
@@ -71,27 +69,25 @@ bool EntityManager::Rename(unsigned int id, std::string& name) {
 const std::string& EntityManager::GetName(unsigned int id) const {
   static const std::string emptyString = "";
   auto it = idToName.find(id);
-  if (it != idToName.end())
-    return it->second;
-  return emptyString;
+  if (it == idToName.end())
+    return emptyString;
+  return it->second;
 }
 int EntityManager::GetID(const std::string& name) {
   auto it = nameToID.find(name);
-  if (it != nameToID.end())
-    return it->second;
-  return -1;
+  if (it == nameToID.end())
+    return -1;
+  return it->second;
 }
 void EntityManager::AddChild(unsigned int parent, unsigned int child) {
   if (ids.find(parent) == ids.end() || ids.find(child) == ids.end())
     return;
   if (idToChildren.find(parent) == idToChildren.end())
-    idToChildren[nextID] = {};
-  idToChildren[nextID].insert(child);
+    idToChildren[parent] = {};
+  idToChildren[parent].insert(child);
   idToParent[child] = parent;
 }
 void EntityManager::RemoveChild(unsigned int parent, unsigned int child) {
-  if (ids.find(parent) == ids.end() || ids.find(child) == ids.end())
-    return;
   auto it = idToChildren.find(parent);
   if (it == idToChildren.end())
     return;
@@ -136,28 +132,22 @@ IComponent* EntityManager::AddComponent(unsigned int id, const std::string& name
   return &manager->AddBase(id);
 }
 void EntityManager::RemoveComponent(unsigned int id, ComponentID componentID) {
-  if (ids.find(id) == ids.end())
-    return;
   auto manager = GetManager(componentID);
   if (!manager)
     return;
   manager->Remove(id);
 }
 void EntityManager::RemoveComponent(unsigned int id, const std::string& name) {
-  if (ids.find(id) == ids.end())
-    return;
   auto manager = GetManager(name);
   if (!manager)
     return;
   manager->Remove(id);
 }
 void EntityManager::RemoveAllComponents(unsigned int id) {
-  auto it = idToMask.find(id);
-  if (it == idToMask.end())
+  if (ids.find(id) == ids.end())
     return;
   for (const auto& [type, manager] : typeToManager)
     manager->Remove(id);
-  it->second = 0;
 }
 bool EntityManager::HasComponent(unsigned int id, std::type_index type) {
   auto it = typeToManager.find(type);
@@ -166,8 +156,6 @@ bool EntityManager::HasComponent(unsigned int id, std::type_index type) {
   return it->second->Has(id);
 }
 IComponent* EntityManager::GetComponent(unsigned int id, const std::string& name) {
-  if (ids.find(id) == ids.end())
-    return nullptr;
   auto manager = GetManager(name);
   if (!manager)
     return nullptr;
