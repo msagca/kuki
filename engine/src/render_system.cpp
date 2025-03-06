@@ -37,7 +37,9 @@ void RenderSystem::Start() {
   shaders.insert({pbrShader->GetName(), pbrShader});
   shaders.insert({unlitShader->GetName(), unlitShader});
   assetCam.view = glm::lookAt(assetCam.position, assetCam.position + assetCam.front, assetCam.up);
-  assetCam.projection = glm::perspective(assetCam.fov, assetCam.aspectRatio, assetCam.nearPlane, assetCam.farPlane);
+  auto left = assetCam.orthoSize * assetCam.aspectRatio;
+  auto bottom = assetCam.orthoSize;
+  assetCam.projection = glm::ortho(left, -left, bottom, -bottom, assetCam.nearPlane, assetCam.farPlane);
 }
 void RenderSystem::Update(float deltaTime, Scene* scene) {
   activeScene = scene;
@@ -155,6 +157,7 @@ void RenderSystem::DrawAsset(unsigned int id) {
 int RenderSystem::RenderSceneToTexture(int width, int height) {
   if (!activeCamera)
     return -1;
+  activeCamera->SetAspectRatio(static_cast<float>(width) / height);
   static int currentWidth, currentHeight;
   if (width != currentWidth || height != currentHeight) {
     currentWidth = width;
@@ -163,6 +166,7 @@ int RenderSystem::RenderSceneToTexture(int width, int height) {
       return -1;
   }
   glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
+  glViewport(0, 0, width, height);
   glClearColor(.0f, .0f, .0f, .0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   DrawScene();

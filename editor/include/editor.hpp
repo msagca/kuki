@@ -29,7 +29,8 @@ private:
   void DisplayProperties();
   void DisplayAssets();
   void DisplayScene();
-  void DisplayGizmos();
+  void DrawGrid();
+  void DrawManipulator();
   void InitImGui();
   void InitLayout();
   void InitOpenGL(int, int);

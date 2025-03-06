@@ -79,9 +79,6 @@ void Editor::UpdateView() {
   InitLayout();
   DisplayAssets();
   DisplayHierarchy();
-  auto scene = GetActiveScene();
-  cameraController.SetCamera(scene->GetCamera());
-  cameraController.Update(deltaTime);
   DisplayScene();
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -96,7 +93,6 @@ void Editor::InitLayout() {
   auto viewport = ImGui::GetMainViewport();
   auto dockspaceID = ImGui::GetID("DockSpace");
   auto viewportSize = viewport->Size;
-  auto viewportPos = viewport->Pos;
   ImGui::DockBuilderRemoveNode(dockspaceID);
   ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_DockSpace);
   ImGui::DockBuilderSetNodeSize(dockspaceID, viewportSize);
@@ -204,11 +200,6 @@ void Editor::WindowCloseCallback(GLFWwindow* window) {
 }
 void Editor::FramebufferSizeCallback(GLFWwindow* window, int width, int height) {
   glViewport(0, 0, width, height);
-  auto editor = static_cast<Editor*>(glfwGetWindowUserPointer(window));
-  if (editor) {
-    auto ratio = static_cast<float>(width) / height;
-    editor->cameraController.SetAspect(ratio);
-  }
 }
 void Editor::SetWindowIcon(const char* iconPath) {
   int width, height, channels;

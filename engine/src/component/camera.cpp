@@ -4,6 +4,9 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <cmath>
 const std::string Camera::GetName() const {
   return ComponentTraits<Camera>::GetName();
 }
@@ -31,5 +34,30 @@ void Camera::SetProperty(Property property) {
     position = std::get<glm::vec3>(property.value);
   } else if (std::holds_alternative<CameraType>(property.value)) {
     type = std::get<CameraType>(property.value);
+  }
+}
+void Camera::SetAspectRatio(float value) {
+  aspectRatio = value;
+  UpdateProjection();
+}
+void Camera::UpdateDirection() {
+  static const auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);
+  front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+  front.y = sin(glm::radians(pitch));
+  front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+  front = glm::normalize(front);
+  right = glm::normalize(glm::cross(front, WORLD_UP));
+  up = glm::normalize(glm::cross(right, front));
+}
+void Camera::UpdateView() {
+  view = glm::lookAt(position, position + front, up);
+}
+void Camera::UpdateProjection() {
+  if (type == CameraType::Perspective)
+    projection = glm::perspective(fov, aspectRatio, nearPlane, farPlane);
+  else {
+    auto left = orthoSize * aspectRatio;
+    auto bottom = orthoSize;
+    projection = glm::ortho(left, -left, bottom, -bottom, nearPlane, farPlane);
   }
 }
