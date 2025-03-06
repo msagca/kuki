@@ -9,9 +9,9 @@
 class IComponentManager {
 public:
   virtual ~IComponentManager() = default;
+  virtual IComponent& AddBase(unsigned int) = 0;
   virtual void Remove(unsigned int) = 0;
   virtual bool Has(unsigned int) = 0;
-  virtual IComponent& AddBase(unsigned int) = 0;
   virtual IComponent* GetBase(unsigned int) = 0;
 };
 template <typename T>
@@ -27,11 +27,11 @@ public:
   unsigned int ActiveCount();
   unsigned int InactiveCount();
   T& Add(unsigned int);
+  IComponent& AddBase(unsigned int) override;
   void Remove(unsigned int) override;
   bool Has(unsigned int) override;
-  IComponent& AddBase(unsigned int) override;
-  IComponent* GetBase(unsigned int) override;
   T* Get(unsigned int);
+  IComponent* GetBase(unsigned int) override;
   T* GetFirst();
   template <typename F>
   void ForEach(F);
@@ -60,6 +60,10 @@ T& ComponentManager<T>::Add(unsigned int id) {
   return components[componentID];
 }
 template <typename T>
+IComponent& ComponentManager<T>::AddBase(unsigned int id) {
+  return static_cast<IComponent&>(Add(id));
+}
+template <typename T>
 void ComponentManager<T>::Remove(unsigned int id) {
   auto it = entityToComponent.find(id);
   if (it == entityToComponent.end())
@@ -80,19 +84,15 @@ bool ComponentManager<T>::Has(unsigned int id) {
   return entityToComponent.find(id) != entityToComponent.end();
 }
 template <typename T>
-IComponent& ComponentManager<T>::AddBase(unsigned int id) {
-  return static_cast<IComponent&>(Add(id));
-}
-template <typename T>
-IComponent* ComponentManager<T>::GetBase(unsigned int id) {
-  return static_cast<IComponent*>(Get(id));
-}
-template <typename T>
 T* ComponentManager<T>::Get(unsigned int id) {
   auto it = entityToComponent.find(id);
   if (it == entityToComponent.end())
     return nullptr;
   return &components[it->second];
+}
+template <typename T>
+IComponent* ComponentManager<T>::GetBase(unsigned int id) {
+  return static_cast<IComponent*>(Get(id));
 }
 template <typename T>
 T* ComponentManager<T>::GetFirst() {

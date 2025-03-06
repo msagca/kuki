@@ -1,6 +1,4 @@
 #include <application.hpp>
-#include <camera_controller.hpp>
-#include <component/transform.hpp>
 #include <editor.hpp>
 #include <imgui.h>
 #include <render_system.hpp>
@@ -9,15 +7,13 @@ void Editor::DisplayScene() {
   static const ImVec2 uv1(1.0f, .0f);
   ImGui::Begin("Scene");
   auto contentRegion = ImGui::GetContentRegionAvail();
-  auto scene = GetActiveScene();
   auto renderSystem = GetSystem<RenderSystem>();
   if (renderSystem) {
-    auto texture = renderSystem->RenderSceneToTexture(cameraController.GetCamera(), contentRegion.x, contentRegion.y);
-    if (texture > 0)
+    auto texture = renderSystem->RenderSceneToTexture(contentRegion.x, contentRegion.y);
+    if (texture > 0) {
+      DisplayGizmos();
       ImGui::Image(texture, ImVec2(contentRegion.x, contentRegion.y), uv0, uv1);
-    auto& entityManager = scene->GetEntityManager();
-    auto entityTransform = entityManager.GetComponent<Transform>(selectedEntity);
-    DisplayGizmos(entityTransform);
+    }
   }
   ImGui::End();
 }

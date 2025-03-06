@@ -8,7 +8,7 @@
 #include <scene.hpp>
 #include <string>
 #include <variant>
-void Editor::DisplayProperties(unsigned int selectedEntity) {
+void Editor::DisplayProperties() {
   ImGui::Begin("Properties");
   static IComponent* selectedComponent = nullptr;
   auto scene = GetActiveScene();

@@ -10,6 +10,7 @@ private:
   SpawnManager spawnManager;
 public:
   Scene(EntityManager&);
+  Camera* GetCamera();
   EntityManager& GetEntityManager();
   SpawnManager& GetSpawnManager();
 };

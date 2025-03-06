@@ -28,8 +28,7 @@ void Camera::SetProperty(Property property) {
     else if (property.name == "OrthoSize")
       orthoSize = value;
   } else if (std::holds_alternative<glm::vec3>(property.value)) {
-    if (property.name == "Position")
-      position = std::get<glm::vec3>(property.value);
+    position = std::get<glm::vec3>(property.value);
   } else if (std::holds_alternative<CameraType>(property.value)) {
     type = std::get<CameraType>(property.value);
   }

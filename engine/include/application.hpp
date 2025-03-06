@@ -14,9 +14,19 @@ protected:
 public:
   Application();
   virtual ~Application() = default;
+  /// <summary>
+  /// Initialize application state
+  /// </summary>
   virtual void Start();
+  /// <returns>true if the application is running, false otherwise</returns>
   virtual bool Status();
+  /// <summary>
+  /// Update application state
+  /// </summary>
   virtual void Update();
+  /// <summary>
+  /// Clean up memory and terminate the application
+  /// </summary>
   virtual void Shutdown();
   void Run();
   Scene* CreateScene();

@@ -19,7 +19,7 @@ struct ENGINE_API Camera : IComponent {
   float aspectRatio{1.0f};
   float nearPlane{.1f};
   float farPlane{100.0f};
-  float orthoSize{10.0f}; // orthographic size
+  float orthoSize{10.0f};
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;

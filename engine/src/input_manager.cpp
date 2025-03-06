@@ -102,14 +102,6 @@ void InputManager::UnregisterCallback(int key, int action) {
   keyDescriptions.erase(key);
   updateBindings = true;
 }
-void InputManager::RegisterKey(int key, std::string description) {
-  keyDescriptions[key] = description;
-  updateBindings = true;
-}
-void InputManager::UnregisterKey(int key) {
-  keyDescriptions.erase(key);
-  updateBindings = true;
-}
 const std::unordered_map<std::string, std::string>& InputManager::GetKeyBindings() {
   if (updateBindings) {
     updateBindings = false;

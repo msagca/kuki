@@ -24,16 +24,27 @@ private:
   void SetMousePos(double, double);
   std::string GLFWKeyToString(int);
 public:
+  /// <returns>true if the key is pressed/repeated, false otherwise</returns>
   bool GetKey(int) const;
+  /// <returns>true if the button is pressed/repeated, false otherwise</returns>
   bool GetButton(int) const;
+  /// <summary>
+  /// Get the vertical (W-S) and horizontal (A-D) input respectively as a 2D vector
+  /// </summary>
+  /// <returns>a float for each axis with a value of either 0, 1 (up/right) or -1 (down/left)</returns>
   glm::vec2 GetWASD() const;
   glm::vec2 GetArrow() const;
   glm::vec2 GetMousePos() const;
+  /// <returns>time passed since last user input</returns>
   double GetInactivityTime() const;
+  /// <summary>
+  /// Register a function to be called when the specified key-action combination is observed
+  /// </summary>
   void RegisterCallback(int, int, std::function<void()>, std::string = "");
+  /// <summary>
+  /// Unregister the callback function for the given key-action combination
+  /// </summary>
   void UnregisterCallback(int, int);
-  void RegisterKey(int, std::string = "");
-  void UnregisterKey(int);
   const std::unordered_map<std::string, std::string>& GetKeyBindings();
   void DisableCallback(int);
   void EnableCallback(int);

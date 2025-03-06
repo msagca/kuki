@@ -30,6 +30,5 @@ void Light::SetProperty(Property property) {
     else if (property.name == "Quadratic")
       quadratic = value;
   } else if (std::holds_alternative<LightType>(property.value))
-    if (property.name == "Type")
-      type = std::get<LightType>(property.value);
+    type = std::get<LightType>(property.value);
 }

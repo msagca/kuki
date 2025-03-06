@@ -14,10 +14,11 @@ private:
   unsigned int assetRBO = 0;
   unsigned int sceneTexture = 0;
   Scene* activeScene = nullptr;
+  Camera* activeCamera = nullptr;
   bool ResizeBuffers(unsigned int&, unsigned int&, unsigned int&, int, int);
   glm::mat4 GetWorldTransform(const Transform*);
-  void DrawObject(const Transform*, const Mesh&, const Material&, const Camera&, EntityManager&);
-  void DrawScene(const Camera&);
+  void DrawObject(const Transform*, const Mesh&, const Material&);
+  void DrawScene();
   void DrawAsset(unsigned int);
 public:
   RenderSystem(EntityManager&);
@@ -25,7 +26,7 @@ public:
   void Start() override;
   void Update(float, Scene*) override;
   void Shutdown() override;
-  int RenderSceneToTexture(const Camera&, int, int);
+  int RenderSceneToTexture(int, int);
   bool RenderAssetToTexture(unsigned int, unsigned int, int);
   static void ToggleWireframeMode();
 };

@@ -26,10 +26,10 @@ private:
   bool Status() override;
   void DisplayEntity(unsigned int, EntityManager&);
   void DisplayHierarchy();
-  void DisplayProperties(unsigned int);
+  void DisplayProperties();
   void DisplayAssets();
-  void DisplayGizmos(Transform*);
   void DisplayScene();
+  void DisplayGizmos();
   void InitImGui();
   void InitLayout();
   void InitOpenGL(int, int);

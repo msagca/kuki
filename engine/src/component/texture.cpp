@@ -12,11 +12,9 @@ std::vector<Property> Texture::GetProperties() const {
 void Texture::SetProperty(Property property) {
   if (std::holds_alternative<unsigned int>(property.value)) {
     auto& value = std::get<unsigned int>(property.value);
-    if (property.name == "ID")
-      id = value;
+    id = value;
   } else if (std::holds_alternative<TextureType>(property.value)) {
     auto& value = std::get<TextureType>(property.value);
-    if (property.name == "Type")
-      type = value;
+    type = value;
   }
 }

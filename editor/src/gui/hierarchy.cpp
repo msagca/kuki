@@ -48,5 +48,5 @@ void Editor::DisplayHierarchy() {
   }
   ImGui::End();
   if (selectedEntity >= 0)
-    DisplayProperties(selectedEntity);
+    DisplayProperties();
 }

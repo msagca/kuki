@@ -21,6 +21,7 @@
 #include <render_system.hpp>
 #include <scene.hpp>
 #include <variant>
+#include <functional>
 RenderSystem::RenderSystem(EntityManager& assetManager)
   : assetManager(assetManager) {}
 RenderSystem::~RenderSystem() {
@@ -40,6 +41,7 @@ void RenderSystem::Start() {
 }
 void RenderSystem::Update(float deltaTime, Scene* scene) {
   activeScene = scene;
+  activeCamera = scene->GetCamera();
 }
 void RenderSystem::Shutdown() {
   glDeleteFramebuffers(1, &sceneFBO);
@@ -96,7 +98,9 @@ glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
     return GetWorldTransform(parent) * model;
   return model;
 }
-void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, const Material& material, const Camera& camera, EntityManager& entityManager) {
+void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, const Material& material) {
+  if (!activeCamera)
+    return;
   auto shader = shaders["PBR"];
   if (std::holds_alternative<PhongMaterial>(material.material))
     shader = shaders["Phong"];
@@ -105,9 +109,10 @@ void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, cons
   shader->Use();
   material.Apply(*shader);
   auto model = GetWorldTransform(transform);
-  shader->SetMVP(model, camera);
+  shader->SetMVP(model, *activeCamera);
   auto dirExists = false;
   auto pointCount = 0;
+  auto& entityManager = activeScene->GetEntityManager();
   entityManager.ForEach<Light>([&](Light* light) {
     shader->SetLight(light, pointCount);
     if (light->type == LightType::Directional)
@@ -123,23 +128,33 @@ void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, cons
   else
     glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
 }
-void RenderSystem::DrawScene(const Camera& camera) {
+void RenderSystem::DrawScene() {
+  if (!activeCamera)
+    return;
   auto& entityManager = activeScene->GetEntityManager();
   entityManager.ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform* transform, MeshFilter* filter, MeshRenderer* renderer) {
-    DrawObject(transform, filter->mesh, renderer->material, camera, entityManager);
+    DrawObject(transform, filter->mesh, renderer->material);
   });
 }
 void RenderSystem::DrawAsset(unsigned int id) {
   auto& entityManager = activeScene->GetEntityManager();
   if (assetManager.HasComponents<Transform, Mesh, Material>(id)) {
     auto [transform, mesh, material] = assetManager.GetComponents<Transform, Mesh, Material>(id);
-    DrawObject(transform, *mesh, *material, assetCam, entityManager);
+    DrawObject(transform, *mesh, *material);
+  } else if (assetManager.HasComponent<Material>(id)) {
+    auto material = assetManager.GetComponent<Material>(id);
+    auto planeID = assetManager.GetID("Plane");
+    auto mesh = assetManager.GetComponent<Mesh>(planeID);
+    static const Transform transform;
+    DrawObject(&transform, *mesh, *material);
   }
   assetManager.ForEachChild(id, [this](unsigned int childID) {
     DrawAsset(childID);
   });
 }
-int RenderSystem::RenderSceneToTexture(const Camera& camera, int width, int height) {
+int RenderSystem::RenderSceneToTexture(int width, int height) {
+  if (!activeCamera)
+    return -1;
   static int currentWidth, currentHeight;
   if (width != currentWidth || height != currentHeight) {
     currentWidth = width;
@@ -149,8 +164,8 @@ int RenderSystem::RenderSceneToTexture(const Camera& camera, int width, int heig
   }
   glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
   glClearColor(.0f, .0f, .0f, .0f);
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  DrawScene(camera);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+  DrawScene();
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return sceneTexture;
 }
@@ -164,7 +179,7 @@ bool RenderSystem::RenderAssetToTexture(unsigned int assetID, unsigned int textu
   glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
   glClearColor(.0f, .0f, .0f, .0f);
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   DrawAsset(assetID);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return true;

@@ -74,12 +74,13 @@ void Editor::UpdateView() {
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
+  ImGuizmo::BeginFrame();
   ImGui::DockSpaceOverViewport(ImGui::GetID("DockSpace"));
   InitLayout();
   DisplayAssets();
   DisplayHierarchy();
   auto scene = GetActiveScene();
-  cameraController.SetCamera(scene->GetEntityManager().GetFirstComponent<Camera>());
+  cameraController.SetCamera(scene->GetCamera());
   cameraController.Update(deltaTime);
   DisplayScene();
   ImGui::Render();
@@ -120,10 +121,15 @@ void Editor::LoadDefaultScene() {
   entityManager.AddComponent<Light>(lightID);
 }
 void Editor::LoadDefaultAssets() {
-  std::string assetName = "Cube";
-  auto id = assetLoader.LoadMesh(assetName, Primitive::Cube());
+  std::string assetName = "Plane";
+  auto id = assetLoader.LoadMesh(assetName, Primitive::Plane());
   assetManager.AddComponent<Transform>(id);
   auto material = assetManager.AddComponent<Material>(id);
+  material->material = PhongMaterial{};
+  assetName = "Cube";
+  id = assetLoader.LoadMesh(assetName, Primitive::Cube());
+  assetManager.AddComponent<Transform>(id);
+  material = assetManager.AddComponent<Material>(id);
   material->material = PhongMaterial{};
   assetName = "Sphere";
   id = assetLoader.LoadMesh(assetName, Primitive::Sphere());

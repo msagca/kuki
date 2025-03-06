@@ -26,4 +26,5 @@ public:
   static std::vector<Vertex> Cube();
   static std::vector<Vertex> Sphere(int = 4);
   static std::vector<Vertex> Cylinder(int = 40);
+  static std::vector<Vertex> Plane();
 };

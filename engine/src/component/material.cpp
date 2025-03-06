@@ -38,8 +38,7 @@ void PhongMaterial::SetProperty(Property property) {
       specular = value;
   } else if (std::holds_alternative<float>(property.value)) {
     auto& value = std::get<float>(property.value);
-    if (property.name == "Shininess")
-      shininess = value;
+    shininess = value;
   }
 }
 void PBRMaterial::Apply(Shader& shader) const {

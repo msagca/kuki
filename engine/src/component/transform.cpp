@@ -24,7 +24,6 @@ void Transform::SetProperty(Property property) {
       scale = value;
   } else if (std::holds_alternative<int>(property.value)) {
     auto& value = std::get<int>(property.value);
-    if (property.name == "Parent")
-      parent = value;
+    parent = value;
   }
 }
