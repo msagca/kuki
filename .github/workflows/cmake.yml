@@ -34,7 +34,7 @@ jobs:
             ${{ runner.os }}-cmake-
       - name: Configure
         run: |
-          cmake -B build -DBUILD_TESTS=ON .
+          cmake -G "Ninja" -B build -DBUILD_TESTS=ON .
       - name: Build
         run: |
           cmake --build build

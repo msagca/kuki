@@ -76,7 +76,6 @@ vec3 CalculateDirectionalLight(DirLight light, Material material, vec3 N, vec3 V
     vec3 L = normalize(-light.direction);
     vec3 H = normalize(V + L);
     vec3 base = texture(material.base, texCoord).rgb;
-    //vec3 orm = texture(material.orm, texCoord).rgb;
     vec3 metalness = texture(material.metalness, texCoord).rgb;
     vec3 occlusion = texture(material.occlusion, texCoord).rgb;
     vec3 roughness = texture(material.roughness, texCoord).rgb;
