@@ -21,7 +21,6 @@
 #include <render_system.hpp>
 #include <scene.hpp>
 #include <variant>
-#include <functional>
 RenderSystem::RenderSystem(EntityManager& assetManager)
   : assetManager(assetManager) {}
 RenderSystem::~RenderSystem() {

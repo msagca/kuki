@@ -42,7 +42,7 @@ public:
 };
 template <typename T, typename... Z>
 T* Application::CreateSystem(Z&&... args) {
-  static_assert(std::is_base_of_v<System, T>, "T must inherit from System.");
+  static_assert(std::is_base_of_v<System, T>, "T must extend System.");
   auto system = new T(std::forward<Z>(args)...);
   systems.push_back(static_cast<System*>(system));
   return system;

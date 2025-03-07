@@ -8,9 +8,9 @@ target_include_directories(
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE engine gtest)
 if(UNIX AND NOT APPLE)
-  set_target_properties(${PROJECT_NAME} PROPERTIES
-    INSTALL_RPATH "$ORIGIN"
-    BUILD_WITH_INSTALL_RPATH TRUE
+  set_target_properties(
+    ${PROJECT_NAME}
+    PROPERTIES INSTALL_RPATH "$ORIGIN" BUILD_WITH_INSTALL_RPATH TRUE
   )
 endif()
 if(WIN32)
@@ -38,7 +38,7 @@ else()
     COMMAND
       ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:engine>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
-COMMAND
+    COMMAND
       ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:glad>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
   )

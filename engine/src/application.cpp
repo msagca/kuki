@@ -48,7 +48,7 @@ void Application::Update() {
 void Application::Shutdown() {
   activeSceneID = 0;
   scenes.clear();
-  for (auto system : systems)
+  for (const auto system : systems)
     system->Shutdown();
   systems.clear();
 };
