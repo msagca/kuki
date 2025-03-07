@@ -19,23 +19,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: "recursive"
-      - name: Linux Prerequisites
+      - name: Install prerequisites for Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt install -y build-essential ninja-build cmake libwayland-dev libxkbcommon-dev xorg-dev
-      - name: Windows Prerequisites
+      - name: Install MSVC for Windows
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+      - name: Install Ninja for Windows
+        if: runner.os == 'Windows'
+        run: winget install --id Ninja-build.Ninja
       - uses: actions/cache@v4
         with:
           path: build
           key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
           restore-keys: |
             ${{ runner.os }}-cmake-
-      - name: Configure
+      - name: Configure with Ninja
         run: |
           cmake -G "Ninja" -B build -DBUILD_TESTS=ON .
-      - name: Build
+      - name: Build with CMake
         run: |
           cmake --build build
       - uses: actions/upload-artifact@v4
@@ -57,7 +60,7 @@ jobs:
         with:
           name: test-artifacts
           path: build/test
-      - name: Test
+      - name: Run tests
         run: |
           cd build/test
           ./test
