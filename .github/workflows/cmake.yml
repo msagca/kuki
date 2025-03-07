@@ -23,9 +23,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt install -y build-essential ninja-build cmake libwayland-dev libxkbcommon-dev xorg-dev
-      - name: Install MSVC for Windows
+      - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+      - uses: Cyberboss/install-winget@v1
+        if: runner.os == 'Windows'
       - name: Install Ninja for Windows
         if: runner.os == 'Windows'
         run: winget install --id Ninja-build.Ninja
