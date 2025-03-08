@@ -151,18 +151,18 @@ void RenderSystem::DrawSkybox() {
   auto shader = shaders["Skybox"];
   if (!shader)
     return;
-  glDepthFunc(GL_LEQUAL);
   shader->Use();
   auto view = glm::mat4(glm::mat3(activeCamera->view));
   shader->SetUniform("view", view);
   shader->SetUniform("projection", activeCamera->projection);
   glBindVertexArray(mesh->vertexArray);
-  glActiveTexture(GL_TEXTURE0);
   assetID = assetManager.GetID("Skybox");
   auto skyboxTexture = assetManager.GetComponent<Texture>(assetID);
   if (!skyboxTexture)
     return;
+  glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture->id);
+  glDepthFunc(GL_LEQUAL);
   if (mesh->indexCount > 0)
     glDrawElements(GL_TRIANGLES, mesh->indexCount, GL_UNSIGNED_INT, 0);
   else
@@ -186,6 +186,7 @@ void RenderSystem::DrawAsset(unsigned int id) {
   });
 }
 int RenderSystem::RenderSceneToTexture(int width, int height) {
+  // FIXME: there is a padding between the window borders and the image this texture is displayed in, possible size mismatch
   if (!activeCamera)
     return -1;
   activeCamera->SetAspectRatio(static_cast<float>(width) / height);

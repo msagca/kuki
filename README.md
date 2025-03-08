@@ -7,12 +7,12 @@ This is where I experiment with `OpenGL`.
 ### Requirements
 
 - `git`, `cmake`
-- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community)
+- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community) (install **Desktop development with C++** workload)
 - **Linux:** `ninja` (or `make`), `gcc`, `g++`
 
 ### Instructions
 
-- Clone this repository with its submodules
+- Clone this repository including its submodules
 
 ```bash
 git clone --recursive https://github.com/msagca/learning-opengl

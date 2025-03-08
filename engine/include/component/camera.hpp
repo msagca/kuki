@@ -12,7 +12,7 @@ struct ENGINE_API Camera : IComponent {
   glm::vec3 front{.0f, .0f, -1.0f};
   glm::vec3 up{.0f, 1.0f, .0f};
   glm::vec3 right{1.0f, .0f, .0f};
-  float pitch{-30.0f};
+  float pitch{-15.0f};
   float yaw{-90.0f};
   float fov{45.0f};
   float aspectRatio{1.0f};

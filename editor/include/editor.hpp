@@ -28,8 +28,10 @@ private:
   void DisplayProperties();
   void DisplayAssets();
   void DisplayScene();
-  void DrawGrid();
-  void DrawManipulator();
+  /// <summary>
+  /// Draw gizmos in ImGui space; they appear either in front of or behind everything in the scene, depending on the draw order
+  /// </summary>
+  void DrawGizmos();
   void InitImGui();
   void InitLayout();
   void InitOpenGL(int, int);
