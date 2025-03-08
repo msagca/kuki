@@ -29,7 +29,7 @@ jobs:
         if: runner.os == 'Windows'
       - name: Install Ninja for Windows
         if: runner.os == 'Windows'
-        run: winget install -e --id Ninja-build.Ninja
+        run: winget install --id Ninja-build.Ninja --accept-source-agreements --disable-interactivity
       - uses: actions/cache@v4
         with:
           path: build
