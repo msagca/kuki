@@ -29,6 +29,9 @@ if(WIN32)
     TARGET ${PROJECT_NAME}
     POST_BUILD
     COMMAND
+      ${CMAKE_COMMAND} -E copy_directory ${IMAGE_SOURCE_DIR}
+      $<TARGET_FILE_DIR:${PROJECT_NAME}>/image
+    COMMAND
       ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:engine>/shader
       $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
     COMMAND
@@ -43,6 +46,9 @@ else()
   add_custom_command(
     TARGET ${PROJECT_NAME}
     POST_BUILD
+    COMMAND
+      ${CMAKE_COMMAND} -E copy_directory ${IMAGE_SOURCE_DIR}
+      $<TARGET_FILE_DIR:${PROJECT_NAME}>/image
     COMMAND
       ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:engine>/shader
       $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader

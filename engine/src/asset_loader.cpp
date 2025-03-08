@@ -103,9 +103,9 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
     stbi_image_free(data);
     return -1;
   }
-  unsigned int id;
-  glGenTextures(1, &id);
-  glBindTexture(GL_TEXTURE_2D, id);
+  unsigned int textureID;
+  glGenTextures(1, &textureID);
+  glBindTexture(GL_TEXTURE_2D, textureID);
   glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, data);
   switch (type) {
   case TextureType::Normal:
@@ -123,9 +123,42 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
   auto name = path.stem().string();
   auto assetID = assetManager.Create(name);
   auto texture = assetManager.AddComponent<Texture>(assetID);
-  texture->id = id;
+  texture->id = textureID;
   texture->type = type;
   pathToID[path] = assetID;
+  return assetID;
+}
+bool AssetLoader::LoadCubeMapSide(const std::filesystem::path& path, int side) {
+  if (!std::filesystem::exists(path))
+    return false;
+  int width, height, nrComponents;
+  auto data = stbi_load(path.string().c_str(), &width, &height, &nrComponents, 0);
+  if (!data) {
+    std::cerr << "Failed to load the texture at " << path << "." << std::endl;
+    return false;
+  }
+  glTexImage2D(side, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+  return true;
+}
+int AssetLoader::LoadCubeMap(std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {
+  unsigned int textureID;
+  glGenTextures(1, &textureID);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+  LoadCubeMapSide(top, GL_TEXTURE_CUBE_MAP_POSITIVE_Y);
+  LoadCubeMapSide(bottom, GL_TEXTURE_CUBE_MAP_NEGATIVE_Y);
+  LoadCubeMapSide(right, GL_TEXTURE_CUBE_MAP_POSITIVE_X);
+  LoadCubeMapSide(left, GL_TEXTURE_CUBE_MAP_NEGATIVE_X);
+  LoadCubeMapSide(front, GL_TEXTURE_CUBE_MAP_POSITIVE_Z);
+  LoadCubeMapSide(back, GL_TEXTURE_CUBE_MAP_NEGATIVE_Z);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  auto assetID = assetManager.Create(name);
+  auto texture = assetManager.AddComponent<Texture>(assetID);
+  texture->id = textureID;
+  texture->type = TextureType::CubeMap;
   return assetID;
 }
 int AssetLoader::LoadMesh(std::string& name, const std::vector<Vertex>& vertices) {

@@ -36,7 +36,8 @@ enum class TextureType : unsigned int {
   Normal,
   Metalness,
   Occlusion,
-  Roughness
+  Roughness,
+  CubeMap
 };
 struct Property {
   std::string name;

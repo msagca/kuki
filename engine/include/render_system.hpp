@@ -18,6 +18,7 @@ private:
   bool ResizeBuffers(unsigned int&, unsigned int&, unsigned int&, int, int);
   glm::mat4 GetWorldTransform(const Transform*);
   void DrawObject(const Transform*, const Mesh&, const Material&);
+  void DrawSkybox();
   void DrawScene();
   void DrawAsset(unsigned int);
 public:

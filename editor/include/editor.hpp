@@ -1,7 +1,6 @@
 #pragma once
 #include <application.hpp>
 #include <camera_controller.hpp>
-#include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <imfilebrowser.h>
 #include <utility/pool.hpp>

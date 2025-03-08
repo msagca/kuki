@@ -20,9 +20,10 @@ void Editor::DisplayScene() {
   if (renderSystem) {
     auto texture = renderSystem->RenderSceneToTexture(contentRegion.x, contentRegion.y);
     if (texture > 0) {
-      DrawGrid();
+      // FIXME: gizmos are hidden behind the skybox
+      // DrawGrid();
       ImGui::Image(texture, ImVec2(contentRegion.x, contentRegion.y), uv0, uv1);
-      DrawManipulator();
+      // DrawManipulator();
     }
   }
   ImGui::End();

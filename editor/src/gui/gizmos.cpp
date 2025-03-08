@@ -1,12 +1,11 @@
+#include <editor.hpp>
 #include <camera_controller.hpp>
 #include <component/camera.hpp>
 #include <component/transform.hpp>
-#include <editor.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/quaternion_float.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <imgui.h>
 #include <ImGuizmo.h>
 void Editor::DrawGrid() {
   static const auto IDENTITY_MATRIX = glm::mat4(1.0f);

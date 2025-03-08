@@ -1,4 +1,3 @@
-#include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/light.hpp>
 #include <component/shader.hpp>
@@ -110,11 +109,10 @@ void Shader::SetUniform(GLint loc, int value) {
 void Shader::SetUniform(GLint loc, unsigned int value) {
   glUniform1i(loc, value);
 }
-void Shader::SetMVP(const glm::mat4& model, const Camera& camera) {
+void Shader::SetMVP(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection) {
   SetUniform("model", model);
-  SetUniform("view", camera.view);
-  SetUniform("projection", camera.projection);
-  SetUniform("viewPos", camera.position);
+  SetUniform("view", view);
+  SetUniform("projection", projection);
 }
 void Shader::SetLight(const Light* light, unsigned int index) {
   if (light->type == LightType::Directional) {

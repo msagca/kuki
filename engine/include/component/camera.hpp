@@ -3,7 +3,6 @@
 #include <engine_export.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <nlohmann/json.hpp>
 #include <vector>
 struct ENGINE_API Camera : IComponent {
   CameraType type{CameraType::Perspective};

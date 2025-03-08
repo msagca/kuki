@@ -118,25 +118,31 @@ void Editor::LoadDefaultScene() {
 }
 void Editor::LoadDefaultAssets() {
   std::string assetName = "Plane";
-  auto id = assetLoader.LoadMesh(assetName, Primitive::Plane());
-  assetManager.AddComponent<Transform>(id);
-  auto material = assetManager.AddComponent<Material>(id);
+  auto assetID = assetLoader.LoadMesh(assetName, Primitive::Plane());
+  assetManager.AddComponent<Transform>(assetID);
+  auto material = assetManager.AddComponent<Material>(assetID);
   material->material = PhongMaterial{};
   assetName = "Cube";
-  id = assetLoader.LoadMesh(assetName, Primitive::Cube());
-  assetManager.AddComponent<Transform>(id);
-  material = assetManager.AddComponent<Material>(id);
+  assetID = assetLoader.LoadMesh(assetName, Primitive::Cube());
+  assetManager.AddComponent<Transform>(assetID);
+  material = assetManager.AddComponent<Material>(assetID);
   material->material = PhongMaterial{};
   assetName = "Sphere";
-  id = assetLoader.LoadMesh(assetName, Primitive::Sphere());
-  assetManager.AddComponent<Transform>(id);
-  material = assetManager.AddComponent<Material>(id);
+  assetID = assetLoader.LoadMesh(assetName, Primitive::Sphere());
+  assetManager.AddComponent<Transform>(assetID);
+  material = assetManager.AddComponent<Material>(assetID);
   material->material = PhongMaterial{};
   assetName = "Cylinder";
-  id = assetLoader.LoadMesh(assetName, Primitive::Cylinder());
-  assetManager.AddComponent<Transform>(id);
-  material = assetManager.AddComponent<Material>(id);
+  assetID = assetLoader.LoadMesh(assetName, Primitive::Cylinder());
+  assetManager.AddComponent<Transform>(assetID);
+  material = assetManager.AddComponent<Material>(assetID);
   material->material = PhongMaterial{};
+  assetName = "SkyboxMesh";
+  auto cubeVertices = Primitive::Cube();
+  Primitive::FlipWindingOrder(cubeVertices);
+  assetID = assetLoader.LoadMesh(assetName, cubeVertices);
+  assetName = "Skybox";
+  assetID = assetLoader.LoadCubeMap(assetName, "image/skybox/top.jpg", "image/skybox/bottom.jpg", "image/skybox/right.jpg", "image/skybox/left.jpg", "image/skybox/front.jpg", "image/skybox/back.jpg");
 }
 void Editor::InitOpenGL(int width, int height) {
   glfwInit();

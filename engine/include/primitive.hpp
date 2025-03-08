@@ -21,8 +21,8 @@ private:
   static std::vector<Triangle> CreateOctahedron();
   static std::vector<Triangle> CreateIcosahedron();
   static std::vector<Triangle> Subdivide(const std::vector<Triangle>&, int);
-  static void FlipWindingOrder(std::vector<Vertex>&);
 public:
+  static void FlipWindingOrder(std::vector<Vertex>&);
   static std::vector<Vertex> Cube();
   static std::vector<Vertex> Sphere(int = 4);
   static std::vector<Vertex> Cylinder(int = 40);

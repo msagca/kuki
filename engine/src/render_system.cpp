@@ -32,9 +32,11 @@ void RenderSystem::Start() {
   auto phongShader = new Shader("Phong", "shader/phong.vert", "shader/phong.frag");
   auto pbrShader = new Shader("PBR", "shader/pbr.vert", "shader/pbr.frag");
   auto unlitShader = new Shader("Unlit", "shader/unlit.vert", "shader/unlit.frag");
+  auto skyboxShader = new Shader("Skybox", "shader/skybox.vert", "shader/skybox.frag");
   shaders.insert({phongShader->GetName(), phongShader});
   shaders.insert({pbrShader->GetName(), pbrShader});
   shaders.insert({unlitShader->GetName(), unlitShader});
+  shaders.insert({skyboxShader->GetName(), skyboxShader});
   assetCam.view = glm::lookAt(assetCam.position, assetCam.position + assetCam.front, assetCam.up);
   auto left = assetCam.orthoSize * assetCam.aspectRatio;
   auto bottom = assetCam.orthoSize;
@@ -110,7 +112,8 @@ void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, cons
   shader->Use();
   material.Apply(*shader);
   auto model = GetWorldTransform(transform);
-  shader->SetMVP(model, *activeCamera);
+  shader->SetMVP(model, activeCamera->view, activeCamera->projection);
+  shader->SetUniform("viewPos", activeCamera->position);
   auto dirExists = false;
   auto pointCount = 0;
   auto& entityManager = activeScene->GetEntityManager();
@@ -136,6 +139,35 @@ void RenderSystem::DrawScene() {
   entityManager.ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform* transform, MeshFilter* filter, MeshRenderer* renderer) {
     DrawObject(transform, filter->mesh, renderer->material);
   });
+  DrawSkybox();
+}
+void RenderSystem::DrawSkybox() {
+  if (!activeCamera)
+    return;
+  auto assetID = assetManager.GetID("SkyboxMesh");
+  auto mesh = assetManager.GetComponent<Mesh>(assetID);
+  if (!mesh)
+    return;
+  auto shader = shaders["Skybox"];
+  if (!shader)
+    return;
+  glDepthFunc(GL_LEQUAL);
+  shader->Use();
+  auto view = glm::mat4(glm::mat3(activeCamera->view));
+  shader->SetUniform("view", view);
+  shader->SetUniform("projection", activeCamera->projection);
+  glBindVertexArray(mesh->vertexArray);
+  glActiveTexture(GL_TEXTURE0);
+  assetID = assetManager.GetID("Skybox");
+  auto skyboxTexture = assetManager.GetComponent<Texture>(assetID);
+  if (!skyboxTexture)
+    return;
+  glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture->id);
+  if (mesh->indexCount > 0)
+    glDrawElements(GL_TRIANGLES, mesh->indexCount, GL_UNSIGNED_INT, 0);
+  else
+    glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
+  glDepthFunc(GL_LESS);
 }
 void RenderSystem::DrawAsset(unsigned int id) {
   auto& entityManager = activeScene->GetEntityManager();
@@ -145,9 +177,9 @@ void RenderSystem::DrawAsset(unsigned int id) {
   } else if (assetManager.HasComponent<Material>(id)) {
     auto material = assetManager.GetComponent<Material>(id);
     auto planeID = assetManager.GetID("Plane");
-    auto mesh = assetManager.GetComponent<Mesh>(planeID);
+    auto quadMesh = assetManager.GetComponent<Mesh>(planeID);
     static const Transform transform;
-    DrawObject(&transform, *mesh, *material);
+    DrawObject(&transform, *quadMesh, *material);
   }
   assetManager.ForEachChild(id, [this](unsigned int childID) {
     DrawAsset(childID);

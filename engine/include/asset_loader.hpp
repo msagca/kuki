@@ -18,6 +18,7 @@ private:
   glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4&);
   int LoadNode(aiNode*, const aiScene*, const std::filesystem::path&, int = -1);
   Material CreateMaterial(aiMaterial*, const std::filesystem::path&);
+  bool LoadCubeMapSide(const std::filesystem::path&, int = 0);
   Mesh CreateMesh(aiMesh*);
   Mesh CreateMesh(const std::vector<Vertex>&);
   Mesh CreateMesh(const std::vector<Vertex>&, const std::vector<unsigned int>&);
@@ -29,5 +30,6 @@ public:
   int LoadMesh(std::string&, const std::vector<Vertex>&);
   int LoadMesh(std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
   int LoadModel(const std::filesystem::path&);
-  int LoadTexture(const std::filesystem::path&, TextureType);
+  int LoadTexture(const std::filesystem::path&, TextureType = TextureType::Base);
+  int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
 };
