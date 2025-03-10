@@ -1,4 +1,4 @@
-project(test)
+project(tests)
 file(GLOB_RECURSE C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
 file(GLOB_RECURSE CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 add_executable(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
@@ -40,6 +40,9 @@ else()
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
     COMMAND
       ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:glad>
+      $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    COMMAND
+      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:glfw>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
   )
 endif()

@@ -1,16 +1,15 @@
 #pragma once
-#include <asset_loader.hpp>
 #include <engine_export.h>
 #include <entity_manager.hpp>
-#include <spawn_manager.hpp>
 class ENGINE_API Scene {
 private:
-  EntityManager& assetManager;
+  std::string name;
+  unsigned int id;
   EntityManager entityManager;
-  SpawnManager spawnManager;
 public:
-  Scene(EntityManager&);
+  Scene(const std::string&, unsigned int);
+  std::string GetName() const;
+  unsigned int GetID() const;
   Camera* GetCamera();
   EntityManager& GetEntityManager();
-  SpawnManager& GetSpawnManager();
 };

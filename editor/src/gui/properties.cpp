@@ -11,9 +11,7 @@
 void Editor::DisplayProperties() {
   ImGui::Begin("Properties");
   static IComponent* selectedComponent = nullptr;
-  auto scene = GetActiveScene();
-  auto& entityManager = scene->GetEntityManager();
-  auto components = entityManager.GetAllComponents(selectedEntity);
+  auto components = GetAllComponents(selectedEntity);
   for (auto i = 0; i < components.size(); ++i) {
     const auto& component = components[i];
     auto isSelected = (selectedComponent == component);
@@ -23,11 +21,11 @@ void Editor::DisplayProperties() {
       if (isSelected)
         selectedComponent = nullptr;
       else
-        selectedComponent = entityManager.GetComponent(selectedEntity, name);
+        selectedComponent = GetComponent(selectedEntity, name);
     }
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove")) {
-        entityManager.RemoveComponent(selectedEntity, name);
+        RemoveComponent(selectedEntity, name);
         if (selectedComponent == component)
           selectedComponent = nullptr;
       }
@@ -91,9 +89,9 @@ void Editor::DisplayProperties() {
     }
     ImGui::PopID();
   }
-  auto availableComponents = entityManager.GetMissingComponents(selectedEntity);
+  auto availableComponents = GetMissingComponents(selectedEntity);
   for (const auto& comp : availableComponents)
     if (ImGui::Selectable(comp.c_str()))
-      entityManager.AddComponent(selectedEntity, comp);
+      AddComponent(selectedEntity, comp);
   ImGui::End();
 }

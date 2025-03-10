@@ -1,21 +1,38 @@
 #pragma once
+#include <asset_loader.hpp>
 #include <engine_export.h>
+#include <input_manager.hpp>
 #include <scene.hpp>
+#include <scene_manager.hpp>
 #include <system.hpp>
 #include <vector>
 class ENGINE_API Application {
-protected:
-  float deltaTime = .0f;
-  std::vector<Scene*> scenes;
+private:
+  std::string name;
   std::vector<System*> systems;
-  unsigned int activeSceneID = 0;
-  EntityManager assetManager;
+  void Init();
+  static void WindowCloseCallback(GLFWwindow*);
+  static void FramebufferSizeCallback(GLFWwindow*, int, int);
+  static void CursorPosCallback(GLFWwindow*, double, double);
+  static void KeyCallback(GLFWwindow*, int, int, int, int);
+  static void MouseButtonCallback(GLFWwindow*, int, int, int);
+  void SetWindowIcon(const std::filesystem::path&);
+  Scene* GetActiveScene();
   AssetLoader assetLoader;
+  SceneManager sceneManager;
+protected:
+  GLFWwindow* window = nullptr;
+  float deltaTime = .0f;
+  unsigned int activeSceneID = 0;
+  // TODO: create the necessary API functions and make the following private
+  EntityManager assetManager;
+  InputManager inputManager;
 public:
-  Application();
+  Application(const std::string&);
   virtual ~Application() = default;
+  const std::string& GetName() const;
   /// <summary>
-  /// Initialize application state
+  /// Start the systems
   /// </summary>
   virtual void Start();
   /// <returns>true if the application is running, false otherwise</returns>
@@ -28,17 +45,55 @@ public:
   /// Clean up memory and terminate the application
   /// </summary>
   virtual void Shutdown();
+  /// <summary>
+  /// Start, then update the application indefinitely until status becomes false
+  /// </summary>
   void Run();
-  Scene* CreateScene();
-  void DeleteScene(unsigned int);
-  Scene* GetActiveScene();
-  void SetActiveScene(unsigned int);
   template <typename T, typename... Z>
   T* CreateSystem(Z&&... args);
   template <typename T>
   void DeleteSystem();
   template <typename T>
   T* GetSystem();
+  unsigned int CreateScene(const std::string&);
+  void DeleteScene(unsigned int);
+  void SetActiveScene(unsigned int);
+  Camera* GetActiveCamera();
+  int CreateEntity(std::string&);
+  void DeleteEntity(unsigned int);
+  std::string GetEntityName(unsigned int);
+  std::string GetAssetName(unsigned int);
+  void RenameEntity(unsigned int, std::string&);
+  bool AddChildEntity(unsigned int, unsigned int);
+  bool EntityHasParent(unsigned int);
+  bool EntityHasChildren(unsigned int);
+  template <typename T>
+  T* AddComponent(unsigned int);
+  IComponent* AddComponent(unsigned int, const std::string&);
+  template <typename T>
+  void RemoveComponent(unsigned int);
+  void RemoveComponent(unsigned int, const std::string&);
+  template <typename T>
+  T* GetComponent(unsigned int);
+  IComponent* GetComponent(unsigned int, const std::string&);
+  std::vector<IComponent*> GetAllComponents(unsigned int);
+  std::vector<std::string> GetMissingComponents(unsigned int);
+  template <typename F>
+  void ForEachChildOfEntity(unsigned int, F);
+  template <typename F>
+  void ForEachRootEntity(F);
+  template <typename F>
+  void ForEachRootAsset(F);
+  template <typename F>
+  void ForAllEntities(F);
+  int Spawn(std::string&, int = -1);
+  bool GetKey(int) const;
+  bool GetButton(int) const;
+  void SetKeyCallback(int, int, std::function<void()>, std::string = "");
+  void UnsetKeyCallback(int, int);
+  int LoadModel(const std::filesystem::path&);
+  int LoadPrimitive(PrimitiveID);
+  int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
 };
 template <typename T, typename... Z>
 T* Application::CreateSystem(Z&&... args) {
@@ -64,4 +119,50 @@ T* Application::GetSystem() {
     if (auto systemT = static_cast<T*>(system))
       return systemT;
   return nullptr;
+}
+template <typename T>
+T* Application::AddComponent(unsigned int id) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return nullptr;
+  return scene->GetEntityManager().AddComponent<T>(id);
+}
+template <typename T>
+void Application::RemoveComponent(unsigned int id) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().RemoveComponent<T>(id);
+}
+template <typename T>
+T* Application::GetComponent(unsigned int id) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return nullptr;
+  return scene->GetEntityManager().GetComponent<T>(id);
+}
+template <typename F>
+void Application::ForEachChildOfEntity(unsigned int parent, F func) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().ForEachChild(parent, func);
+}
+template <typename F>
+void Application::ForEachRootEntity(F func) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().ForEachRoot(func);
+}
+template <typename F>
+void Application::ForEachRootAsset(F func) {
+  assetManager.ForEachRoot(func);
+}
+template <typename F>
+void Application::ForAllEntities(F func) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().ForAll(func);
 }

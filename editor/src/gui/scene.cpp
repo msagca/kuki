@@ -12,8 +12,7 @@ void Editor::DisplayScene() {
   if (isRotating && (ImGui::IsMouseReleased(ImGuiMouseButton_Right) || !ImGui::IsMouseDown(ImGuiMouseButton_Right)))
     isRotating = false;
   cameraController.ToggleRotation(isRotating);
-  auto scene = GetActiveScene();
-  cameraController.SetCamera(scene->GetCamera());
+  cameraController.SetCamera(GetActiveCamera());
   cameraController.Update(deltaTime);
   auto renderSystem = GetSystem<RenderSystem>();
   auto contentRegion = ImGui::GetContentRegionAvail();

@@ -144,7 +144,7 @@ void RenderSystem::DrawScene() {
 void RenderSystem::DrawSkybox() {
   if (!activeCamera)
     return;
-  auto assetID = assetManager.GetID("SkyboxMesh");
+  auto assetID = assetManager.GetID("CubeInverted");
   auto mesh = assetManager.GetComponent<Mesh>(assetID);
   if (!mesh)
     return;

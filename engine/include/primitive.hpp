@@ -13,6 +13,13 @@ struct Triangle {
   glm::vec3 v2;
   glm::vec3 v3;
 };
+enum class PrimitiveID : unsigned int {
+  Cube,
+  Sphere,
+  Cylinder,
+  Plane,
+  CubeInverted
+};
 /// <summary>
 /// A container class for functions that construct primitive shapes
 /// </summary>

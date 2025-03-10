@@ -27,9 +27,11 @@ private:
   void CalculateBounds(Mesh&, const std::vector<Vertex>&);
 public:
   AssetLoader(EntityManager&);
+  int LoadMesh(const std::string&, const std::vector<Vertex>&);
   int LoadMesh(std::string&, const std::vector<Vertex>&);
   int LoadMesh(std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
   int LoadModel(const std::filesystem::path&);
+  int LoadPrimitive(PrimitiveID);
   int LoadTexture(const std::filesystem::path&, TextureType = TextureType::Base);
   int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
 };

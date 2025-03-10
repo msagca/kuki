@@ -1,15 +1,13 @@
 #include <editor.hpp>
-#include <entity_manager.hpp>
-#include <imgui.h>
 #include <string>
-void Editor::DisplayEntity(unsigned int id, EntityManager& entityManager) {
+void Editor::DisplayEntity(unsigned int id) {
   static auto renameMode = false;
   static auto renamedEntity = -1;
   static char newName[256] = "";
   ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
   if (id == selectedEntity)
     nodeFlags |= ImGuiTreeNodeFlags_Selected;
-  if (!entityManager.HasChildren(id))
+  if (!EntityHasChildren(id))
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
   auto renaming = (renamedEntity == id && renameMode);
   auto nodeOpen = false;
@@ -22,14 +20,14 @@ void Editor::DisplayEntity(unsigned int id, EntityManager& entityManager) {
       if (renameConfirmed || (ImGui::IsItemDeactivated() && !ImGui::IsItemDeactivatedAfterEdit())) {
         std::string nameStr = newName;
         if (!nameStr.empty())
-          entityManager.Rename(id, nameStr);
+          RenameEntity(id, nameStr);
       }
       renameMode = false;
       renamedEntity = -1;
     }
     ImGui::PopItemWidth();
   } else {
-    auto& label = entityManager.GetName(id);
+    auto label = GetEntityName(id);
     nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, "%s", label.c_str());
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
       selectedEntity = id;
@@ -49,20 +47,20 @@ void Editor::DisplayEntity(unsigned int id, EntityManager& entityManager) {
       }
       ImGui::EndPopup();
     }
-    if (inputManager.GetKey(GLFW_KEY_DELETE) && selectedEntity == id) {
+    if (GetKey(GLFW_KEY_DELETE) && selectedEntity == id) {
       entityToDelete = id;
       selectedEntity = -1;
       clickedEntity = -1;
     }
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-      strcpy(newName, entityManager.GetName(id).c_str());
+      strcpy(newName, GetEntityName(id).c_str());
       renameMode = true;
       renamedEntity = id;
     }
   }
   if (nodeOpen) {
-    entityManager.ForEachChild(id, [&](unsigned int childID) {
-      DisplayEntity(childID, entityManager);
+    ForEachChildOfEntity(id, [&](unsigned int childID) {
+      DisplayEntity(childID);
     });
     if (!renaming)
       ImGui::TreePop();

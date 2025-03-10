@@ -1,5 +1,4 @@
 #define GLM_ENABLE_EXPERIMENTAL
-#define STB_IMAGE_IMPLEMENTATION
 #include <asset_loader.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/matrix4x4.h>
@@ -27,6 +26,33 @@
 #include <vector>
 AssetLoader::AssetLoader(EntityManager& assetManager)
   : assetManager(assetManager) {}
+int AssetLoader::LoadPrimitive(PrimitiveID id) {
+  int assetID = -1;
+  switch (static_cast<unsigned int>(id)) {
+  case static_cast<unsigned int>(PrimitiveID::Cube):
+    assetID = LoadMesh("Cube", Primitive::Cube());
+    break;
+  case static_cast<unsigned int>(PrimitiveID::Sphere):
+    assetID = LoadMesh("Sphere", Primitive::Sphere());
+    break;
+  case static_cast<unsigned int>(PrimitiveID::Cylinder):
+    assetID = LoadMesh("Cylinder", Primitive::Cylinder());
+    break;
+  case static_cast<unsigned int>(PrimitiveID::Plane):
+    assetID = LoadMesh("Plane", Primitive::Plane());
+    break;
+  case static_cast<unsigned int>(PrimitiveID::CubeInverted): {
+    auto vertices = Primitive::Cube();
+    Primitive::FlipWindingOrder(vertices);
+    assetID = LoadMesh("CubeInverted", vertices);
+  } break;
+  default:
+    break;
+  }
+  assetManager.AddComponent<Transform>(assetID);
+  assetManager.AddComponent<Material>(assetID);
+  return assetID;
+}
 int AssetLoader::LoadModel(const std::filesystem::path& path) {
   if (!std::filesystem::exists(path))
     return -1;
@@ -160,6 +186,10 @@ int AssetLoader::LoadCubeMap(std::string& name, const std::filesystem::path& top
   texture->id = textureID;
   texture->type = TextureType::CubeMap;
   return assetID;
+}
+int AssetLoader::LoadMesh(const std::string& name, const std::vector<Vertex>& vertices) {
+  std::string nameMutable = name;
+  return LoadMesh(nameMutable, vertices);
 }
 int AssetLoader::LoadMesh(std::string& name, const std::vector<Vertex>& vertices) {
   auto assetID = assetManager.Create(name);

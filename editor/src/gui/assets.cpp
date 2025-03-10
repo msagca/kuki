@@ -32,7 +32,7 @@ void Editor::DisplayAssets() {
   static std::unordered_map<unsigned int, float> lastUsedTime;
   if (updateThumbnails) {
     std::vector<unsigned int> assetsToUpdate;
-    assetManager.ForEachRoot([&assetsToUpdate](unsigned int assetID) {
+    ForEachRootEntity([&assetsToUpdate](unsigned int assetID) {
       assetsToUpdate.push_back(assetID);
     });
     for (auto it = assetToTexture.begin(); it != assetToTexture.end();)
@@ -53,7 +53,7 @@ void Editor::DisplayAssets() {
   };
   std::vector<AssetInfo> visibleAssets;
   auto tileCount = 0;
-  assetManager.ForEachRoot([&](unsigned int assetID) {
+  ForEachRootEntity([&](unsigned int assetID) {
     ImVec2 tilePos((tileCount % tilesPerRow) * TILE_SIZE.x, (tileCount / tilesPerRow) * TILE_SIZE.y);
     auto tileTop = tilePos.y;
     auto tileBottom = tilePos.y + TILE_SIZE.y;
@@ -84,7 +84,7 @@ void Editor::DisplayAssets() {
         renderSystem->RenderAssetToTexture(assetID, textureID, TILE_SIZE.x);
     }
     lastUsedTime[assetID] = currentTime;
-    auto& assetName = assetManager.GetName(assetID);
+    auto assetName = GetAssetName(assetID);
     if (ImGui::ImageButton(std::to_string(textureID).c_str(), textureID, TILE_SIZE, ImVec2(.0f, .0f), ImVec2(1.0f, 1.0f))) {}
     //SelectAsset(assetID);
     if (ImGui::IsItemHovered()) {
@@ -118,7 +118,7 @@ void Editor::DisplayAssets() {
   fileBrowser.Display();
   if (fileBrowser.HasSelected()) {
     auto filepath = fileBrowser.GetSelected();
-    assetLoader.LoadModel(filepath);
+    LoadModel(filepath);
     fileBrowser.ClearSelected();
     updateThumbnails = true;
   }

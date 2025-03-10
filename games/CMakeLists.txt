@@ -43,5 +43,8 @@ else()
     COMMAND
       ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:glad>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    COMMAND
+      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:glfw>
+      $<TARGET_FILE_DIR:${PROJECT_NAME}>
   )
 endif()

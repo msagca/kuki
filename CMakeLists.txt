@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 project(LearningOpenGL)
 option(BUILD_TESTS "Build the tests" ON)
+option(BUILD_GAMES "Build the game samples" ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -11,7 +12,14 @@ if(BUILD_TESTS)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/googletest)
 endif()
 # GLFW
+set(BUILD_SHARED_LIBS ON)
+set(GLFW_BUILD_DOCS OFF)
+set(GLFW_BUILD_EXAMPLES OFF)
+set(GLFW_BUILD_TESTS OFF)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
+set(BUILD_SHARED_LIBS OFF)
+# FIXME: the following does not work, the output file is named libglfw.so.3.5 while the executable is looking for libglfw.so.3, creating a symlink after the build is an option
+set_target_properties(glfw PROPERTIES VERSION 3.5.0 SOVERSION 3)
 # GLM
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
 # JSON
@@ -106,9 +114,11 @@ target_include_directories(
 )
 add_subdirectory(engine)
 add_subdirectory(editor)
-add_subdirectory(game)
 if(BUILD_TESTS)
-  add_subdirectory(test)
+  add_subdirectory(tests)
+endif()
+if(BUILD_GAMES)
+  add_subdirectory(games)
 endif()
 set_property(
   DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

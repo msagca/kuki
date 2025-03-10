@@ -66,11 +66,10 @@ bool EntityManager::Rename(unsigned int id, std::string& name) {
   nameToID[name] = id;
   return true;
 }
-const std::string& EntityManager::GetName(unsigned int id) const {
-  static const std::string emptyString = "";
+std::string EntityManager::GetName(unsigned int id) const {
   auto it = idToName.find(id);
   if (it == idToName.end())
-    return emptyString;
+    return "";
   return it->second;
 }
 int EntityManager::GetID(const std::string& name) {
@@ -79,13 +78,14 @@ int EntityManager::GetID(const std::string& name) {
     return -1;
   return it->second;
 }
-void EntityManager::AddChild(unsigned int parent, unsigned int child) {
+bool EntityManager::AddChild(unsigned int parent, unsigned int child) {
   if (ids.find(parent) == ids.end() || ids.find(child) == ids.end())
-    return;
+    return false;
   if (idToChildren.find(parent) == idToChildren.end())
     idToChildren[parent] = {};
   idToChildren[parent].insert(child);
   idToParent[child] = parent;
+  return true;
 }
 void EntityManager::RemoveChild(unsigned int parent, unsigned int child) {
   auto it = idToChildren.find(parent);

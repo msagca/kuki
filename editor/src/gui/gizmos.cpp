@@ -11,11 +11,7 @@ void Editor::DrawGizmos() {
   auto camera = cameraController.GetCamera();
   if (!camera)
     return;
-  auto activeScene = GetActiveScene();
-  if (!activeScene)
-    return;
-  auto& entityManager = activeScene->GetEntityManager();
-  auto transform = entityManager.GetComponent<Transform>(selectedEntity);
+  auto transform = GetComponent<Transform>(selectedEntity);
   if (!transform)
     return;
   ImGuizmo::SetDrawlist();

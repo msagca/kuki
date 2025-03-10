@@ -1,27 +1,23 @@
-#include <application.hpp>
 #include <editor.hpp>
 #include <entity_manager.hpp>
 #include <imgui.h>
 #include <scene.hpp>
 #include <string>
 void Editor::DisplayHierarchy() {
-  auto scene = GetActiveScene();
-  auto& entityManager = scene->GetEntityManager();
-  auto& spawnManager = scene->GetSpawnManager();
   ImGui::Begin("Hierarchy");
   if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered()) {
     selectedEntity = -1;
     clickedEntity = -1;
   }
   if (entityToDelete >= 0) {
-    entityManager.Delete(entityToDelete);
+    DeleteEntity(entityToDelete);
     if (selectedEntity == entityToDelete)
       selectedEntity = -1;
     entityToDelete = -1;
   }
-  entityManager.ForAll([&](unsigned int id) {
-    if (!entityManager.HasParent(id))
-      DisplayEntity(id, entityManager);
+  ForAllEntities([&](unsigned int id) {
+    if (!EntityHasParent(id))
+      DisplayEntity(id);
   });
   if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseClicked(1))
     ImGui::OpenPopup("CreateMenu");
@@ -29,14 +25,14 @@ void Editor::DisplayHierarchy() {
     if (ImGui::BeginMenu("Create")) {
       if (ImGui::MenuItem("Empty")) {
         std::string name = "Entity";
-        entityManager.Create(name);
+        CreateEntity(name);
         ImGui::CloseCurrentPopup();
       }
       if (ImGui::BeginMenu("Asset")) {
-        assetManager.ForEachRoot([this, &scene, &spawnManager](unsigned int id) {
-          auto name = assetManager.GetName(id);
+        ForEachRootAsset([this](unsigned int id) {
+          auto name = GetAssetName(id);
           if (ImGui::MenuItem(name.c_str())) {
-            spawnManager.Spawn(name);
+            Spawn(name);
             ImGui::CloseCurrentPopup();
           }
         });

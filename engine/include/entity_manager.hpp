@@ -43,12 +43,13 @@ public:
   unsigned int Create(std::string&);
   void Delete(unsigned int);
   bool Rename(unsigned int, std::string&);
-  const std::string& GetName(unsigned int) const;
+  std::string GetName(unsigned int) const;
   int GetID(const std::string&);
   /// <summary>
   /// Create parent-child relationship between the given entities
   /// </summary>
-  void AddChild(unsigned int, unsigned int);
+  /// <returns>true if the operation was successful, false otherwise</returns>
+  bool AddChild(unsigned int, unsigned int);
   /// <summary>
   /// Remove the parent-child relationship between the given entities
   /// </summary>
