@@ -7,25 +7,25 @@
 #include <component/mesh_filter.hpp>
 #include <component/mesh_renderer.hpp>
 #include <component/shader.hpp>
+#include <component/texture.hpp>
 #include <component/transform.hpp>
 #include <entity_manager.hpp>
 #include <glad/glad.h>
 #include <glm/detail/qualifier.hpp>
 #include <glm/detail/type_mat4x4.hpp>
 #include <glm/detail/type_vec3.hpp>
+#include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <iostream>
 #include <render_system.hpp>
 #include <scene.hpp>
-#include <variant>
-#include <glm/ext/vector_float4.hpp>
-#include <vector>
 #include <typeindex>
-#include <glm/ext/matrix_float3x3.hpp>
-#include <component/texture.hpp>
+#include <variant>
+#include <vector>
 RenderSystem::RenderSystem(EntityManager& assetManager)
   : assetManager(assetManager) {}
 RenderSystem::~RenderSystem() {
@@ -98,18 +98,21 @@ void RenderSystem::ToggleWireframeMode() {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
-  auto translation = glm::translate(glm::mat4(1.0f), transform->position);
-  auto rotation = glm::toMat4(transform->rotation);
-  auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
-  auto model = translation * rotation * scale;
-  auto& entityManager = activeScene->GetEntityManager();
-  if (auto parent = entityManager.GetComponent<Transform>(transform->parent))
-    return GetWorldTransform(parent) * model;
-  return model;
+  if (transform->dirty) {
+    auto translation = glm::translate(glm::mat4(1.0f), transform->position);
+    auto rotation = glm::toMat4(transform->rotation);
+    auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
+    transform->model = translation * rotation * scale;
+    transform->dirty = false;
+  }
+  if (transform->parent >= 0) {
+    auto& entityManager = activeScene->GetEntityManager();
+    if (auto parent = entityManager.GetComponent<Transform>(transform->parent))
+      return GetWorldTransform(parent) * transform->model;
+  }
+  return transform->model;
 }
 void RenderSystem::DrawEntity(const Transform* transform, const Mesh& mesh, const Material& material) {
-  if (!activeCamera)
-    return;
   auto shader = shaders["PBR"];
   if (std::holds_alternative<PhongMaterial>(material.material))
     shader = shaders["Phong"];
@@ -140,8 +143,6 @@ void RenderSystem::DrawEntity(const Transform* transform, const Mesh& mesh, cons
     glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
 }
 void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<unsigned int>& entities) {
-  if (!activeCamera)
-    return;
   std::vector<Material> materials;
   std::vector<glm::mat4> models;
   auto& entityManager = activeScene->GetEntityManager();
@@ -192,8 +193,6 @@ void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<uns
     glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, models.size());
 }
 void RenderSystem::DrawScene() {
-  if (!activeCamera)
-    return;
   auto& entityManager = activeScene->GetEntityManager();
   std::unordered_map<unsigned int, std::unordered_map<std::type_index, std::vector<unsigned int>>> vaoToMatToEntities;
   std::unordered_map<unsigned int, Mesh> vaoToMesh;
@@ -213,8 +212,6 @@ void RenderSystem::DrawScene() {
   DrawSkybox();
 }
 void RenderSystem::DrawSkybox() {
-  if (!activeCamera)
-    return;
   auto assetID = assetManager.GetID("CubeInverted");
   auto mesh = assetManager.GetComponent<Mesh>(assetID);
   if (!mesh)
@@ -258,7 +255,7 @@ void RenderSystem::DrawAsset(unsigned int id) {
 }
 int RenderSystem::RenderSceneToTexture(int width, int height) {
   // FIXME: there is a padding between the window borders and the image this texture is displayed in, possible size mismatch
-  if (!activeCamera)
+  if (!activeScene || !activeCamera)
     return -1;
   activeCamera->SetAspectRatio(static_cast<float>(width) / height);
   static int currentWidth, currentHeight;
@@ -277,6 +274,8 @@ int RenderSystem::RenderSceneToTexture(int width, int height) {
   return sceneTexture;
 }
 bool RenderSystem::RenderAssetToTexture(unsigned int assetID, unsigned int textureID, int size) {
+  if (!activeScene || !activeCamera)
+    return false;
   static int currentSize;
   if (size != currentSize) {
     currentSize = size;

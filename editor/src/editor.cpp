@@ -1,11 +1,8 @@
 #include <application.hpp>
-#include <asset_loader.hpp>
 #include <component/camera.hpp>
 #include <component/light.hpp>
-#include <component/material.hpp>
-#include <component/transform.hpp>
 #include <editor.hpp>
-#include <entity_manager.hpp>
+#include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -13,11 +10,8 @@
 #include <imgui_internal.h>
 #include <imfilebrowser.h>
 #include <ImGuizmo.h>
-#include <input_manager.hpp>
 #include <primitive.hpp>
 #include <render_system.hpp>
-#include <scene.hpp>
-#include <stb_image.h>
 #include <string>
 Editor::Editor()
   : Application("Editor"), cameraController(inputManager), texturePool(CreateTexture, DeleteTexture, 16) {}

@@ -15,7 +15,7 @@ void Editor::DisplayEntity(unsigned int id) {
     ImGui::AlignTextToFramePadding();
     ImGui::PushItemWidth(-1);
     ImGui::SetKeyboardFocusHere();
-    auto renameConfirmed = ImGui::InputText("Rename", newName, IM_ARRAYSIZE(newName), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+    auto renameConfirmed = ImGui::InputText("##Rename", newName, IM_ARRAYSIZE(newName), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
     if (renameConfirmed || ImGui::IsItemDeactivated()) {
       if (renameConfirmed || (ImGui::IsItemDeactivated() && !ImGui::IsItemDeactivatedAfterEdit())) {
         std::string nameStr = newName;

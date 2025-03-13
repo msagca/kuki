@@ -1,13 +1,29 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #define STB_IMAGE_IMPLEMENTATION
-#include <application.hpp>
 #include <chrono>
+#include <cmath>
+#include <component/camera.hpp>
+#include <component/component.hpp>
+#include <component/material.hpp>
+#include <component/mesh.hpp>
+#include <component/mesh_filter.hpp>
+#include <component/mesh_renderer.hpp>
+#include <component/transform.hpp>
+#include <entity_manager.hpp>
+#include <filesystem>
+#include <functional>
+#include <GLFW/glfw3.h>
+#include <glad/glad.h>
+#include <application.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <iostream>
+#include <primitive.hpp>
 #include <random>
-#include <render_system.hpp>
 #include <scene.hpp>
 #include <stb_image.h>
+#include <string>
 #include <system.hpp>
+#include <vector>
 Application::Application(const std::string& name)
   : name(name), assetManager(), assetLoader(assetManager), inputManager(), sceneManager() {}
 const std::string& Application::GetName() const {
@@ -33,7 +49,6 @@ Camera* Application::GetActiveCamera() {
   return scene->GetCamera();
 }
 void Application::Init() {
-  std::cout << "Initializing " << name << "..." << std::endl;
   static const auto WINDOW_WIDTH = 800.0f;
   static const auto WINDOW_HEIGHT = 600.0f;
   glfwInit();

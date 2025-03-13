@@ -14,6 +14,8 @@ private:
   int selectedEntity = -1;
   int entityToDelete = -1;
   bool updateThumbnails = true;
+  std::string consoleMessage;
+  bool hasConsoleMessage = false;
   static unsigned int CreateTexture();
   static void DeleteTexture(unsigned int);
   void DisplayEntity(unsigned int);

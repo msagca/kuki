@@ -24,7 +24,7 @@ void Editor::DisplayAssets() {
   }
   auto renderSystem = GetSystem<RenderSystem>();
   if (!renderSystem) {
-    ImGui::Text("Render system unavailable");
+    ImGui::Text("Render system unavailable!");
     ImGui::End();
     return;
   }
@@ -32,7 +32,7 @@ void Editor::DisplayAssets() {
   static std::unordered_map<unsigned int, float> lastUsedTime;
   if (updateThumbnails) {
     std::vector<unsigned int> assetsToUpdate;
-    ForEachRootEntity([&assetsToUpdate](unsigned int assetID) {
+    ForEachRootAsset([&assetsToUpdate](unsigned int assetID) {
       assetsToUpdate.push_back(assetID);
     });
     for (auto it = assetToTexture.begin(); it != assetToTexture.end();)
@@ -53,7 +53,7 @@ void Editor::DisplayAssets() {
   };
   std::vector<AssetInfo> visibleAssets;
   auto tileCount = 0;
-  ForEachRootEntity([&](unsigned int assetID) {
+  ForEachRootAsset([&](unsigned int assetID) {
     ImVec2 tilePos((tileCount % tilesPerRow) * TILE_SIZE.x, (tileCount / tilesPerRow) * TILE_SIZE.y);
     auto tileTop = tilePos.y;
     auto tileBottom = tilePos.y + TILE_SIZE.y;

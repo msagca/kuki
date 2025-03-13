@@ -28,7 +28,7 @@ void Camera::SetProperty(Property property) {
       nearPlane = value;
     else if (property.name == "FarPlane")
       farPlane = value;
-    else if (property.name == "OrthoSize")
+    else // if (property.name == "OrthoSize")
       orthoSize = value;
   } else if (std::holds_alternative<glm::vec3>(property.value)) {
     position = std::get<glm::vec3>(property.value);

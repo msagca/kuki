@@ -61,7 +61,15 @@ jobs:
         with:
           name: test-artifacts
           path: build/test
-      - name: Run tests
+      - name: Run tests on Linux
+        if: runner.os == 'Linux'
+        run: |
+          cd build/test
+          chmod +x test
+          ./test
+      - name: Run tests on Windows
+        if: runner.os == 'Windows'
         run: |
           cd build/test
           ./test
+

@@ -17,19 +17,19 @@ void Mesh::SetProperty(Property property) {
       vertexArray = value;
     else if (property.name == "VertexBuffer")
       vertexBuffer = value;
-    else if (property.name == "IndexBuffer")
+    else // if (property.name == "IndexBuffer")
       indexBuffer = value;
   } else if (std::holds_alternative<int>(property.value)) {
     auto& value = std::get<int>(property.value);
     if (property.name == "VertexCount")
       vertexCount = value;
-    else if (property.name == "IndexCount")
+    else // if (property.name == "IndexCount")
       indexCount = value;
   } else if (std::holds_alternative<glm::vec3>(property.value)) {
     auto& value = std::get<glm::vec3>(property.value);
     if (property.name == "MinBound")
       minBound = value;
-    else if (property.name == "MaxBound")
+    else // if (property.name == "MaxBound")
       maxBound = value;
   }
 }

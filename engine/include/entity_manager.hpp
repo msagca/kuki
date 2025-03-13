@@ -116,8 +116,6 @@ public:
 template <typename T>
 T* EntityManager::AddComponent(unsigned int id) {
   auto manager = GetManager<T>();
-  if (!manager)
-    return nullptr;
   if (manager->Has(id))
     return manager->Get(id);
   return &manager->Add(id);
@@ -130,10 +128,7 @@ std::tuple<T*...> EntityManager::AddComponents(unsigned int id) {
 }
 template <typename T>
 void EntityManager::RemoveComponent(unsigned int id) {
-  auto manager = GetManager<T>();
-  if (!manager)
-    return;
-  manager->Remove(id);
+  GetManager<T>()->Remove(id);
 }
 template <typename... T>
 void EntityManager::RemoveComponents(unsigned int id) {
@@ -143,10 +138,7 @@ void EntityManager::RemoveComponents(unsigned int id) {
 }
 template <typename T>
 bool EntityManager::HasComponent(unsigned int id) {
-  auto manager = GetManager<T>();
-  if (!manager)
-    return false;
-  return manager->Has(id);
+  return GetManager<T>()->Has(id);
 }
 template <typename... T>
 bool EntityManager::HasComponents(unsigned int id) {
@@ -156,10 +148,7 @@ bool EntityManager::HasComponents(unsigned int id) {
 }
 template <typename T>
 T* EntityManager::GetComponent(unsigned int id) {
-  auto manager = GetManager<T>();
-  if (!manager)
-    return nullptr;
-  return manager->Get(id);
+  return GetManager<T>()->Get(id);
 }
 template <typename... T>
 std::tuple<T*...> EntityManager::GetComponents(unsigned int id) {
@@ -167,10 +156,7 @@ std::tuple<T*...> EntityManager::GetComponents(unsigned int id) {
 }
 template <typename T>
 T* EntityManager::GetFirstComponent() {
-  auto manager = GetManager<T>();
-  if (!manager)
-    return nullptr;
-  return manager->GetFirst();
+  return GetManager<T>()->GetFirst();
 }
 template <typename... T, typename F>
 void EntityManager::ForEach(F func) {
@@ -214,7 +200,8 @@ ComponentManager<T>* EntityManager::GetManager() {
 }
 template <typename T>
 size_t EntityManager::GetComponentMask() const {
-  auto it = typeToMask.find(std::type_index(typeid(T)));
+  auto type = std::type_index(typeid(T));
+  auto it = typeToMask.find(type);
   if (it == typeToMask.end())
     return 0;
   return static_cast<size_t>(it->second);
