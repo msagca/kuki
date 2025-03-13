@@ -2,6 +2,7 @@
 #include "component.hpp"
 #include "shader.hpp"
 #include <engine_export.h>
+#include <typeindex>
 struct IMaterial : IComponent {
   virtual ~IMaterial() = default;
   virtual void Apply(Shader& shader) const = 0;
@@ -29,6 +30,7 @@ struct ENGINE_API PBRMaterial : IMaterial {
 struct ENGINE_API Material : IMaterial {
   std::variant<PhongMaterial, PBRMaterial> material;
   void Apply(Shader& shader) const override;
+  std::type_index GetTypeIndex() const;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;

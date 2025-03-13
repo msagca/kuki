@@ -55,6 +55,27 @@ void EntityManager::Delete(unsigned int id) {
   });
   DeleteRecords(id);
 }
+void EntityManager::Delete(const std::string& name) {
+  auto it = nameToID.find(name);
+  if (it == nameToID.end())
+    return;
+  Delete(it->second);
+}
+void EntityManager::DeleteAll() {
+  for (const auto id : ids)
+    RemoveAllComponents(id);
+  names.Clear();
+  ids.clear();
+  nameToID.clear();
+  idToName.clear();
+  idToChildren.clear();
+  idToParent.clear();
+}
+void EntityManager::DeleteAll(const std::string& prefix) {
+  names.ForEach(prefix, [this](const std::string& name) {
+    Delete(name);
+  });
+}
 bool EntityManager::Rename(unsigned int id, std::string& name) {
   auto it = idToName.find(id);
   if (it == idToName.end())
@@ -66,10 +87,11 @@ bool EntityManager::Rename(unsigned int id, std::string& name) {
   nameToID[name] = id;
   return true;
 }
-std::string EntityManager::GetName(unsigned int id) const {
+const std::string& EntityManager::GetName(unsigned int id) const {
+  static const std::string emptyString = "";
   auto it = idToName.find(id);
   if (it == idToName.end())
-    return "";
+    return emptyString;
   return it->second;
 }
 int EntityManager::GetID(const std::string& name) {

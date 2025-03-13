@@ -21,6 +21,11 @@
 #include <render_system.hpp>
 #include <scene.hpp>
 #include <variant>
+#include <glm/ext/vector_float4.hpp>
+#include <vector>
+#include <typeindex>
+#include <glm/ext/matrix_float3x3.hpp>
+#include <component/texture.hpp>
 RenderSystem::RenderSystem(EntityManager& assetManager)
   : assetManager(assetManager) {}
 RenderSystem::~RenderSystem() {
@@ -41,6 +46,7 @@ void RenderSystem::Start() {
   auto left = assetCam.orthoSize * assetCam.aspectRatio;
   auto bottom = assetCam.orthoSize;
   assetCam.projection = glm::ortho(left, -left, bottom, -bottom, assetCam.nearPlane, assetCam.farPlane);
+  glGenBuffers(1, &instanceVBO);
 }
 void RenderSystem::Update(float deltaTime, Scene* scene) {
   activeScene = scene;
@@ -101,7 +107,7 @@ glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
     return GetWorldTransform(parent) * model;
   return model;
 }
-void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, const Material& material) {
+void RenderSystem::DrawEntity(const Transform* transform, const Mesh& mesh, const Material& material) {
   if (!activeCamera)
     return;
   auto shader = shaders["PBR"];
@@ -111,13 +117,14 @@ void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, cons
     return;
   shader->Use();
   material.Apply(*shader);
+  shader->SetUniform("useInstancing", false);
   auto model = GetWorldTransform(transform);
   shader->SetMVP(model, activeCamera->view, activeCamera->projection);
   shader->SetUniform("viewPos", activeCamera->position);
   auto dirExists = false;
   auto pointCount = 0;
   auto& entityManager = activeScene->GetEntityManager();
-  entityManager.ForEach<Light>([&](Light* light) {
+  entityManager.ForEach<Light>([&](unsigned int id, Light* light) {
     shader->SetLight(light, pointCount);
     if (light->type == LightType::Directional)
       dirExists = true;
@@ -132,13 +139,77 @@ void RenderSystem::DrawObject(const Transform* transform, const Mesh& mesh, cons
   else
     glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
 }
+void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<unsigned int>& entities) {
+  if (!activeCamera)
+    return;
+  std::vector<Material> materials;
+  std::vector<glm::mat4> models;
+  auto& entityManager = activeScene->GetEntityManager();
+  for (const auto id : entities) {
+    auto [renderer, transform] = entityManager.GetComponents<MeshRenderer, Transform>(id);
+    if (!renderer || !transform)
+      continue;
+    materials.push_back(renderer->material);
+    models.push_back(GetWorldTransform(transform));
+  }
+  if (materials.size() == 0)
+    return;
+  auto& material = materials[0];
+  auto shader = shaders["PBR"];
+  if (std::holds_alternative<PhongMaterial>(material.material))
+    shader = shaders["Phong"];
+  if (!shader)
+    return;
+  shader->Use();
+  material.Apply(*shader);
+  shader->SetUniform("useInstancing", true);
+  shader->SetUniform("view", activeCamera->view);
+  shader->SetUniform("projection", activeCamera->projection);
+  shader->SetUniform("viewPos", activeCamera->position);
+  auto dirExists = false;
+  auto pointCount = 0;
+  entityManager.ForEach<Light>([&](unsigned int id, Light* light) {
+    shader->SetLight(light, pointCount);
+    if (light->type == LightType::Directional)
+      dirExists = true;
+    else
+      pointCount++;
+  });
+  shader->SetUniform("dirExists", dirExists);
+  shader->SetUniform("pointCount", pointCount);
+  glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+  glBufferData(GL_ARRAY_BUFFER, models.size() * sizeof(glm::mat4), models.data(), GL_DYNAMIC_DRAW);
+  glBindVertexArray(mesh.vertexArray);
+  unsigned int attribLocation = 3; // 0: i_position, 1: i_normal, 2: i_texCoord
+  for (auto i = 0; i < 4; ++i) {
+    glEnableVertexAttribArray(attribLocation + i);
+    glVertexAttribPointer(attribLocation + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4) * i));
+    glVertexAttribDivisor(attribLocation + i, 1);
+  }
+  if (mesh.indexCount > 0)
+    glDrawElementsInstanced(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0, models.size());
+  else
+    glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, models.size());
+}
 void RenderSystem::DrawScene() {
   if (!activeCamera)
     return;
   auto& entityManager = activeScene->GetEntityManager();
-  entityManager.ForEach<Transform, MeshFilter, MeshRenderer>([&](Transform* transform, MeshFilter* filter, MeshRenderer* renderer) {
-    DrawObject(transform, filter->mesh, renderer->material);
+  std::unordered_map<unsigned int, std::unordered_map<std::type_index, std::vector<unsigned int>>> vaoToMatToEntities;
+  std::unordered_map<unsigned int, Mesh> vaoToMesh;
+  entityManager.ForEach<MeshFilter, MeshRenderer, Transform>([&](unsigned int id, MeshFilter* filter, MeshRenderer* renderer, Transform* transform) {
+    auto vao = filter->mesh.vertexArray;
+    vaoToMesh[vao] = filter->mesh;
+    if (vaoToMatToEntities.find(vao) == vaoToMatToEntities.end())
+      vaoToMatToEntities[vao] = {};
+    auto mat = renderer->material.GetTypeIndex();
+    if (vaoToMatToEntities[vao].find(mat) == vaoToMatToEntities[vao].end())
+      vaoToMatToEntities[vao][mat] = {};
+    vaoToMatToEntities[vao][mat].push_back(id);
   });
+  for (const auto& [vao, matToEntities] : vaoToMatToEntities)
+    for (const auto& [mat, entities] : matToEntities)
+      DrawEntitiesInstanced(vaoToMesh[vao], entities);
   DrawSkybox();
 }
 void RenderSystem::DrawSkybox() {
@@ -173,13 +244,13 @@ void RenderSystem::DrawAsset(unsigned int id) {
   auto& entityManager = activeScene->GetEntityManager();
   if (assetManager.HasComponents<Transform, Mesh, Material>(id)) {
     auto [transform, mesh, material] = assetManager.GetComponents<Transform, Mesh, Material>(id);
-    DrawObject(transform, *mesh, *material);
+    DrawEntity(transform, *mesh, *material);
   } else if (assetManager.HasComponent<Material>(id)) {
     auto material = assetManager.GetComponent<Material>(id);
     auto planeID = assetManager.GetID("Plane");
     auto quadMesh = assetManager.GetComponent<Mesh>(planeID);
     static const Transform transform;
-    DrawObject(&transform, *quadMesh, *material);
+    DrawEntity(&transform, *quadMesh, *material);
   }
   assetManager.ForEachChild(id, [this](unsigned int childID) {
     DrawAsset(childID);

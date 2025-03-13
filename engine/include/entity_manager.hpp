@@ -42,8 +42,11 @@ public:
   ~EntityManager();
   unsigned int Create(std::string&);
   void Delete(unsigned int);
+  void Delete(const std::string&);
+  void DeleteAll();
+  void DeleteAll(const std::string&);
   bool Rename(unsigned int, std::string&);
-  std::string GetName(unsigned int) const;
+  const std::string& GetName(unsigned int) const;
   int GetID(const std::string&);
   /// <summary>
   /// Create parent-child relationship between the given entities
@@ -171,10 +174,10 @@ T* EntityManager::GetFirstComponent() {
 }
 template <typename... T, typename F>
 void EntityManager::ForEach(F func) {
-  for (const auto& id : ids)
+  for (const auto id : ids)
     if (HasComponents<T...>(id)) {
       auto components = GetComponents<T...>(id);
-      std::apply([&](T*... args) { func(args...); }, components);
+      std::apply([&](T*... args) { func(id, args...); }, components);
     }
 }
 template <typename F>
@@ -187,13 +190,13 @@ void EntityManager::ForEachChild(unsigned int parent, F func) {
 }
 template <typename F>
 void EntityManager::ForEachRoot(F func) {
-  for (const auto& id : ids)
+  for (const auto id : ids)
     if (!HasParent(id))
       func(id);
 }
 template <typename F>
 void EntityManager::ForAll(F func) {
-  for (const auto& id : ids)
+  for (const auto id : ids)
     func(id);
 }
 template <typename T>

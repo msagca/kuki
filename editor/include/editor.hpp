@@ -3,6 +3,7 @@
 #include <camera_controller.hpp>
 #include <imgui.h>
 #include <imfilebrowser.h>
+#include <span>
 #include <utility/pool.hpp>
 class Editor : public Application {
 private:
@@ -20,10 +21,15 @@ private:
   void DisplayProperties();
   void DisplayAssets();
   void DisplayScene();
+  void DisplayConsole();
   /// <summary>
   /// Draw gizmos in ImGui space; they appear either in front of or behind everything in the scene, depending on the draw order
   /// </summary>
   void DrawGizmos();
+  std::vector<std::string> Tokenize(const std::string&);
+  void ProcessCommand(const std::string&);
+  void ProcessSpawnCommand(const std::span<std::string>);
+  void ProcessDeleteCommand(const std::span<std::string>);
   void InitImGui();
   void InitLayout();
   void LoadDefaultAssets();

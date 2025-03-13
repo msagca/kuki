@@ -9,6 +9,9 @@
 void Material::Apply(Shader& shader) const {
   std::visit([&shader](const auto& mat) { mat.Apply(shader); }, material);
 }
+std::type_index Material::GetTypeIndex() const {
+  return std::visit([](const auto& mat) -> std::type_index { return typeid(mat); }, material);
+}
 const std::string Material::GetName() const {
   return ComponentTraits<Material>::GetName();
 }
@@ -27,7 +30,7 @@ const std::string PhongMaterial::GetName() const {
   return "PhongMaterial";
 }
 std::vector<Property> PhongMaterial::GetProperties() const {
-  return {{"Diffuse", diffuse}, {"Specular", specular}, {"Shininess", shininess}};
+  return {{"Diffuse", diffuse, PropertyType::Color}, {"Specular", specular, PropertyType::Color}, {"Shininess", shininess}};
 }
 void PhongMaterial::SetProperty(Property property) {
   if (std::holds_alternative<glm::vec3>(property.value)) {

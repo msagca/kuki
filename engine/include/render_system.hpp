@@ -13,11 +13,13 @@ private:
   unsigned int assetFBO = 0;
   unsigned int assetRBO = 0;
   unsigned int sceneTexture = 0;
+  unsigned int instanceVBO = 0;
   Scene* activeScene = nullptr;
   Camera* activeCamera = nullptr;
   bool ResizeBuffers(unsigned int&, unsigned int&, unsigned int&, int, int);
   glm::mat4 GetWorldTransform(const Transform*);
-  void DrawObject(const Transform*, const Mesh&, const Material&);
+  void DrawEntity(const Transform*, const Mesh&, const Material&);
+  void DrawEntitiesInstanced(const Mesh&, const std::vector<unsigned int>&);
   void DrawSkybox();
   void DrawScene();
   void DrawAsset(unsigned int);

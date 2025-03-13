@@ -3,6 +3,7 @@
 #include <application.hpp>
 #include <chrono>
 #include <iostream>
+#include <random>
 #include <render_system.hpp>
 #include <scene.hpp>
 #include <stb_image.h>
@@ -163,6 +164,24 @@ void Application::DeleteEntity(unsigned int id) {
     return;
   scene->GetEntityManager().Delete(id);
 }
+void Application::DeleteEntity(const std::string& name) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().Delete(name);
+}
+void Application::DeleteAllEntities() {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().DeleteAll();
+}
+void Application::DeleteAllEntities(const std::string& prefix) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().DeleteAll(prefix);
+}
 std::string Application::GetEntityName(unsigned int id) {
   auto scene = GetActiveScene();
   if (!scene)
@@ -171,6 +190,15 @@ std::string Application::GetEntityName(unsigned int id) {
 }
 std::string Application::GetAssetName(unsigned int id) {
   return assetManager.GetName(id);
+}
+int Application::GetEntityID(const std::string& name) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return -1;
+  return scene->GetEntityManager().GetID(name);
+}
+int Application::GetAssetID(const std::string& name) {
+  return assetManager.GetID(name);
 }
 void Application::RenameEntity(unsigned int id, std::string& name) {
   auto scene = GetActiveScene();
@@ -226,7 +254,21 @@ bool Application::EntityHasChildren(unsigned int id) {
     return false;
   return scene->GetEntityManager().HasChildren(id);
 }
-int Application::Spawn(std::string& name, int parentID) {
+glm::vec3 Application::GetRandomPosition(float r) {
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  std::uniform_real_distribution<float> dist(.0f, 1.0f);
+  auto theta = dist(gen) * 2.0f * glm::pi<float>();
+  auto phi = acos(2.0f * dist(gen) - 1.0f);
+  auto u = dist(gen);
+  auto x = sin(phi) * cos(theta);
+  auto y = sin(phi) * sin(theta);
+  auto z = cos(phi);
+  glm::vec3 direction(x, y, z);
+  auto radius = r * std::cbrt(u);
+  return direction * radius;
+}
+int Application::Spawn(std::string& name, int parentID, bool randomPos, float spawnRadius) {
   auto assetID = assetManager.GetID(name);
   if (assetID < 0)
     return -1;
@@ -237,6 +279,8 @@ int Application::Spawn(std::string& name, int parentID) {
       auto transform = AddComponent<Transform>(entityID);
       *transform = *t;
       transform->parent = parentID;
+      if (randomPos)
+        transform->position = GetRandomPosition(spawnRadius);
     } else if (auto m = dynamic_cast<Mesh*>(c)) {
       auto filter = AddComponent<MeshFilter>(entityID);
       filter->mesh = *m;
@@ -250,6 +294,12 @@ int Application::Spawn(std::string& name, int parentID) {
     AddChildEntity(entityID, childID);
   });
   return entityID;
+}
+void Application::SpawnMulti(const std::string& name, int count, float radius) {
+  for (auto i = 0; i < count; i++) {
+    auto nameTemp = name;
+    Spawn(nameTemp, -1, true, radius);
+  }
 }
 bool Application::GetKey(int key) const {
   return inputManager.GetKey(key);

@@ -18,6 +18,7 @@ private:
   static void MouseButtonCallback(GLFWwindow*, int, int, int);
   void SetWindowIcon(const std::filesystem::path&);
   Scene* GetActiveScene();
+  glm::vec3 GetRandomPosition(float);
   AssetLoader assetLoader;
   SceneManager sceneManager;
 protected:
@@ -61,8 +62,13 @@ public:
   Camera* GetActiveCamera();
   int CreateEntity(std::string&);
   void DeleteEntity(unsigned int);
+  void DeleteEntity(const std::string&);
+  void DeleteAllEntities();
+  void DeleteAllEntities(const std::string&);
   std::string GetEntityName(unsigned int);
   std::string GetAssetName(unsigned int);
+  int GetEntityID(const std::string&);
+  int GetAssetID(const std::string&);
   void RenameEntity(unsigned int, std::string&);
   bool AddChildEntity(unsigned int, unsigned int);
   bool EntityHasParent(unsigned int);
@@ -86,7 +92,8 @@ public:
   void ForEachRootAsset(F);
   template <typename F>
   void ForAllEntities(F);
-  int Spawn(std::string&, int = -1);
+  int Spawn(std::string&, int = -1, bool = false, float = 10.0f);
+  void SpawnMulti(const std::string&, int, float);
   bool GetKey(int) const;
   bool GetButton(int) const;
   void SetKeyCallback(int, int, std::function<void()>, std::string = "");

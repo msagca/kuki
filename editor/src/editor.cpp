@@ -51,6 +51,7 @@ void Editor::UpdateView() {
   DisplayAssets();
   DisplayHierarchy();
   DisplayScene();
+  DisplayConsole();
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

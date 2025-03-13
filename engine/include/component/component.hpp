@@ -39,9 +39,17 @@ enum class TextureType : unsigned int {
   Roughness,
   CubeMap
 };
+enum class PropertyType : unsigned int {
+  Number,
+  Color
+};
 struct Property {
+  using PropertyValue = std::variant<int, unsigned int, float, bool, glm::vec3, CameraType, LightType, TextureType>;
   std::string name;
-  std::variant<int, unsigned int, float, bool, glm::vec3, CameraType, LightType, TextureType> value;
+  PropertyType type;
+  PropertyValue value;
+  Property(const std::string& name, PropertyValue value) : name(name), value(value) {}
+  Property(const std::string& name, PropertyValue value, PropertyType type) : name(name), value(value), type(type) {}
 };
 struct IComponent {
   virtual ~IComponent() = default;

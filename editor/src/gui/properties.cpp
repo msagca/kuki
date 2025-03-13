@@ -36,10 +36,9 @@ void Editor::DisplayProperties() {
       auto& prop = properties[j];
       auto value = prop.value;
       ImGui::PushID(static_cast<int>(j));
-      auto isColor = (prop.name == "Ambient" || prop.name == "Diffuse" || prop.name == "Specular");
       if (std::holds_alternative<glm::vec3>(value)) {
         auto valueVec3 = std::get<glm::vec3>(value);
-        if (isColor) {
+        if (prop.type == PropertyType::Color) {
           if (ImGui::ColorEdit3(prop.name.c_str(), glm::value_ptr(valueVec3)))
             component->SetProperty(Property(prop.name, valueVec3));
         } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3)))

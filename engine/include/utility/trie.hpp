@@ -13,7 +13,13 @@ class ENGINE_API Trie {
 private:
   TrieNode* root;
   void InsertAt(const std::string&, TrieNode*);
+  void DeleteAll(TrieNode*);
   void ClearChildren(TrieNode*);
+  /// <summary>
+  /// Execute a function for each word starting at the given node
+  /// </summary>
+  template <typename F>
+  void ForEach(TrieNode*, const std::string&, F);
 public:
   Trie();
   void Insert(const std::string&);
@@ -22,10 +28,37 @@ public:
   /// </summary>
   void Insert(std::string&);
   void Delete(const std::string&);
+  /// <summary>
+  /// Delete all the words that start with the given prefix
+  /// </summary>
+  void DeleteAll(const std::string&);
   bool Search(const std::string&);
   bool StartsWith(const std::string&);
+  /// <summary>
+  /// Execute a function for each word starting with the given prefix
+  /// </summary>
+  template <typename F>
+  void ForEach(const std::string&, F);
   /// <summary>
   /// Release the memory occupied by trie nodes
   /// </summary>
   void Clear();
 };
+template <typename F>
+void Trie::ForEach(const std::string& prefix, F func) {
+  auto node = root;
+  for (auto& c : prefix) {
+    auto it = node->children.find(c);
+    if (it == node->children.end())
+      return;
+    node = it->second;
+  }
+  ForEach(node, prefix, func);
+}
+template <typename F>
+void Trie::ForEach(TrieNode* node, const std::string& prefix, F func) {
+  if (node->wordEnd)
+    func(prefix);
+  for (auto& [c, child] : node->children)
+    ForEach(child, prefix + c, func);
+}

@@ -58,6 +58,23 @@ void Trie::Delete(const std::string& word) {
   }
   node->wordEnd = false;
 }
+void Trie::DeleteAll(TrieNode* node) {
+  node->wordEnd = false;
+  for (auto [_, child] : node->children)
+    DeleteAll(child);
+}
+void Trie::DeleteAll(const std::string& prefix) {
+  if (prefix.empty())
+    return;
+  auto node = root;
+  for (auto& c : prefix) {
+    auto it = node->children.find(c);
+    if (it == node->children.end())
+      return;
+    node = it->second;
+  }
+  DeleteAll(node);
+}
 bool Trie::Search(const std::string& word) {
   if (word.empty())
     return false;
