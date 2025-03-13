@@ -12,6 +12,7 @@ BinPackParameters: false
 BreakArrays: false
 ColumnLimit: 0
 CompactNamespaces: true
+ConstructorInitializerIndentWidth: 2
 EmptyLineBeforeAccessModifier: Never
 IndentExternBlock: Indent
 IndentRequiresClause: false
@@ -19,6 +20,7 @@ KeepEmptyLinesAtTheStartOfBlocks: false
 MaxEmptyLinesToKeep: 0
 NamespaceIndentation: Inner
 PPIndentWidth: 2
+PointerAlignment: Left
 ReflowComments: false
 RequiresClausePosition: WithPreceding
 SortIncludes: Never
