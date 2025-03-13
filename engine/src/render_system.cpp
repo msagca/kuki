@@ -108,7 +108,7 @@ glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
   if (transform->parent >= 0) {
     auto& entityManager = activeScene->GetEntityManager();
     if (auto parent = entityManager.GetComponent<Transform>(transform->parent))
-      return GetWorldTransform(parent) * transform->model;
+      transform->model = GetWorldTransform(parent) * transform->model;
   }
   return transform->model;
 }

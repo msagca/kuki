@@ -60,4 +60,5 @@ jobs:
         run: |
           cd build/tests
           chmod +x tests
+          ln -s libglfw.so.3.5.0 libglfw.so.3 # FIXME: this is a temporary solution
           ./tests
