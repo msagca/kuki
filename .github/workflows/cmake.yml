@@ -45,7 +45,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: test-artifacts
-          path: build/test
+          path: build/tests
   test:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -60,16 +60,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: test-artifacts
-          path: build/test
+          path: build/tests
       - name: Run tests on Linux
         if: runner.os == 'Linux'
         run: |
-          cd build/test
-          chmod +x test
-          ./test
+          cd build/tests
+          chmod +x tests
+          ./tests
       - name: Run tests on Windows
         if: runner.os == 'Windows'
         run: |
-          cd build/test
-          ./test
-
+          cd build/tests
+          ./tests
