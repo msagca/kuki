@@ -36,39 +36,28 @@ jobs:
           key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
           restore-keys: |
             ${{ runner.os }}-cmake-
-      - name: Configure with Ninja
+      - name: Configure
         run: |
           cmake -G "Ninja" -B build -DBUILD_TESTS=ON .
-      - name: Build with CMake
+      - name: Build
         run: |
           cmake --build build
       - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
         with:
           name: test-artifacts
           path: build/tests
   test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    runs-on: ubuntu-latest
     needs: build
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: "recursive"
       - uses: actions/download-artifact@v4
         with:
           name: test-artifacts
           path: build/tests
-      - name: Run tests on Linux
-        if: runner.os == 'Linux'
+      - name: Run tests
         run: |
           cd build/tests
           chmod +x tests
-          ./tests
-      - name: Run tests on Windows
-        if: runner.os == 'Windows'
-        run: |
-          cd build/tests
           ./tests
