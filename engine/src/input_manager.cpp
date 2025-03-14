@@ -52,12 +52,12 @@ void InputManager::CursorPosCallback(GLFWwindow* window, double xpos, double ypo
 }
 void InputManager::SetKeyState(int key, int action) {
   lastInputTime = glfwGetTime();
+  // NOTE: key state is either true (press or repeat) or false (release)
   if (!keysEnabled)
     return;
-  // NOTE: key state is either true (press or repeat) or false (release)
-  keyStates[key] = action == GLFW_PRESS || action == GLFW_REPEAT;
-  if (inactiveCallbacks.find(key) != inactiveCallbacks.end())
+  if (disabledKeys.find(key) != disabledKeys.end())
     return;
+  keyStates[key] = action == GLFW_PRESS || action == GLFW_REPEAT;
   if (action == GLFW_PRESS) {
     if (pressCallbacks.find(key) != pressCallbacks.end())
       pressCallbacks[key]();
@@ -68,15 +68,6 @@ void InputManager::SetKeyState(int key, int action) {
 void InputManager::SetButtonState(int button, int action) {
   lastInputTime = glfwGetTime();
   buttonStates[button] = action == GLFW_PRESS || action == GLFW_REPEAT;
-  if (inactiveCallbacks.find(button) != inactiveCallbacks.end())
-    return;
-  if (action == GLFW_PRESS) {
-    if (pressCallbacks.find(button) != pressCallbacks.end())
-      pressCallbacks[button]();
-  } else if (action == GLFW_RELEASE) {
-    if (releaseCallbacks.find(button) != releaseCallbacks.end())
-      releaseCallbacks[button]();
-  }
 }
 void InputManager::SetMousePos(double xpos, double ypos) {
   lastInputTime = glfwGetTime();
@@ -94,7 +85,7 @@ void InputManager::RegisterCallback(int key, int action, std::function<void()> c
   updateBindings = true;
 }
 void InputManager::UnregisterCallback(int key, int action) {
-  inactiveCallbacks.erase(key);
+  disabledKeys.erase(key);
   if (action == GLFW_PRESS)
     pressCallbacks.erase(key);
   else if (action == GLFW_RELEASE)
@@ -114,20 +105,16 @@ const std::unordered_map<std::string, std::string>& InputManager::GetKeyBindings
   }
   return keyBindings;
 }
-void InputManager::DisableCallback(int key) {
-  if (pressCallbacks.find(key) != pressCallbacks.end())
-    inactiveCallbacks.insert(key);
-  if (releaseCallbacks.find(key) != releaseCallbacks.end())
-    inactiveCallbacks.insert(key);
+void InputManager::DisableKey(int key) {
+  disabledKeys.insert(key);
 }
-void InputManager::EnableCallback(int key) {
-  if (inactiveCallbacks.find(key) != inactiveCallbacks.end())
-    inactiveCallbacks.erase(key);
+void InputManager::EnableKey(int key) {
+  disabledKeys.erase(key);
 }
-void InputManager::DisableKeyCallbacks() {
+void InputManager::DisableAllKeys() {
   keysEnabled = false;
 }
-void InputManager::EnableKeyCallbacks() {
+void InputManager::EnableAllKeys() {
   keysEnabled = true;
 }
 std::string InputManager::GLFWKeyToString(int key) {

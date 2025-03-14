@@ -16,13 +16,15 @@ private:
   std::unordered_map<int, bool> buttonStates;
   std::unordered_map<int, std::function<void()>> pressCallbacks;
   std::unordered_map<int, std::function<void()>> releaseCallbacks;
-  std::unordered_set<int> inactiveCallbacks;
+  std::unordered_set<int> disabledKeys;
   std::unordered_map<int, std::string> keyDescriptions;
   std::unordered_map<std::string, std::string> keyBindings;
   void SetKeyState(int, int);
   void SetButtonState(int, int);
   void SetMousePos(double, double);
   std::string GLFWKeyToString(int);
+  void DisableKey(int);
+  void EnableKey(int);
 public:
   /// <returns>true if the key is pressed/repeated, false otherwise</returns>
   bool GetKey(int) const;
@@ -46,11 +48,21 @@ public:
   /// </summary>
   void UnregisterCallback(int, int);
   const std::unordered_map<std::string, std::string>& GetKeyBindings();
-  void DisableCallback(int);
-  void EnableCallback(int);
-  void DisableKeyCallbacks();
-  void EnableKeyCallbacks();
+  template <typename... T>
+  void DisableKeys(T...);
+  template <typename... T>
+  void EnableKeys(T...);
+  void DisableAllKeys();
+  void EnableAllKeys();
   void KeyCallback(GLFWwindow*, int, int, int, int);
   void MouseButtonCallback(GLFWwindow*, int, int, int);
   void CursorPosCallback(GLFWwindow*, double, double);
 };
+template <typename... T>
+void InputManager::DisableKeys(T... args) {
+  (DisableKey(args), ...);
+}
+template <typename... T>
+void InputManager::EnableKeys(T... args) {
+  (EnableKey(args), ...);
+}

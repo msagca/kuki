@@ -3,7 +3,6 @@
 #include <camera_controller.hpp>
 #include <imgui.h>
 #include <imfilebrowser.h>
-#include <span>
 #include <utility/pool.hpp>
 class Editor : public Application {
 private:
@@ -14,8 +13,6 @@ private:
   int selectedEntity = -1;
   int entityToDelete = -1;
   bool updateThumbnails = true;
-  std::string consoleMessage;
-  bool hasConsoleMessage = false;
   static unsigned int CreateTexture();
   static void DeleteTexture(unsigned int);
   void DisplayEntity(unsigned int);
@@ -29,9 +26,6 @@ private:
   /// </summary>
   void DrawGizmos();
   std::vector<std::string> Tokenize(const std::string&);
-  void ProcessCommand(const std::string&);
-  void ProcessSpawnCommand(const std::span<std::string>);
-  void ProcessDeleteCommand(const std::span<std::string>);
   void InitImGui();
   void InitLayout();
   void LoadDefaultAssets();

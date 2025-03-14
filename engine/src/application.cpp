@@ -1,7 +1,9 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #define STB_IMAGE_IMPLEMENTATION
+#include <application.hpp>
 #include <chrono>
 #include <cmath>
+#include <command.hpp>
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/material.hpp>
@@ -12,9 +14,8 @@
 #include <entity_manager.hpp>
 #include <filesystem>
 #include <functional>
-#include <GLFW/glfw3.h>
 #include <glad/glad.h>
-#include <application.hpp>
+#include <GLFW/glfw3.h>
 #include <glm/ext/vector_float3.hpp>
 #include <iostream>
 #include <primitive.hpp>
@@ -25,7 +26,7 @@
 #include <system.hpp>
 #include <vector>
 Application::Application(const std::string& name)
-  : name(name), assetManager(), assetLoader(assetManager), inputManager(), sceneManager() {}
+  : name(name), assetManager(), assetLoader(assetManager), inputManager(), sceneManager(), commandManager() {}
 const std::string& Application::GetName() const {
   return name;
 }
@@ -132,6 +133,15 @@ void Application::Run() {
   while (Status())
     Update();
   Shutdown();
+}
+void Application::RegisterCommand(ICommand* command) {
+  commandManager.Register(command);
+}
+void Application::UnregisterCommand(const std::string& name) {
+  commandManager.Unregister(name);
+}
+int Application::DispatchCommand(const std::string& input, std::string& message) {
+  return commandManager.Dispatch(this, input, message);
 }
 void Application::WindowCloseCallback(GLFWwindow* window) {
   glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -321,6 +331,12 @@ bool Application::GetKey(int key) const {
 }
 bool Application::GetButton(int button) const {
   return inputManager.GetButton(button);
+}
+void Application::EnableAllKeys() {
+  inputManager.EnableAllKeys();
+}
+void Application::DisableAllKeys() {
+  inputManager.DisableAllKeys();
 }
 void Application::SetKeyCallback(int key, int action, std::function<void()> callback, std::string description) {
   inputManager.RegisterCallback(key, action, callback, description);

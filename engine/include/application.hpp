@@ -1,5 +1,6 @@
 #pragma once
 #include <asset_loader.hpp>
+#include <command_manager.hpp>
 #include <engine_export.h>
 #include <input_manager.hpp>
 #include <scene.hpp>
@@ -21,6 +22,7 @@ private:
   glm::vec3 GetRandomPosition(float);
   AssetLoader assetLoader;
   SceneManager sceneManager;
+  CommandManager commandManager;
 protected:
   GLFWwindow* window = nullptr;
   float deltaTime = .0f;
@@ -50,6 +52,9 @@ public:
   /// Start, then update the application indefinitely until status becomes false
   /// </summary>
   void Run();
+  void RegisterCommand(ICommand*);
+  void UnregisterCommand(const std::string&);
+  int DispatchCommand(const std::string&, std::string&);
   template <typename T, typename... Z>
   T* CreateSystem(Z&&... args);
   template <typename T>
@@ -96,12 +101,26 @@ public:
   void SpawnMulti(const std::string&, int, float);
   bool GetKey(int) const;
   bool GetButton(int) const;
+  template <typename... T>
+  void DisableKeys(T...);
+  template <typename... T>
+  void EnableKeys(T...);
+  void EnableAllKeys();
+  void DisableAllKeys();
   void SetKeyCallback(int, int, std::function<void()>, std::string = "");
   void UnsetKeyCallback(int, int);
   int LoadModel(const std::filesystem::path&);
   int LoadPrimitive(PrimitiveID);
   int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
 };
+template <typename... T>
+void Application::DisableKeys(T... args) {
+  inputManager.DisableKeys(args...);
+}
+template <typename... T>
+void Application::EnableKeys(T... args) {
+  inputManager.EnableKeys(args...);
+}
 template <typename T, typename... Z>
 T* Application::CreateSystem(Z&&... args) {
   static_assert(std::is_base_of_v<System, T>, "T must extend System.");

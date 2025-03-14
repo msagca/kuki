@@ -1,0 +1,27 @@
+#include <application.hpp>
+#include <command.hpp>
+#include <span>
+#include <string>
+DeleteCommand::DeleteCommand()
+  : ICommand("delete") {}
+std::string DeleteCommand::GetMessage(int code) {
+  switch (code) {
+  case 0:
+    return "";
+  default:
+    return "Usage: delete <name_pattern>";
+  }
+}
+int DeleteCommand::Execute(Application* app, const std::span<std::string> args) {
+  if (args.size() != 1)
+    return -1;
+  auto& pattern = args[0];
+  auto last = pattern.back();
+  if (last == '*') {
+    pattern.pop_back();
+    app->DeleteAllEntities(pattern);
+  } else
+    app->DeleteEntity(pattern);
+  message = "";
+  return 0;
+}

@@ -1,4 +1,5 @@
 #include <application.hpp>
+#include <command.hpp>
 #include <component/camera.hpp>
 #include <component/light.hpp>
 #include <editor.hpp>
@@ -23,6 +24,8 @@ void Editor::Start() {
   LoadDefaultAssets();
   LoadDefaultScene();
   CreateSystem<RenderSystem>(assetManager);
+  RegisterCommand(new SpawnCommand());
+  RegisterCommand(new DeleteCommand());
   Application::Start();
 }
 void Editor::Update() {
