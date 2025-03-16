@@ -15,15 +15,15 @@
 #include <render_system.hpp>
 #include <string>
 Editor::Editor()
-  : Application("Editor"), cameraController(inputManager), texturePool(CreateTexture, DeleteTexture, 16) {}
+  : Application("Editor"), cameraController(inputManager) {}
 void Editor::Start() {
-  SetKeyCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
-  SetKeyCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
-  SetKeyCallback(GLFW_KEY_V, GLFW_PRESS, RenderSystem::ToggleWireframeMode, "Toggle wireframe mode.");
+  SetInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
+  SetInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
+  SetInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderSystem::ToggleWireframeMode, "Toggle wireframe mode.");
   InitImGui();
   LoadDefaultAssets();
   LoadDefaultScene();
-  CreateSystem<RenderSystem>(assetManager);
+  CreateSystem<RenderSystem>(static_cast<Application&>(*this));
   RegisterCommand(new SpawnCommand());
   RegisterCommand(new DeleteCommand());
   Application::Start();
@@ -84,10 +84,11 @@ void Editor::LoadDefaultScene() {
 }
 void Editor::LoadDefaultAssets() {
   LoadPrimitive(PrimitiveID::Cube);
-  LoadPrimitive(PrimitiveID::Sphere);
-  LoadPrimitive(PrimitiveID::Cylinder);
-  LoadPrimitive(PrimitiveID::Plane);
   LoadPrimitive(PrimitiveID::CubeInverted);
+  LoadPrimitive(PrimitiveID::Cylinder);
+  LoadPrimitive(PrimitiveID::Frame);
+  LoadPrimitive(PrimitiveID::Plane);
+  LoadPrimitive(PrimitiveID::Sphere);
   std::string assetName = "Skybox";
   LoadCubeMap(assetName, "image/skybox/top.jpg", "image/skybox/bottom.jpg", "image/skybox/right.jpg", "image/skybox/left.jpg", "image/skybox/front.jpg", "image/skybox/back.jpg");
 }
@@ -101,15 +102,4 @@ void Editor::InitImGui() {
   ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
   fileBrowser.SetTitle("Browse Files");
   fileBrowser.SetTypeFilters({".gltf"});
-}
-unsigned int Editor::CreateTexture() {
-  unsigned int id;
-  glGenTextures(1, &id);
-  return id;
-}
-void Editor::DeleteTexture(unsigned int id) {
-  glDeleteTextures(1, &id);
-}
-void Editor::UpdateThumbnails() {
-  updateThumbnails = true;
 }

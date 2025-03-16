@@ -30,15 +30,16 @@ void Camera::SetProperty(Property property) {
       farPlane = value;
     else // if (property.name == "OrthoSize")
       orthoSize = value;
+    UpdateDirection();
+    UpdateView();
+    UpdateProjection();
   } else if (std::holds_alternative<glm::vec3>(property.value)) {
     position = std::get<glm::vec3>(property.value);
+    UpdateView();
   } else if (std::holds_alternative<CameraType>(property.value)) {
     type = std::get<CameraType>(property.value);
+    UpdateProjection();
   }
-}
-void Camera::SetAspectRatio(float value) {
-  aspectRatio = value;
-  UpdateProjection();
 }
 void Camera::UpdateDirection() {
   static const auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);

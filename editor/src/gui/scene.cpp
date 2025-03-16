@@ -19,6 +19,7 @@ void Editor::DisplayScene() {
   if (renderSystem) {
     auto texture = renderSystem->RenderSceneToTexture(contentRegion.x, contentRegion.y);
     if (texture > 0) {
+      // FIXME: there is a padding between the window borders and the image this texture is displayed in, possible size mismatch
       ImGui::Image(texture, ImVec2(contentRegion.x, contentRegion.y), uv0, uv1);
       DrawGizmos();
     }

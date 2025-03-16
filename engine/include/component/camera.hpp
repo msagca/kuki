@@ -22,7 +22,6 @@ struct ENGINE_API Camera : IComponent {
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;
-  void SetAspectRatio(float);
   void UpdateDirection();
   void UpdateView();
   void UpdateProjection();

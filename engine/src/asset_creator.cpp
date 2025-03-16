@@ -129,7 +129,7 @@ void AssetLoader::CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>&
 }
 void AssetLoader::CalculateBounds(Mesh& mesh, const std::vector<Vertex>& vertices) {
   mesh.minBound = glm::vec3(std::numeric_limits<float>::max());
-  mesh.maxBound = glm::vec3(std::numeric_limits<float>::min());
+  mesh.maxBound = glm::vec3(std::numeric_limits<float>::lowest());
   for (const auto& vertex : vertices) {
     mesh.minBound = glm::min(mesh.minBound, vertex.position);
     mesh.maxBound = glm::max(mesh.maxBound, vertex.position);

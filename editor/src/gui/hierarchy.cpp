@@ -5,7 +5,7 @@
 #include <string>
 void Editor::DisplayHierarchy() {
   ImGui::Begin("Hierarchy");
-  if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered()) {
+  if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_LEFT)) {
     selectedEntity = -1;
     clickedEntity = -1;
   }
@@ -19,7 +19,7 @@ void Editor::DisplayHierarchy() {
     if (!EntityHasParent(id))
       DisplayEntity(id);
   });
-  if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseClicked(1))
+  if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_RIGHT))
     ImGui::OpenPopup("CreateMenu");
   if (ImGui::BeginPopup("CreateMenu")) {
     if (ImGui::BeginMenu("Create")) {

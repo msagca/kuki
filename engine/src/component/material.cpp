@@ -82,3 +82,20 @@ void PBRMaterial::SetProperty(Property property) {
       roughness = value;
   }
 }
+void UnlitMaterial::Apply(Shader& shader) const {
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, base);
+  shader.SetUniform("material.base", 0);
+}
+const std::string UnlitMaterial::GetName() const {
+  return "UnlitMaterial";
+}
+std::vector<Property> UnlitMaterial::GetProperties() const {
+  return {{"Base", base}};
+}
+void UnlitMaterial::SetProperty(Property property) {
+  if (std::holds_alternative<unsigned int>(property.value)) {
+    auto& value = std::get<unsigned int>(property.value);
+    base = value;
+  }
+}

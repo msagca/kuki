@@ -7,6 +7,15 @@
 #include <utility>
 #include <vector>
 const static auto PI = glm::pi<float>();
+std::vector<Vertex> Primitive::Frame() {
+  return {// x, y, z, Nx, Ny, Nz, u, v
+    {{-1.0f, 1.0f, .0f}, {.0f, .0f, 1.0f}, {.0f, 1.0f}},
+    {{1.0f, 1.0f, .0f}, {.0f, .0f, 1.0f}, {1.0f, 1.0f}},
+    {{-1.0f, -1.0f, .0f}, {.0f, .0f, 1.0f}, {.0f, .0f}},
+    {{-1.0f, -1.0f, .0f}, {.0f, .0f, 1.0f}, {.0f, .0f}},
+    {{1.0f, 1.0f, .0f}, {.0f, .0f, 1.0f}, {1.0f, 1.0f}},
+    {{1.0f, -1.0f, .0f}, {.0f, .0f, 1.0f}, {1.0f, .0f}}};
+}
 std::vector<Vertex> Primitive::Plane() {
   return {// x, y, z, Nx, Ny, Nz, u, v
     {{-1.0f, .0f, 1.0f}, {.0f, 1.0f, .0f}, {.0f, 1.0f}},

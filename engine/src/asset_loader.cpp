@@ -41,6 +41,9 @@ int AssetLoader::LoadPrimitive(PrimitiveID id) {
   case static_cast<unsigned int>(PrimitiveID::Plane):
     assetID = LoadMesh("Plane", Primitive::Plane());
     break;
+  case static_cast<unsigned int>(PrimitiveID::Frame):
+    assetID = LoadMesh("Frame", Primitive::Frame());
+    break;
   case static_cast<unsigned int>(PrimitiveID::CubeInverted): {
     auto vertices = Primitive::Cube();
     Primitive::FlipWindingOrder(vertices);

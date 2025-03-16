@@ -1,4 +1,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
+#include <application.hpp>
+#include <cmath>
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/light.hpp>
@@ -9,7 +11,7 @@
 #include <component/shader.hpp>
 #include <component/texture.hpp>
 #include <component/transform.hpp>
-#include <entity_manager.hpp>
+#include <functional>
 #include <glad/glad.h>
 #include <glm/detail/qualifier.hpp>
 #include <glm/detail/type_mat4x4.hpp>
@@ -21,13 +23,16 @@
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <iostream>
+#include <limits>
 #include <render_system.hpp>
-#include <scene.hpp>
+#include <system.hpp>
+#include <tuple>
 #include <typeindex>
+#include <unordered_map>
 #include <variant>
 #include <vector>
-RenderSystem::RenderSystem(EntityManager& assetManager)
-  : assetManager(assetManager) {}
+RenderSystem::RenderSystem(Application& app)
+  : System(app), texturePool(CreateTexture, DeleteTexture, 16) {}
 RenderSystem::~RenderSystem() {
   for (const auto& [_, shader] : shaders)
     delete shader;
@@ -42,49 +47,51 @@ void RenderSystem::Start() {
   shaders.insert({pbrShader->GetName(), pbrShader});
   shaders.insert({unlitShader->GetName(), unlitShader});
   shaders.insert({skyboxShader->GetName(), skyboxShader});
-  assetCam.view = glm::lookAt(assetCam.position, assetCam.position + assetCam.front, assetCam.up);
-  auto left = assetCam.orthoSize * assetCam.aspectRatio;
-  auto bottom = assetCam.orthoSize;
-  assetCam.projection = glm::ortho(left, -left, bottom, -bottom, assetCam.nearPlane, assetCam.farPlane);
   glGenBuffers(1, &instanceVBO);
 }
-void RenderSystem::Update(float deltaTime, Scene* scene) {
-  activeScene = scene;
-  activeCamera = scene->GetCamera();
-}
 void RenderSystem::Shutdown() {
-  glDeleteFramebuffers(1, &sceneFBO);
-  glDeleteRenderbuffers(1, &sceneRBO);
-  glDeleteTextures(1, &sceneTexture);
   glDeleteFramebuffers(1, &assetFBO);
+  glDeleteFramebuffers(1, &sceneFBO);
+  glDeleteFramebuffers(1, &sceneMultiFBO);
   glDeleteRenderbuffers(1, &assetRBO);
+  glDeleteRenderbuffers(1, &sceneMultiRBO);
+  glDeleteRenderbuffers(1, &sceneRBO);
+  glDeleteTextures(1, &sceneMultiTexture);
+  glDeleteTextures(1, &sceneTexture);
 }
-bool RenderSystem::ResizeBuffers(unsigned int& fbo, unsigned int& rbo, unsigned int& texture, int width, int height) {
-  if (texture == 0) {
+bool RenderSystem::UpdateBuffers(unsigned int& fbo, unsigned int& rbo, unsigned int& texture, int width, int height, int samples) {
+  auto multi = samples > 1;
+  if (texture == 0)
     glGenTextures(1, &texture);
+  if (multi) {
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, texture);
+    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, GL_RGBA, width, height, GL_TRUE);
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+  } else {
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  } else
-    glBindTexture(GL_TEXTURE_2D, texture);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-  glBindTexture(GL_TEXTURE_2D, 0);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
+  }
   if (rbo == 0)
     glGenRenderbuffers(1, &rbo);
   glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+  if (multi)
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH24_STENCIL8, width, height);
+  else
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
-  if (fbo == 0) {
+  if (fbo == 0)
     glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
-  } else
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  auto textureTarget = multi ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textureTarget, texture, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
   auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   if (status != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "Framebuffer is incomplete." << std::endl;
+    std::cerr << "Framebuffer is incomplete. Status: 0x" << std::hex << status << std::dec << std::endl;
     return false;
   }
   return true;
@@ -97,37 +104,34 @@ void RenderSystem::ToggleWireframeMode() {
   else
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
-glm::mat4 RenderSystem::GetWorldTransform(const Transform* transform) {
-  if (transform->dirty) {
-    auto translation = glm::translate(glm::mat4(1.0f), transform->position);
-    auto rotation = glm::toMat4(transform->rotation);
-    auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
-    transform->model = translation * rotation * scale;
-    transform->dirty = false;
-  }
-  if (transform->parent >= 0) {
-    auto& entityManager = activeScene->GetEntityManager();
-    if (auto parent = entityManager.GetComponent<Transform>(transform->parent))
-      transform->model = GetWorldTransform(parent) * transform->model;
-  }
-  return transform->model;
-}
-void RenderSystem::DrawEntity(const Transform* transform, const Mesh& mesh, const Material& material) {
-  auto shader = shaders["PBR"];
-  if (std::holds_alternative<PhongMaterial>(material.material))
-    shader = shaders["Phong"];
-  if (!shader)
-    return;
+void RenderSystem::DrawAsset(const Transform* transform, const Mesh& mesh, const Material& material) {
+  auto shader = GetMaterialShader(material);
   shader->Use();
   material.Apply(*shader);
   shader->SetUniform("useInstancing", false);
-  auto model = GetWorldTransform(transform);
-  shader->SetMVP(model, activeCamera->view, activeCamera->projection);
-  shader->SetUniform("viewPos", activeCamera->position);
+  auto model = GetEntityWorldTransform(transform);
+  shader->SetMVP(model, assetCam.view, assetCam.projection);
+  shader->SetUniform("viewPos", assetCam.position);
+  static const Light dirLight;
+  shader->SetLight(&dirLight);
+  shader->SetUniform("dirExists", true);
+  glBindVertexArray(mesh.vertexArray);
+  if (mesh.indexCount > 0)
+    glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);
+  else
+    glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
+}
+void RenderSystem::DrawEntity(const Transform* transform, const Mesh& mesh, const Material& material) {
+  auto shader = GetMaterialShader(material);
+  shader->Use();
+  material.Apply(*shader);
+  shader->SetUniform("useInstancing", false);
+  auto model = GetEntityWorldTransform(transform);
+  shader->SetMVP(model, app.GetActiveCamera()->view, app.GetActiveCamera()->projection);
+  shader->SetUniform("viewPos", app.GetActiveCamera()->position);
   auto dirExists = false;
   auto pointCount = 0;
-  auto& entityManager = activeScene->GetEntityManager();
-  entityManager.ForEach<Light>([&](unsigned int id, Light* light) {
+  app.ForEachEntity<Light>([&](unsigned int id, Light* light) {
     shader->SetLight(light, pointCount);
     if (light->type == LightType::Directional)
       dirExists = true;
@@ -145,31 +149,26 @@ void RenderSystem::DrawEntity(const Transform* transform, const Mesh& mesh, cons
 void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<unsigned int>& entities) {
   std::vector<Material> materials;
   std::vector<glm::mat4> models;
-  auto& entityManager = activeScene->GetEntityManager();
   for (const auto id : entities) {
-    auto [renderer, transform] = entityManager.GetComponents<MeshRenderer, Transform>(id);
+    auto [renderer, transform] = app.GetComponents<MeshRenderer, Transform>(id);
     if (!renderer || !transform)
       continue;
     materials.push_back(renderer->material);
-    models.push_back(GetWorldTransform(transform));
+    models.push_back(GetEntityWorldTransform(transform));
   }
   if (materials.size() == 0)
     return;
   auto& material = materials[0];
-  auto shader = shaders["PBR"];
-  if (std::holds_alternative<PhongMaterial>(material.material))
-    shader = shaders["Phong"];
-  if (!shader)
-    return;
+  auto shader = GetMaterialShader(material);
   shader->Use();
   material.Apply(*shader);
   shader->SetUniform("useInstancing", true);
-  shader->SetUniform("view", activeCamera->view);
-  shader->SetUniform("projection", activeCamera->projection);
-  shader->SetUniform("viewPos", activeCamera->position);
+  shader->SetUniform("view", app.GetActiveCamera()->view);
+  shader->SetUniform("projection", app.GetActiveCamera()->projection);
+  shader->SetUniform("viewPos", app.GetActiveCamera()->position);
   auto dirExists = false;
   auto pointCount = 0;
-  entityManager.ForEach<Light>([&](unsigned int id, Light* light) {
+  app.ForEachEntity<Light>([&](unsigned int id, Light* light) {
     shader->SetLight(light, pointCount);
     if (light->type == LightType::Directional)
       dirExists = true;
@@ -193,10 +192,9 @@ void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<uns
     glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, models.size());
 }
 void RenderSystem::DrawScene() {
-  auto& entityManager = activeScene->GetEntityManager();
   std::unordered_map<unsigned int, std::unordered_map<std::type_index, std::vector<unsigned int>>> vaoToMatToEntities;
   std::unordered_map<unsigned int, Mesh> vaoToMesh;
-  entityManager.ForEach<MeshFilter, MeshRenderer, Transform>([&](unsigned int id, MeshFilter* filter, MeshRenderer* renderer, Transform* transform) {
+  app.ForEachEntity<MeshFilter, MeshRenderer, Transform>([&](unsigned int id, MeshFilter* filter, MeshRenderer* renderer, Transform* transform) {
     auto vao = filter->mesh.vertexArray;
     vaoToMesh[vao] = filter->mesh;
     if (vaoToMatToEntities.find(vao) == vaoToMatToEntities.end())
@@ -212,20 +210,18 @@ void RenderSystem::DrawScene() {
   DrawSkybox();
 }
 void RenderSystem::DrawSkybox() {
-  auto assetID = assetManager.GetID("CubeInverted");
-  auto mesh = assetManager.GetComponent<Mesh>(assetID);
+  auto assetID = app.GetAssetID("CubeInverted");
+  auto mesh = app.GetAssetComponent<Mesh>(assetID);
   if (!mesh)
     return;
   auto shader = shaders["Skybox"];
-  if (!shader)
-    return;
   shader->Use();
-  auto view = glm::mat4(glm::mat3(activeCamera->view));
+  auto view = glm::mat4(glm::mat3(app.GetActiveCamera()->view));
   shader->SetUniform("view", view);
-  shader->SetUniform("projection", activeCamera->projection);
+  shader->SetUniform("projection", app.GetActiveCamera()->projection);
   glBindVertexArray(mesh->vertexArray);
-  assetID = assetManager.GetID("Skybox");
-  auto skyboxTexture = assetManager.GetComponent<Texture>(assetID);
+  assetID = app.GetAssetID("Skybox");
+  auto skyboxTexture = app.GetAssetComponent<Texture>(assetID);
   if (!skyboxTexture)
     return;
   glActiveTexture(GL_TEXTURE0);
@@ -238,55 +234,144 @@ void RenderSystem::DrawSkybox() {
   glDepthFunc(GL_LESS);
 }
 void RenderSystem::DrawAsset(unsigned int id) {
-  auto& entityManager = activeScene->GetEntityManager();
-  if (assetManager.HasComponents<Transform, Mesh, Material>(id)) {
-    auto [transform, mesh, material] = assetManager.GetComponents<Transform, Mesh, Material>(id);
-    DrawEntity(transform, *mesh, *material);
-  } else if (assetManager.HasComponent<Material>(id)) {
-    auto material = assetManager.GetComponent<Material>(id);
-    auto planeID = assetManager.GetID("Plane");
-    auto quadMesh = assetManager.GetComponent<Mesh>(planeID);
+  auto [minBound, maxBound] = GetAssetBounds(id);
+  PositionCamera(assetCam, minBound, maxBound);
+  if (app.AssetHasComponents<Transform, Mesh, Material>(id)) {
+    auto [transform, mesh, material] = app.GetAssetComponents<Transform, Mesh, Material>(id);
+    DrawAsset(transform, *mesh, *material);
+  } else if (auto texture = app.GetAssetComponent<Texture>(id)) {
+    Material material;
+    material.material = UnlitMaterial();
+    auto& unlitMaterial = std::get<UnlitMaterial>(material.material);
+    unlitMaterial.base = texture->id;
+    auto frameID = app.GetAssetID("Frame");
+    auto quadMesh = app.GetAssetComponent<Mesh>(frameID);
     static const Transform transform;
-    DrawEntity(&transform, *quadMesh, *material);
+    DrawAsset(&transform, *quadMesh, material);
   }
-  assetManager.ForEachChild(id, [this](unsigned int childID) {
+  app.ForEachChildAsset(id, [this](unsigned int childID) {
     DrawAsset(childID);
   });
 }
 int RenderSystem::RenderSceneToTexture(int width, int height) {
-  // FIXME: there is a padding between the window borders and the image this texture is displayed in, possible size mismatch
-  if (!activeScene || !activeCamera)
+  if (!app.GetActiveScene() || !app.GetActiveCamera())
     return -1;
-  activeCamera->SetAspectRatio(static_cast<float>(width) / height);
-  static int currentWidth, currentHeight;
-  if (width != currentWidth || height != currentHeight) {
-    currentWidth = width;
-    currentHeight = height;
-    if (!ResizeBuffers(sceneFBO, sceneRBO, sceneTexture, width, height))
-      return -1;
+  app.GetActiveCamera()->SetProperty({"AspectRatio", static_cast<float>(width) / height});
+  auto multiBufferComplete = UpdateBuffers(sceneMultiFBO, sceneMultiRBO, sceneMultiTexture, width, height, 4);
+  auto singleBufferComplete = UpdateBuffers(sceneFBO, sceneRBO, sceneTexture, width, height);
+  if (!multiBufferComplete || !singleBufferComplete) {
+    std::cerr << "Failed to update framebuffers for scene rendering." << std::endl;
+    return -1;
   }
-  glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, sceneMultiFBO);
   glViewport(0, 0, width, height);
   glClearColor(.0f, .0f, .0f, .0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   DrawScene();
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneMultiFBO);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sceneFBO);
+  glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return sceneTexture;
 }
-bool RenderSystem::RenderAssetToTexture(unsigned int assetID, unsigned int textureID, int size) {
-  if (!activeScene || !activeCamera)
-    return false;
-  static int currentSize;
-  if (size != currentSize) {
-    currentSize = size;
-    if (!ResizeBuffers(assetFBO, assetRBO, textureID, size, size))
-      return false;
+int RenderSystem::RenderAssetToTexture(unsigned int assetID, int size) {
+  static std::unordered_map<unsigned int, unsigned int> assetToTexture;
+  if (assetToTexture.find(assetID) == assetToTexture.end()) {
+    auto itemID = texturePool.Request();
+    assetToTexture[assetID] = *texturePool.Get(itemID);
   }
+  auto textureID = assetToTexture[assetID];
+  UpdateBuffers(assetFBO, assetRBO, textureID, size, size);
   glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
+  glViewport(0, 0, size, size);
   glClearColor(.0f, .0f, .0f, .0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   DrawAsset(assetID);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  return true;
+  return textureID;
+}
+unsigned int RenderSystem::CreateTexture() {
+  unsigned int id;
+  glGenTextures(1, &id);
+  return id;
+}
+void RenderSystem::DeleteTexture(unsigned int id) {
+  glDeleteTextures(1, &id);
+}
+glm::mat4 RenderSystem::GetEntityWorldTransform(const Transform* transform) {
+  //if (transform->dirty) {
+  auto translation = glm::translate(glm::mat4(1.0f), transform->position);
+  auto rotation = glm::toMat4(transform->rotation);
+  auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
+  transform->model = translation * rotation * scale;
+  //transform->dirty = false;
+  //}
+  if (transform->parent >= 0)
+    if (auto parent = app.GetComponent<Transform>(transform->parent))
+      transform->model = GetEntityWorldTransform(parent) * transform->model;
+  return transform->model;
+}
+glm::mat4 RenderSystem::GetAssetWorldTransform(const Transform* transform) {
+  auto translation = glm::translate(glm::mat4(1.0f), transform->position);
+  auto rotation = glm::toMat4(transform->rotation);
+  auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
+  transform->model = translation * rotation * scale;
+  if (transform->parent >= 0)
+    if (auto parent = app.GetAssetComponent<Transform>(transform->parent))
+      transform->model = GetAssetWorldTransform(parent) * transform->model;
+  return transform->model;
+}
+glm::vec3 RenderSystem::GetAssetWorldPosition(const Transform* transform) {
+  auto model = GetAssetWorldTransform(transform);
+  return model[3];
+}
+std::tuple<glm::vec3, glm::vec3> RenderSystem::GetAssetBounds(unsigned int id) {
+  auto min = glm::vec3(std::numeric_limits<float>::max());
+  auto max = glm::vec3(std::numeric_limits<float>::lowest());
+  std::function<void(unsigned int)> calculateBounds = [&](unsigned int assetID) {
+    auto [mesh, transform] = app.GetAssetComponents<Mesh, Transform>(assetID);
+    if (!mesh)
+      return;
+    auto childMin = mesh->minBound;
+    auto childMax = mesh->maxBound;
+    // TODO: consider all 8 corners for bounds calculation
+    if (transform) {
+      auto position = GetAssetWorldPosition(transform);
+      childMin += position;
+      childMax += position;
+    }
+    min = glm::min(min, childMin);
+    max = glm::max(max, childMax);
+    app.ForEachChildAsset(assetID, [&](unsigned int childId) {
+      calculateBounds(childId);
+    });
+  };
+  calculateBounds(id);
+  return std::tie(min, max);
+}
+void RenderSystem::PositionCamera(Camera& camera, const glm::vec3& minBound, const glm::vec3& maxBound) {
+  glm::vec3 center = (minBound + maxBound) * .5f;
+  auto dimensions = maxBound - minBound;
+  camera.position = center;
+  camera.pitch = -30.0f;
+  camera.yaw = -45.0f;
+  camera.UpdateDirection();
+  auto radius = glm::length(dimensions) * .5f;
+  float fovVertical = glm::radians(camera.fov);
+  float fovHorizontal = 2.0f * atan(tan(fovVertical * .5f) * camera.aspectRatio);
+  auto fovMin = glm::min(fovVertical, fovHorizontal);
+  auto distanceFactor = 1.2f;
+  float distance = (radius / tan(fovMin * .5f)) * distanceFactor;
+  camera.position -= camera.front * distance;
+  camera.UpdateView();
+  camera.UpdateProjection();
+}
+Shader* RenderSystem::GetMaterialShader(const Material& material) {
+  if (std::holds_alternative<PhongMaterial>(material.material))
+    return shaders["Phong"];
+  else if (std::holds_alternative<UnlitMaterial>(material.material))
+    return shaders["Unlit"];
+  else
+    return shaders["PBR"];
 }

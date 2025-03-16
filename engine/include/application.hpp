@@ -18,7 +18,6 @@ private:
   static void KeyCallback(GLFWwindow*, int, int, int, int);
   static void MouseButtonCallback(GLFWwindow*, int, int, int);
   void SetWindowIcon(const std::filesystem::path&);
-  Scene* GetActiveScene();
   glm::vec3 GetRandomPosition(float);
   AssetLoader assetLoader;
   SceneManager sceneManager;
@@ -64,6 +63,7 @@ public:
   unsigned int CreateScene(const std::string&);
   void DeleteScene(unsigned int);
   void SetActiveScene(unsigned int);
+  Scene* GetActiveScene();
   Camera* GetActiveCamera();
   int CreateEntity(std::string&);
   void DeleteEntity(unsigned int);
@@ -86,17 +86,33 @@ public:
   void RemoveComponent(unsigned int, const std::string&);
   template <typename T>
   T* GetComponent(unsigned int);
+  template <typename T>
+  T* GetAssetComponent(unsigned int);
+  template <typename... T>
+  std::tuple<T*...> GetComponents(unsigned int);
+  template <typename... T>
+  std::tuple<T*...> GetAssetComponents(unsigned int);
   IComponent* GetComponent(unsigned int, const std::string&);
   std::vector<IComponent*> GetAllComponents(unsigned int);
   std::vector<std::string> GetMissingComponents(unsigned int);
+  template <typename... T, typename F>
+  void ForEachEntity(F);
   template <typename F>
-  void ForEachChildOfEntity(unsigned int, F);
+  void ForEachChildEntity(unsigned int, F);
+  template <typename F>
+  void ForEachChildAsset(unsigned int, F);
   template <typename F>
   void ForEachRootEntity(F);
   template <typename F>
   void ForEachRootAsset(F);
   template <typename F>
   void ForAllEntities(F);
+  template <typename... T>
+  bool HasComponents(unsigned int);
+  template <typename... T>
+  bool AssetHasComponents(unsigned int);
+  template <typename T>
+  bool AssetHasComponent(unsigned int);
   int Spawn(std::string&, int = -1, bool = false, float = 10.0f);
   void SpawnMulti(const std::string&, int, float);
   bool GetKey(int) const;
@@ -107,8 +123,8 @@ public:
   void EnableKeys(T...);
   void EnableAllKeys();
   void DisableAllKeys();
-  void SetKeyCallback(int, int, std::function<void()>, std::string = "");
-  void UnsetKeyCallback(int, int);
+  void SetInputCallback(int, int, std::function<void()>, std::string = "");
+  void UnsetInputCallback(int, int);
   int LoadModel(const std::filesystem::path&);
   int LoadPrimitive(PrimitiveID);
   int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
@@ -160,6 +176,21 @@ void Application::RemoveComponent(unsigned int id) {
     return;
   scene->GetEntityManager().RemoveComponent<T>(id);
 }
+template <typename... T>
+bool Application::AssetHasComponents(unsigned int id) {
+  return assetManager.HasComponents<T...>(id);
+}
+template <typename T>
+bool Application::AssetHasComponent(unsigned int id) {
+  return assetManager.HasComponent<T>(id);
+}
+template <typename... T>
+bool Application::HasComponents(unsigned int id) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return false;
+  return scene->GetEntityManager().HasComponents<T...>(id);
+}
 template <typename T>
 T* Application::GetComponent(unsigned int id) {
   auto scene = GetActiveScene();
@@ -167,12 +198,27 @@ T* Application::GetComponent(unsigned int id) {
     return nullptr;
   return scene->GetEntityManager().GetComponent<T>(id);
 }
+template <typename T>
+T* Application::GetAssetComponent(unsigned int id) {
+  return assetManager.GetComponent<T>(id);
+}
+template <typename... T, typename F>
+void Application::ForEachEntity(F func) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().ForEach<T...>(func);
+}
 template <typename F>
-void Application::ForEachChildOfEntity(unsigned int parent, F func) {
+void Application::ForEachChildEntity(unsigned int parent, F func) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
   scene->GetEntityManager().ForEachChild(parent, func);
+}
+template <typename F>
+void Application::ForEachChildAsset(unsigned int parent, F func) {
+  assetManager.ForEachChild(parent, func);
 }
 template <typename F>
 void Application::ForEachRootEntity(F func) {
@@ -191,4 +237,12 @@ void Application::ForAllEntities(F func) {
   if (!scene)
     return;
   scene->GetEntityManager().ForAll(func);
+}
+template <typename... T>
+std::tuple<T*...> Application::GetComponents(unsigned int id) {
+  return std::make_tuple(GetComponent<T>(id)...);
+}
+template <typename... T>
+std::tuple<T*...> Application::GetAssetComponents(unsigned int id) {
+  return std::make_tuple(assetManager.GetComponent<T>(id)...);
 }

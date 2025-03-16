@@ -68,6 +68,12 @@ void InputManager::SetKeyState(int key, int action) {
 void InputManager::SetButtonState(int button, int action) {
   lastInputTime = glfwGetTime();
   buttonStates[button] = action == GLFW_PRESS || action == GLFW_REPEAT;
+  if (action == GLFW_PRESS) {
+    if (pressCallbacks.find(button) != pressCallbacks.end())
+      pressCallbacks[button]();
+  } else if (action == GLFW_RELEASE)
+    if (releaseCallbacks.find(button) != releaseCallbacks.end())
+      releaseCallbacks[button]();
 }
 void InputManager::SetMousePos(double xpos, double ypos) {
   lastInputTime = glfwGetTime();

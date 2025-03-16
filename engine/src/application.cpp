@@ -57,6 +57,7 @@ void Application::Init() {
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+  glfwWindowHint(GLFW_SAMPLES, 4);
   window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, name.c_str(), nullptr, nullptr);
   if (!window) {
     std::cerr << "Failed to create GLFW window." << std::endl;
@@ -98,6 +99,7 @@ void Application::Init() {
   glEnable(GL_CULL_FACE);
   glCullFace(GL_BACK);
   glFrontFace(GL_CCW);
+  glEnable(GL_MULTISAMPLE);
   glfwMaximizeWindow(window);
 }
 void Application::Start() {
@@ -175,7 +177,7 @@ void Application::SetWindowIcon(const std::filesystem::path& path) {
     glfwSetWindowIcon(window, 1, images);
     stbi_image_free(data);
   } else
-    std::cerr << "Failed to load the window icon at '" << path << "'." << std::endl;
+    std::cerr << "Failed to load the icon at '" << path << "'." << std::endl;
 }
 int Application::CreateEntity(std::string& name) {
   auto scene = GetActiveScene();
@@ -321,7 +323,7 @@ int Application::Spawn(std::string& name, int parentID, bool randomPos, float sp
   return entityID;
 }
 void Application::SpawnMulti(const std::string& name, int count, float radius) {
-  for (auto i = 0; i < count; i++) {
+  for (auto i = 0; i < count; ++i) {
     auto nameTemp = name;
     Spawn(nameTemp, -1, true, radius);
   }
@@ -338,10 +340,10 @@ void Application::EnableAllKeys() {
 void Application::DisableAllKeys() {
   inputManager.DisableAllKeys();
 }
-void Application::SetKeyCallback(int key, int action, std::function<void()> callback, std::string description) {
+void Application::SetInputCallback(int key, int action, std::function<void()> callback, std::string description) {
   inputManager.RegisterCallback(key, action, callback, description);
 }
-void Application::UnsetKeyCallback(int key, int action) {
+void Application::UnsetInputCallback(int key, int action) {
   inputManager.UnregisterCallback(key, action);
 }
 int Application::LoadModel(const std::filesystem::path& path) {

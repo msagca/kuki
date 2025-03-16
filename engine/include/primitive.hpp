@@ -18,7 +18,8 @@ enum class PrimitiveID : unsigned int {
   Sphere,
   Cylinder,
   Plane,
-  CubeInverted
+  CubeInverted,
+  Frame
 };
 /// <summary>
 /// A container class for functions that construct primitive shapes
@@ -31,7 +32,8 @@ private:
 public:
   static void FlipWindingOrder(std::vector<Vertex>&);
   static std::vector<Vertex> Cube();
-  static std::vector<Vertex> Sphere(int = 4);
   static std::vector<Vertex> Cylinder(int = 40);
+  static std::vector<Vertex> Frame();
   static std::vector<Vertex> Plane();
+  static std::vector<Vertex> Sphere(int = 4);
 };

@@ -18,7 +18,8 @@ set(GLFW_BUILD_EXAMPLES OFF)
 set(GLFW_BUILD_TESTS OFF)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
 set(BUILD_SHARED_LIBS OFF)
-# FIXME: the following does not work, the output file is named libglfw.so.3.5 while the executable is looking for libglfw.so.3, creating a symlink after the build is an option
+# FIXME: the following does not work, the output file is named libglfw.so.3.5 while the executable is looking for libglfw.so.3
+# TODO: create a symlink after the build as a temporary solution (ln -s libglfw.so.3.5 libglfw.so.3)
 set_target_properties(glfw PROPERTIES VERSION 3.5.0 SOVERSION 3)
 # GLM
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)

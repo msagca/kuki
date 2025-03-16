@@ -27,8 +27,15 @@ struct ENGINE_API PBRMaterial : IMaterial {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
+struct ENGINE_API UnlitMaterial : IMaterial {
+  unsigned int base = 0;
+  void Apply(Shader&) const override;
+  const std::string GetName() const override;
+  std::vector<Property> GetProperties() const override;
+  void SetProperty(Property property) override;
+};
 struct ENGINE_API Material : IMaterial {
-  std::variant<PhongMaterial, PBRMaterial> material;
+  std::variant<PhongMaterial, PBRMaterial, UnlitMaterial> material;
   void Apply(Shader& shader) const override;
   std::type_index GetTypeIndex() const;
   const std::string GetName() const override;

@@ -1,5 +1,6 @@
 Language: Cpp
 BasedOnStyle: LLVM
+AlignAfterOpenBracket: DontAlign
 AlignEscapedNewlines: DontAlign
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
@@ -13,6 +14,7 @@ BreakArrays: false
 ColumnLimit: 0
 CompactNamespaces: true
 ConstructorInitializerIndentWidth: 2
+ContinuationIndentWidth: 2
 EmptyLineBeforeAccessModifier: Never
 IndentExternBlock: Indent
 IndentRequiresClause: false

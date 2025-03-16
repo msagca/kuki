@@ -52,6 +52,7 @@ void Editor::DisplayEntity(unsigned int id) {
       selectedEntity = -1;
       clickedEntity = -1;
     }
+    // TODO: implement double click support in input manager
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
       strcpy(newName, GetEntityName(id).c_str());
       renameMode = true;
@@ -59,7 +60,7 @@ void Editor::DisplayEntity(unsigned int id) {
     }
   }
   if (nodeOpen) {
-    ForEachChildOfEntity(id, [&](unsigned int childID) {
+    ForEachChildEntity(id, [&](unsigned int childID) {
       DisplayEntity(childID);
     });
     if (!renaming)
