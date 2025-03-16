@@ -1,4 +1,5 @@
 #pragma once
+#include <app_config.hpp>
 #include <asset_loader.hpp>
 #include <command_manager.hpp>
 #include <engine_export.h>
@@ -10,6 +11,7 @@
 class ENGINE_API Application {
 private:
   std::string name;
+  AppConfig config;
   std::vector<System*> systems;
   void Init();
   static void WindowCloseCallback(GLFWwindow*);
@@ -33,6 +35,8 @@ public:
   Application(const std::string&);
   virtual ~Application() = default;
   const std::string& GetName() const;
+  void Configure(const AppConfig&);
+  const AppConfig& GetConfig() const;
   /// <summary>
   /// Start the systems
   /// </summary>

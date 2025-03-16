@@ -30,6 +30,12 @@ Application::Application(const std::string& name)
 const std::string& Application::GetName() const {
   return name;
 }
+void Application::Configure(const AppConfig& config) {
+  this->config = config;
+}
+const AppConfig& Application::GetConfig() const {
+  return config;
+}
 unsigned int Application::CreateScene(const std::string& name) {
   return sceneManager.Create(name);
 }
@@ -177,7 +183,7 @@ void Application::SetWindowIcon(const std::filesystem::path& path) {
     glfwSetWindowIcon(window, 1, images);
     stbi_image_free(data);
   } else
-    std::cerr << "Failed to load the icon at '" << path << "'." << std::endl;
+    std::cerr << "Failed to load the icon: " << path << std::endl;
 }
 int Application::CreateEntity(std::string& name) {
   auto scene = GetActiveScene();

@@ -83,9 +83,9 @@ int AssetLoader::LoadNode(aiNode* aiNode, const aiScene* aiScene, const std::fil
   glm::vec3 skew;
   glm::vec4 perspective;
   glm::decompose(model, transform->scale, transform->rotation, transform->position, skew, perspective);
+  // TODO: re-check the scale normalization operations below
   transform->position /= transform->scale;
   transform->scale = glm::vec3(1.0f);
-  // NOTE: is there a better way to normalize the scale?
   for (auto i = 0; i < aiNode->mNumMeshes; ++i) {
     auto mesh = aiScene->mMeshes[aiNode->mMeshes[i]];
     auto meshComp = assetManager.AddComponent<Mesh>(assetID);
@@ -109,15 +109,18 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
   int width, height, nrComponents;
   auto data = stbi_load(path.string().c_str(), &width, &height, &nrComponents, 0);
   if (!data) {
-    std::cerr << "Failed to load the texture at " << path << "." << std::endl;
+    std::cerr << "Failed to load the texture: " << path << std::endl;
     return -1;
   }
-  GLint internalFormat;
-  GLenum format;
+  GLenum internalFormat, format;
   switch (nrComponents) {
   case 1:
     internalFormat = GL_R8;
     format = GL_RED;
+    break;
+  case 2:
+    internalFormat = GL_RG8;
+    format = GL_RG;
     break;
   case 3:
     internalFormat = (type == TextureType::Base) ? GL_SRGB8 : GL_RGB8;
@@ -128,27 +131,49 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
     format = GL_RGBA;
     break;
   default:
-    std::cerr << "Unexpected number of components in texture (" << nrComponents << ")." << std::endl;
     stbi_image_free(data);
+    std::cerr << "Unsupported texture format: " << format << std::endl;
     return -1;
   }
   unsigned int textureID;
-  glGenTextures(1, &textureID);
-  glBindTexture(GL_TEXTURE_2D, textureID);
-  glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+  glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
+  auto levels = 1;
+  if (type == TextureType::Base)
+    levels = std::log2(std::max(width, height)) + 1;
+  glTextureStorage2D(textureID, levels, internalFormat, width, height);
+  glTextureSubImage2D(textureID, 0, 0, 0, width, height, format, GL_UNSIGNED_BYTE, data);
+  stbi_image_free(data);
   switch (type) {
+  case TextureType::Base:
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glGenerateTextureMipmap(textureID);
+    break;
   case TextureType::Normal:
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    break;
+  case TextureType::Roughness:
+  case TextureType::Metalness:
+  case TextureType::Occlusion:
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    if (nrComponents == 1) {
+      glTextureParameteri(textureID, GL_TEXTURE_SWIZZLE_G, GL_RED);
+      glTextureParameteri(textureID, GL_TEXTURE_SWIZZLE_B, GL_RED);
+      glTextureParameteri(textureID, GL_TEXTURE_SWIZZLE_A, GL_ONE);
+    }
     break;
   default:
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    std::cerr << "Unknown texture type: " << static_cast<int>(type) << std::endl;
+    break;
   }
-  stbi_image_free(data);
   auto name = path.stem().string();
   auto assetID = assetManager.Create(name);
   auto texture = assetManager.AddComponent<Texture>(assetID);
@@ -157,33 +182,43 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
   pathToID[path] = assetID;
   return assetID;
 }
-bool AssetLoader::LoadCubeMapSide(const std::filesystem::path& path, int side) {
+bool AssetLoader::LoadCubeMapSide(unsigned int textureID, const std::filesystem::path& path, int side) {
   if (!std::filesystem::exists(path))
     return false;
   int width, height, nrComponents;
   auto data = stbi_load(path.string().c_str(), &width, &height, &nrComponents, 0);
   if (!data) {
-    std::cerr << "Failed to load the texture at " << path << "." << std::endl;
+    std::cerr << "Failed to load texture: " << path << std::endl;
     return false;
   }
-  glTexImage2D(side, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+  glTextureSubImage3D(textureID, 0, 0, 0, side - GL_TEXTURE_CUBE_MAP_POSITIVE_X, width, height, 1, GL_RGB, GL_UNSIGNED_BYTE, data);
+  stbi_image_free(data);
   return true;
 }
 int AssetLoader::LoadCubeMap(std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {
   unsigned int textureID;
-  glGenTextures(1, &textureID);
-  glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
-  LoadCubeMapSide(top, GL_TEXTURE_CUBE_MAP_POSITIVE_Y);
-  LoadCubeMapSide(bottom, GL_TEXTURE_CUBE_MAP_NEGATIVE_Y);
-  LoadCubeMapSide(right, GL_TEXTURE_CUBE_MAP_POSITIVE_X);
-  LoadCubeMapSide(left, GL_TEXTURE_CUBE_MAP_NEGATIVE_X);
-  LoadCubeMapSide(front, GL_TEXTURE_CUBE_MAP_POSITIVE_Z);
-  LoadCubeMapSide(back, GL_TEXTURE_CUBE_MAP_NEGATIVE_Z);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &textureID);
+  int width, height, channels;
+  auto data = stbi_load(right.string().c_str(), &width, &height, &channels, 0);
+  if (data) {
+    glTextureStorage2D(textureID, 1, GL_RGB8, width, height);
+    stbi_image_free(data);
+  } else {
+    std::cerr << "Failed to load texture for size determination" << std::endl;
+    glDeleteTextures(1, &textureID);
+    return -1;
+  }
+  LoadCubeMapSide(textureID, right, GL_TEXTURE_CUBE_MAP_POSITIVE_X);
+  LoadCubeMapSide(textureID, left, GL_TEXTURE_CUBE_MAP_NEGATIVE_X);
+  LoadCubeMapSide(textureID, top, GL_TEXTURE_CUBE_MAP_POSITIVE_Y);
+  LoadCubeMapSide(textureID, bottom, GL_TEXTURE_CUBE_MAP_NEGATIVE_Y);
+  LoadCubeMapSide(textureID, front, GL_TEXTURE_CUBE_MAP_POSITIVE_Z);
+  LoadCubeMapSide(textureID, back, GL_TEXTURE_CUBE_MAP_NEGATIVE_Z);
+  glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTextureParameteri(textureID, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
   auto assetID = assetManager.Create(name);
   auto texture = assetManager.AddComponent<Texture>(assetID);
   texture->id = textureID;

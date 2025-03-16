@@ -18,7 +18,6 @@
 #include <glm/detail/type_vec3.hpp>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -31,6 +30,8 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include <ios>
+#include <utility>
 RenderSystem::RenderSystem(Application& app)
   : System(app), texturePool(CreateTexture, DeleteTexture, 16) {}
 RenderSystem::~RenderSystem() {
@@ -62,34 +63,25 @@ void RenderSystem::Shutdown() {
 bool RenderSystem::UpdateBuffers(unsigned int& fbo, unsigned int& rbo, unsigned int& texture, int width, int height, int samples) {
   auto multi = samples > 1;
   if (texture == 0)
-    glGenTextures(1, &texture);
+    glCreateTextures(multi ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, 1, &texture);
   if (multi) {
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, texture);
-    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, GL_RGBA, width, height, GL_TRUE);
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+    glTextureStorage2DMultisample(texture, samples, GL_RGBA8, width, height, GL_TRUE);
   } else {
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    glTextureStorage2D(texture, 1, GL_RGBA8, width, height);
+    glTextureParameteri(texture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(texture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   }
   if (rbo == 0)
-    glGenRenderbuffers(1, &rbo);
-  glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glCreateRenderbuffers(1, &rbo);
   if (multi)
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH24_STENCIL8, width, height);
+    glNamedRenderbufferStorageMultisample(rbo, samples, GL_DEPTH24_STENCIL8, width, height);
   else
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-  glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glNamedRenderbufferStorage(rbo, GL_DEPTH24_STENCIL8, width, height);
   if (fbo == 0)
-    glGenFramebuffers(1, &fbo);
-  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-  auto textureTarget = multi ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textureTarget, texture, 0);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
-  auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glCreateFramebuffers(1, &fbo);
+  glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0, texture, 0);
+  glNamedFramebufferRenderbuffer(fbo, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+  auto status = glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER);
   if (status != GL_FRAMEBUFFER_COMPLETE) {
     std::cerr << "Framebuffer is incomplete. Status: 0x" << std::hex << status << std::dec << std::endl;
     return false;
@@ -109,7 +101,7 @@ void RenderSystem::DrawAsset(const Transform* transform, const Mesh& mesh, const
   shader->Use();
   material.Apply(*shader);
   shader->SetUniform("useInstancing", false);
-  auto model = GetEntityWorldTransform(transform);
+  auto model = GetAssetWorldTransform(transform);
   shader->SetMVP(model, assetCam.view, assetCam.projection);
   shader->SetUniform("viewPos", assetCam.position);
   static const Light dirLight;
@@ -253,9 +245,12 @@ void RenderSystem::DrawAsset(unsigned int id) {
     DrawAsset(childID);
   });
 }
-int RenderSystem::RenderSceneToTexture(int width, int height) {
+int RenderSystem::RenderSceneToTexture() {
   if (!app.GetActiveScene() || !app.GetActiveCamera())
     return -1;
+  auto& config = app.GetConfig();
+  auto width = config.screenWidth;
+  auto height = config.screenHeight;
   app.GetActiveCamera()->SetProperty({"AspectRatio", static_cast<float>(width) / height});
   auto multiBufferComplete = UpdateBuffers(sceneMultiFBO, sceneMultiRBO, sceneMultiTexture, width, height, 4);
   auto singleBufferComplete = UpdateBuffers(sceneFBO, sceneRBO, sceneTexture, width, height);
@@ -281,6 +276,7 @@ int RenderSystem::RenderAssetToTexture(unsigned int assetID, int size) {
     assetToTexture[assetID] = *texturePool.Get(itemID);
   }
   auto textureID = assetToTexture[assetID];
+  size = std::max(1, size);
   UpdateBuffers(assetFBO, assetRBO, textureID, size, size);
   glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);

@@ -7,7 +7,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <ImGuizmo.h>
-void Editor::DrawGizmos() {
+void Editor::DrawGizmos(float width, float height) {
   auto camera = cameraController.GetCamera();
   if (!camera)
     return;
@@ -17,8 +17,7 @@ void Editor::DrawGizmos() {
   ImGuizmo::SetDrawlist();
   ImGuizmo::SetOrthographic(false);
   auto windowPos = ImGui::GetWindowPos();
-  auto windowSize = ImGui::GetWindowSize();
-  ImGuizmo::SetRect(windowPos.x, windowPos.y, windowSize.x, windowSize.y);
+  ImGuizmo::SetRect(windowPos.x, windowPos.y, width, height);
   glm::mat4 matrix;
   auto rotation = glm::degrees(glm::eulerAngles(transform->rotation));
   ImGuizmo::RecomposeMatrixFromComponents(glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale), glm::value_ptr(matrix));

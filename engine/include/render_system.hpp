@@ -43,7 +43,7 @@ public:
   void Start() override;
   // void Update(float, Scene*) override;
   void Shutdown() override;
-  int RenderSceneToTexture(int, int);
+  int RenderSceneToTexture();
   int RenderAssetToTexture(unsigned int, int);
   static void ToggleWireframeMode();
 };

@@ -6,7 +6,7 @@ void Editor::DisplayScene() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);
   static auto isRotating = false;
-  ImGui::Begin("Scene");
+  ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !isRotating)
     isRotating = true;
   if (isRotating && (ImGui::IsMouseReleased(ImGuiMouseButton_Right) || !ImGui::IsMouseDown(ImGuiMouseButton_Right)))
@@ -15,13 +15,18 @@ void Editor::DisplayScene() {
   cameraController.SetCamera(GetActiveCamera());
   cameraController.Update(deltaTime);
   auto renderSystem = GetSystem<RenderSystem>();
-  auto contentRegion = ImGui::GetContentRegionAvail();
   if (renderSystem) {
-    auto texture = renderSystem->RenderSceneToTexture(contentRegion.x, contentRegion.y);
+    auto texture = renderSystem->RenderSceneToTexture();
     if (texture > 0) {
-      // FIXME: there is a padding between the window borders and the image this texture is displayed in, possible size mismatch
-      ImGui::Image(texture, ImVec2(contentRegion.x, contentRegion.y), uv0, uv1);
-      DrawGizmos();
+      auto config = GetConfig();
+      auto width = config.screenWidth;
+      auto height = config.screenHeight;
+      auto contentRegion = ImGui::GetContentRegionAvail();
+      auto scaleFactor = std::max(contentRegion.x / width, contentRegion.y / height);
+      auto drawWidth = width * scaleFactor;
+      auto drawHeight = height * scaleFactor;
+      ImGui::Image(texture, ImVec2(drawWidth, drawHeight), uv0, uv1);
+      DrawGizmos(drawWidth, drawHeight);
     }
   }
   ImGui::End();

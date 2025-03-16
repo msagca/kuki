@@ -19,7 +19,7 @@ private:
   /// <summary>
   /// Draw gizmos in ImGui space; they appear either in front of or behind everything in the scene, depending on the draw order
   /// </summary>
-  void DrawGizmos();
+  void DrawGizmos(float, float);
   void InitImGui();
   void InitLayout();
   void LoadDefaultAssets();

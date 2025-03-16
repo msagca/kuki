@@ -18,7 +18,7 @@ private:
   glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4&);
   int LoadNode(aiNode*, const aiScene*, const std::filesystem::path&, int = -1);
   Material CreateMaterial(aiMaterial*, const std::filesystem::path&);
-  bool LoadCubeMapSide(const std::filesystem::path&, int = 0);
+  bool LoadCubeMapSide(unsigned int, const std::filesystem::path&, int);
   Mesh CreateMesh(aiMesh*);
   Mesh CreateMesh(const std::vector<Vertex>&);
   Mesh CreateMesh(const std::vector<Vertex>&, const std::vector<unsigned int>&);

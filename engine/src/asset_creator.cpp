@@ -107,25 +107,26 @@ Mesh AssetLoader::CreateMesh(const std::vector<Vertex>& vertices, const std::vec
 Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   Mesh mesh;
   mesh.vertexCount = vertices.size();
-  glGenVertexArrays(1, &mesh.vertexArray);
-  glBindVertexArray(mesh.vertexArray);
-  glGenBuffers(1, &mesh.vertexBuffer);
-  glBindBuffer(GL_ARRAY_BUFFER, mesh.vertexBuffer);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal));
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, texture));
-  glEnableVertexAttribArray(2);
+  glCreateVertexArrays(1, &mesh.vertexArray);
+  glCreateBuffers(1, &mesh.vertexBuffer);
+  glNamedBufferData(mesh.vertexBuffer, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
+  glVertexArrayVertexBuffer(mesh.vertexArray, 0, mesh.vertexBuffer, 0, sizeof(Vertex));
+  glVertexArrayAttribFormat(mesh.vertexArray, 0, 3, GL_FLOAT, GL_FALSE, 0);
+  glVertexArrayAttribBinding(mesh.vertexArray, 0, 0);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 0);
+  glVertexArrayAttribFormat(mesh.vertexArray, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
+  glVertexArrayAttribBinding(mesh.vertexArray, 1, 0);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 1);
+  glVertexArrayAttribFormat(mesh.vertexArray, 2, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, texture));
+  glVertexArrayAttribBinding(mesh.vertexArray, 2, 0);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 2);
   return mesh;
 }
 void AssetLoader::CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>& indices) {
   mesh.indexCount = indices.size();
-  glBindVertexArray(mesh.vertexArray);
-  glGenBuffers(1, &mesh.indexBuffer);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.indexBuffer);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+  glCreateBuffers(1, &mesh.indexBuffer);
+  glNamedBufferData(mesh.indexBuffer, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+  glVertexArrayElementBuffer(mesh.vertexArray, mesh.indexBuffer);
 }
 void AssetLoader::CalculateBounds(Mesh& mesh, const std::vector<Vertex>& vertices) {
   mesh.minBound = glm::vec3(std::numeric_limits<float>::max());
