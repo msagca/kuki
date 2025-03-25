@@ -13,8 +13,8 @@ std::vector<Property> MeshRenderer::GetProperties() const {
   return properties;
 }
 void MeshRenderer::SetProperty(Property property) {
-  if (std::holds_alternative<unsigned int>(property.value)) {
-    auto& value = std::get<unsigned int>(property.value);
+  if (std::holds_alternative<int>(property.value)) {
+    auto& value = std::get<int>(property.value);
     shader = value;
   }
   material.SetProperty(property);

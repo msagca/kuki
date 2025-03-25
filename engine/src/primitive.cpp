@@ -168,9 +168,6 @@ std::vector<Triangle> Primitive::Subdivide(const std::vector<Triangle>& triangle
   }
   return result;
 }
-/// <summary>
-/// Flip the winding order (clockwise &lt;--&gt; counter-clockwise) of faces in a mesh
-/// </summary>
 void Primitive::FlipWindingOrder(std::vector<Vertex>& vertices) {
   for (auto i = 0; i < vertices.size(); i += 3)
     // swap vertex #0 and vertex #1 of the triangle

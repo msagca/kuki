@@ -21,15 +21,14 @@ enum class PrimitiveID : unsigned int {
   CubeInverted,
   Frame
 };
-/// <summary>
-/// A container class for functions that construct primitive shapes
-/// </summary>
+/// @brief A container class for functions that construct primitive shapes
 class ENGINE_API Primitive {
 private:
   static std::vector<Triangle> CreateOctahedron();
   static std::vector<Triangle> CreateIcosahedron();
   static std::vector<Triangle> Subdivide(const std::vector<Triangle>&, int);
 public:
+  /// @brief Flip the winding order (clockwise <-> counter-clockwise) of faces in a mesh
   static void FlipWindingOrder(std::vector<Vertex>&);
   static std::vector<Vertex> Cube();
   static std::vector<Vertex> Cylinder(int = 40);

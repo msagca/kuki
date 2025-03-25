@@ -4,7 +4,7 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <vector>
-struct ENGINE_API Transform : IComponent {
+struct ENGINE_API Transform final : IComponent {
   glm::vec3 position{};
   glm::quat rotation{1.0f, .0f, .0f, .0f};
   glm::vec3 scale{1.0f};

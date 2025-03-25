@@ -107,8 +107,11 @@ Mesh AssetLoader::CreateMesh(const std::vector<Vertex>& vertices, const std::vec
 Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   Mesh mesh;
   mesh.vertexCount = vertices.size();
-  glCreateVertexArrays(1, &mesh.vertexArray);
-  glCreateBuffers(1, &mesh.vertexBuffer);
+  unsigned int vertexArray, vertexBuffer;
+  glCreateVertexArrays(1, &vertexArray);
+  glCreateBuffers(1, &vertexBuffer);
+  mesh.vertexArray = vertexArray;
+  mesh.vertexBuffer = vertexBuffer;
   glNamedBufferData(mesh.vertexBuffer, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
   glVertexArrayVertexBuffer(mesh.vertexArray, 0, mesh.vertexBuffer, 0, sizeof(Vertex));
   glVertexArrayAttribFormat(mesh.vertexArray, 0, 3, GL_FLOAT, GL_FALSE, 0);
@@ -124,15 +127,17 @@ Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
 }
 void AssetLoader::CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>& indices) {
   mesh.indexCount = indices.size();
-  glCreateBuffers(1, &mesh.indexBuffer);
+  unsigned int indexBuffer;
+  glCreateBuffers(1, &indexBuffer);
+  mesh.indexBuffer = indexBuffer;
   glNamedBufferData(mesh.indexBuffer, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
   glVertexArrayElementBuffer(mesh.vertexArray, mesh.indexBuffer);
 }
 void AssetLoader::CalculateBounds(Mesh& mesh, const std::vector<Vertex>& vertices) {
-  mesh.minBound = glm::vec3(std::numeric_limits<float>::max());
-  mesh.maxBound = glm::vec3(std::numeric_limits<float>::lowest());
+  mesh.bounds.min = glm::vec3(std::numeric_limits<float>::max());
+  mesh.bounds.max = glm::vec3(std::numeric_limits<float>::lowest());
   for (const auto& vertex : vertices) {
-    mesh.minBound = glm::min(mesh.minBound, vertex.position);
-    mesh.maxBound = glm::max(mesh.maxBound, vertex.position);
+    mesh.bounds.min = glm::min(mesh.bounds.min, vertex.position);
+    mesh.bounds.max = glm::max(mesh.bounds.max, vertex.position);
   }
 }

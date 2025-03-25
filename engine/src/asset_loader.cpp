@@ -132,7 +132,7 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
     break;
   default:
     stbi_image_free(data);
-    std::cerr << "Unsupported texture format: " << format << std::endl;
+    std::cerr << "Unsupported number of texture channels: " << nrComponents << std::endl;
     return -1;
   }
   unsigned int textureID;
@@ -199,12 +199,12 @@ int AssetLoader::LoadCubeMap(std::string& name, const std::filesystem::path& top
   unsigned int textureID;
   glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &textureID);
   int width, height, channels;
-  auto data = stbi_load(right.string().c_str(), &width, &height, &channels, 0);
+  auto data = stbi_load(top.string().c_str(), &width, &height, &channels, 0);
   if (data) {
     glTextureStorage2D(textureID, 1, GL_RGB8, width, height);
     stbi_image_free(data);
   } else {
-    std::cerr << "Failed to load texture for size determination" << std::endl;
+    std::cerr << "Failed to load texture: " << top << std::endl;
     glDeleteTextures(1, &textureID);
     return -1;
   }

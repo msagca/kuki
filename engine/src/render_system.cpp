@@ -1,6 +1,5 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <application.hpp>
-#include <cmath>
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/light.hpp>
@@ -22,16 +21,13 @@
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <iostream>
-#include <limits>
 #include <render_system.hpp>
 #include <system.hpp>
-#include <tuple>
 #include <typeindex>
 #include <unordered_map>
 #include <variant>
 #include <vector>
 #include <ios>
-#include <utility>
 RenderSystem::RenderSystem(Application& app)
   : System(app), texturePool(CreateTexture, DeleteTexture, 16) {}
 RenderSystem::~RenderSystem() {
@@ -186,7 +182,10 @@ void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<uns
 void RenderSystem::DrawScene() {
   std::unordered_map<unsigned int, std::unordered_map<std::type_index, std::vector<unsigned int>>> vaoToMatToEntities;
   std::unordered_map<unsigned int, Mesh> vaoToMesh;
-  app.ForEachEntity<MeshFilter, MeshRenderer, Transform>([&](unsigned int id, MeshFilter* filter, MeshRenderer* renderer, Transform* transform) {
+  app.ForEachVisibleEntity(*app.GetActiveCamera(), [&](unsigned int id) {
+    auto [transform, filter, renderer] = app.GetComponents<Transform, MeshFilter, MeshRenderer>(id);
+    if (!transform || !filter || !renderer)
+      return;
     auto vao = filter->mesh.vertexArray;
     vaoToMesh[vao] = filter->mesh;
     if (vaoToMatToEntities.find(vao) == vaoToMatToEntities.end())
@@ -226,8 +225,8 @@ void RenderSystem::DrawSkybox() {
   glDepthFunc(GL_LESS);
 }
 void RenderSystem::DrawAsset(unsigned int id) {
-  auto [minBound, maxBound] = GetAssetBounds(id);
-  PositionCamera(assetCam, minBound, maxBound);
+  auto bounds = GetAssetBounds(id);
+  assetCam.Frame(bounds);
   if (app.AssetHasComponents<Transform, Mesh, Material>(id)) {
     auto [transform, mesh, material] = app.GetAssetComponents<Transform, Mesh, Material>(id);
     DrawAsset(transform, *mesh, *material);
@@ -322,46 +321,21 @@ glm::vec3 RenderSystem::GetAssetWorldPosition(const Transform* transform) {
   auto model = GetAssetWorldTransform(transform);
   return model[3];
 }
-std::tuple<glm::vec3, glm::vec3> RenderSystem::GetAssetBounds(unsigned int id) {
-  auto min = glm::vec3(std::numeric_limits<float>::max());
-  auto max = glm::vec3(std::numeric_limits<float>::lowest());
+BoundingBox RenderSystem::GetAssetBounds(unsigned int id) {
+  BoundingBox bounds;
   std::function<void(unsigned int)> calculateBounds = [&](unsigned int assetID) {
     auto [mesh, transform] = app.GetAssetComponents<Mesh, Transform>(assetID);
-    if (!mesh)
-      return;
-    auto childMin = mesh->minBound;
-    auto childMax = mesh->maxBound;
-    // TODO: consider all 8 corners for bounds calculation
-    if (transform) {
-      auto position = GetAssetWorldPosition(transform);
-      childMin += position;
-      childMax += position;
+    if (mesh && transform) {
+      auto childBounds = mesh->bounds.GetWorldBounds(transform);
+      bounds.min = glm::min(bounds.min, childBounds.min);
+      bounds.max = glm::max(bounds.max, childBounds.max);
     }
-    min = glm::min(min, childMin);
-    max = glm::max(max, childMax);
     app.ForEachChildAsset(assetID, [&](unsigned int childId) {
       calculateBounds(childId);
     });
   };
   calculateBounds(id);
-  return std::tie(min, max);
-}
-void RenderSystem::PositionCamera(Camera& camera, const glm::vec3& minBound, const glm::vec3& maxBound) {
-  glm::vec3 center = (minBound + maxBound) * .5f;
-  auto dimensions = maxBound - minBound;
-  camera.position = center;
-  camera.pitch = -30.0f;
-  camera.yaw = -45.0f;
-  camera.UpdateDirection();
-  auto radius = glm::length(dimensions) * .5f;
-  float fovVertical = glm::radians(camera.fov);
-  float fovHorizontal = 2.0f * atan(tan(fovVertical * .5f) * camera.aspectRatio);
-  auto fovMin = glm::min(fovVertical, fovHorizontal);
-  auto distanceFactor = 1.2f;
-  float distance = (radius / tan(fovMin * .5f)) * distanceFactor;
-  camera.position -= camera.front * distance;
-  camera.UpdateView();
-  camera.UpdateProjection();
+  return bounds;
 }
 Shader* RenderSystem::GetMaterialShader(const Material& material) {
   if (std::holds_alternative<PhongMaterial>(material.material))

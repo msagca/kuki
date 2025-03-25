@@ -1,11 +1,11 @@
 #pragma once
-#include <application.hpp>
 #include <engine_export.h>
 #include <entity_manager.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <system.hpp>
 #include <utility/pool.hpp>
-class ENGINE_API RenderSystem : public System {
+class Application;
+class ENGINE_API RenderSystem final : public System {
 private:
   std::unordered_map<std::string, Shader*> shaders;
   Camera assetCam;
@@ -31,11 +31,7 @@ private:
   glm::mat4 GetEntityWorldTransform(const Transform*);
   glm::mat4 GetAssetWorldTransform(const Transform*);
   glm::vec3 GetAssetWorldPosition(const Transform*);
-  std::tuple<glm::vec3, glm::vec3> GetAssetBounds(unsigned int);
-  /// <summary>
-  /// Position the camera to fully capture the target within the given bounds
-  /// </summary>
-  void PositionCamera(Camera&, const glm::vec3&, const glm::vec3&);
+  BoundingBox GetAssetBounds(unsigned int);
   Shader* GetMaterialShader(const Material&);
 public:
   RenderSystem(Application&);

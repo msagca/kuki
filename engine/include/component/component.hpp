@@ -1,4 +1,5 @@
 #pragma once
+#include <engine_export.h>
 #include <glm/ext/vector_float3.hpp>
 #include <string>
 #include <variant>
@@ -43,13 +44,12 @@ enum class PropertyType : unsigned int {
   Number,
   Color
 };
-struct Property {
-  using PropertyValue = std::variant<int, unsigned int, float, bool, glm::vec3, CameraType, LightType, TextureType>;
+struct ENGINE_API Property {
+  using PropertyValue = std::variant<int, float, bool, glm::vec3, CameraType, LightType, TextureType>;
   std::string name;
   PropertyType type;
   PropertyValue value;
-  Property(const std::string& name, PropertyValue value) : name(name), value(value) {}
-  Property(const std::string& name, PropertyValue value, PropertyType type) : name(name), value(value), type(type) {}
+  Property(const std::string&, PropertyValue, PropertyType = PropertyType::Number);
 };
 struct IComponent {
   virtual ~IComponent() = default;

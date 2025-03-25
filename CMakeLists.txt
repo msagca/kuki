@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 project(LearningOpenGL)
-option(BUILD_TESTS "Build the tests" OFF)
+option(BUILD_TESTS "Build the tests" ON)
 option(BUILD_GAMES "Build the game samples" OFF)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

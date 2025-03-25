@@ -30,22 +30,16 @@ public:
   bool GetKey(int) const;
   /// <returns>true if the button is pressed/repeated, false otherwise</returns>
   bool GetButton(int) const;
-  /// <summary>
-  /// Get the vertical (W-S) and horizontal (A-D) input respectively as a 2D vector
-  /// </summary>
-  /// <returns>a float for each axis with a value of either 0, 1 (up/right) or -1 (down/left)</returns>
+  /// @brief Get the vertical (W-S) and horizontal (A-D) input respectively as a 2D vector
+  /// @return A float for each axis with a value of either 0, 1 (up/right) or -1 (down/left)
   glm::vec2 GetWASD() const;
   glm::vec2 GetArrow() const;
   glm::vec2 GetMousePos() const;
-  /// <returns>time passed since last user input</returns>
+  /// @return time passed since last user input
   double GetInactivityTime() const;
-  /// <summary>
-  /// Register a function to be called when the specified key-action combination is observed
-  /// </summary>
+  /// @brief Register a function to be called when the specified key-action combination is observed
   void RegisterCallback(int, int, std::function<void()>, std::string = "");
-  /// <summary>
-  /// Unregister the callback function for the given key-action combination
-  /// </summary>
+  /// @brief Unregister the callback function for the given key-action combination
   void UnregisterCallback(int, int);
   const std::unordered_map<std::string, std::string>& GetKeyBindings();
   template <typename... T>

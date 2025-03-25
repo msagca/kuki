@@ -15,7 +15,7 @@ public:
   virtual IComponent* GetBase(unsigned int) = 0;
 };
 template <typename T>
-class ComponentManager : public IComponentManager {
+class ComponentManager final : public IComponentManager {
 private:
   std::vector<T> components;
   std::unordered_map<unsigned int, unsigned int> entityToComponent;

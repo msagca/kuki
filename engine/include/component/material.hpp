@@ -7,7 +7,7 @@ struct IMaterial : IComponent {
   virtual ~IMaterial() = default;
   virtual void Apply(Shader& shader) const = 0;
 };
-struct ENGINE_API PhongMaterial : IMaterial {
+struct ENGINE_API PhongMaterial final : IMaterial {
   glm::vec3 diffuse = glm::vec3(.5f, .5f, .5f);
   glm::vec3 specular = glm::vec3(1.0f);
   float shininess = .5f;
@@ -16,19 +16,19 @@ struct ENGINE_API PhongMaterial : IMaterial {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
-struct ENGINE_API PBRMaterial : IMaterial {
-  unsigned int base = 0;
-  unsigned int normal = 0;
-  unsigned int metalness = 0;
-  unsigned int occlusion = 0;
-  unsigned int roughness = 0;
+struct ENGINE_API PBRMaterial final : IMaterial {
+  int base = 0;
+  int normal = 0;
+  int metalness = 0;
+  int occlusion = 0;
+  int roughness = 0;
   void Apply(Shader&) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
-struct ENGINE_API UnlitMaterial : IMaterial {
-  unsigned int base = 0;
+struct ENGINE_API UnlitMaterial final : IMaterial {
+  int base = 0;
   void Apply(Shader&) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;

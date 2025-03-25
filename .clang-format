@@ -2,6 +2,7 @@ Language: Cpp
 BasedOnStyle: LLVM
 AlignAfterOpenBracket: DontAlign
 AlignEscapedNewlines: DontAlign
+AlignTrailingComments: Never
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: Empty
@@ -22,6 +23,7 @@ KeepEmptyLinesAtTheStartOfBlocks: false
 MaxEmptyLinesToKeep: 0
 NamespaceIndentation: Inner
 PPIndentWidth: 2
+PackConstructorInitializers: NextLineOnly
 PointerAlignment: Left
 ReflowComments: false
 RequiresClausePosition: WithPreceding

@@ -5,20 +5,25 @@
 #include <string>
 void Editor::DisplayHierarchy() {
   ImGui::Begin("Hierarchy");
-  if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_LEFT)) {
-    selectedEntity = -1;
-    clickedEntity = -1;
-  }
-  if (entityToDelete >= 0) {
-    DeleteEntity(entityToDelete);
-    if (selectedEntity == entityToDelete)
-      selectedEntity = -1;
-    entityToDelete = -1;
-  }
+  auto deleteSelected = GetKey(GLFW_KEY_DELETE);
+  if (currentSelection < lastSelection)
+    std::swap(currentSelection, lastSelection);
+  static std::unordered_set<unsigned int> selectedEntities;
   ForAllEntities([&](unsigned int id) {
-    if (!EntityHasParent(id))
+    if (!EntityHasParent(id)) {
+      if (deleteSelected && id >= lastSelection && id <= currentSelection)
+        selectedEntities.insert(id);
       DisplayEntity(id);
+    }
   });
+  if (deleteSelected && !selectedEntities.empty())
+    for (const auto id : selectedEntities)
+      DeleteEntity(id);
+  if (deleteSelected || ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_LEFT)) {
+    lastSelection = -1;
+    currentSelection = -1;
+    selectedEntities.clear();
+  }
   if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_RIGHT))
     ImGui::OpenPopup("CreateMenu");
   if (ImGui::BeginPopup("CreateMenu")) {
@@ -43,6 +48,5 @@ void Editor::DisplayHierarchy() {
     ImGui::EndPopup();
   }
   ImGui::End();
-  if (selectedEntity >= 0)
-    DisplayProperties();
+  DisplayProperties();
 }

@@ -68,8 +68,8 @@ std::vector<Property> PBRMaterial::GetProperties() const {
   return {{"Base", base}, {"Normal", normal}, {"Metalness", metalness}, {"Occlusion", occlusion}, {"Roughness", roughness}};
 }
 void PBRMaterial::SetProperty(Property property) {
-  if (std::holds_alternative<unsigned int>(property.value)) {
-    auto& value = std::get<unsigned int>(property.value);
+  if (std::holds_alternative<int>(property.value)) {
+    auto& value = std::get<int>(property.value);
     if (property.name == "Base")
       base = value;
     else if (property.name == "Normal")
@@ -94,8 +94,8 @@ std::vector<Property> UnlitMaterial::GetProperties() const {
   return {{"Base", base}};
 }
 void UnlitMaterial::SetProperty(Property property) {
-  if (std::holds_alternative<unsigned int>(property.value)) {
-    auto& value = std::get<unsigned int>(property.value);
+  if (std::holds_alternative<int>(property.value)) {
+    auto& value = std::get<int>(property.value);
     base = value;
   }
 }

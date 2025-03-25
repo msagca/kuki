@@ -1,6 +1,6 @@
 #pragma once
 #include <application.hpp>
-class Game : public Application {
+class Game final : public Application {
 public:
   Game();
   void Start() override;

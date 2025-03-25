@@ -22,7 +22,7 @@ void Transform::SetProperty(Property property) {
     else if (property.name == "Rotation") {
       auto valueQuat = glm::quat(glm::radians(value));
       rotation = valueQuat;
-    } else // if (property.name == "Scale"
+    } else if (property.name == "Scale")
       scale = value;
     dirty = true; // TODO: propagate changes to children
   } else if (std::holds_alternative<int>(property.value)) {

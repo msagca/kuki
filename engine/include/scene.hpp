@@ -1,6 +1,7 @@
 #pragma once
 #include <engine_export.h>
 #include <entity_manager.hpp>
+#include <utility/octree.hpp>
 class ENGINE_API Scene {
 private:
   std::string name;
@@ -11,5 +12,6 @@ public:
   std::string GetName() const;
   unsigned int GetID() const;
   Camera* GetCamera();
+  // TODO: add methods to remove the need to refer to the scene's entity manager
   EntityManager& GetEntityManager();
 };

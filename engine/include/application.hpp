@@ -37,28 +37,21 @@ public:
   const std::string& GetName() const;
   void Configure(const AppConfig&);
   const AppConfig& GetConfig() const;
-  /// <summary>
-  /// Start the systems
-  /// </summary>
+  /// @brief Start the systems
   virtual void Start();
-  /// <returns>true if the application is running, false otherwise</returns>
+  /// @return true if the application is running, false otherwise
   virtual bool Status();
-  /// <summary>
-  /// Update application state
-  /// </summary>
+  /// @brief Update application state
   virtual void Update();
-  /// <summary>
-  /// Clean up memory and terminate the application
-  /// </summary>
+  /// @brief Clean up memory and terminate the application
   virtual void Shutdown();
-  /// <summary>
-  /// Start, then update the application indefinitely until status becomes false
-  /// </summary>
+  /// @brief Start, then update the application indefinitely until status becomes false
   void Run();
   void RegisterCommand(ICommand*);
   void UnregisterCommand(const std::string&);
   int DispatchCommand(const std::string&, std::string&);
   template <typename T, typename... Z>
+  requires std::derived_from<T, System>
   T* CreateSystem(Z&&... args);
   template <typename T>
   void DeleteSystem();
@@ -111,6 +104,8 @@ public:
   void ForEachRootAsset(F);
   template <typename F>
   void ForAllEntities(F);
+  template <typename F>
+  void ForEachVisibleEntity(const Camera&, F);
   template <typename... T>
   bool HasComponents(unsigned int);
   template <typename... T>
@@ -142,8 +137,8 @@ void Application::EnableKeys(T... args) {
   inputManager.EnableKeys(args...);
 }
 template <typename T, typename... Z>
+requires std::derived_from<T, System>
 T* Application::CreateSystem(Z&&... args) {
-  static_assert(std::is_base_of_v<System, T>, "T must extend System.");
   auto system = new T(std::forward<Z>(args)...);
   systems.push_back(static_cast<System*>(system));
   return system;
@@ -241,6 +236,13 @@ void Application::ForAllEntities(F func) {
   if (!scene)
     return;
   scene->GetEntityManager().ForAll(func);
+}
+template <typename F>
+void Application::ForEachVisibleEntity(const Camera& camera, F func) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().ForEachVisibleEntity(camera, func);
 }
 template <typename... T>
 std::tuple<T*...> Application::GetComponents(unsigned int id) {

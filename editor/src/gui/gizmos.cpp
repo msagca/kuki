@@ -11,7 +11,9 @@ void Editor::DrawGizmos(float width, float height) {
   auto camera = cameraController.GetCamera();
   if (!camera)
     return;
-  auto transform = GetComponent<Transform>(selectedEntity);
+  if (currentSelection < 0)
+    return;
+  auto transform = GetComponent<Transform>(currentSelection);
   if (!transform)
     return;
   ImGuizmo::SetDrawlist();

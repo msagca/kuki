@@ -5,7 +5,7 @@ void Editor::DisplayEntity(unsigned int id) {
   static auto renamedEntity = -1;
   static char newName[256] = "";
   ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
-  if (id == selectedEntity)
+  if (id >= lastSelection && id <= currentSelection)
     nodeFlags |= ImGuiTreeNodeFlags_Selected;
   if (!EntityHasChildren(id))
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
@@ -30,27 +30,23 @@ void Editor::DisplayEntity(unsigned int id) {
     auto label = GetEntityName(id);
     nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, "%s", label.c_str());
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
-      selectedEntity = id;
-      clickedEntity = id;
+      if (GetKey(GLFW_KEY_LEFT_SHIFT))
+        lastSelection = currentSelection;
+      else if (GetKey(GLFW_KEY_LEFT_CONTROL)) {
+      } else
+        lastSelection = id;
+      currentSelection = id;
     }
     auto popupName = "EntityContext#" + std::to_string(id);
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-      selectedEntity = id;
+      currentSelection = id;
+      lastSelection = id;
       ImGui::OpenPopup(popupName.c_str());
     }
     if (ImGui::BeginPopup(popupName.c_str())) {
-      if (ImGui::MenuItem("Remove")) {
-        entityToDelete = id;
-        if (selectedEntity == id)
-          selectedEntity = -1;
+      if (ImGui::MenuItem("Remove"))
         ImGui::CloseCurrentPopup();
-      }
       ImGui::EndPopup();
-    }
-    if (GetKey(GLFW_KEY_DELETE) && selectedEntity == id) {
-      entityToDelete = id;
-      selectedEntity = -1;
-      clickedEntity = -1;
     }
     // TODO: implement double click support in input manager
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {

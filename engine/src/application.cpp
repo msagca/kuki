@@ -25,8 +25,7 @@
 #include <string>
 #include <system.hpp>
 #include <vector>
-Application::Application(const std::string& name)
-  : name(name), assetManager(), assetLoader(assetManager), inputManager(), sceneManager(), commandManager() {}
+Application::Application(const std::string& name) : name(name), assetManager(), assetLoader(assetManager), inputManager(), sceneManager(), commandManager() {}
 const std::string& Application::GetName() const {
   return name;
 }

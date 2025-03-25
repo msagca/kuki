@@ -19,7 +19,7 @@ void Light::SetProperty(Property property) {
       ambient = value;
     else if (property.name == "Diffuse")
       diffuse = value;
-    else // if (property.name == "Specular")
+    else if (property.name == "Specular")
       specular = value;
   } else if (std::holds_alternative<float>(property.value)) {
     auto& value = std::get<float>(property.value);
@@ -27,7 +27,7 @@ void Light::SetProperty(Property property) {
       constant = value;
     else if (property.name == "Linear")
       linear = value;
-    else // if (property.name == "Quadratic")
+    else if (property.name == "Quadratic")
       quadratic = value;
   } else if (std::holds_alternative<LightType>(property.value))
     type = std::get<LightType>(property.value);

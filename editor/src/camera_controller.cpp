@@ -64,7 +64,9 @@ void CameraController::Update(float deltaTime) {
   if (movementEnabled)
     UpdatePosition(deltaTime);
   camera.UpdateProjection();
-  if (cameraPtr) { // NOTE: by default, all changes are applied to the local copy; they are only reflected to an actual camera component if the scene contains one
+  camera.UpdateFrustum();
+  if (cameraPtr) {
+    // NOTE: by default, all changes are applied to the local copy; they are only reflected to an actual camera component if the scene contains one
     camera.type = cameraPtr->type; // reflect editor changes to the local copy
     *cameraPtr = camera;
   }

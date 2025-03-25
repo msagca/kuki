@@ -1,17 +1,17 @@
 #include <application.hpp>
 #include <component/component.hpp>
 #include <editor.hpp>
-#include <entity_manager.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
-#include <scene.hpp>
 #include <string>
 #include <variant>
 void Editor::DisplayProperties() {
+  if (currentSelection < 0)
+    return;
   ImGui::Begin("Properties");
   static IComponent* selectedComponent = nullptr;
-  auto components = GetAllComponents(selectedEntity);
+  auto components = GetAllComponents(currentSelection);
   for (auto i = 0; i < components.size(); ++i) {
     const auto& component = components[i];
     auto isSelected = (selectedComponent == component);
@@ -21,11 +21,11 @@ void Editor::DisplayProperties() {
       if (isSelected)
         selectedComponent = nullptr;
       else
-        selectedComponent = GetComponent(selectedEntity, name);
+        selectedComponent = GetComponent(currentSelection, name);
     }
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove")) {
-        RemoveComponent(selectedEntity, name);
+        RemoveComponent(currentSelection, name);
         if (selectedComponent == component)
           selectedComponent = nullptr;
       }
@@ -45,10 +45,6 @@ void Editor::DisplayProperties() {
           component->SetProperty(Property(prop.name, valueVec3));
       } else if (std::holds_alternative<int>(value)) {
         auto valueInt = std::get<int>(value);
-        if (ImGui::InputInt(prop.name.c_str(), &valueInt))
-          component->SetProperty(Property(prop.name, valueInt));
-      } else if (std::holds_alternative<unsigned int>(value)) {
-        auto valueInt = static_cast<int>(std::get<unsigned int>(value));
         if (ImGui::InputInt(prop.name.c_str(), &valueInt))
           component->SetProperty(Property(prop.name, valueInt));
       } else if (std::holds_alternative<float>(value)) {
@@ -88,9 +84,9 @@ void Editor::DisplayProperties() {
     }
     ImGui::PopID();
   }
-  auto availableComponents = GetMissingComponents(selectedEntity);
+  auto availableComponents = GetMissingComponents(currentSelection);
   for (const auto& comp : availableComponents)
     if (ImGui::Selectable(comp.c_str()))
-      AddComponent(selectedEntity, comp);
+      AddComponent(currentSelection, comp);
   ImGui::End();
 }

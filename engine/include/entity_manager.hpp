@@ -12,16 +12,16 @@
 #include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility/octree.hpp>
 #include <utility/trie.hpp>
 #include <vector>
-/// <summary>
-/// Manages entities and their components in a scene
-/// </summary>
+/// @brief Manages entities and their components in a scene
 class ENGINE_API EntityManager {
 private:
   unsigned int nextID = 0;
   std::unordered_set<unsigned int> ids;
   Trie names;
+  Octree<unsigned int> octree;
   std::unordered_map<ComponentID, std::type_index> idToType; // NOTE: this is component type ID, not entity ID
   std::unordered_map<std::string, std::type_index> nameToType;
   std::unordered_map<std::string, unsigned int> nameToID;
@@ -48,14 +48,10 @@ public:
   bool Rename(unsigned int, std::string&);
   const std::string& GetName(unsigned int) const;
   int GetID(const std::string&);
-  /// <summary>
-  /// Create parent-child relationship between the given entities
-  /// </summary>
-  /// <returns>true if the operation was successful, false otherwise</returns>
+  /// @brief Create parent-child relationship between the given entities
+  /// @return true if the operation was successful, false otherwise
   bool AddChild(unsigned int, unsigned int);
-  /// <summary>
-  /// Remove the parent-child relationship between the given entities
-  /// </summary>
+  /// @brief Remove the parent-child relationship between the given entities
   void RemoveChild(unsigned int, unsigned int);
   bool HasChildren(unsigned int) const;
   bool HasParent(unsigned int) const;
@@ -84,41 +80,37 @@ public:
   IComponent* GetComponent(unsigned int, const std::string&);
   template <typename... T>
   std::tuple<T*...> GetComponents(unsigned int);
-  /// <summary>
-  /// Get the first component of the specified type
-  /// </summary>
-  /// <returns>A pointer to the first component or nullptr if no such component exists</returns>
+  /// @brief Get the first component of the specified type
+  /// @return A pointer to the first component, or nullptr if no such component exists
   template <typename T>
   T* GetFirstComponent();
   std::vector<IComponent*> GetAllComponents(unsigned int);
   std::vector<std::string> GetMissingComponents(unsigned int);
-  /// <summary>
-  /// Execute a function on entities with specified components
-  /// </summary>
+  /// @brief Execute a function on entities with specified components
   template <typename... T, typename F>
   void ForEach(F);
-  /// <summary>
-  /// Execute a function on all children of a given entity
-  /// </summary>
+  /// @brief Execute a function on all children of a given entity
   template <typename F>
   void ForEachChild(unsigned int, F);
-  /// <summary>
-  /// Execute a function on all root entities
-  /// </summary>
+  /// @brief Execute a function on all root entities
   template <typename F>
   void ForEachRoot(F);
-  /// <summary>
-  /// Execute a function on all entities
-  /// </summary>
+  /// @brief Execute a function on all entities
   template <typename F>
   void ForAll(F);
+  template <typename F>
+  void ForEachVisibleEntity(const Camera&, F);
 };
 template <typename T>
 T* EntityManager::AddComponent(unsigned int id) {
   auto manager = GetManager<T>();
   if (manager->Has(id))
     return manager->Get(id);
-  return &manager->Add(id);
+  T* component = &manager->Add(id);
+  if constexpr (std::is_same_v<T, MeshFilter>)
+    // TODO: bounds need updating when the transform changes
+    octree.Insert(id, component->mesh.bounds);
+  return component;
 }
 template <typename... T>
 std::tuple<T*...> EntityManager::AddComponents(unsigned int id) {
@@ -128,6 +120,8 @@ std::tuple<T*...> EntityManager::AddComponents(unsigned int id) {
 }
 template <typename T>
 void EntityManager::RemoveComponent(unsigned int id) {
+  if constexpr (std::is_same_v<T, MeshFilter>)
+    octree.Delete(id);
   GetManager<T>()->Remove(id);
 }
 template <typename... T>
@@ -205,4 +199,10 @@ size_t EntityManager::GetComponentMask() const {
   if (it == typeToMask.end())
     return 0;
   return static_cast<size_t>(it->second);
+}
+template <typename F>
+void EntityManager::ForEachVisibleEntity(const Camera& camera, F func) {
+  octree.ForEachInFrustum(camera, [&](unsigned int id) {
+    func(id);
+  });
 }

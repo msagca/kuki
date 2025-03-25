@@ -3,9 +3,7 @@
 #include <string>
 struct ENGINE_API TrieNode {
   std::unordered_map<char, TrieNode*> children;
-  /// <summary>
-  /// The next number suffix available that can be appended to this node
-  /// </summary>
+  /// @brief The next number suffix available that can be appended to this node
   unsigned int numSuffix = 0;
   bool wordEnd = false;
 };
@@ -15,33 +13,23 @@ private:
   void InsertAt(const std::string&, TrieNode*);
   void DeleteAll(TrieNode*);
   void ClearChildren(TrieNode*);
-  /// <summary>
-  /// Execute a function for each word starting at the given node
-  /// </summary>
+  /// @brief Execute a function for each word starting at the given node
   template <typename F>
   void ForEach(TrieNode*, const std::string&, F);
 public:
   Trie();
   void Insert(const std::string&);
-  /// <summary>
-  /// Insert the word, add a suffix if it's a duplicate, modify the input string to reflect the change
-  /// </summary>
+  /// @brief Insert the word, add a suffix if it's a duplicate, modify the input string to reflect the change
   void Insert(std::string&);
   void Delete(const std::string&);
-  /// <summary>
-  /// Delete all the words that start with the given prefix
-  /// </summary>
+  /// @brief Delete all the words that start with the given prefix
   void DeleteAll(const std::string&);
   bool Search(const std::string&);
   bool StartsWith(const std::string&);
-  /// <summary>
-  /// Execute a function for each word starting with the given prefix
-  /// </summary>
+  /// @brief Execute a function for each word starting with the given prefix
   template <typename F>
   void ForEach(const std::string&, F);
-  /// <summary>
-  /// Release the memory occupied by trie nodes
-  /// </summary>
+  /// @brief Release the memory occupied by trie nodes
   void Clear();
 };
 template <typename F>
