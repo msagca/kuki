@@ -6,6 +6,7 @@
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <input_manager.hpp>
+#include <glm/trigonometric.hpp>
 CameraController::CameraController(InputManager& inputManager)
   : inputManager(inputManager) {}
 void CameraController::UpdatePosition(float deltaTime) {
@@ -28,7 +29,7 @@ void CameraController::UpdatePosition(float deltaTime) {
   camera.UpdateView();
 }
 void CameraController::UpdateRotation(glm::vec2 mouseDiff) {
-  static const auto PITCH_LIMIT = 89.99f;
+  static const auto PITCH_LIMIT = glm::radians(89.0f);
   camera.yaw += mouseDiff.x;
   camera.pitch += mouseDiff.y;
   if (camera.pitch > PITCH_LIMIT)

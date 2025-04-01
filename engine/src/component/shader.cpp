@@ -17,11 +17,11 @@ Shader::Shader(std::string name, const std::filesystem::path& vert, const std::f
 Shader::Shader(const std::filesystem::path& vert, const std::filesystem::path& frag) {
   auto vertText = Read(vert);
   auto fragText = Read(frag);
-  auto vertID = Compile(vertText.c_str(), GL_VERTEX_SHADER);
-  auto fragID = Compile(fragText.c_str(), GL_FRAGMENT_SHADER);
+  auto vertId = Compile(vertText.c_str(), GL_VERTEX_SHADER);
+  auto fragId = Compile(fragText.c_str(), GL_FRAGMENT_SHADER);
   id = glCreateProgram();
-  glAttachShader(id, vertID);
-  glAttachShader(id, fragID);
+  glAttachShader(id, vertId);
+  glAttachShader(id, fragId);
   glLinkProgram(id);
   GLint success;
   glGetProgramiv(id, GL_LINK_STATUS, &success);
@@ -29,10 +29,10 @@ Shader::Shader(const std::filesystem::path& vert, const std::filesystem::path& f
     std::cerr << "Failed to link shader." << std::endl;
   else
     CacheLocations();
-  glDeleteShader(vertID);
-  glDeleteShader(fragID);
+  glDeleteShader(vertId);
+  glDeleteShader(fragId);
 }
-GLuint Shader::GetID() const {
+GLuint Shader::GetId() const {
   return id;
 }
 const std::string& Shader::GetName() const {

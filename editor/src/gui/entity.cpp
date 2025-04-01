@@ -1,15 +1,16 @@
 #include <editor.hpp>
 #include <string>
+#include <imgui.h>
 void Editor::DisplayEntity(unsigned int id) {
   static auto renameMode = false;
   static auto renamedEntity = -1;
   static char newName[256] = "";
   ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
-  if (id >= lastSelection && id <= currentSelection)
+  if (selectedEntities.find(id) != selectedEntities.end() || id >= lastSelection && id <= currentSelection)
     nodeFlags |= ImGuiTreeNodeFlags_Selected;
   if (!EntityHasChildren(id))
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
-  auto renaming = (renamedEntity == id && renameMode);
+  auto renaming = !flying && renamedEntity == id && renameMode;
   auto nodeOpen = false;
   if (renaming) {
     ImGui::AlignTextToFramePadding();
@@ -29,35 +30,25 @@ void Editor::DisplayEntity(unsigned int id) {
   } else {
     auto label = GetEntityName(id);
     nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, "%s", label.c_str());
-    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
-      if (GetKey(GLFW_KEY_LEFT_SHIFT))
-        lastSelection = currentSelection;
-      else if (GetKey(GLFW_KEY_LEFT_CONTROL)) {
-      } else
+    if (!flying && ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+      if (!addRangeToSelection) {
         lastSelection = id;
+        if (!addToSelection)
+          clearSelection = true;
+      } else
+        lastSelection = currentSelection;
       currentSelection = id;
-    }
-    auto popupName = "EntityContext#" + std::to_string(id);
-    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-      currentSelection = id;
-      lastSelection = id;
-      ImGui::OpenPopup(popupName.c_str());
-    }
-    if (ImGui::BeginPopup(popupName.c_str())) {
-      if (ImGui::MenuItem("Remove"))
-        ImGui::CloseCurrentPopup();
-      ImGui::EndPopup();
     }
     // TODO: implement double click support in input manager
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    if (!flying && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
       strcpy(newName, GetEntityName(id).c_str());
       renameMode = true;
       renamedEntity = id;
     }
   }
   if (nodeOpen) {
-    ForEachChildEntity(id, [&](unsigned int childID) {
-      DisplayEntity(childID);
+    ForEachChildEntity(id, [&](unsigned int childId) {
+      DisplayEntity(childId);
     });
     if (!renaming)
       ImGui::TreePop();

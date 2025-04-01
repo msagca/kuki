@@ -23,8 +23,8 @@ int SpawnCommand::Execute(Application* app, const std::span<std::string> args) {
   if (args.size() < 1 || args.size() > 3)
     return -1;
   auto& assetName = args[0];
-  auto assetID = app->GetAssetID(assetName);
-  if (assetID < 0) {
+  auto assetId = app->GetAssetId(assetName);
+  if (assetId < 0) {
     message = assetName;
     return -2;
   }

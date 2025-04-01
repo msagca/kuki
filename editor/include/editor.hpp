@@ -7,9 +7,16 @@
 class Editor final : public Application {
 private:
   CameraController cameraController;
+  Camera editorCamera;
   ImGui::FileBrowser fileBrowser;
-  int lastSelection = -1;
+  std::unordered_set<unsigned int> selectedEntities;
+  bool flying = false;
+  bool addRangeToSelection = false;
+  bool addToSelection = false;
+  bool clearSelection = false;
+  bool deleteSelected = false;
   int currentSelection = -1;
+  int lastSelection = -1;
   void DisplayEntity(unsigned int);
   void DisplayHierarchy();
   void DisplayProperties();

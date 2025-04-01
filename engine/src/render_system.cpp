@@ -28,6 +28,7 @@
 #include <variant>
 #include <vector>
 #include <ios>
+#include <utility/octree.hpp>
 RenderSystem::RenderSystem(Application& app)
   : System(app), texturePool(CreateTexture, DeleteTexture, 16) {}
 RenderSystem::~RenderSystem() {
@@ -36,13 +37,16 @@ RenderSystem::~RenderSystem() {
   shaders.clear();
 }
 void RenderSystem::Start() {
+  assetCam.Update();
   auto phongShader = new Shader("Phong", "shader/phong.vert", "shader/phong.frag");
   auto pbrShader = new Shader("PBR", "shader/pbr.vert", "shader/pbr.frag");
   auto unlitShader = new Shader("Unlit", "shader/unlit.vert", "shader/unlit.frag");
+  auto unlit2Shader = new Shader("Unlit2", "shader/unlit2.vert", "shader/unlit2.frag");
   auto skyboxShader = new Shader("Skybox", "shader/skybox.vert", "shader/skybox.frag");
   shaders.insert({phongShader->GetName(), phongShader});
   shaders.insert({pbrShader->GetName(), pbrShader});
   shaders.insert({unlitShader->GetName(), unlitShader});
+  shaders.insert({unlit2Shader->GetName(), unlit2Shader});
   shaders.insert({skyboxShader->GetName(), skyboxShader});
   glGenBuffers(1, &instanceVBO);
 }
@@ -92,31 +96,14 @@ void RenderSystem::ToggleWireframeMode() {
   else
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
-void RenderSystem::DrawAsset(const Transform* transform, const Mesh& mesh, const Material& material) {
-  auto shader = GetMaterialShader(material);
-  shader->Use();
-  material.Apply(*shader);
-  shader->SetUniform("useInstancing", false);
-  auto model = GetAssetWorldTransform(transform);
-  shader->SetMVP(model, assetCam.view, assetCam.projection);
-  shader->SetUniform("viewPos", assetCam.position);
-  static const Light dirLight;
-  shader->SetLight(&dirLight);
-  shader->SetUniform("dirExists", true);
-  glBindVertexArray(mesh.vertexArray);
-  if (mesh.indexCount > 0)
-    glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);
-  else
-    glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
-}
 void RenderSystem::DrawEntity(const Transform* transform, const Mesh& mesh, const Material& material) {
   auto shader = GetMaterialShader(material);
   shader->Use();
   material.Apply(*shader);
   shader->SetUniform("useInstancing", false);
   auto model = GetEntityWorldTransform(transform);
-  shader->SetMVP(model, app.GetActiveCamera()->view, app.GetActiveCamera()->projection);
-  shader->SetUniform("viewPos", app.GetActiveCamera()->position);
+  shader->SetMVP(model, targetCamera->view, targetCamera->projection);
+  shader->SetUniform("viewPos", targetCamera->position);
   auto dirExists = false;
   auto pointCount = 0;
   app.ForEachEntity<Light>([&](unsigned int id, Light* light) {
@@ -151,9 +138,9 @@ void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<uns
   shader->Use();
   material.Apply(*shader);
   shader->SetUniform("useInstancing", true);
-  shader->SetUniform("view", app.GetActiveCamera()->view);
-  shader->SetUniform("projection", app.GetActiveCamera()->projection);
-  shader->SetUniform("viewPos", app.GetActiveCamera()->position);
+  shader->SetUniform("view", targetCamera->view);
+  shader->SetUniform("projection", targetCamera->projection);
+  shader->SetUniform("viewPos", targetCamera->position);
   auto dirExists = false;
   auto pointCount = 0;
   app.ForEachEntity<Light>([&](unsigned int id, Light* light) {
@@ -182,7 +169,10 @@ void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<uns
 void RenderSystem::DrawScene() {
   std::unordered_map<unsigned int, std::unordered_map<std::type_index, std::vector<unsigned int>>> vaoToMatToEntities;
   std::unordered_map<unsigned int, Mesh> vaoToMesh;
-  app.ForEachVisibleEntity(*app.GetActiveCamera(), [&](unsigned int id) {
+  auto camera = app.GetActiveCamera();
+  if (!camera)
+    return;
+  app.ForEachVisibleEntity(*camera, [&](unsigned int id) {
     auto [transform, filter, renderer] = app.GetComponents<Transform, MeshFilter, MeshRenderer>(id);
     if (!transform || !filter || !renderer)
       return;
@@ -201,18 +191,18 @@ void RenderSystem::DrawScene() {
   DrawSkybox();
 }
 void RenderSystem::DrawSkybox() {
-  auto assetID = app.GetAssetID("CubeInverted");
-  auto mesh = app.GetAssetComponent<Mesh>(assetID);
+  auto assetId = app.GetAssetId("CubeInverted");
+  auto mesh = app.GetAssetComponent<Mesh>(assetId);
   if (!mesh)
     return;
   auto shader = shaders["Skybox"];
   shader->Use();
-  auto view = glm::mat4(glm::mat3(app.GetActiveCamera()->view));
+  auto view = glm::mat4(glm::mat3(targetCamera->view));
   shader->SetUniform("view", view);
-  shader->SetUniform("projection", app.GetActiveCamera()->projection);
+  shader->SetUniform("projection", targetCamera->projection);
   glBindVertexArray(mesh->vertexArray);
-  assetID = app.GetAssetID("Skybox");
-  auto skyboxTexture = app.GetAssetComponent<Texture>(assetID);
+  assetId = app.GetAssetId("Skybox");
+  auto skyboxTexture = app.GetAssetComponent<Texture>(assetId);
   if (!skyboxTexture)
     return;
   glActiveTexture(GL_TEXTURE0);
@@ -224,33 +214,90 @@ void RenderSystem::DrawSkybox() {
     glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
   glDepthFunc(GL_LESS);
 }
-void RenderSystem::DrawAsset(unsigned int id) {
-  auto bounds = GetAssetBounds(id);
-  assetCam.Frame(bounds);
-  if (app.AssetHasComponents<Transform, Mesh, Material>(id)) {
-    auto [transform, mesh, material] = app.GetAssetComponents<Transform, Mesh, Material>(id);
-    DrawAsset(transform, *mesh, *material);
-  } else if (auto texture = app.GetAssetComponent<Texture>(id)) {
-    Material material;
-    material.material = UnlitMaterial();
-    auto& unlitMaterial = std::get<UnlitMaterial>(material.material);
-    unlitMaterial.base = texture->id;
-    auto frameID = app.GetAssetID("Frame");
-    auto quadMesh = app.GetAssetComponent<Mesh>(frameID);
-    static const Transform transform;
-    DrawAsset(&transform, *quadMesh, material);
-  }
-  app.ForEachChildAsset(id, [this](unsigned int childID) {
-    DrawAsset(childID);
+void RenderSystem::DrawAsset(const Transform* transform, const Mesh& mesh, const Material& material) {
+  auto shader = GetMaterialShader(material);
+  shader->Use();
+  material.Apply(*shader);
+  shader->SetUniform("useInstancing", false);
+  auto model = GetAssetWorldTransform(transform);
+  shader->SetMVP(model, assetCam.view, assetCam.projection);
+  shader->SetUniform("viewPos", assetCam.position);
+  static const Light dirLight;
+  shader->SetLight(&dirLight);
+  shader->SetUniform("dirExists", true);
+  glBindVertexArray(mesh.vertexArray);
+  if (mesh.indexCount > 0)
+    glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);
+  else
+    glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
+}
+void RenderSystem::DrawOctree() {
+  auto assetId = app.GetAssetId("Cube");
+  auto mesh = app.GetAssetComponent<Mesh>(assetId);
+  if (!mesh)
+    return;
+  auto shader = shaders["Unlit2"];
+  shader->Use();
+  glm::vec3 color{};
+  app.ForEachOctreeLeafNode([this, &shader, &mesh, &color](Octree<unsigned int>* octree, Octant octant) {
+    auto depth = octree->GetDepth();
+    auto maxDepth = octree->GetMaxDepth();
+    auto center = octree->GetCenter();
+    auto extents = octree->GetExtent();
+    auto overlaps = targetCamera->OverlapsFrustum(octree->GetBounds());
+    auto model = glm::mat4(1.0f);
+    model = glm::translate(model, center);
+    model = glm::scale(model, extents * 2.0f);
+    auto ratio = static_cast<unsigned int>(octant) / 16.0f;
+    color.r = overlaps ? .0f : .5f + ratio;
+    color.g = overlaps ? .5f + ratio : .0f;
+    color.b = maxDepth > 0 ? static_cast<float>(depth) / maxDepth : 1.0f;
+    shader->SetUniform("baseColor", color);
+    shader->SetUniform("model", model);
+    shader->SetUniform("view", targetCamera->view);
+    shader->SetUniform("projection", targetCamera->projection);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glBindVertexArray(mesh->vertexArray);
+    if (mesh->indexCount > 0)
+      glDrawElements(GL_TRIANGLES, mesh->indexCount, GL_UNSIGNED_INT, 0);
+    else
+      glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
+    glDisable(GL_POLYGON_OFFSET_FILL);
   });
 }
-int RenderSystem::RenderSceneToTexture() {
-  if (!app.GetActiveScene() || !app.GetActiveCamera())
+void RenderSystem::DrawViewFrustum() {
+  auto assetId = app.GetAssetId("Cube");
+  auto mesh = app.GetAssetComponent<Mesh>(assetId);
+  if (!mesh)
+    return;
+  auto shader = shaders["Unlit2"];
+  shader->Use();
+  auto sceneCamera = app.GetActiveCamera();
+  if (!sceneCamera)
+    return;
+  auto model = glm::mat4(1.0f);
+  model = glm::translate(model, sceneCamera->position);
+  model *= glm::mat4_cast(sceneCamera->GetTransform().rotation);
+  model = glm::inverse(sceneCamera->projection) * model;
+  shader->SetUniform("baseColor", glm::vec3(1.0f, 0.5f, 0.0f));
+  shader->SetUniform("model", model);
+  shader->SetUniform("view", targetCamera->view);
+  shader->SetUniform("projection", targetCamera->projection);
+  glBindVertexArray(mesh->vertexArray);
+  if (mesh->indexCount > 0)
+    glDrawElements(GL_TRIANGLES, mesh->indexCount, GL_UNSIGNED_INT, 0);
+  else
+    glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
+}
+int RenderSystem::RenderSceneToTexture(Camera* camera) {
+  auto sceneCamera = app.GetActiveCamera();
+  targetCamera = camera ? camera : sceneCamera;
+  if (!targetCamera)
     return -1;
   auto& config = app.GetConfig();
   auto width = config.screenWidth;
   auto height = config.screenHeight;
-  app.GetActiveCamera()->SetProperty({"AspectRatio", static_cast<float>(width) / height});
+  targetCamera->SetProperty({"AspectRatio", static_cast<float>(width) / height});
   auto multiBufferComplete = UpdateBuffers(sceneMultiFBO, sceneMultiRBO, sceneMultiTexture, width, height, 4);
   auto singleBufferComplete = UpdateBuffers(sceneFBO, sceneRBO, sceneTexture, width, height);
   if (!multiBufferComplete || !singleBufferComplete) {
@@ -262,29 +309,48 @@ int RenderSystem::RenderSceneToTexture() {
   glClearColor(.0f, .0f, .0f, .0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   DrawScene();
+  DrawOctree();
+  DrawViewFrustum();
   glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneMultiFBO);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sceneFBO);
   glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return sceneTexture;
 }
-int RenderSystem::RenderAssetToTexture(unsigned int assetID, int size) {
+int RenderSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   static std::unordered_map<unsigned int, unsigned int> assetToTexture;
-  if (assetToTexture.find(assetID) == assetToTexture.end()) {
-    auto itemID = texturePool.Request();
-    assetToTexture[assetID] = *texturePool.Get(itemID);
+  auto isTexture = app.AssetHasComponent<Texture>(assetId);
+  if (isTexture) {
+    auto texture = app.GetAssetComponent<Texture>(assetId);
+    assetToTexture[assetId] = texture->id;
   }
-  auto textureID = assetToTexture[assetID];
-  size = std::max(1, size);
-  UpdateBuffers(assetFBO, assetRBO, textureID, size, size);
-  glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
-  glViewport(0, 0, size, size);
-  glClearColor(.0f, .0f, .0f, .0f);
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-  DrawAsset(assetID);
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  return textureID;
+  if (assetToTexture.find(assetId) == assetToTexture.end()) {
+    auto itemId = texturePool.Request();
+    assetToTexture[assetId] = *texturePool.Get(itemId);
+  }
+  auto textureId = assetToTexture[assetId];
+  if (!isTexture) {
+    size = std::max(1, size);
+    UpdateBuffers(assetFBO, assetRBO, textureId, size, size);
+    glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureId, 0);
+    glViewport(0, 0, size, size);
+    glClearColor(.0f, .0f, .0f, .0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    DrawAsset(assetId);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  }
+  return textureId;
+}
+void RenderSystem::DrawAsset(unsigned int id) {
+  auto bounds = GetAssetBounds(id);
+  assetCam.Frame(bounds);
+  auto [transform, mesh, material] = app.GetAssetComponents<Transform, Mesh, Material>(id);
+  if (transform && mesh && material)
+    DrawAsset(transform, *mesh, *material);
+  app.ForEachChildAsset(id, [this](unsigned int childId) {
+    DrawAsset(childId);
+  });
 }
 unsigned int RenderSystem::CreateTexture() {
   unsigned int id;
@@ -323,14 +389,14 @@ glm::vec3 RenderSystem::GetAssetWorldPosition(const Transform* transform) {
 }
 BoundingBox RenderSystem::GetAssetBounds(unsigned int id) {
   BoundingBox bounds;
-  std::function<void(unsigned int)> calculateBounds = [&](unsigned int assetID) {
-    auto [mesh, transform] = app.GetAssetComponents<Mesh, Transform>(assetID);
+  std::function<void(unsigned int)> calculateBounds = [&](unsigned int assetId) {
+    auto [mesh, transform] = app.GetAssetComponents<Mesh, Transform>(assetId);
     if (mesh && transform) {
       auto childBounds = mesh->bounds.GetWorldBounds(transform);
       bounds.min = glm::min(bounds.min, childBounds.min);
       bounds.max = glm::max(bounds.max, childBounds.max);
     }
-    app.ForEachChildAsset(assetID, [&](unsigned int childId) {
+    app.ForEachChildAsset(assetId, [&](unsigned int childId) {
       calculateBounds(childId);
     });
   };

@@ -13,18 +13,30 @@ void Editor::DrawGizmos(float width, float height) {
     return;
   if (currentSelection < 0)
     return;
-  auto transform = GetComponent<Transform>(currentSelection);
-  if (!transform)
-    return;
+  Transform transform;
+  Transform* transformComp = GetComponent<Transform>(currentSelection);
+  Camera* cameraComp = nullptr;
+  if (!transformComp) {
+    cameraComp = GetComponent<Camera>(currentSelection);
+    if (cameraComp)
+      transform = cameraComp->GetTransform();
+    else
+      return;
+  } else
+    transform = *transformComp;
   ImGuizmo::SetDrawlist();
   ImGuizmo::SetOrthographic(false);
   auto windowPos = ImGui::GetWindowPos();
   ImGuizmo::SetRect(windowPos.x, windowPos.y, width, height);
   glm::mat4 matrix;
-  auto rotation = glm::degrees(glm::eulerAngles(transform->rotation));
-  ImGuizmo::RecomposeMatrixFromComponents(glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale), glm::value_ptr(matrix));
+  auto rotation = glm::degrees(glm::eulerAngles(transform.rotation));
+  ImGuizmo::RecomposeMatrixFromComponents(glm::value_ptr(transform.position), glm::value_ptr(rotation), glm::value_ptr(transform.scale), glm::value_ptr(matrix));
   ImGuizmo::Manipulate(glm::value_ptr(camera->view), glm::value_ptr(camera->projection), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(matrix));
-  ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform->position), glm::value_ptr(rotation), glm::value_ptr(transform->scale));
-  transform->rotation = glm::quat(glm::radians(rotation));
-  transform->dirty = true;
+  ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform.position), glm::value_ptr(rotation), glm::value_ptr(transform.scale));
+  transform.rotation = glm::quat(glm::radians(rotation));
+  transform.dirty = true;
+  if (cameraComp)
+    cameraComp->SetTransform(transform);
+  else
+    *transformComp = transform;
 }

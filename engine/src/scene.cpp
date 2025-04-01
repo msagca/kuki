@@ -6,7 +6,7 @@ Scene::Scene(const std::string& name, unsigned int id)
 std::string Scene::GetName() const {
   return name;
 }
-unsigned int Scene::GetID() const {
+unsigned int Scene::GetId() const {
   return id;
 }
 Camera* Scene::GetCamera() {

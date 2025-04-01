@@ -1,5 +1,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #define STB_IMAGE_IMPLEMENTATION
+#include <app_config.hpp>
 #include <application.hpp>
 #include <chrono>
 #include <cmath>
@@ -25,7 +26,8 @@
 #include <string>
 #include <system.hpp>
 #include <vector>
-Application::Application(const std::string& name) : name(name), assetManager(), assetLoader(assetManager), inputManager(), sceneManager(), commandManager() {}
+Application::Application(const std::string& name)
+  : name(name), assetManager(), assetLoader(assetManager), inputManager(), sceneManager(), commandManager() {}
 const std::string& Application::GetName() const {
   return name;
 }
@@ -42,11 +44,11 @@ void Application::DeleteScene(unsigned int id) {
   sceneManager.Delete(id);
 }
 Scene* Application::GetActiveScene() {
-  return sceneManager.Get(activeSceneID);
+  return sceneManager.Get(activeSceneId);
 }
 void Application::SetActiveScene(unsigned int id) {
   if (sceneManager.Has(id))
-    activeSceneID = id;
+    activeSceneId = id;
 }
 Camera* Application::GetActiveCamera() {
   auto scene = GetActiveScene();
@@ -55,7 +57,7 @@ Camera* Application::GetActiveCamera() {
   return scene->GetCamera();
 }
 void Application::Init() {
-  static const auto WINDOW_WIDTH = 800.0f;
+  static const auto WINDOW_WIdTH = 800.0f;
   static const auto WINDOW_HEIGHT = 600.0f;
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -63,7 +65,7 @@ void Application::Init() {
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
   glfwWindowHint(GLFW_SAMPLES, 4);
-  window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, name.c_str(), nullptr, nullptr);
+  window = glfwCreateWindow(WINDOW_WIdTH, WINDOW_HEIGHT, name.c_str(), nullptr, nullptr);
   if (!window) {
     std::cerr << "Failed to create GLFW window." << std::endl;
     glfwTerminate();
@@ -88,7 +90,7 @@ void Application::Init() {
     std::cerr << "OpenGL error after initialization: " << error << std::endl;
     return;
   }
-  SetWindowIcon("image/logo.png");
+  SetWindowIcon("image/logo.png"); // TODO: make this configurable
   glfwSwapInterval(0);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   glfwSetWindowUserPointer(window, this);
@@ -97,7 +99,7 @@ void Application::Init() {
   glfwSetKeyCallback(window, KeyCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetCursorPosCallback(window, CursorPosCallback);
-  glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+  glViewport(0, 0, WINDOW_WIdTH, WINDOW_HEIGHT);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_DEPTH_TEST);
@@ -223,14 +225,14 @@ std::string Application::GetEntityName(unsigned int id) {
 std::string Application::GetAssetName(unsigned int id) {
   return assetManager.GetName(id);
 }
-int Application::GetEntityID(const std::string& name) {
+int Application::GetEntityId(const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return -1;
-  return scene->GetEntityManager().GetID(name);
+  return scene->GetEntityManager().GetId(name);
 }
-int Application::GetAssetID(const std::string& name) {
-  return assetManager.GetID(name);
+int Application::GetAssetId(const std::string& name) {
+  return assetManager.GetId(name);
 }
 void Application::RenameEntity(unsigned int id, std::string& name) {
   auto scene = GetActiveScene();
@@ -300,32 +302,32 @@ glm::vec3 Application::GetRandomPosition(float r) {
   auto radius = r * std::cbrt(u);
   return direction * radius;
 }
-int Application::Spawn(std::string& name, int parentID, bool randomPos, float spawnRadius) {
-  auto assetID = assetManager.GetID(name);
-  if (assetID < 0)
+int Application::Spawn(std::string& name, int parentId, bool randomPos, float spawnRadius) {
+  auto assetId = assetManager.GetId(name);
+  if (assetId < 0)
     return -1;
-  auto entityID = CreateEntity(name);
-  auto components = assetManager.GetAllComponents(assetID);
+  auto entityId = CreateEntity(name);
+  auto components = assetManager.GetAllComponents(assetId);
   for (auto c : components)
     if (auto t = dynamic_cast<Transform*>(c)) {
-      auto transform = AddComponent<Transform>(entityID);
+      auto transform = AddComponent<Transform>(entityId);
       *transform = *t;
-      transform->parent = parentID;
+      transform->parent = parentId;
       if (randomPos)
         transform->position = GetRandomPosition(spawnRadius);
     } else if (auto m = dynamic_cast<Mesh*>(c)) {
-      auto filter = AddComponent<MeshFilter>(entityID);
+      auto filter = AddComponent<MeshFilter>(entityId);
       filter->mesh = *m;
     } else if (auto m = dynamic_cast<Material*>(c)) {
-      auto renderer = AddComponent<MeshRenderer>(entityID);
+      auto renderer = AddComponent<MeshRenderer>(entityId);
       renderer->material = *m;
     }
-  assetManager.ForEachChild(assetID, [this, &entityID](unsigned int id) {
+  assetManager.ForEachChild(assetId, [this, &entityId](unsigned int id) {
     auto name = assetManager.GetName(id);
-    auto childID = Spawn(name, entityID);
-    AddChildEntity(entityID, childID);
+    auto childId = Spawn(name, entityId);
+    AddChildEntity(entityId, childId);
   });
-  return entityID;
+  return entityId;
 }
 void Application::SpawnMulti(const std::string& name, int count, float radius) {
   for (auto i = 0; i < count; ++i) {
@@ -354,7 +356,7 @@ void Application::UnsetInputCallback(int key, int action) {
 int Application::LoadModel(const std::filesystem::path& path) {
   return assetLoader.LoadModel(path);
 }
-int Application::LoadPrimitive(PrimitiveID id) {
+int Application::LoadPrimitive(PrimitiveId id) {
   return assetLoader.LoadPrimitive(id);
 }
 int Application::LoadCubeMap(std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {

@@ -4,6 +4,7 @@
 #include <engine_export.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/trigonometric.hpp>
 #include <vector>
 struct ENGINE_API Plane {
   glm::vec3 point{.0f};
@@ -29,9 +30,9 @@ struct ENGINE_API Camera final : IComponent {
   glm::vec3 up{.0f, 1.0f, .0f};
   glm::vec3 right{1.0f, .0f, .0f};
   Frustum frustum;
-  float pitch{-15.0f};
-  float yaw{-90.0f};
-  float fov{45.0f};
+  float pitch{glm::radians(-30.0f)};
+  float yaw{glm::radians(-45.0f)};
+  float fov{45.0f}; // degrees
   float aspectRatio{1.0f};
   float nearPlane{.1f};
   float farPlane{100.0f};
@@ -39,6 +40,9 @@ struct ENGINE_API Camera final : IComponent {
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;
+  Transform GetTransform() const;
+  void SetTransform(const Transform&);
+  void Update();
   void UpdateDirection();
   void UpdateView();
   void UpdateProjection();

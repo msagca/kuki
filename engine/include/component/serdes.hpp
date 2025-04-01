@@ -80,13 +80,13 @@ struct adl_serializer<Light> {
 };
 template <>
 struct adl_serializer<Texture> {
-  // FIXME: texture ID will change between runs, there is no point in serializing it; serialize the file path instead
+  // FIXME: texture Id will change between runs, there is no point in serializing it; serialize the file path instead
   static void to_json(nlohmann::json& j, const Texture& obj) {
-    j = nlohmann::json{{"Type", obj.type}, {"ID", obj.id}};
+    j = nlohmann::json{{"Type", obj.type}, {"Id", obj.id}};
   }
   static void from_json(const nlohmann::json& j, Texture& obj) {
     j.at("Type").get_to(obj.type);
-    j.at("ID").get_to(obj.id);
+    j.at("Id").get_to(obj.id);
   }
 };
 } // namespace nlohmann

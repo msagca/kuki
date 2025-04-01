@@ -13,7 +13,7 @@ struct Triangle {
   glm::vec3 v2;
   glm::vec3 v3;
 };
-enum class PrimitiveID : unsigned int {
+enum class PrimitiveId : unsigned int {
   Cube,
   Sphere,
   Cylinder,

@@ -4,7 +4,6 @@
 #include <component/light.hpp>
 #include <editor.hpp>
 #include <GLFW/glfw3.h>
-#include <glad/glad.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -18,11 +17,13 @@ Editor::Editor()
   : Application("Editor"), cameraController(inputManager) {}
 void Editor::Start() {
   SetInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
+  // FIXME: in disabled mode, while flying around the scene, the cursor triggers right click menus in other windows
   SetInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
   SetInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderSystem::ToggleWireframeMode, "Toggle wireframe mode.");
   InitImGui();
   LoadDefaultAssets();
   LoadDefaultScene();
+  cameraController.SetCamera(&editorCamera);
   CreateSystem<RenderSystem>(static_cast<Application&>(*this));
   RegisterCommand(new SpawnCommand());
   RegisterCommand(new DeleteCommand());
@@ -58,37 +59,38 @@ void Editor::InitLayout() {
     return;
   firstRun = false;
   auto viewport = ImGui::GetMainViewport();
-  auto dockspaceID = ImGui::GetID("DockSpace");
+  auto dockspaceId = ImGui::GetID("DockSpace");
   auto viewportSize = viewport->Size;
-  ImGui::DockBuilderRemoveNode(dockspaceID);
-  ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_DockSpace);
-  ImGui::DockBuilderSetNodeSize(dockspaceID, viewportSize);
-  auto mainID = dockspaceID;
-  ImGui::DockBuilderDockWindow("Scene", mainID);
-  auto rightID = ImGui::DockBuilderSplitNode(mainID, ImGuiDir_Right, .3f, nullptr, &mainID);
-  ImGui::DockBuilderDockWindow("Hierarchy", rightID);
-  auto rightBottomID = ImGui::DockBuilderSplitNode(rightID, ImGuiDir_Down, .5f, nullptr, &rightID);
-  ImGui::DockBuilderDockWindow("Properties", rightBottomID);
-  auto bottomID = ImGui::DockBuilderSplitNode(mainID, ImGuiDir_Down, .3f, nullptr, &mainID);
-  ImGui::DockBuilderDockWindow("Assets", bottomID);
-  ImGui::DockBuilderFinish(dockspaceID);
+  ImGui::DockBuilderRemoveNode(dockspaceId);
+  ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+  ImGui::DockBuilderSetNodeSize(dockspaceId, viewportSize);
+  auto mainId = dockspaceId;
+  ImGui::DockBuilderDockWindow("Scene", mainId);
+  auto rightId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Right, .3f, nullptr, &mainId);
+  ImGui::DockBuilderDockWindow("Hierarchy", rightId);
+  auto rightBottomId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Down, .5f, nullptr, &rightId);
+  ImGui::DockBuilderDockWindow("Properties", rightBottomId);
+  auto bottomId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Down, .3f, nullptr, &mainId);
+  ImGui::DockBuilderDockWindow("Assets", bottomId);
+  ImGui::DockBuilderFinish(dockspaceId);
 }
 void Editor::LoadDefaultScene() {
   auto scene = CreateScene("Main");
   std::string entityName = "MainCamera";
-  auto entityID = CreateEntity(entityName);
-  AddComponent<Camera>(entityID);
+  auto entityId = CreateEntity(entityName);
+  auto camera = AddComponent<Camera>(entityId);
+  camera->Update();
   entityName = "MainLight";
-  entityID = CreateEntity(entityName);
-  AddComponent<Light>(entityID);
+  entityId = CreateEntity(entityName);
+  AddComponent<Light>(entityId);
 }
 void Editor::LoadDefaultAssets() {
-  LoadPrimitive(PrimitiveID::Cube);
-  LoadPrimitive(PrimitiveID::CubeInverted);
-  LoadPrimitive(PrimitiveID::Cylinder);
-  LoadPrimitive(PrimitiveID::Frame);
-  LoadPrimitive(PrimitiveID::Plane);
-  LoadPrimitive(PrimitiveID::Sphere);
+  LoadPrimitive(PrimitiveId::Cube);
+  LoadPrimitive(PrimitiveId::CubeInverted);
+  LoadPrimitive(PrimitiveId::Cylinder);
+  LoadPrimitive(PrimitiveId::Frame);
+  LoadPrimitive(PrimitiveId::Plane);
+  LoadPrimitive(PrimitiveId::Sphere);
   std::string assetName = "Skybox";
   LoadCubeMap(assetName, "image/skybox/top.jpg", "image/skybox/bottom.jpg", "image/skybox/right.jpg", "image/skybox/left.jpg", "image/skybox/front.jpg", "image/skybox/back.jpg");
 }

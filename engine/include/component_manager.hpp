@@ -20,7 +20,7 @@ private:
   std::vector<T> components;
   std::unordered_map<unsigned int, unsigned int> entityToComponent;
   std::vector<unsigned int> componentToEntity;
-  unsigned int inactiveCount = 0; // TODO: shrink the array if inactive count gets too high to reclaim some memory
+  unsigned int inactiveCount = 0; // TODO: to reclaim some memory, shrink the array if inactive count gets too high
   template <typename F>
   void ForAll(F);
 public:
@@ -31,6 +31,9 @@ public:
   void Remove(unsigned int) override;
   bool Has(unsigned int) override;
   T* Get(unsigned int);
+  /// @brief Casts the component pointer to IComponent pointer
+  /// @param Entity Id
+  /// @return An IComponent pointer
   IComponent* GetBase(unsigned int) override;
   T* GetFirst();
   template <typename F>
@@ -49,15 +52,15 @@ T& ComponentManager<T>::Add(unsigned int id) {
   auto it = entityToComponent.find(id);
   if (it != entityToComponent.end())
     return components[it->second];
-  auto componentID = components.size();
+  auto componentId = components.size();
   if (inactiveCount > 0) {
-    componentID = ActiveCount();
+    componentId = ActiveCount();
     inactiveCount--;
   } else
     components.emplace_back();
-  entityToComponent.insert({id, componentID});
+  entityToComponent.insert({id, componentId});
   componentToEntity.push_back(id);
-  return components[componentID];
+  return components[componentId];
 }
 template <typename T>
 IComponent& ComponentManager<T>::AddBase(unsigned int id) {
@@ -68,12 +71,12 @@ void ComponentManager<T>::Remove(unsigned int id) {
   auto it = entityToComponent.find(id);
   if (it == entityToComponent.end())
     return;
-  auto componentID = it->second;
-  auto lastID = ActiveCount() - 1;
-  if (componentID != lastID) {
-    std::swap(components[componentID], components[lastID]);
-    std::swap(componentToEntity[componentID], componentToEntity[lastID]);
-    entityToComponent[componentToEntity[componentID]] = componentID;
+  auto componentId = it->second;
+  auto lastId = ActiveCount() - 1;
+  if (componentId != lastId) {
+    std::swap(components[componentId], components[lastId]);
+    std::swap(componentToEntity[componentId], componentToEntity[lastId]);
+    entityToComponent[componentToEntity[componentId]] = componentId;
   }
   entityToComponent.erase(id);
   componentToEntity.pop_back();

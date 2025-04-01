@@ -18,13 +18,13 @@
 /// @brief Manages entities and their components in a scene
 class ENGINE_API EntityManager {
 private:
-  unsigned int nextID = 0;
+  unsigned int nextId = 0;
   std::unordered_set<unsigned int> ids;
   Trie names;
   Octree<unsigned int> octree;
-  std::unordered_map<ComponentID, std::type_index> idToType; // NOTE: this is component type ID, not entity ID
+  std::unordered_map<ComponentId, std::type_index> idToType; // NOTE: this is component type Id, not entity Id
   std::unordered_map<std::string, std::type_index> nameToType;
-  std::unordered_map<std::string, unsigned int> nameToID;
+  std::unordered_map<std::string, unsigned int> nameToId;
   std::unordered_map<std::type_index, ComponentMask> typeToMask;
   std::unordered_map<std::type_index, IComponentManager*> typeToManager;
   std::unordered_map<unsigned int, std::string> idToName;
@@ -34,10 +34,11 @@ private:
   ComponentManager<T>* GetManager();
   IComponentManager* GetManager(std::type_index);
   IComponentManager* GetManager(const std::string&);
-  IComponentManager* GetManager(ComponentID);
+  IComponentManager* GetManager(ComponentId);
   template <typename T>
   size_t GetComponentMask() const;
   void DeleteRecords(unsigned int);
+  void UpdateOctree();
 public:
   ~EntityManager();
   unsigned int Create(std::string&);
@@ -47,7 +48,7 @@ public:
   void DeleteAll(const std::string&);
   bool Rename(unsigned int, std::string&);
   const std::string& GetName(unsigned int) const;
-  int GetID(const std::string&);
+  int GetId(const std::string&);
   /// @brief Create parent-child relationship between the given entities
   /// @return true if the operation was successful, false otherwise
   bool AddChild(unsigned int, unsigned int);
@@ -59,13 +60,13 @@ public:
   size_t GetCount() const;
   template <typename T>
   T* AddComponent(unsigned int);
-  IComponent* AddComponent(unsigned int, ComponentID);
+  IComponent* AddComponent(unsigned int, ComponentId);
   IComponent* AddComponent(unsigned int, const std::string&);
   template <typename... T>
   std::tuple<T*...> AddComponents(unsigned int);
   template <typename T>
   void RemoveComponent(unsigned int);
-  void RemoveComponent(unsigned int, ComponentID);
+  void RemoveComponent(unsigned int, ComponentId);
   void RemoveComponent(unsigned int, const std::string&);
   template <typename... T>
   void RemoveComponents(unsigned int);
@@ -100,6 +101,10 @@ public:
   void ForAll(F);
   template <typename F>
   void ForEachVisibleEntity(const Camera&, F);
+  template <typename F>
+  void ForEachOctreeNode(F);
+  template <typename F>
+  void ForEachOctreeLeafNode(F);
 };
 template <typename T>
 T* EntityManager::AddComponent(unsigned int id) {
@@ -107,9 +112,6 @@ T* EntityManager::AddComponent(unsigned int id) {
   if (manager->Has(id))
     return manager->Get(id);
   T* component = &manager->Add(id);
-  if constexpr (std::is_same_v<T, MeshFilter>)
-    // TODO: bounds need updating when the transform changes
-    octree.Insert(id, component->mesh.bounds);
   return component;
 }
 template <typename... T>
@@ -120,8 +122,6 @@ std::tuple<T*...> EntityManager::AddComponents(unsigned int id) {
 }
 template <typename T>
 void EntityManager::RemoveComponent(unsigned int id) {
-  if constexpr (std::is_same_v<T, MeshFilter>)
-    octree.Delete(id);
   GetManager<T>()->Remove(id);
 }
 template <typename... T>
@@ -187,7 +187,7 @@ ComponentManager<T>* EntityManager::GetManager() {
   if (it == typeToManager.end()) {
     typeToManager.emplace(type, new ComponentManager<T>());
     nameToType.emplace(ComponentTraits<T>::GetName(), type);
-    idToType.emplace(ComponentTraits<T>::GetID(), type);
+    idToType.emplace(ComponentTraits<T>::GetId(), type);
     typeToMask.emplace(type, ComponentTraits<T>::GetMask());
   }
   return static_cast<ComponentManager<T>*>(typeToManager[type]);
@@ -202,7 +202,16 @@ size_t EntityManager::GetComponentMask() const {
 }
 template <typename F>
 void EntityManager::ForEachVisibleEntity(const Camera& camera, F func) {
+  UpdateOctree();
   octree.ForEachInFrustum(camera, [&](unsigned int id) {
     func(id);
   });
+}
+template <typename F>
+void EntityManager::ForEachOctreeNode(F func) {
+  octree.ForEach(func);
+}
+template <typename F>
+void EntityManager::ForEachOctreeLeafNode(F func) {
+  octree.ForEachLeaf(func);
 }

@@ -5,6 +5,7 @@
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
+#include <component/mesh_filter.hpp>
 EntityManager::~EntityManager() {
   for (const auto& [type, manager] : typeToManager)
     delete manager;
@@ -22,7 +23,7 @@ IComponentManager* EntityManager::GetManager(const std::string& name) {
     return nullptr;
   return GetManager(it->second);
 }
-IComponentManager* EntityManager::GetManager(ComponentID id) {
+IComponentManager* EntityManager::GetManager(ComponentId id) {
   auto it = idToType.find(id);
   if (it == idToType.end())
     return nullptr;
@@ -30,34 +31,35 @@ IComponentManager* EntityManager::GetManager(ComponentID id) {
 }
 unsigned int EntityManager::Create(std::string& name) {
   names.Insert(name);
-  idToName[nextID] = name;
-  ids.insert(nextID);
-  nameToID[idToName[nextID]] = nextID;
-  return nextID++;
+  idToName[nextId] = name;
+  ids.insert(nextId);
+  nameToId[idToName[nextId]] = nextId;
+  return nextId++;
 }
 void EntityManager::DeleteRecords(unsigned int id) {
   auto it = idToName.find(id);
   if (it == idToName.end())
     return;
   names.Delete(it->second);
-  nameToID.erase(it->second);
+  nameToId.erase(it->second);
   ids.erase(id);
   idToName.erase(id);
   idToChildren.erase(id);
   idToParent.erase(id);
+  octree.Delete(id);
 }
 void EntityManager::Delete(unsigned int id) {
   if (ids.find(id) == ids.end())
     return;
   RemoveAllComponents(id);
-  ForEachChild(id, [this](unsigned int childID) {
-    Delete(childID);
+  ForEachChild(id, [this](unsigned int childId) {
+    Delete(childId);
   });
   DeleteRecords(id);
 }
 void EntityManager::Delete(const std::string& name) {
-  auto it = nameToID.find(name);
-  if (it == nameToID.end())
+  auto it = nameToId.find(name);
+  if (it == nameToId.end())
     return;
   Delete(it->second);
 }
@@ -66,7 +68,7 @@ void EntityManager::DeleteAll() {
     RemoveAllComponents(id);
   names.Clear();
   ids.clear();
-  nameToID.clear();
+  nameToId.clear();
   idToName.clear();
   idToChildren.clear();
   idToParent.clear();
@@ -81,10 +83,10 @@ bool EntityManager::Rename(unsigned int id, std::string& name) {
   if (it == idToName.end())
     return false;
   names.Delete(it->second);
-  nameToID.erase(it->second);
+  nameToId.erase(it->second);
   names.Insert(name);
   idToName[id] = name;
-  nameToID[name] = id;
+  nameToId[name] = id;
   return true;
 }
 const std::string& EntityManager::GetName(unsigned int id) const {
@@ -94,9 +96,9 @@ const std::string& EntityManager::GetName(unsigned int id) const {
     return emptyString;
   return it->second;
 }
-int EntityManager::GetID(const std::string& name) {
-  auto it = nameToID.find(name);
-  if (it == nameToID.end())
+int EntityManager::GetId(const std::string& name) {
+  auto it = nameToId.find(name);
+  if (it == nameToId.end())
     return -1;
   return it->second;
 }
@@ -137,10 +139,10 @@ int EntityManager::GetParent(unsigned int id) const {
 size_t EntityManager::GetCount() const {
   return ids.size();
 }
-IComponent* EntityManager::AddComponent(unsigned int id, ComponentID componentID) {
+IComponent* EntityManager::AddComponent(unsigned int id, ComponentId componentId) {
   if (ids.find(id) == ids.end())
     return nullptr;
-  auto manager = GetManager(componentID);
+  auto manager = GetManager(componentId);
   if (!manager)
     return nullptr;
   return &manager->AddBase(id);
@@ -153,8 +155,8 @@ IComponent* EntityManager::AddComponent(unsigned int id, const std::string& name
     return nullptr;
   return &manager->AddBase(id);
 }
-void EntityManager::RemoveComponent(unsigned int id, ComponentID componentID) {
-  auto manager = GetManager(componentID);
+void EntityManager::RemoveComponent(unsigned int id, ComponentId componentId) {
+  auto manager = GetManager(componentId);
   if (!manager)
     return;
   manager->Remove(id);
@@ -198,4 +200,9 @@ std::vector<std::string> EntityManager::GetMissingComponents(unsigned int id) {
       if (!HasComponent(id, type))
         components.emplace_back(name);
   return components;
+}
+void EntityManager::UpdateOctree() {
+  ForEach<MeshFilter>([this](unsigned int id, MeshFilter* filter) {
+    octree.Insert(id, filter->mesh.bounds);
+  });
 }

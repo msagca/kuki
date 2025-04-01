@@ -2,6 +2,7 @@
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/mesh.hpp>
+#include <component/transform.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
@@ -24,15 +25,15 @@ const std::string Camera::GetName() const {
   return ComponentTraits<Camera>::GetName();
 }
 std::vector<Property> Camera::GetProperties() const {
-  return {{"Type", type}, {"Position", position}, {"Pitch", pitch}, {"Yaw", yaw}, {"FOV", fov}, {"AspectRatio", aspectRatio}, {"NearPlane", nearPlane}, {"FarPlane", farPlane}, {"OrthoSize", orthoSize}};
+  return {{"Type", type}, {"Position", position}, {"Pitch", glm::degrees(pitch)}, {"Yaw", glm::degrees(yaw)}, {"FOV", fov}, {"AspectRatio", aspectRatio}, {"NearPlane", nearPlane}, {"FarPlane", farPlane}, {"OrthoSize", orthoSize}};
 }
 void Camera::SetProperty(Property property) {
   if (std::holds_alternative<float>(property.value)) {
     auto& value = std::get<float>(property.value);
     if (property.name == "Pitch")
-      pitch = value;
+      pitch = glm::radians(value);
     else if (property.name == "Yaw")
-      yaw = value;
+      yaw = glm::radians(value);
     else if (property.name == "FOV")
       fov = value;
     else if (property.name == "AspectRatio")
@@ -55,11 +56,31 @@ void Camera::SetProperty(Property property) {
   }
   UpdateFrustum();
 }
+Transform Camera::GetTransform() const {
+  Transform transform;
+  transform.position = position;
+  transform.rotation = glm::quat(glm::vec3(pitch, yaw, .0f));
+  return transform;
+}
+void Camera::SetTransform(const Transform& transform) {
+  position = transform.position;
+  pitch = glm::pitch(transform.rotation);
+  yaw = glm::yaw(transform.rotation);
+  UpdateDirection();
+  UpdateView();
+  UpdateFrustum();
+}
+void Camera::Update() {
+  UpdateDirection();
+  UpdateView();
+  UpdateProjection();
+  UpdateFrustum();
+}
 void Camera::UpdateDirection() {
   static const auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);
-  front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-  front.y = sin(glm::radians(pitch));
-  front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+  front.x = cos(yaw) * cos(pitch);
+  front.y = sin(pitch);
+  front.z = sin(yaw) * cos(pitch);
   front = glm::normalize(front);
   right = glm::normalize(glm::cross(front, WORLD_UP));
   up = glm::normalize(glm::cross(right, front));
@@ -69,7 +90,7 @@ void Camera::UpdateView() {
 }
 void Camera::UpdateProjection() {
   if (type == CameraType::Perspective)
-    projection = glm::perspective(fov, aspectRatio, nearPlane, farPlane);
+    projection = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
   else {
     auto left = orthoSize * aspectRatio;
     auto bottom = orthoSize;
@@ -77,7 +98,7 @@ void Camera::UpdateProjection() {
   }
 }
 void Camera::UpdateFrustum() {
-  const auto vHalf = farPlane * tanf(fov * .5f);
+  const auto vHalf = farPlane * tanf(glm::radians(fov) * .5f);
   const auto hHalf = vHalf * aspectRatio;
   const auto farPos = farPlane * front;
   frustum.near = {position + nearPlane * front, front};
@@ -90,19 +111,14 @@ void Camera::UpdateFrustum() {
 void Camera::Frame(const BoundingBox& bounds) {
   glm::vec3 center = (bounds.min + bounds.max) * .5f;
   auto dimensions = bounds.max - bounds.min;
-  position = center;
-  pitch = -30.0f;
-  yaw = -45.0f;
-  UpdateDirection();
   auto radius = glm::length(dimensions) * .5f;
   float fovVertical = glm::radians(fov);
   float fovHorizontal = 2.0f * atan(tan(fovVertical * .5f) * aspectRatio);
   auto fovMin = glm::min(fovVertical, fovHorizontal);
   auto distanceFactor = 1.2f;
   float distance = (radius / tan(fovMin * .5f)) * distanceFactor;
-  position -= front * distance;
+  position = center - front * distance;
   UpdateView();
-  UpdateProjection();
 }
 bool Camera::OverlapsFrustum(const BoundingBox& bounds) const {
   return frustum.OverlapsFrustum(bounds);

@@ -27,7 +27,7 @@ private:
 protected:
   GLFWwindow* window = nullptr;
   float deltaTime = .0f;
-  unsigned int activeSceneID = 0;
+  unsigned int activeSceneId = 0;
   // TODO: create the necessary API functions and make the following private
   EntityManager assetManager;
   InputManager inputManager;
@@ -69,8 +69,8 @@ public:
   void DeleteAllEntities(const std::string&);
   std::string GetEntityName(unsigned int);
   std::string GetAssetName(unsigned int);
-  int GetEntityID(const std::string&);
-  int GetAssetID(const std::string&);
+  int GetEntityId(const std::string&);
+  int GetAssetId(const std::string&);
   void RenameEntity(unsigned int, std::string&);
   bool AddChildEntity(unsigned int, unsigned int);
   bool EntityHasParent(unsigned int);
@@ -106,6 +106,10 @@ public:
   void ForAllEntities(F);
   template <typename F>
   void ForEachVisibleEntity(const Camera&, F);
+  template <typename F>
+  void ForEachOctreeNode(F);
+  template <typename F>
+  void ForEachOctreeLeafNode(F);
   template <typename... T>
   bool HasComponents(unsigned int);
   template <typename... T>
@@ -125,7 +129,7 @@ public:
   void SetInputCallback(int, int, std::function<void()>, std::string = "");
   void UnsetInputCallback(int, int);
   int LoadModel(const std::filesystem::path&);
-  int LoadPrimitive(PrimitiveID);
+  int LoadPrimitive(PrimitiveId);
   int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
 };
 template <typename... T>
@@ -243,6 +247,20 @@ void Application::ForEachVisibleEntity(const Camera& camera, F func) {
   if (!scene)
     return;
   scene->GetEntityManager().ForEachVisibleEntity(camera, func);
+}
+template <typename F>
+void Application::ForEachOctreeNode(F func) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().ForEachOctreeNode(func);
+}
+template <typename F>
+void Application::ForEachOctreeLeafNode(F func) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().ForEachOctreeLeafNode(func);
 }
 template <typename... T>
 std::tuple<T*...> Application::GetComponents(unsigned int id) {

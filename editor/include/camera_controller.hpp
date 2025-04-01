@@ -10,7 +10,7 @@ private:
   Camera* cameraPtr = nullptr;
   InputManager& inputManager;
   float moveSpeed = 5.0f;
-  float mouseSensitivity = .1f;
+  float mouseSensitivity = .001f;
   bool movementEnabled = true;
   bool rotationEnabled = true;
   void UpdatePosition(float);

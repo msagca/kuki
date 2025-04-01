@@ -1,14 +1,17 @@
 #pragma once
 #include <engine_export.h>
 #include <entity_manager.hpp>
+#include <component/texture.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <system.hpp>
+#include <utility/octree.hpp>
 #include <utility/pool.hpp>
 class Application;
 class ENGINE_API RenderSystem final : public System {
 private:
   std::unordered_map<std::string, Shader*> shaders;
   Camera assetCam;
+  Camera* targetCamera;
   Pool<unsigned int> texturePool;
   unsigned int assetFBO = 0;
   unsigned int assetRBO = 0;
@@ -26,6 +29,8 @@ private:
   void DrawSkybox();
   void DrawScene();
   void DrawAsset(unsigned int);
+  void DrawOctree();
+  void DrawViewFrustum();
   static unsigned int CreateTexture();
   static void DeleteTexture(unsigned int);
   glm::mat4 GetEntityWorldTransform(const Transform*);
@@ -39,7 +44,7 @@ public:
   void Start() override;
   // void Update(float, Scene*) override;
   void Shutdown() override;
-  int RenderSceneToTexture();
+  int RenderSceneToTexture(Camera* = nullptr);
   int RenderAssetToTexture(unsigned int, int);
   static void ToggleWireframeMode();
 };

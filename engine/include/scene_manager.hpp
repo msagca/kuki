@@ -5,9 +5,9 @@
 #include <string>
 class ENGINE_API SceneManager {
 private:
-  unsigned int nextID = 0;
+  unsigned int nextId = 0;
   std::unordered_map<unsigned int, Scene*> idToScene;
-  std::unordered_map<std::string, unsigned int> nameToID;
+  std::unordered_map<std::string, unsigned int> nameToId;
 public:
   ~SceneManager();
   unsigned int Create(const std::string&);

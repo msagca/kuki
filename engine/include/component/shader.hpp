@@ -16,7 +16,7 @@ private:
 public:
   Shader(std::string name, const std::filesystem::path&, const std::filesystem::path&);
   Shader(const std::filesystem::path&, const std::filesystem::path&);
-  GLuint GetID() const;
+  GLuint GetId() const;
   const std::string& GetName() const;
   void Use() const;
   void SetUniform(const std::string&, const glm::mat4&);

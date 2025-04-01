@@ -10,7 +10,7 @@ private:
 public:
   Scene(const std::string&, unsigned int);
   std::string GetName() const;
-  unsigned int GetID() const;
+  unsigned int GetId() const;
   Camera* GetCamera();
   // TODO: add methods to remove the need to refer to the scene's entity manager
   EntityManager& GetEntityManager();

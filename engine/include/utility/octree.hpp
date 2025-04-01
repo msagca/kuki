@@ -13,13 +13,15 @@ enum class Octant : unsigned int {
   RightBottomBack,
   RightBottomFront,
   RightTopBack,
-  RightTopFront
+  RightTopFront,
+  None
 };
 /// @brief A generic octree class
 /// @tparam T Type of the key used to store items in the octree
 template <typename T>
 class Octree {
 private:
+  const Octant octant;
   const glm::vec3 center;
   const glm::vec3 extent;
   const BoundingBox bounds;
@@ -27,15 +29,19 @@ private:
   const unsigned int maxDepth;
   const unsigned int minItems;
   const unsigned int maxItems;
-  bool leaf = true;
+  bool leaf;
   std::unordered_map<T, BoundingBox> items;
+  Octree* parent;
   Octree* children[8];
+  Octree(Octant, glm::vec3, glm::vec3, unsigned int, unsigned int, unsigned int, unsigned int);
   bool Subdivide();
+  void Distribute();
   bool Overlaps(const BoundingBox&);
+  bool Contains(const BoundingBox&);
   /// @return true if total number of items in children is not greater than minItems, false otherwise
-  bool ShouldMerge() const;
+  bool CanCollapse() const;
   /// @brief Merge items of children into the current node, then remove the children
-  void MergeChildren();
+  void Collapse();
   void InsertToStream(std::ostringstream&) const;
   template <typename F>
   void ForEachInFrustumInternal(const Camera& camera, F func, std::unordered_set<T>& visited);
@@ -43,13 +49,17 @@ public:
   /// @brief
   /// @param center Center of the octree
   /// @param extent Extent of the octree
-  /// @param depth Depth level of the current node
   /// @param maxDepth Maximum depth of the octree
   /// @param minItems Minimum number of items in a node before it can be merged
   /// @param maxItems Maximum number of items in a node before it can be subdivided
-  Octree(glm::vec3 = glm::vec3{.0f}, glm::vec3 = glm::vec3{10.0f}, unsigned int = 0, unsigned int = 5, unsigned int = 10, unsigned int = 100);
+  Octree(glm::vec3 = glm::vec3{.0f}, glm::vec3 = glm::vec3{10.0f}, unsigned int = 4, unsigned int = 16, unsigned int = 128);
+  Octant GetOctant() const;
+  unsigned int GetDepth() const;
+  unsigned int GetMaxDepth() const;
+  glm::vec3 GetCenter() const;
+  glm::vec3 GetExtent() const;
   BoundingBox GetBounds() const;
-  unsigned int GetItemCount() const;
+  unsigned int GetCount() const;
   bool IsLeaf() const;
   /// @brief Insert an item into the octree
   /// @param item Key to store the item
@@ -60,19 +70,54 @@ public:
   /// @brief Delete all octree nodes (except the root node)
   void Clear();
   std::string ToString() const;
+  /// @brief Execute a function on each node in the octree
+  template <typename F>
+  void ForEach(F);
+  template <typename F>
+  void ForEachLeaf(F);
   template <typename F>
   void ForEachInFrustum(const Camera&, F);
 };
 template <typename T>
-Octree<T>::Octree(glm::vec3 center, glm::vec3 extent, unsigned int depth, unsigned int maxDepth, unsigned int minItems, unsigned int maxItems)
-  : center(center), extent(extent), depth(depth), maxDepth(maxDepth), minItems(minItems), maxItems(maxItems), bounds(center - extent, center + extent) {}
+Octree<T>::Octree(Octant octant, glm::vec3 center, glm::vec3 extent, unsigned int depth, unsigned int maxDepth, unsigned int minItems, unsigned int maxItems)
+  : octant(octant), center(center), extent(extent), depth(depth), maxDepth(maxDepth), minItems(minItems), maxItems(maxItems), bounds(center - extent, center + extent), leaf(true) {
+  assert(extent.x > 0 && extent.y > 0 && extent.z > 0 && "Extent must be greater than zero in all axes.");
+  assert(maxDepth >= depth && "maxDepth must be greater than or equal to depth.");
+}
+template <typename T>
+Octree<T>::Octree(glm::vec3 center, glm::vec3 extent, unsigned int maxDepth, unsigned int minItems, unsigned int maxItems)
+  : Octree(Octant::None, center, extent, 0, maxDepth, minItems, maxItems) {}
+template <typename T>
+Octant Octree<T>::GetOctant() const {
+  return octant;
+}
+template <typename T>
+unsigned int Octree<T>::GetDepth() const {
+  return depth;
+}
+template <typename T>
+unsigned int Octree<T>::GetMaxDepth() const {
+  return maxDepth;
+}
+template <typename T>
+glm::vec3 Octree<T>::GetCenter() const {
+  return center;
+}
+template <typename T>
+glm::vec3 Octree<T>::GetExtent() const {
+  return extent;
+}
 template <typename T>
 BoundingBox Octree<T>::GetBounds() const {
   return bounds;
 }
 template <typename T>
-unsigned int Octree<T>::GetItemCount() const {
-  return items.size();
+unsigned int Octree<T>::GetCount() const {
+  auto total = items.size();
+  if (!leaf)
+    for (auto i = 0; i < 8; i++)
+      total += children[i]->GetCount();
+  return total;
 }
 template <typename T>
 bool Octree<T>::IsLeaf() const {
@@ -80,21 +125,23 @@ bool Octree<T>::IsLeaf() const {
 }
 template <typename T>
 bool Octree<T>::Insert(T item, const BoundingBox& bounds) {
-  if (!Overlaps(bounds))
+  if (!Contains(bounds)) {
+    Delete(item); // NOTE: if this is an existing item and went out of bounds, remove it from the octree
     return false;
-  if (leaf) {
-    items[item] = bounds;
-    if (items.size() > maxItems && Subdivide()) {
-      for (const auto& [key, val] : items)
-        // distribute items to children
-        for (auto i = 0; i < 8; ++i)
-          children[i]->Insert(key, val);
-      // TODO: make sure each item is inserted into at least one child node
-      items.clear();
-    }
-  } else
+  }
+  items[item] = bounds;
+  if (!leaf) {
+    auto inserted = false;
     for (auto i = 0; i < 8; ++i)
-      children[i]->Insert(item, bounds);
+      if (children[i]->Insert(item, bounds)) {
+        inserted = true;
+        break;
+      }
+    if (inserted)
+      items.erase(item);
+  }
+  if (items.size() > maxItems && Subdivide())
+    Distribute();
   return true;
 }
 template <typename T>
@@ -104,32 +151,49 @@ bool Octree<T>::Subdivide() {
   leaf = false;
   auto childExtent = extent * .5f;
   auto childDepth = depth + 1;
+  auto childMinItems = minItems / 8;
+  auto childMaxItems = maxItems / 8;
   for (auto i = 0; i < 8; ++i) {
-    auto x = (i & 4) != 0 ? .5f : -.5f;
-    auto y = (i & 2) != 0 ? .5f : -.5f;
-    auto z = (i & 1) != 0 ? .5f : -.5f;
+    auto x = (i & 4) != 0 ? childExtent.x : -childExtent.x;
+    auto y = (i & 2) != 0 ? childExtent.y : -childExtent.y;
+    auto z = (i & 1) != 0 ? childExtent.z : -childExtent.z;
     glm::vec3 offset(x, y, z);
-    auto childCenter = center + offset * extent;
-    children[i] = new Octree<T>(childCenter, childExtent, childDepth);
+    auto childCenter = center + offset;
+    auto childOctant = static_cast<Octant>(i);
+    children[i] = new Octree<T>(childOctant, childCenter, childExtent, childDepth, maxDepth, childMinItems, childMaxItems);
+    children[i]->parent = this;
   }
   return true;
 }
 template <typename T>
-bool Octree<T>::ShouldMerge() const {
-  auto total = 0;
-  for (auto i = 0; i < 8; ++i) {
-    if (!children[i]->IsLeaf())
-      return false;
-    total += children[i]->GetItemCount();
+void Octree<T>::Distribute() {
+  for (const auto& [key, val] : items) {
+    auto inserted = false;
+    for (auto i = 0; i < 8; ++i)
+      if (children[i]->Insert(key, val)) {
+        inserted = true;
+        break;
+      }
+    if (inserted)
+      items.erase(key);
   }
-  return total <= minItems;
 }
 template <typename T>
-void Octree<T>::MergeChildren() {
-  for (auto i = 0; i < 8; ++i)
-    if (children[i]->IsLeaf())
-      // NOTE: insert does not overwrite existing items
-      items.insert(children[i]->items.begin(), children[i]->items.end());
+bool Octree<T>::CanCollapse() const {
+  if (leaf)
+    return false;
+  return GetCount() <= minItems;
+}
+template <typename T>
+void Octree<T>::Collapse() {
+  if (!CanCollapse())
+    return;
+  for (auto i = 0; i < 8; ++i) {
+    if (!children[i]->leaf)
+      children[i]->Collapse();
+    // NOTE: insert does not overwrite existing items
+    items.insert(children[i]->items.begin(), children[i]->items.end());
+  }
   Clear();
   leaf = true;
 }
@@ -138,15 +202,20 @@ bool Octree<T>::Overlaps(const BoundingBox& other) {
   return (bounds.min.x <= other.max.x && bounds.max.x >= other.min.x) && (bounds.min.y <= other.max.y && bounds.max.y >= other.min.y) && (bounds.min.z <= other.max.z && bounds.max.z >= other.min.z);
 }
 template <typename T>
+bool Octree<T>::Contains(const BoundingBox& other) {
+  return (bounds.min.x <= other.min.x && bounds.max.x >= other.max.x) && (bounds.min.y <= other.min.y && bounds.max.y >= other.max.y) && (bounds.min.z <= other.min.z && bounds.max.z >= other.max.z);
+}
+template <typename T>
 bool Octree<T>::Delete(T item) {
-  if (leaf)
-    return items.erase(item);
-  auto deleted = false;
-  for (auto i = 0; i < 8; ++i)
-    if (children[i]->Delete(item))
-      deleted = true;
-  if (deleted && ShouldMerge())
-    MergeChildren();
+  auto deleted = items.erase(item);
+  if (!deleted && !leaf)
+    for (auto i = 0; i < 8; ++i)
+      if (children[i]->Delete(item)) {
+        deleted = true;
+        break;
+      }
+  if (deleted)
+    Collapse();
   return deleted;
 }
 template <typename T>
@@ -180,6 +249,25 @@ void Octree<T>::InsertToStream(std::ostringstream& oss) const {
 }
 template <typename T>
 template <typename F>
+void Octree<T>::ForEach(F func) {
+  func(this);
+  if (leaf)
+    return;
+  for (auto i = 0; i < 8; ++i)
+    children[i]->ForEach(func);
+}
+template <typename T>
+template <typename F>
+void Octree<T>::ForEachLeaf(F func) {
+  if (leaf) {
+    func(this, static_cast<Octant>(octant));
+    return;
+  }
+  for (auto i = 0; i < 8; ++i)
+    children[i]->ForEachLeaf(func);
+}
+template <typename T>
+template <typename F>
 void Octree<T>::ForEachInFrustum(const Camera& camera, F func) {
   std::unordered_set<T> visited;
   ForEachInFrustumInternal(camera, func, visited);
@@ -189,13 +277,12 @@ template <typename F>
 void Octree<T>::ForEachInFrustumInternal(const Camera& camera, F func, std::unordered_set<T>& visited) {
   if (!camera.OverlapsFrustum(bounds))
     return;
-  if (leaf) {
-    for (const auto& [key, _] : items)
-      if (visited.find(key) == visited.end()) {
-        visited.insert(key);
-        func(key);
-      }
-  } else
+  for (const auto& [key, _] : items)
+    if (visited.find(key) == visited.end()) {
+      visited.insert(key);
+      func(key);
+    }
+  if (!leaf)
     for (auto i = 0; i < 8; ++i)
       children[i]->ForEachInFrustumInternal(camera, func, visited);
 }

@@ -7,7 +7,7 @@ const std::string Texture::GetName() const {
   return ComponentTraits<Texture>::GetName();
 }
 std::vector<Property> Texture::GetProperties() const {
-  return {{"Type", type}, {"ID", id}};
+  return {{"Type", type}, {"Id", id}};
 }
 void Texture::SetProperty(Property property) {
   if (std::holds_alternative<int>(property.value)) {

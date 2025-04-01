@@ -4,7 +4,7 @@
 #include <string>
 #include <variant>
 #include <vector>
-enum class ComponentID : unsigned int {
+enum class ComponentId : unsigned int {
   Camera,
   Light,
   Material,
@@ -15,14 +15,14 @@ enum class ComponentID : unsigned int {
   Transform
 };
 enum class ComponentMask : size_t {
-  Camera = 1 << static_cast<unsigned int>(ComponentID::Camera),
-  Light = 1 << static_cast<unsigned int>(ComponentID::Light),
-  Material = 1 << static_cast<unsigned int>(ComponentID::Material),
-  MeshFilter = 1 << static_cast<unsigned int>(ComponentID::MeshFilter),
-  Mesh = 1 << static_cast<unsigned int>(ComponentID::Mesh),
-  MeshRenderer = 1 << static_cast<unsigned int>(ComponentID::MeshRenderer),
-  Texture = 1 << static_cast<unsigned int>(ComponentID::Texture),
-  Transform = 1 << static_cast<unsigned int>(ComponentID::Transform)
+  Camera = 1 << static_cast<unsigned int>(ComponentId::Camera),
+  Light = 1 << static_cast<unsigned int>(ComponentId::Light),
+  Material = 1 << static_cast<unsigned int>(ComponentId::Material),
+  MeshFilter = 1 << static_cast<unsigned int>(ComponentId::MeshFilter),
+  Mesh = 1 << static_cast<unsigned int>(ComponentId::Mesh),
+  MeshRenderer = 1 << static_cast<unsigned int>(ComponentId::MeshRenderer),
+  Texture = 1 << static_cast<unsigned int>(ComponentId::Texture),
+  Transform = 1 << static_cast<unsigned int>(ComponentId::Transform)
 };
 enum class CameraType : unsigned int {
   Perspective,
@@ -61,7 +61,7 @@ template <typename T>
 struct ComponentTraits {
   static_assert(sizeof(T) == 0, "ComponentTraits must be specialized for this type");
   static const std::string GetName();
-  static ComponentID GetID();
+  static ComponentId GetId();
   static ComponentMask GetMask();
 };
 struct Camera;
@@ -77,8 +77,8 @@ struct ComponentTraits<Camera> {
   static const std::string GetName() {
     return "Camera";
   }
-  static ComponentID GetID() {
-    return ComponentID::Camera;
+  static ComponentId GetId() {
+    return ComponentId::Camera;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Camera;
@@ -89,8 +89,8 @@ struct ComponentTraits<Light> {
   static const std::string GetName() {
     return "Light";
   }
-  static ComponentID GetID() {
-    return ComponentID::Light;
+  static ComponentId GetId() {
+    return ComponentId::Light;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Light;
@@ -101,8 +101,8 @@ struct ComponentTraits<Material> {
   static const std::string GetName() {
     return "Material";
   }
-  static ComponentID GetID() {
-    return ComponentID::Material;
+  static ComponentId GetId() {
+    return ComponentId::Material;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Material;
@@ -113,8 +113,8 @@ struct ComponentTraits<MeshFilter> {
   static const std::string GetName() {
     return "MeshFilter";
   }
-  static ComponentID GetID() {
-    return ComponentID::MeshFilter;
+  static ComponentId GetId() {
+    return ComponentId::MeshFilter;
   }
   static ComponentMask GetMask() {
     return ComponentMask::MeshFilter;
@@ -125,8 +125,8 @@ struct ComponentTraits<Mesh> {
   static const std::string GetName() {
     return "Mesh";
   }
-  static ComponentID GetID() {
-    return ComponentID::Mesh;
+  static ComponentId GetId() {
+    return ComponentId::Mesh;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Mesh;
@@ -137,8 +137,8 @@ struct ComponentTraits<MeshRenderer> {
   static const std::string GetName() {
     return "MeshRenderer";
   }
-  static ComponentID GetID() {
-    return ComponentID::MeshRenderer;
+  static ComponentId GetId() {
+    return ComponentId::MeshRenderer;
   }
   static ComponentMask GetMask() {
     return ComponentMask::MeshRenderer;
@@ -149,8 +149,8 @@ struct ComponentTraits<Texture> {
   static const std::string GetName() {
     return "Texture";
   }
-  static ComponentID GetID() {
-    return ComponentID::Texture;
+  static ComponentId GetId() {
+    return ComponentId::Texture;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Texture;
@@ -161,8 +161,8 @@ struct ComponentTraits<Transform> {
   static const std::string GetName() {
     return "Transform";
   }
-  static ComponentID GetID() {
-    return ComponentID::Transform;
+  static ComponentId GetId() {
+    return ComponentId::Transform;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Transform;
