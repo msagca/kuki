@@ -16,7 +16,7 @@ target_include_directories(
 )
 target_link_libraries(
   ${PROJECT_NAME}
-  PUBLIC OpenGL::GL assimp glad glfw glm nlohmann_json stb
+  PUBLIC OpenGL::GL assimp glad glfw glm nlohmann_json spdlog stb
 )
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(

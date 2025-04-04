@@ -16,4 +16,6 @@ struct ENGINE_API Light final : IComponent {
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;
+  Transform GetTransform() const;
+  void SetTransform(const Transform&);
 };

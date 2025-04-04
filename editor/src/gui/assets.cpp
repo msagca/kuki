@@ -2,8 +2,8 @@
 #include <editor.hpp>
 #include <imgui.h>
 #include <render_system.hpp>
+#include <spdlog/spdlog.h>
 #include <string>
-#include <utility>
 void Editor::DisplayAssets() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);
@@ -36,6 +36,7 @@ void Editor::DisplayAssets() {
     if (tileBottom >= scrollY && tileTop <= scrollY + visibleHeight) {
       ImGui::SetCursorPos(tilePos);
       ImGui::PushID(assetId);
+      // TODO: no need to render all assets in every frame, call this only if a new asset has been added
       auto textureId = renderSystem->RenderAssetToTexture(assetId, THUMBNAIL_SIZE);
       auto assetName = GetAssetName(assetId);
       ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(.0f, .0f));
@@ -44,7 +45,7 @@ void Editor::DisplayAssets() {
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyle().Colors[ImGuiCol_Button]);
       }
       if (ImGui::ImageButton(std::to_string(textureId).c_str(), textureId, TILE_SIZE, uv0, uv1)) {
-        // TODO: implement selection logic
+        // TODO: implement selection and drag-drop logic
       }
       if (flying)
         ImGui::PopStyleColor(2);
@@ -67,6 +68,7 @@ void Editor::DisplayAssets() {
   if (fileBrowser.HasSelected()) {
     auto filepath = fileBrowser.GetSelected();
     LoadModel(filepath);
+    spdlog::info("Loaded model file '{}'.", filepath.string());
     fileBrowser.ClearSelected();
   }
 }

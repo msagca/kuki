@@ -29,7 +29,7 @@ void Editor::DisplayConsole() {
     return;
   auto contentPos = sceneWindow->Pos;
   contentPos.x += WINDOW_PADDING;
-  contentPos.y += sceneWindow->TitleBarHeight + WINDOW_PADDING;
+  contentPos.y += sceneWindow->TitleBarHeight + sceneWindow->MenuBarHeight + WINDOW_PADDING;
   auto contentAreaSize = sceneWindow->ContentRegionRect.GetSize();
   auto consolePos = contentPos;
   auto consoleHeight = ImGui::GetTextLineHeightWithSpacing();

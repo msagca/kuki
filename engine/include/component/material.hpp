@@ -10,7 +10,7 @@ struct IMaterial : IComponent {
 struct ENGINE_API PhongMaterial final : IMaterial {
   glm::vec3 diffuse = glm::vec3(.5f, .5f, .5f);
   glm::vec3 specular = glm::vec3(1.0f);
-  float shininess = .5f;
+  float shininess = 2.0f;
   void Apply(Shader&) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;

@@ -34,6 +34,9 @@ private:
   Octree* parent;
   Octree* children[8];
   Octree(Octant, glm::vec3, glm::vec3, unsigned int, unsigned int, unsigned int, unsigned int);
+  bool InsertToChildren(const T&, const BoundingBox&);
+  bool InsertNoSubdivide(const T&, const BoundingBox&);
+  bool DistributeToChildren(const T&, const BoundingBox&);
   bool Subdivide();
   void Distribute();
   bool Overlaps(const BoundingBox&);
@@ -65,8 +68,8 @@ public:
   /// @param item Key to store the item
   /// @param bounds Bounding box of the item
   /// @return true if the item was inserted, false otherwise
-  bool Insert(T, const BoundingBox&);
-  bool Delete(T);
+  bool Insert(const T&, const BoundingBox&);
+  bool Delete(const T&);
   /// @brief Delete all octree nodes (except the root node)
   void Clear();
   std::string ToString() const;
@@ -124,29 +127,28 @@ bool Octree<T>::IsLeaf() const {
   return leaf;
 }
 template <typename T>
-bool Octree<T>::Insert(T item, const BoundingBox& bounds) {
+bool Octree<T>::Insert(const T& item, const BoundingBox& bounds) {
   if (!Contains(bounds)) {
     Delete(item); // NOTE: if this is an existing item and went out of bounds, remove it from the octree
     return false;
   }
   items[item] = bounds;
-  if (!leaf) {
-    auto inserted = false;
-    for (auto i = 0; i < 8; ++i)
-      if (children[i]->Insert(item, bounds)) {
-        inserted = true;
-        break;
-      }
-    if (inserted)
-      items.erase(item);
-  }
-  if (items.size() > maxItems && Subdivide())
+  if (!leaf && InsertToChildren(item, bounds))
+    items.erase(item);
+  if (leaf && Subdivide())
     Distribute();
   return true;
 }
 template <typename T>
+bool Octree<T>::InsertToChildren(const T& item, const BoundingBox& bounds) {
+  for (auto i = 0; i < 8; ++i)
+    if (children[i]->Insert(item, bounds))
+      return true;
+  return false;
+}
+template <typename T>
 bool Octree<T>::Subdivide() {
-  if (maxDepth <= depth)
+  if (items.size() <= maxItems || depth >= maxDepth)
     return false;
   leaf = false;
   auto childExtent = extent * .5f;
@@ -167,16 +169,28 @@ bool Octree<T>::Subdivide() {
 }
 template <typename T>
 void Octree<T>::Distribute() {
-  for (const auto& [key, val] : items) {
-    auto inserted = false;
-    for (auto i = 0; i < 8; ++i)
-      if (children[i]->Insert(key, val)) {
-        inserted = true;
-        break;
-      }
-    if (inserted)
-      items.erase(key);
-  }
+  std::unordered_set<T> toDelete;
+  for (const auto& [key, val] : items)
+    if (DistributeToChildren(key, val))
+      toDelete.insert(key);
+  for (const auto& key : toDelete)
+    items.erase(key);
+}
+template <typename T>
+bool Octree<T>::DistributeToChildren(const T& item, const BoundingBox& bounds) {
+  for (auto i = 0; i < 8; ++i)
+    if (children[i]->InsertNoSubdivide(item, bounds))
+      return true;
+  return false;
+}
+template <typename T>
+bool Octree<T>::InsertNoSubdivide(const T& item, const BoundingBox& bounds) {
+  if (!Contains(bounds))
+    return false;
+  items[item] = bounds;
+  if (!leaf && DistributeToChildren(item, bounds))
+    items.erase(item);
+  return true;
 }
 template <typename T>
 bool Octree<T>::CanCollapse() const {
@@ -206,7 +220,7 @@ bool Octree<T>::Contains(const BoundingBox& other) {
   return (bounds.min.x <= other.min.x && bounds.max.x >= other.max.x) && (bounds.min.y <= other.min.y && bounds.max.y >= other.max.y) && (bounds.min.z <= other.min.z && bounds.max.z >= other.max.z);
 }
 template <typename T>
-bool Octree<T>::Delete(T item) {
+bool Octree<T>::Delete(const T& item) {
   auto deleted = items.erase(item);
   if (!deleted && !leaf)
     for (auto i = 0; i < 8; ++i)

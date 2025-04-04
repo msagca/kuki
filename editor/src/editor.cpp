@@ -1,23 +1,22 @@
-#include <application.hpp>
 #include <command.hpp>
 #include <component/camera.hpp>
 #include <component/light.hpp>
 #include <editor.hpp>
-#include <GLFW/glfw3.h>
 #include <imgui.h>
+#include <imfilebrowser.h>
+#include <ImGuizmo.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
-#include <imfilebrowser.h>
-#include <ImGuizmo.h>
 #include <primitive.hpp>
 #include <render_system.hpp>
+#include <spdlog/spdlog.h>
 #include <string>
+class Application;
 Editor::Editor()
-  : Application("Editor"), cameraController(inputManager) {}
+  : Application("Editor"), cameraController(inputManager), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
 void Editor::Start() {
   SetInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
-  // FIXME: in disabled mode, while flying around the scene, the cursor triggers right click menus in other windows
   SetInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
   SetInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderSystem::ToggleWireframeMode, "Toggle wireframe mode.");
   InitImGui();
@@ -27,6 +26,7 @@ void Editor::Start() {
   CreateSystem<RenderSystem>(static_cast<Application&>(*this));
   RegisterCommand(new SpawnCommand());
   RegisterCommand(new DeleteCommand());
+  spdlog::register_logger(logger);
   Application::Start();
 }
 void Editor::Update() {
@@ -50,6 +50,7 @@ void Editor::UpdateView() {
   DisplayHierarchy();
   DisplayScene();
   DisplayConsole();
+  //DisplayLogs();
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
@@ -72,6 +73,7 @@ void Editor::InitLayout() {
   ImGui::DockBuilderDockWindow("Properties", rightBottomId);
   auto bottomId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Down, .3f, nullptr, &mainId);
   ImGui::DockBuilderDockWindow("Assets", bottomId);
+  //ImGui::DockBuilderDockWindow("Logs", bottomId);
   ImGui::DockBuilderFinish(dockspaceId);
 }
 void Editor::LoadDefaultScene() {

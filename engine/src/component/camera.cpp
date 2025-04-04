@@ -59,14 +59,19 @@ void Camera::SetProperty(Property property) {
 Transform Camera::GetTransform() const {
   Transform transform;
   transform.position = position;
-  transform.rotation = glm::quat(glm::vec3(pitch, yaw, .0f));
+  glm::mat3 rotation(right, up, front);
+  transform.rotation = glm::quat_cast(rotation);
   return transform;
 }
 void Camera::SetTransform(const Transform& transform) {
   position = transform.position;
-  pitch = glm::pitch(transform.rotation);
-  yaw = glm::yaw(transform.rotation);
-  UpdateDirection();
+  auto rotation = glm::mat3_cast(transform.rotation);
+  right = rotation[0];
+  up = rotation[1];
+  front = rotation[2];
+  auto euler = glm::eulerAngles(transform.rotation);
+  pitch = euler.x;
+  yaw = euler.y;
   UpdateView();
   UpdateFrustum();
 }

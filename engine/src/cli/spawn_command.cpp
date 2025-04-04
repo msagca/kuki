@@ -2,6 +2,7 @@
 #include <command.hpp>
 #include <exception>
 #include <span>
+#include <spdlog/spdlog.h>
 #include <string>
 SpawnCommand::SpawnCommand()
   : ICommand("spawn") {}
@@ -49,6 +50,7 @@ int SpawnCommand::Execute(Application* app, const std::span<std::string> args) {
     }
   }
   app->SpawnMulti(assetName, count, radius);
+  spdlog::info("Created {} copies of the asset '{}' within a radius of {} units.", count, assetName, radius);
   message = "";
   return 0;
 }

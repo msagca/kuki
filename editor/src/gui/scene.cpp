@@ -2,11 +2,27 @@
 #include <editor.hpp>
 #include <imgui.h>
 #include <render_system.hpp>
-#include <utility>
 void Editor::DisplayScene() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);
-  ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+  static unsigned int gizmoMask = static_cast<unsigned int>(GizmoMask::Manipulator);
+  ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_MenuBar);
+  if (ImGui::BeginMenuBar()) {
+    if (ImGui::BeginMenu("Gizmos")) {
+      auto manipulatorEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
+      // TODO: manipulator gizmo is currently implemented by the editor, this won't have any impact on the render system
+      if (ImGui::MenuItem("Manipulator", nullptr, manipulatorEnabled))
+        gizmoMask ^= static_cast<unsigned int>(GizmoMask::Manipulator);
+      auto viewFrustumEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::ViewFrustum)) != 0;
+      if (ImGui::MenuItem("View Frustum", nullptr, viewFrustumEnabled))
+        gizmoMask ^= static_cast<unsigned int>(GizmoMask::ViewFrustum);
+      auto frustumCullingEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::FrustumCulling)) != 0;
+      if (ImGui::MenuItem("Frustum Culling", nullptr, frustumCullingEnabled))
+        gizmoMask ^= static_cast<unsigned int>(GizmoMask::FrustumCulling);
+      ImGui::EndMenu();
+    }
+    ImGui::EndMenuBar();
+  }
   if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !flying)
     flying = true;
   if (flying && (ImGui::IsMouseReleased(ImGuiMouseButton_Right) || !ImGui::IsMouseDown(ImGuiMouseButton_Right)))
@@ -15,6 +31,7 @@ void Editor::DisplayScene() {
   cameraController.Update(deltaTime);
   auto renderSystem = GetSystem<RenderSystem>();
   if (renderSystem) {
+    renderSystem->SetGizmoMask(gizmoMask); // NOTE: sets the render system specific gizmo flags
     auto texture = renderSystem->RenderSceneToTexture(&editorCamera);
     if (texture > 0) {
       auto& config = GetConfig();
@@ -25,7 +42,7 @@ void Editor::DisplayScene() {
       auto drawWidth = width * scaleFactor;
       auto drawHeight = height * scaleFactor;
       ImGui::Image(texture, ImVec2(drawWidth, drawHeight), uv0, uv1);
-      DrawGizmos(drawWidth, drawHeight);
+      DrawGizmos(drawWidth, drawHeight, gizmoMask); // NOTE: these gizmos are external to the render system, they draw on top of the rendered scene
     }
   }
   ImGui::End();

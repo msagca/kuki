@@ -25,6 +25,8 @@ set_target_properties(glfw PROPERTIES VERSION 3.5.0 SOVERSION 3)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
 # JSON
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/json)
+# spdlog
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog)
 # Assimp
 set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
 set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF)

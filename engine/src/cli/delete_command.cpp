@@ -1,6 +1,7 @@
 #include <application.hpp>
 #include <command.hpp>
 #include <span>
+#include <spdlog/spdlog.h>
 #include <string>
 DeleteCommand::DeleteCommand()
   : ICommand("delete") {}
@@ -16,6 +17,7 @@ int DeleteCommand::Execute(Application* app, const std::span<std::string> args) 
   if (args.size() != 1)
     return -1;
   auto& pattern = args[0];
+  spdlog::info("Deleted entities whose names matched the pattern '{}'.", pattern);
   auto last = pattern.back();
   if (last == '*') {
     pattern.pop_back();

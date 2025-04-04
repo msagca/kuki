@@ -1,13 +1,18 @@
 #include <editor.hpp>
 #include <camera_controller.hpp>
 #include <component/camera.hpp>
+#include <component/light.hpp>
 #include <component/transform.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/quaternion_float.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <ImGuizmo.h>
-void Editor::DrawGizmos(float width, float height) {
+#include <render_system.hpp>
+void Editor::DrawGizmos(float width, float height, unsigned int mask) {
+  auto manipulatorEnabled = (mask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
+  if (!manipulatorEnabled)
+    return;
   auto camera = cameraController.GetCamera();
   if (!camera)
     return;
@@ -16,12 +21,18 @@ void Editor::DrawGizmos(float width, float height) {
   Transform transform;
   Transform* transformComp = GetComponent<Transform>(currentSelection);
   Camera* cameraComp = nullptr;
+  Light* lightComp = nullptr;
   if (!transformComp) {
     cameraComp = GetComponent<Camera>(currentSelection);
     if (cameraComp)
       transform = cameraComp->GetTransform();
-    else
-      return;
+    else {
+      lightComp = GetComponent<Light>(currentSelection);
+      if (lightComp)
+        transform = lightComp->GetTransform();
+      else
+        return;
+    }
   } else
     transform = *transformComp;
   ImGuizmo::SetDrawlist();
@@ -37,6 +48,8 @@ void Editor::DrawGizmos(float width, float height) {
   transform.dirty = true;
   if (cameraComp)
     cameraComp->SetTransform(transform);
+  else if (lightComp)
+    lightComp->SetTransform(transform);
   else
     *transformComp = transform;
 }

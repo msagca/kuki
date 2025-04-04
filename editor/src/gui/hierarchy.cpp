@@ -1,8 +1,9 @@
 #include <editor.hpp>
+#include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <string>
 #include <utility>
-#include <GLFW/glfw3.h>
+#include <spdlog/spdlog.h>
 void Editor::DisplayHierarchy() {
   ImGui::Begin("Hierarchy");
   deleteSelected |= GetKey(GLFW_KEY_DELETE);
@@ -21,9 +22,11 @@ void Editor::DisplayHierarchy() {
     if (!EntityHasParent(id))
       DisplayEntity(id);
   });
-  if (deleteSelected && !selectedEntities.empty())
+  if (deleteSelected && !selectedEntities.empty()) {
     for (const auto id : selectedEntities)
       DeleteEntity(id);
+    spdlog::info("Deleted {} entities.", selectedEntities.size());
+  }
   if (deleteSelected || !flying && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_LEFT)) {
     lastSelection = -1;
     currentSelection = -1;
@@ -37,6 +40,7 @@ void Editor::DisplayHierarchy() {
       if (ImGui::MenuItem("Empty")) {
         std::string name = "Entity";
         CreateEntity(name);
+        spdlog::info("Created a new entity.");
         ImGui::CloseCurrentPopup();
       }
       if (ImGui::BeginMenu("Asset")) {
@@ -44,6 +48,7 @@ void Editor::DisplayHierarchy() {
           auto name = GetAssetName(id);
           if (ImGui::MenuItem(name.c_str())) {
             Spawn(name);
+            spdlog::info("Created an entity from the '{}' asset.", name);
             ImGui::CloseCurrentPopup();
           }
         });

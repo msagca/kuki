@@ -13,6 +13,7 @@ void Editor::DisplayEntity(unsigned int id) {
   auto renaming = !flying && renamedEntity == id && renameMode;
   auto nodeOpen = false;
   if (renaming) {
+    // TODO: disable camera controls while renaming
     ImGui::AlignTextToFramePadding();
     ImGui::PushItemWidth(-1);
     ImGui::SetKeyboardFocusHere();

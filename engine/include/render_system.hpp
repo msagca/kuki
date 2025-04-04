@@ -6,6 +6,16 @@
 #include <system.hpp>
 #include <utility/octree.hpp>
 #include <utility/pool.hpp>
+enum class GizmoID : unsigned int {
+  Manipulator,
+  ViewFrustum,
+  FrustumCulling
+};
+enum class GizmoMask : unsigned int {
+  Manipulator = 1 << static_cast<unsigned int>(GizmoID::Manipulator),
+  ViewFrustum = 1 << static_cast<unsigned int>(GizmoID::ViewFrustum),
+  FrustumCulling = 1 << static_cast<unsigned int>(GizmoID::FrustumCulling),
+};
 class Application;
 class ENGINE_API RenderSystem final : public System {
 private:
@@ -22,6 +32,7 @@ private:
   unsigned int sceneRBO = 0;
   unsigned int sceneTexture = 0;
   unsigned int instanceVBO = 0;
+  unsigned int gizmoMask = 0;
   bool UpdateBuffers(unsigned int&, unsigned int&, unsigned int&, int, int, int = 1);
   void DrawAsset(const Transform*, const Mesh&, const Material&);
   void DrawEntity(const Transform*, const Mesh&, const Material&);
@@ -29,7 +40,8 @@ private:
   void DrawSkybox();
   void DrawScene();
   void DrawAsset(unsigned int);
-  void DrawOctree();
+  void DrawGizmos();
+  void DrawFrustumCulling();
   void DrawViewFrustum();
   static unsigned int CreateTexture();
   static void DeleteTexture(unsigned int);
@@ -46,5 +58,7 @@ public:
   void Shutdown() override;
   int RenderSceneToTexture(Camera* = nullptr);
   int RenderAssetToTexture(unsigned int, int);
+  unsigned int GetGizmoMask() const;
+  void SetGizmoMask(unsigned int);
   static void ToggleWireframeMode();
 };
