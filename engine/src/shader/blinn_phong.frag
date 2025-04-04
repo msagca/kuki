@@ -3,6 +3,7 @@
 in vec3 position;
 in vec3 normal;
 in vec2 texCoord;
+in vec3 tangent;
 out vec4 color;
 struct Material {
     vec3 diffuse;

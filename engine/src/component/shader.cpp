@@ -10,11 +10,8 @@
 #include <iosfwd>
 #include <iostream>
 #include <string>
-Shader::Shader(std::string name, const std::filesystem::path& vert, const std::filesystem::path& frag)
-  : Shader(vert, frag) {
-  this->name = name;
-}
-Shader::Shader(const std::filesystem::path& vert, const std::filesystem::path& frag) {
+Shader::Shader(const std::string& name, const std::filesystem::path& vert, const std::filesystem::path& frag)
+  : name(name) {
   auto vertText = Read(vert);
   auto fragText = Read(frag);
   auto vertId = Compile(vertText.c_str(), GL_VERTEX_SHADER);
@@ -26,7 +23,7 @@ Shader::Shader(const std::filesystem::path& vert, const std::filesystem::path& f
   GLint success;
   glGetProgramiv(id, GL_LINK_STATUS, &success);
   if (!success)
-    std::cerr << "Failed to link shader." << std::endl;
+    std::cerr << "Failed to link shader: " << name << std::endl;
   else
     CacheLocations();
   glDeleteShader(vertId);
@@ -63,7 +60,7 @@ GLuint Shader::Compile(const char* text, GLenum type) {
   GLint success;
   glGetShaderiv(id, GL_COMPILE_STATUS, &success);
   if (!success)
-    std::cerr << "Failed to compile shader." << std::endl;
+    std::cerr << "Failed to compile shader: " << name << std::endl;
   return id;
 }
 void Shader::CacheLocations() {

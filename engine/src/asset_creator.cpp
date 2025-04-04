@@ -77,6 +77,10 @@ Mesh AssetLoader::CreateMesh(aiMesh* aiMesh) {
     vector.y = aiMesh->mNormals[i].y;
     vector.z = aiMesh->mNormals[i].z;
     vertex.normal = vector;
+    vector.x = aiMesh->mTangents[i].x;
+    vector.y = aiMesh->mTangents[i].y;
+    vector.z = aiMesh->mTangents[i].z;
+    vertex.tangent = vector;
     if (aiMesh->mTextureCoords[0]) {
       glm::vec2 texCoord{};
       texCoord.x = aiMesh->mTextureCoords[0][i].x;
@@ -123,6 +127,9 @@ Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   glVertexArrayAttribFormat(mesh.vertexArray, 2, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, texture));
   glVertexArrayAttribBinding(mesh.vertexArray, 2, 0);
   glEnableVertexArrayAttrib(mesh.vertexArray, 2);
+  glVertexArrayAttribFormat(mesh.vertexArray, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, tangent));
+  glVertexArrayAttribBinding(mesh.vertexArray, 3, 0);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 3);
   return mesh;
 }
 void AssetLoader::CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>& indices) {

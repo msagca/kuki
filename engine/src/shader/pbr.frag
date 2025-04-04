@@ -4,6 +4,7 @@
 in vec3 position;
 in vec3 normal;
 in vec2 texCoord;
+in vec3 tangent;
 out vec4 color;
 struct Material {
     sampler2D base;
@@ -33,19 +34,15 @@ uniform bool dirExists;
 uniform DirLight dirLight;
 uniform int pointCount;
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
-vec3 getNormalFromMap() {
+vec3 GetNormalFromMap() {
     vec3 tangentNormal = texture(material.normal, texCoord).xyz * 2.0 - 1.0;
-    vec3 Q1 = dFdx(position);
-    vec3 Q2 = dFdy(position);
-    vec2 st1 = dFdx(texCoord);
-    vec2 st2 = dFdy(texCoord);
     vec3 N = normalize(normal);
-    vec3 T = normalize(Q1 * st2.t - Q2 * st1.t);
+    vec3 T = normalize(tangent);
     vec3 B = -normalize(cross(N, T));
     mat3 TBN = mat3(T, B, N);
     return normalize(TBN * tangentNormal);
 }
-vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+vec3 FresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
@@ -83,7 +80,7 @@ vec3 CalculateDirectionalLight(DirLight light, Material material, vec3 N, vec3 V
     F0 = mix(F0, base, metalness);
     float NDF = DistributionGGX(N, H, roughness.r);
     float G = GeometrySmith(N, V, L, roughness.r);
-    vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+    vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
     vec3 numerator = NDF * G * F;
     float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
     vec3 specular = numerator / denominator;
@@ -107,7 +104,7 @@ vec3 CalculatePointLight(PointLight light, Material material, vec3 N, vec3 V, ve
     F0 = mix(F0, base, metalness);
     float NDF = DistributionGGX(N, H, roughness.r);
     float G = GeometrySmith(N, V, L, roughness.r);
-    vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+    vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
     vec3 numerator = NDF * G * F;
     float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
     vec3 specular = numerator / denominator;
@@ -119,7 +116,7 @@ vec3 CalculatePointLight(PointLight light, Material material, vec3 N, vec3 V, ve
     return (kD * base / PI + specular) * radiance * NdotL + light.ambient * base * occlusion * attenuation;
 }
 void main() {
-    vec3 N = getNormalFromMap();
+    vec3 N = GetNormalFromMap();
     vec3 V = normalize(viewPos - position);
     vec3 finalColor = vec3(0.0);
     if (dirExists)

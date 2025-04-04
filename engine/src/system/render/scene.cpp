@@ -129,7 +129,7 @@ void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<uns
   glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
   glBufferData(GL_ARRAY_BUFFER, models.size() * sizeof(glm::mat4), models.data(), GL_DYNAMIC_DRAW);
   glBindVertexArray(mesh.vertexArray);
-  unsigned int attribLocation = 3; // 0: i_position, 1: i_normal, 2: i_texCoord
+  unsigned int attribLocation = 4; // 0: i_position, 1: i_normal, 2: i_texCoord, 3: i_tangent
   for (auto i = 0; i < 4; ++i) {
     glEnableVertexAttribArray(attribLocation + i);
     glVertexAttribPointer(attribLocation + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4) * i));
