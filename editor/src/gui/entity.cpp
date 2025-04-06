@@ -10,7 +10,7 @@ void Editor::DisplayEntity(unsigned int id) {
     nodeFlags |= ImGuiTreeNodeFlags_Selected;
   if (!EntityHasChildren(id))
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
-  auto renaming = !flying && renamedEntity == id && renameMode;
+  auto renaming = renamedEntity == id && renameMode;
   auto nodeOpen = false;
   if (renaming) {
     // TODO: disable camera controls while renaming
@@ -31,7 +31,7 @@ void Editor::DisplayEntity(unsigned int id) {
   } else {
     auto label = GetEntityName(id);
     nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, "%s", label.c_str());
-    if (!flying && ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
       if (!addRangeToSelection) {
         lastSelection = id;
         if (!addToSelection)
@@ -41,7 +41,7 @@ void Editor::DisplayEntity(unsigned int id) {
       currentSelection = id;
     }
     // TODO: implement double click support in input manager
-    if (!flying && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
       strcpy(newName, GetEntityName(id).c_str());
       renameMode = true;
       renamedEntity = id;

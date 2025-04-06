@@ -123,11 +123,11 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
     format = GL_RG;
     break;
   case 3:
-    internalFormat = (type == TextureType::Base) ? GL_SRGB8 : GL_RGB8;
+    internalFormat = (type == TextureType::Albedo) ? GL_SRGB8 : GL_RGB8;
     format = GL_RGB;
     break;
   case 4:
-    internalFormat = (type == TextureType::Base) ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+    internalFormat = (type == TextureType::Albedo) ? GL_SRGB8_ALPHA8 : GL_RGBA8;
     format = GL_RGBA;
     break;
   default:
@@ -138,13 +138,13 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
   unsigned int textureId;
   glCreateTextures(GL_TEXTURE_2D, 1, &textureId);
   auto levels = 1;
-  if (type == TextureType::Base)
+  if (type == TextureType::Albedo)
     levels = std::log2(std::max(width, height)) + 1;
   glTextureStorage2D(textureId, levels, internalFormat, width, height);
   glTextureSubImage2D(textureId, 0, 0, 0, width, height, format, GL_UNSIGNED_BYTE, data);
   stbi_image_free(data);
   switch (type) {
-  case TextureType::Base:
+  case TextureType::Albedo:
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);

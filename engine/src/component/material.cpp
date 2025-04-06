@@ -46,8 +46,8 @@ void PhongMaterial::SetProperty(Property property) {
 }
 void PBRMaterial::Apply(Shader& shader) const {
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, base);
-  shader.SetUniform("material.base", 0);
+  glBindTexture(GL_TEXTURE_2D, albedo);
+  shader.SetUniform("material.albedo", 0);
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_2D, normal);
   shader.SetUniform("material.normal", 1);
@@ -65,13 +65,13 @@ const std::string PBRMaterial::GetName() const {
   return "PBRMaterial";
 }
 std::vector<Property> PBRMaterial::GetProperties() const {
-  return {{"Base", base}, {"Normal", normal}, {"Metalness", metalness}, {"Occlusion", occlusion}, {"Roughness", roughness}};
+  return {{"Albedo", albedo}, {"Normal", normal}, {"Metalness", metalness}, {"Occlusion", occlusion}, {"Roughness", roughness}};
 }
 void PBRMaterial::SetProperty(Property property) {
   if (std::holds_alternative<int>(property.value)) {
     auto& value = std::get<int>(property.value);
-    if (property.name == "Base")
-      base = value;
+    if (property.name == "Albedo")
+      albedo = value;
     else if (property.name == "Normal")
       normal = value;
     else if (property.name == "Metalness")

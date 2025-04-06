@@ -15,7 +15,6 @@ private:
   std::shared_ptr<ImGuiSink<std::mutex>> imguiSink;
   std::shared_ptr<spdlog::logger> logger;
   std::unordered_set<unsigned int> selectedEntities;
-  bool flying = false;
   bool addRangeToSelection = false;
   bool addToSelection = false;
   bool clearSelection = false;

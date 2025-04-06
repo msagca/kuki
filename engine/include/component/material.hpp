@@ -17,7 +17,7 @@ struct ENGINE_API PhongMaterial final : IMaterial {
   void SetProperty(Property property) override;
 };
 struct ENGINE_API PBRMaterial final : IMaterial {
-  int base = 0;
+  int albedo = 0;
   int normal = 0;
   int metalness = 0;
   int occlusion = 0;

@@ -11,7 +11,7 @@ const std::string Light::GetName() const {
   return ComponentTraits<Light>::GetName();
 }
 std::vector<Property> Light::GetProperties() const {
-  return {{"Type", type}, {"Vector", vector}, {"Ambient", ambient}, {"Diffuse", diffuse}, {"Specular", specular}, {"Constant", constant}, {"Linear", linear}, {"Quadratic", quadratic}};
+  return {{"Type", type}, {"Vector", vector}, {"Ambient", ambient, PropertyType::Color}, {"Diffuse", diffuse, PropertyType::Color}, {"Specular", specular, PropertyType::Color}, {"Constant", constant}, {"Linear", linear}, {"Quadratic", quadratic}};
 }
 void Light::SetProperty(Property property) {
   if (std::holds_alternative<glm::vec3>(property.value)) {

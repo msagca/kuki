@@ -20,7 +20,7 @@ void Editor::DisplayAssets() {
   const auto scrollY = ImGui::GetScrollY();
   const auto visibleHeight = ImGui::GetWindowHeight();
   auto cursorStartPos = ImGui::GetCursorPos();
-  if (!flying && ImGui::BeginPopupContextWindow()) {
+  if (ImGui::BeginPopupContextWindow()) {
     if (ImGui::BeginMenu("Import")) {
       if (ImGui::Selectable("Model"))
         fileBrowser.Open();
@@ -40,21 +40,15 @@ void Editor::DisplayAssets() {
       auto textureId = renderSystem->RenderAssetToTexture(assetId, THUMBNAIL_SIZE);
       auto assetName = GetAssetName(assetId);
       ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(.0f, .0f));
-      if (flying) {
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-      }
       if (ImGui::ImageButton(std::to_string(textureId).c_str(), textureId, TILE_SIZE, uv0, uv1)) {
         // TODO: implement selection and drag-drop logic
       }
-      if (flying)
-        ImGui::PopStyleColor(2);
       ImGui::PopStyleVar();
       auto textWidth = ImGui::CalcTextSize(assetName.c_str()).x;
       auto textX = tilePos.x + (THUMBNAIL_SIZE - textWidth) * .5f;
       ImGui::SetCursorPos(ImVec2(textX, tilePos.y + THUMBNAIL_SIZE + 2.0f));
       ImGui::Text("%s", assetName.c_str());
-      if (!flying && ImGui::IsItemHovered()) {
+      if (ImGui::IsItemHovered()) {
         ImGui::BeginTooltip();
         ImGui::Text("%s", assetName.c_str());
         ImGui::EndTooltip();

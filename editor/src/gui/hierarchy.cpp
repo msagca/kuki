@@ -27,15 +27,15 @@ void Editor::DisplayHierarchy() {
       DeleteEntity(id);
     spdlog::info("Deleted {} entities.", selectedEntities.size());
   }
-  if (deleteSelected || !flying && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_LEFT)) {
+  if (deleteSelected || ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_LEFT)) {
     lastSelection = -1;
     currentSelection = -1;
     deleteSelected = false;
     selectedEntities.clear();
   }
-  if (!flying && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_RIGHT))
+  if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_RIGHT))
     ImGui::OpenPopup("CreateMenu");
-  if (!flying && ImGui::BeginPopup("CreateMenu")) {
+  if (ImGui::BeginPopup("CreateMenu")) {
     if (ImGui::BeginMenu("Create")) {
       if (ImGui::MenuItem("Empty")) {
         std::string name = "Entity";

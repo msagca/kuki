@@ -175,7 +175,7 @@ std::vector<Triangle> Primitive::Subdivide(const std::vector<Triangle>& triangle
   return result;
 }
 void Primitive::FlipWindingOrder(std::vector<Vertex>& vertices) {
-  for (auto i = 0; i < vertices.size(); i += 3)
+  for (auto i = 1; i < vertices.size(); i += 3)
     // swap vertex #0 and vertex #1 of the triangle
-    std::swap(vertices[i], vertices[i + 1]); // FIXME: it is not guaranteed that the index i+1 is valid
+    std::swap(vertices[i - 1], vertices[i]);
 }

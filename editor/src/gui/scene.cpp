@@ -5,7 +5,8 @@
 void Editor::DisplayScene() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);
-  static unsigned int gizmoMask = static_cast<unsigned int>(GizmoMask::Manipulator);
+  static auto gizmoMask = static_cast<unsigned int>(GizmoMask::Manipulator);
+  static auto flying = false;
   ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_MenuBar);
   if (ImGui::BeginMenuBar()) {
     if (ImGui::BeginMenu("Gizmos")) {
@@ -23,10 +24,15 @@ void Editor::DisplayScene() {
     }
     ImGui::EndMenuBar();
   }
-  if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !flying)
+  if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !flying) {
     flying = true;
-  if (flying && (ImGui::IsMouseReleased(ImGuiMouseButton_Right) || !ImGui::IsMouseDown(ImGuiMouseButton_Right)))
+    ImGui::SetWindowFocus();
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
+  }
+  if (flying && (ImGui::IsMouseReleased(ImGuiMouseButton_Right) || !ImGui::IsMouseDown(ImGuiMouseButton_Right))) {
     flying = false;
+    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+  }
   cameraController.ToggleRotation(flying);
   cameraController.Update(deltaTime);
   auto renderSystem = GetSystem<RenderSystem>();

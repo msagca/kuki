@@ -46,9 +46,9 @@ bool RenderSystem::UpdateBuffers(unsigned int& fbo, unsigned int& rbo, unsigned 
   if (texture == 0)
     glCreateTextures(multi ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, 1, &texture);
   if (multi)
-    glTextureStorage2DMultisample(texture, samples, GL_RGBA8, width, height, GL_TRUE);
+    glTextureStorage2DMultisample(texture, samples, GL_RGBA16F, width, height, GL_TRUE);
   else {
-    glTextureStorage2D(texture, 1, GL_RGBA8, width, height);
+    glTextureStorage2D(texture, 1, GL_RGBA16F, width, height);
     glTextureParameteri(texture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTextureParameteri(texture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   }

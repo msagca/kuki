@@ -25,10 +25,10 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesyst
   if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
     aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &path);
     auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(fullPath, TextureType::Base);
+    auto id = LoadTexture(fullPath, TextureType::Albedo);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMaterial.base = texture->id;
+      pbrMaterial.albedo = texture->id;
   }
   if (aiMaterial->GetTextureCount(aiTextureType_NORMALS) > 0) {
     aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &path);

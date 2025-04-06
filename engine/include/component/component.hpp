@@ -33,7 +33,7 @@ enum class LightType : unsigned int {
   Point
 };
 enum class TextureType : unsigned int {
-  Base,
+  Albedo,
   Normal,
   Metalness,
   Occlusion,
