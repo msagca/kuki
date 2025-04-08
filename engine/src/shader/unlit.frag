@@ -4,7 +4,12 @@ out vec4 color;
 struct Material {
     sampler2D base;
 };
+struct Fallback {
+    vec4 base;
+};
 uniform Material material;
+uniform Fallback fallback;
+uniform bool useBaseFallback;
 void main() {
-    color = vec4(texture(material.base, texCoord).rgb, 1.0);
+    color = (useBaseFallback) ? fallback.base : vec4(texture(material.base, texCoord).rgb, 1.0);
 }

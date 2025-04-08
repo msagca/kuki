@@ -41,18 +41,18 @@ void Editor::DisplayAssets() {
       auto assetName = GetAssetName(assetId);
       ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(.0f, .0f));
       if (ImGui::ImageButton(std::to_string(textureId).c_str(), textureId, TILE_SIZE, uv0, uv1)) {
-        // TODO: implement selection and drag-drop logic
+        // TODO: implement selection logic here
+      }
+      if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+        ImGui::SetDragDropPayload("SPAWN_ASSET", assetName.c_str(), (assetName.size() + 1) * sizeof(char));
+        ImGui::Text("%s", assetName.c_str());
+        ImGui::EndDragDropSource();
       }
       ImGui::PopStyleVar();
       auto textWidth = ImGui::CalcTextSize(assetName.c_str()).x;
       auto textX = tilePos.x + (THUMBNAIL_SIZE - textWidth) * .5f;
       ImGui::SetCursorPos(ImVec2(textX, tilePos.y + THUMBNAIL_SIZE + 2.0f));
       ImGui::Text("%s", assetName.c_str());
-      if (ImGui::IsItemHovered()) {
-        ImGui::BeginTooltip();
-        ImGui::Text("%s", assetName.c_str());
-        ImGui::EndTooltip();
-      }
       ImGui::PopID();
     }
     tileCount++;

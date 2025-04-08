@@ -19,8 +19,8 @@
 #include <vector>
 Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesystem::path& root) {
   Material material;
-  material.material = PBRMaterial{};
-  auto& pbrMaterial = std::get<PBRMaterial>(material.material);
+  material.material = LitMaterial{};
+  auto& pbrMaterial = std::get<LitMaterial>(material.material);
   aiString path;
   if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
     aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &path);
@@ -28,7 +28,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesyst
     auto id = LoadTexture(fullPath, TextureType::Albedo);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMaterial.albedo = texture->id;
+      pbrMaterial.albedo = *texture;
   }
   if (aiMaterial->GetTextureCount(aiTextureType_NORMALS) > 0) {
     aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &path);
@@ -36,7 +36,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesyst
     auto id = LoadTexture(fullPath, TextureType::Normal);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMaterial.normal = texture->id;
+      pbrMaterial.normal = *texture;
   }
   if (aiMaterial->GetTextureCount(aiTextureType_METALNESS) > 0) {
     aiMaterial->GetTexture(aiTextureType_METALNESS, 0, &path);
@@ -44,7 +44,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesyst
     auto id = LoadTexture(fullPath, TextureType::Metalness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMaterial.metalness = texture->id;
+      pbrMaterial.metalness = *texture;
   }
   if (aiMaterial->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
     aiMaterial->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
@@ -52,7 +52,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesyst
     auto id = LoadTexture(fullPath, TextureType::Occlusion);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMaterial.occlusion = texture->id;
+      pbrMaterial.occlusion = *texture;
   }
   if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
     aiMaterial->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
@@ -60,7 +60,7 @@ Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesyst
     auto id = LoadTexture(fullPath, TextureType::Roughness);
     auto texture = assetManager.GetComponent<Texture>(id);
     if (texture)
-      pbrMaterial.roughness = texture->id;
+      pbrMaterial.roughness = *texture;
   }
   return material;
 }

@@ -40,6 +40,8 @@ private:
   void DrawSkybox();
   void DrawScene();
   void DrawAsset(unsigned int);
+  /// @brief Draws a skybox asset by applying equirectangular projection to it
+  void DrawSkyboxFlat(unsigned int);
   void DrawGizmos();
   void DrawFrustumCulling();
   void DrawViewFrustum();

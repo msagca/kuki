@@ -289,6 +289,7 @@ void Octree<T>::ForEachInFrustum(const Camera& camera, F func) {
 template <typename T>
 template <typename F>
 void Octree<T>::ForEachInFrustumInternal(const Camera& camera, F func, std::unordered_set<T>& visited) {
+  // FIXME: either there is a problem with the debug gizmo or the overlaps method is not working properly
   if (!camera.OverlapsFrustum(bounds))
     return;
   for (const auto& [key, _] : items)

@@ -43,6 +43,13 @@ void Editor::DisplayProperties() {
             component->SetProperty(Property(prop.name, valueVec3));
         } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3)))
           component->SetProperty(Property(prop.name, valueVec3));
+      } else if (std::holds_alternative<glm::vec4>(value)) {
+        auto valueVec4 = std::get<glm::vec4>(value);
+        if (prop.type == PropertyType::Color) {
+          if (ImGui::ColorEdit4(prop.name.c_str(), glm::value_ptr(valueVec4)))
+            component->SetProperty(Property(prop.name, valueVec4));
+        } else if (ImGui::InputFloat4(prop.name.c_str(), glm::value_ptr(valueVec4)))
+          component->SetProperty(Property(prop.name, valueVec4));
       } else if (std::holds_alternative<int>(value)) {
         auto valueInt = std::get<int>(value);
         if (ImGui::InputInt(prop.name.c_str(), &valueInt))
@@ -56,26 +63,26 @@ void Editor::DisplayProperties() {
         if (ImGui::Checkbox(prop.name.c_str(), &valueBool))
           component->SetProperty(Property(prop.name, valueBool));
       } else if (std::holds_alternative<CameraType>(value)) {
+        static auto items = EnumTraits<CameraType>::GetNames();
         auto valueEnum = std::get<CameraType>(value);
-        static const char* items[] = {"Perspective", "Orthographic"};
         auto currentItem = static_cast<int>(valueEnum);
-        if (ImGui::Combo(prop.name.c_str(), &currentItem, items, IM_ARRAYSIZE(items))) {
+        if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
           valueEnum = static_cast<CameraType>(currentItem);
           component->SetProperty(Property(prop.name, valueEnum));
         }
       } else if (std::holds_alternative<LightType>(value)) {
+        static auto items = EnumTraits<LightType>::GetNames();
         auto valueEnum = std::get<LightType>(value);
-        static const char* items[] = {"Directional", "Point"};
         auto currentItem = static_cast<int>(valueEnum);
-        if (ImGui::Combo(prop.name.c_str(), &currentItem, items, IM_ARRAYSIZE(items))) {
+        if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
           valueEnum = static_cast<LightType>(currentItem);
           component->SetProperty(Property(prop.name, valueEnum));
         }
       } else if (std::holds_alternative<TextureType>(value)) {
+        static auto items = EnumTraits<TextureType>::GetNames();
         auto valueEnum = std::get<TextureType>(value);
-        static const char* items[] = {"Base", "Normal", "ORM", "Metalness", "Occlusion", "Roughness"};
         auto currentItem = static_cast<int>(valueEnum);
-        if (ImGui::Combo(prop.name.c_str(), &currentItem, items, IM_ARRAYSIZE(items))) {
+        if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
           valueEnum = static_cast<TextureType>(currentItem);
           component->SetProperty(Property(prop.name, valueEnum));
         }

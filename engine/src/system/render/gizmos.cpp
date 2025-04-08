@@ -20,9 +20,10 @@ void RenderSystem::DrawFrustumCulling() {
   auto mesh = app.GetAssetComponent<Mesh>(assetId);
   if (!mesh)
     return;
-  auto shader = shaders["Unlit2"];
+  auto shader = shaders["Unlit"];
   shader->Use();
-  glm::vec3 color{};
+  glm::vec4 color{};
+  color.a = .2f;
   auto camera = app.GetActiveCamera();
   if (!camera)
     return;
@@ -39,7 +40,8 @@ void RenderSystem::DrawFrustumCulling() {
     color.r = overlaps ? .0f : .5f + ratio;
     color.g = overlaps ? .5f + ratio : .0f;
     color.b = maxDepth > 0 ? static_cast<float>(depth) / maxDepth : 1.0f;
-    shader->SetUniform("baseColor", color);
+    shader->SetUniform("useBaseFallback", true);
+    shader->SetUniform("fallback.base", color);
     shader->SetUniform("model", model);
     shader->SetUniform("view", targetCamera->view);
     shader->SetUniform("projection", targetCamera->projection);
@@ -55,14 +57,15 @@ void RenderSystem::DrawViewFrustum() {
   auto mesh = app.GetAssetComponent<Mesh>(assetId);
   if (!mesh)
     return;
-  auto shader = shaders["Unlit2"];
+  auto shader = shaders["Unlit"];
   shader->Use();
   auto sceneCamera = app.GetActiveCamera();
   if (!sceneCamera)
     return;
   auto model = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)); // scale up local coordinates (-.5f, .5f) to NDC (-1.0f, 1.0f)
   model = glm::inverse(sceneCamera->projection * sceneCamera->view) * model;
-  shader->SetUniform("baseColor", glm::vec3(.5f, .5f, .0f));
+  shader->SetUniform("useBaseFallback", true);
+  shader->SetUniform("fallback.base", glm::vec4(.5f, .5f, .0f, .2f));
   shader->SetUniform("model", model);
   shader->SetUniform("view", targetCamera->view);
   shader->SetUniform("projection", targetCamera->projection);

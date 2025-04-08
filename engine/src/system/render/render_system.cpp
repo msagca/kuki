@@ -17,18 +17,14 @@ RenderSystem::~RenderSystem() {
 }
 void RenderSystem::Start() {
   assetCam.Update();
-  auto phongShader = new Shader("Phong", "shader/phong.vert", "shader/phong.frag");
-  auto blinnPhongShader = new Shader("BlinnPhong", "shader/blinn_phong.vert", "shader/blinn_phong.frag");
-  auto pbrShader = new Shader("PBR", "shader/pbr.vert", "shader/pbr.frag");
+  auto litShader = new Shader("Lit", "shader/lit.vert", "shader/lit.frag");
   auto unlitShader = new Shader("Unlit", "shader/unlit.vert", "shader/unlit.frag");
-  auto unlit2Shader = new Shader("Unlit2", "shader/unlit2.vert", "shader/unlit2.frag");
   auto skyboxShader = new Shader("Skybox", "shader/skybox.vert", "shader/skybox.frag");
-  shaders.insert({phongShader->GetName(), phongShader});
-  shaders.insert({blinnPhongShader->GetName(), blinnPhongShader});
-  shaders.insert({pbrShader->GetName(), pbrShader});
+  auto skyboxFlatShader = new Shader("SkyboxFlat", "shader/skybox_flat.vert", "shader/skybox_flat.frag");
+  shaders.insert({litShader->GetName(), litShader});
   shaders.insert({unlitShader->GetName(), unlitShader});
-  shaders.insert({unlit2Shader->GetName(), unlit2Shader});
   shaders.insert({skyboxShader->GetName(), skyboxShader});
+  shaders.insert({skyboxFlatShader->GetName(), skyboxFlatShader});
   glGenBuffers(1, &instanceVBO);
 }
 void RenderSystem::Shutdown() {
@@ -78,12 +74,9 @@ void RenderSystem::ToggleWireframeMode() {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 Shader* RenderSystem::GetMaterialShader(const Material& material) {
-  if (std::holds_alternative<PhongMaterial>(material.material))
-    return shaders["BlinnPhong"];
-  else if (std::holds_alternative<UnlitMaterial>(material.material))
+  if (std::holds_alternative<UnlitMaterial>(material.material))
     return shaders["Unlit"];
-  else
-    return shaders["PBR"];
+  return shaders["Lit"];
 }
 unsigned int RenderSystem::CreateTexture() {
   unsigned int id;

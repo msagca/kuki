@@ -9,5 +9,5 @@ uniform mat4 view;
 void main() {
     texCoord = i_position;
     vec4 pos = projection * view * vec4(i_position, 1.0);
-    gl_Position = pos.xyww;
+    gl_Position = pos.xyww; // use w in place of z so that it's 1.0 (farthest away) after perspective division
 }

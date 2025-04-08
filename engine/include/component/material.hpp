@@ -1,41 +1,55 @@
 #pragma once
 #include "component.hpp"
 #include "shader.hpp"
+#include "texture.hpp"
 #include <engine_export.h>
 #include <typeindex>
 struct IMaterial : IComponent {
   virtual ~IMaterial() = default;
+  /// @brief Apply this material to the given shader (set shader properties)
   virtual void Apply(Shader& shader) const = 0;
 };
-struct ENGINE_API PhongMaterial final : IMaterial {
-  glm::vec3 diffuse = glm::vec3(.5f, .5f, .5f);
-  glm::vec3 specular = glm::vec3(1.0f);
-  float shininess = 2.0f;
+/// @brief Fallback values to be used for lit materials in the absence of textures
+struct ENGINE_API LitFallback final : IMaterial {
+  glm::vec3 albedo{1.0f};
+  float metalness{.0f};
+  float roughness{.5f};
+  float occlusion{1.0f};
   void Apply(Shader&) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
-struct ENGINE_API PBRMaterial final : IMaterial {
-  int albedo = 0;
-  int normal = 0;
-  int metalness = 0;
-  int occlusion = 0;
-  int roughness = 0;
+/// @brief Fallback values to be used for unlit materials in the absence of textures
+struct ENGINE_API UnlitFallback final : IMaterial {
+  glm::vec4 base{1.0f};
+  void Apply(Shader&) const override;
+  const std::string GetName() const override;
+  std::vector<Property> GetProperties() const override;
+  void SetProperty(Property property) override;
+};
+struct ENGINE_API LitMaterial final : IMaterial {
+  Texture albedo;
+  Texture normal;
+  Texture metalness;
+  Texture occlusion;
+  Texture roughness;
+  LitFallback fallback;
   void Apply(Shader&) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
 struct ENGINE_API UnlitMaterial final : IMaterial {
-  int base = 0;
+  Texture base;
+  UnlitFallback fallback;
   void Apply(Shader&) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
 struct ENGINE_API Material : IMaterial {
-  std::variant<PhongMaterial, PBRMaterial, UnlitMaterial> material;
+  std::variant<LitMaterial, UnlitMaterial> material;
   void Apply(Shader& shader) const override;
   std::type_index GetTypeIndex() const;
   const std::string GetName() const override;

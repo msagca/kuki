@@ -1,6 +1,5 @@
 #version 460 core
 #define MAX_POINT_LIGHTS 8
-#define PI 3.14159265359
 in vec3 position;
 in vec3 normal;
 in vec2 texCoord;
@@ -12,6 +11,12 @@ struct Material {
     sampler2D metalness;
     sampler2D occlusion;
     sampler2D roughness;
+};
+struct Fallback {
+    vec3 albedo;
+    float metalness;
+    float occlusion;
+    float roughness;
 };
 struct DirLight {
     vec3 direction;
@@ -30,10 +35,17 @@ struct PointLight {
 };
 uniform vec3 viewPos;
 uniform Material material;
+uniform Fallback fallback;
+uniform bool useAlbedoFallback;
+uniform bool useNormalFallback;
+uniform bool useMetalnessFallback;
+uniform bool useOcclusionFallback;
+uniform bool useRoughnessFallback;
 uniform bool dirExists;
 uniform DirLight dirLight;
 uniform int pointCount;
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
+const float PI = 3.1415927;
 vec3 GetNormalFromMap() {
     vec3 tangentNormal = texture(material.normal, texCoord).xyz * 2.0 - 1.0;
     vec3 N = normalize(normal);
@@ -70,7 +82,7 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
     return ggx1 * ggx2;
 }
 vec3 CalculateDirectionalLight(DirLight light, vec3 A, vec3 N, vec3 M, vec3 O, vec3 R, vec3 V) {
-    vec3 L = normalize(-light.direction);
+    vec3 L = normalize(light.direction);
     vec3 H = normalize(V + L);
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, A, M);
@@ -108,11 +120,11 @@ vec3 CalculatePointLight(PointLight light, vec3 A, vec3 N, vec3 M, vec3 O, vec3 
     return (kD * A / PI + specular) * radiance * NdotL + light.ambient * A * O * attenuation;
 }
 void main() {
-    vec3 A = texture(material.albedo, texCoord).rgb;
-    vec3 N = GetNormalFromMap();
-    vec3 M = texture(material.metalness, texCoord).rgb;
-    vec3 O = texture(material.occlusion, texCoord).rgb;
-    vec3 R = texture(material.roughness, texCoord).rgb;
+    vec3 A = (useAlbedoFallback) ? fallback.albedo : texture(material.albedo, texCoord).rgb;
+    vec3 N = (useNormalFallback) ? normal : GetNormalFromMap();
+    vec3 M = (useMetalnessFallback) ? vec3(fallback.metalness) : texture(material.metalness, texCoord).rgb;
+    vec3 O = (useOcclusionFallback) ? vec3(fallback.occlusion) : texture(material.occlusion, texCoord).rgb;
+    vec3 R = (useRoughnessFallback) ? vec3(fallback.roughness) : texture(material.roughness, texCoord).rgb;
     vec3 V = normalize(viewPos - position);
     vec3 finalColor = vec3(0.0);
     if (dirExists)

@@ -2,6 +2,7 @@
 #include <editor.hpp>
 #include <imgui.h>
 #include <render_system.hpp>
+#include <string>
 void Editor::DisplayScene() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);
@@ -50,6 +51,13 @@ void Editor::DisplayScene() {
       ImGui::Image(texture, ImVec2(drawWidth, drawHeight), uv0, uv1);
       DrawGizmos(drawWidth, drawHeight, gizmoMask); // NOTE: these gizmos are external to the render system, they draw on top of the rendered scene
     }
+  }
+  if (ImGui::BeginDragDropTarget()) {
+    if (auto payload = ImGui::AcceptDragDropPayload("SPAWN_ASSET")) {
+      std::string droppedAssetName = (const char*)payload->Data;
+      Spawn(droppedAssetName);
+    }
+    ImGui::EndDragDropTarget();
   }
   ImGui::End();
 }

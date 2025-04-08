@@ -36,25 +36,17 @@ void Light::SetProperty(Property property) {
     type = std::get<LightType>(property.value);
 }
 Transform Light::GetTransform() const {
+  static const auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);
+  static const auto WORLD_BACK = glm::vec3(.0f, .0f, 1.0f);
+  static const auto PARALLEL_THRESHOLD = .9999f;
   Transform transform;
   if (type == LightType::Directional) {
     transform.position = glm::vec3(.0f);
-    if (glm::length(vector) > .0f) {
-      auto normalizedDir = glm::normalize(vector);
-      auto forward = glm::vec3(.0f, .0f, -1.0f);
-      if (glm::abs(glm::dot(normalizedDir, forward)) > .9999f) {
-        if (glm::dot(normalizedDir, forward) > 0)
-          transform.rotation = glm::angleAxis(glm::pi<float>(), glm::vec3(.0f, 1.0f, .0f));
-        else
-          transform.rotation = glm::quat(1.0f, .0f, .0f, .0f);
-      } else {
-        auto rotationAxis = glm::cross(forward, normalizedDir);
-        auto angle = std::acos(glm::dot(forward, normalizedDir));
-        transform.rotation = glm::angleAxis(angle, glm::normalize(rotationAxis));
-      }
-    } else
-      transform.rotation = glm::quat(1.0f, .0f, .0f, .0f);
-    transform.scale = glm::vec3(1.0f);
+    auto direction = glm::normalize(vector);
+    auto up = WORLD_UP;
+    if (glm::abs(glm::dot(direction, up)) > PARALLEL_THRESHOLD)
+      up = WORLD_BACK;
+    transform.rotation = glm::quatLookAt(direction, up);
   } else if (type == LightType::Point) {
     transform.position = vector;
     transform.rotation = glm::quat(1.0f, .0f, .0f, .0f);

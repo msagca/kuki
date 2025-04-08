@@ -20,11 +20,13 @@ public:
   void Use() const;
   void SetUniform(const std::string&, const glm::mat4&);
   void SetUniform(const std::string&, const glm::vec3&);
+  void SetUniform(const std::string&, const glm::vec4&);
   void SetUniform(const std::string&, float);
   void SetUniform(const std::string&, int);
   void SetUniform(const std::string&, unsigned int);
   void SetUniform(GLint, const glm::mat4&);
   void SetUniform(GLint, const glm::vec3&);
+  void SetUniform(GLint, const glm::vec4&);
   void SetUniform(GLint, float);
   void SetUniform(GLint, int);
   void SetUniform(GLint, unsigned int);

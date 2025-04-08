@@ -150,14 +150,15 @@ void RenderSystem::DrawSkybox() {
   auto view = glm::mat4(glm::mat3(targetCamera->view));
   shader->SetUniform("view", view);
   shader->SetUniform("projection", targetCamera->projection);
-  glBindVertexArray(mesh->vertexArray);
   assetId = app.GetAssetId("Skybox");
-  auto skyboxTexture = app.GetAssetComponent<Texture>(assetId);
-  if (!skyboxTexture)
+  auto texture = app.GetAssetComponent<Texture>(assetId);
+  if (!texture)
     return;
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture->id);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, texture->id);
+  shader->SetUniform("skybox", 0);
   glDepthFunc(GL_LEQUAL);
+  glBindVertexArray(mesh->vertexArray);
   if (mesh->indexCount > 0)
     glDrawElements(GL_TRIANGLES, mesh->indexCount, GL_UNSIGNED_INT, 0);
   else

@@ -1,6 +1,7 @@
 #pragma once
 #include <engine_export.h>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <string>
 #include <variant>
 #include <vector>
@@ -45,7 +46,7 @@ enum class PropertyType : unsigned int {
   Color
 };
 struct ENGINE_API Property {
-  using PropertyValue = std::variant<int, float, bool, glm::vec3, CameraType, LightType, TextureType>;
+  using PropertyValue = std::variant<int, float, bool, glm::vec3, glm::vec4, CameraType, LightType, TextureType>;
   std::string name;
   PropertyType type;
   PropertyValue value;
@@ -56,6 +57,39 @@ struct IComponent {
   virtual const std::string GetName() const = 0;
   virtual std::vector<Property> GetProperties() const = 0;
   virtual void SetProperty(Property) = 0;
+};
+template <typename T>
+struct EnumTraits {
+  static_assert(sizeof(T) == 0, "EnumTraits must be specialized for this type");
+  static const std::vector<const char*>& GetNames();
+};
+template <>
+struct EnumTraits<CameraType> {
+  static const std::vector<const char*>& GetNames() {
+    static const std::vector<const char*> names = {"Perspective", "Orthographic"};
+    return names;
+  }
+};
+template <>
+struct EnumTraits<LightType> {
+  static const std::vector<const char*>& GetNames() {
+    static const std::vector<const char*> names = {"Directional", "Point"};
+    return names;
+  }
+};
+template <>
+struct EnumTraits<TextureType> {
+  static const std::vector<const char*>& GetNames() {
+    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "CubeMap"};
+    return names;
+  }
+};
+template <>
+struct EnumTraits<PropertyType> {
+  static const std::vector<const char*>& GetNames() {
+    static const std::vector<const char*> names = {"Number", "Color"};
+    return names;
+  }
 };
 template <typename T>
 struct ComponentTraits {
