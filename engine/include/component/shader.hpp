@@ -1,11 +1,11 @@
 #pragma once
 #include "light.hpp"
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <filesystem>
 #include <glad/glad.h>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <string>
-class ENGINE_API Shader {
+class KUKI_API Shader {
 private:
   GLuint id;
   const std::string name;

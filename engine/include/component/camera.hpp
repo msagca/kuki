@@ -1,18 +1,18 @@
 #pragma once
 #include "component.hpp"
 #include "component/mesh.hpp"
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/trigonometric.hpp>
 #include <vector>
-struct ENGINE_API Plane {
+struct KUKI_API Plane {
   glm::vec3 point{.0f};
   glm::vec3 normal{.0f};
   bool OnPlane(const glm::vec3&, const glm::vec3&) const;
   float SignedDistance(const glm::vec3&) const;
 };
-struct ENGINE_API Frustum {
+struct KUKI_API Frustum {
   Plane top;
   Plane bottom;
   Plane right;
@@ -21,7 +21,7 @@ struct ENGINE_API Frustum {
   Plane near;
   bool OverlapsFrustum(const BoundingBox&) const;
 };
-struct ENGINE_API Camera final : IComponent {
+struct KUKI_API Camera final : IComponent {
   CameraType type{CameraType::Perspective};
   glm::mat4 view{};
   glm::mat4 projection{};

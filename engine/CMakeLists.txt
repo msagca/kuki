@@ -1,4 +1,4 @@
-project(engine)
+project(kuki)
 file(GLOB_RECURSE C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
 file(GLOB_RECURSE CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 add_library(${PROJECT_NAME} SHARED ${C_SOURCES} ${CPP_SOURCES})
@@ -20,7 +20,7 @@ target_link_libraries(
 )
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(
-  FILES ${CMAKE_CURRENT_BINARY_DIR}/engine_export.h
+  FILES ${CMAKE_CURRENT_BINARY_DIR}/kuki_export.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 set(SHADER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/shader)

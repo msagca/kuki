@@ -2,7 +2,7 @@
 #include "component.hpp"
 #include "shader.hpp"
 #include "texture.hpp"
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <typeindex>
 struct IMaterial : IComponent {
   virtual ~IMaterial() = default;
@@ -10,7 +10,7 @@ struct IMaterial : IComponent {
   virtual void Apply(Shader& shader) const = 0;
 };
 /// @brief Fallback values to be used for lit materials in the absence of textures
-struct ENGINE_API LitFallback final : IMaterial {
+struct KUKI_API LitFallback final : IMaterial {
   glm::vec3 albedo{1.0f};
   float metalness{.0f};
   float roughness{.5f};
@@ -21,14 +21,14 @@ struct ENGINE_API LitFallback final : IMaterial {
   void SetProperty(Property property) override;
 };
 /// @brief Fallback values to be used for unlit materials in the absence of textures
-struct ENGINE_API UnlitFallback final : IMaterial {
+struct KUKI_API UnlitFallback final : IMaterial {
   glm::vec4 base{1.0f};
   void Apply(Shader&) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
-struct ENGINE_API LitMaterial final : IMaterial {
+struct KUKI_API LitMaterial final : IMaterial {
   Texture albedo;
   Texture normal;
   Texture metalness;
@@ -40,7 +40,7 @@ struct ENGINE_API LitMaterial final : IMaterial {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
-struct ENGINE_API UnlitMaterial final : IMaterial {
+struct KUKI_API UnlitMaterial final : IMaterial {
   Texture base;
   UnlitFallback fallback;
   void Apply(Shader&) const override;
@@ -48,7 +48,7 @@ struct ENGINE_API UnlitMaterial final : IMaterial {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
-struct ENGINE_API Material : IMaterial {
+struct KUKI_API Material : IMaterial {
   std::variant<LitMaterial, UnlitMaterial> material;
   void Apply(Shader& shader) const override;
   std::type_index GetTypeIndex() const;

@@ -1,9 +1,9 @@
 #pragma once
 #include "component.hpp"
 #include "mesh.hpp"
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <vector>
-struct ENGINE_API MeshFilter final : IComponent {
+struct KUKI_API MeshFilter final : IComponent {
   Mesh mesh{};
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;

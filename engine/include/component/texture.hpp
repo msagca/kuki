@@ -1,8 +1,8 @@
 #pragma once
 #include "component.hpp"
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <vector>
-struct ENGINE_API Texture final : IComponent {
+struct KUKI_API Texture final : IComponent {
   TextureType type{};
   int id{};
   const std::string GetName() const override;

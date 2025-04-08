@@ -1,5 +1,5 @@
 #pragma once
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <entity_manager.hpp>
 #include <component/texture.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -17,7 +17,7 @@ enum class GizmoMask : unsigned int {
   FrustumCulling = 1 << static_cast<unsigned int>(GizmoID::FrustumCulling),
 };
 class Application;
-class ENGINE_API RenderSystem final : public System {
+class KUKI_API RenderSystem final : public System {
 private:
   std::unordered_map<std::string, Shader*> shaders;
   Camera assetCam;

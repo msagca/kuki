@@ -8,10 +8,10 @@ target_include_directories(
 )
 target_link_libraries(
   ${PROJECT_NAME}
-  PRIVATE engine imgui imgui_filebrowser imguizmo
+  PRIVATE kuki imgui imgui_filebrowser imguizmo
 )
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES $<TARGET_FILE:engine> DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES $<TARGET_FILE:kuki> DESTINATION ${CMAKE_INSTALL_BINDIR})
 set(IMAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/image)
 install(DIRECTORY ${IMAGE_SOURCE_DIR} DESTINATION ${CMAKE_INSTALL_BINDIR})
 file(GLOB_RECURSE JPG_SOURCES "${IMAGE_SOURCE_DIR}/*.jpg")
@@ -32,13 +32,13 @@ if(WIN32)
       ${CMAKE_COMMAND} -E copy_directory ${IMAGE_SOURCE_DIR}
       $<TARGET_FILE_DIR:${PROJECT_NAME}>/image
     COMMAND
-      ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:engine>/shader
+      ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:kuki>/shader
       $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
     COMMAND
-      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:engine>
+      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:kuki>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
     COMMAND
-      ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:engine>
+      ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:kuki>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
     COMMAND_EXPAND_LISTS
   )
@@ -50,10 +50,10 @@ else()
       ${CMAKE_COMMAND} -E copy_directory ${IMAGE_SOURCE_DIR}
       $<TARGET_FILE_DIR:${PROJECT_NAME}>/image
     COMMAND
-      ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:engine>/shader
+      ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:kuki>/shader
       $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
     COMMAND
-      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:engine>
+      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:kuki>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
     COMMAND
       ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:glad>

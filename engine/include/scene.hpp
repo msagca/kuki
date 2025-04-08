@@ -1,8 +1,8 @@
 #pragma once
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <entity_manager.hpp>
 #include <utility/octree.hpp>
-class ENGINE_API Scene {
+class KUKI_API Scene {
 private:
   std::string name;
   unsigned int id;

@@ -6,9 +6,9 @@ target_include_directories(
   ${PROJECT_NAME}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE engine)
+target_link_libraries(${PROJECT_NAME} PRIVATE kuki)
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES $<TARGET_FILE:engine> DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES $<TARGET_FILE:kuki> DESTINATION ${CMAKE_INSTALL_BINDIR})
 if(UNIX AND NOT APPLE)
   set_target_properties(
     ${PROJECT_NAME}
@@ -20,13 +20,13 @@ if(WIN32)
     TARGET ${PROJECT_NAME}
     POST_BUILD
     COMMAND
-      ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:engine>/shader
+      ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:kuki>/shader
       $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
     COMMAND
-      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:engine>
+      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:kuki>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
     COMMAND
-      ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:engine>
+      ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:kuki>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
     COMMAND_EXPAND_LISTS
   )
@@ -35,10 +35,10 @@ else()
     TARGET ${PROJECT_NAME}
     POST_BUILD
     COMMAND
-      ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:engine>/shader
+      ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:kuki>/shader
       $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
     COMMAND
-      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:engine>
+      ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:kuki>
       $<TARGET_FILE_DIR:${PROJECT_NAME}>
     COMMAND
       ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:glad>

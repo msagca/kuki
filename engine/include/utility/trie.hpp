@@ -1,13 +1,13 @@
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <unordered_map>
 #include <string>
-struct ENGINE_API TrieNode {
+struct KUKI_API TrieNode {
   std::unordered_map<char, TrieNode*> children;
   /// @brief The next number suffix available that can be appended to this node
   unsigned int numSuffix = 0;
   bool wordEnd = false;
 };
-class ENGINE_API Trie {
+class KUKI_API Trie {
 private:
   TrieNode* root;
   void InsertAt(const std::string&, TrieNode*);

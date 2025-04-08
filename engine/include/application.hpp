@@ -2,13 +2,13 @@
 #include <app_config.hpp>
 #include <asset_loader.hpp>
 #include <command_manager.hpp>
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <input_manager.hpp>
 #include <scene.hpp>
 #include <scene_manager.hpp>
 #include <system.hpp>
 #include <vector>
-class ENGINE_API Application {
+class KUKI_API Application {
 private:
   std::string name;
   AppConfig config;

@@ -6,7 +6,7 @@
 #include <component/mesh_renderer.hpp>
 #include <component/transform.hpp>
 #include <component_manager.hpp>
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <string>
 #include <tuple>
 #include <typeindex>
@@ -16,7 +16,7 @@
 #include <utility/trie.hpp>
 #include <vector>
 /// @brief Manages entities and their components in a scene
-class ENGINE_API EntityManager {
+class KUKI_API EntityManager {
 private:
   unsigned int nextId = 0;
   std::unordered_set<unsigned int> ids;

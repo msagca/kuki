@@ -1,13 +1,13 @@
-# Learning OpenGL
+# Kuki
 
-This is where I experiment with `OpenGL`.
+I'm teaching myself graphics programming, game engine architecture and C++ through this hobby project.
 
 ## How to Build
 
 ### Requirements
 
 - `git`, `cmake`
-- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community) (install **Desktop development with C++** workload)
+- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community) (with **Desktop development with C++** workload installed)
 - **Linux:** `ninja` (or `make`), `gcc`, `g++`
 
 ### Instructions
@@ -15,11 +15,11 @@ This is where I experiment with `OpenGL`.
 - Clone this repository including its submodules
 
 ```bash
-git clone --recursive https://github.com/msagca/learning-opengl
+git clone --recursive https://github.com/msagca/kuki
 ```
 
 ```bash
-cd learning-opengl
+cd kuki
 ```
 
 - Run the configure command

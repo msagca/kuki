@@ -1,12 +1,12 @@
 #pragma once
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <functional>
 #include <GLFW/glfw3.h>
 #include <glm/ext/vector_float2.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-class ENGINE_API InputManager {
+class KUKI_API InputManager {
 private:
   bool keysEnabled = true;
   bool updateBindings;

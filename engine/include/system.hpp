@@ -1,8 +1,8 @@
 #pragma once
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <scene.hpp>
 class Application;
-class ENGINE_API System {
+class KUKI_API System {
 protected:
   Application& app;
 public:

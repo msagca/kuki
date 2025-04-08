@@ -3,7 +3,7 @@
 #include <assimp/scene.h>
 #include <component/component.hpp>
 #include <component/material.hpp>
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <entity_manager.hpp>
 #include <filesystem>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -11,7 +11,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-class ENGINE_API AssetLoader {
+class KUKI_API AssetLoader {
 private:
   EntityManager& assetManager;
   std::unordered_map<std::filesystem::path, unsigned int> pathToId;

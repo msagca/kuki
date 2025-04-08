@@ -1,5 +1,5 @@
 #pragma once
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <vector>
@@ -23,7 +23,7 @@ enum class PrimitiveId : unsigned int {
   Frame
 };
 /// @brief A container class for functions that construct primitive shapes
-class ENGINE_API Primitive {
+class KUKI_API Primitive {
 private:
   static std::vector<Triangle> CreateOctahedron();
   static std::vector<Triangle> CreateIcosahedron();

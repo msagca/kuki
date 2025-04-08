@@ -1,5 +1,5 @@
 #pragma once
-#include <engine_export.h>
+#include <kuki_export.h>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <string>
@@ -45,7 +45,7 @@ enum class PropertyType : unsigned int {
   Number,
   Color
 };
-struct ENGINE_API Property {
+struct KUKI_API Property {
   using PropertyValue = std::variant<int, float, bool, glm::vec3, glm::vec4, CameraType, LightType, TextureType>;
   std::string name;
   PropertyType type;
