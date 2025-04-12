@@ -126,11 +126,15 @@ public:
   void EnableKeys(T...);
   void EnableAllKeys();
   void DisableAllKeys();
-  void SetInputCallback(int, int, std::function<void()>, std::string = "");
-  void UnsetInputCallback(int, int);
+  void RegisterInputCallback(int, int, std::function<void()>, std::string = "");
+  void UnregisterInputCallback(int, int);
   int LoadModel(const std::filesystem::path&);
   int LoadPrimitive(PrimitiveId);
   int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
+  template <typename T, typename F>
+  int RegisterEventCallback(F&&);
+  template <typename T>
+  void UnregisterEventCallback(unsigned int);
 };
 template <typename... T>
 void Application::DisableKeys(T... args) {
@@ -269,4 +273,18 @@ std::tuple<T*...> Application::GetComponents(unsigned int id) {
 template <typename... T>
 std::tuple<T*...> Application::GetAssetComponents(unsigned int id) {
   return std::make_tuple(assetManager.GetComponent<T>(id)...);
+}
+template <typename T, typename F>
+int Application::RegisterEventCallback(F&& callback) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return -1;
+  return scene->GetEntityManager().RegisterCallback<T>(callback);
+}
+template <typename T>
+void Application::UnregisterEventCallback(unsigned int id) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().UnregisterCallback<T>();
 }

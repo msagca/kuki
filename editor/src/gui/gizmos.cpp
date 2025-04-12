@@ -10,24 +10,25 @@
 #include <ImGuizmo.h>
 #include <render_system.hpp>
 void Editor::DrawGizmos(float width, float height, unsigned int mask) {
+  if (selectedEntity < 0)
+    return;
+  // TODO: for a multi-select, position the gizmo at the center of the selection, and apply manipulations to all entities
   auto manipulatorEnabled = (mask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
   if (!manipulatorEnabled)
     return;
   auto camera = cameraController.GetCamera();
   if (!camera)
     return;
-  if (currentSelection < 0)
-    return;
   Transform transform;
-  Transform* transformComp = GetComponent<Transform>(currentSelection);
+  Transform* transformComp = GetComponent<Transform>(selectedEntity);
   Camera* cameraComp = nullptr;
   Light* lightComp = nullptr;
   if (!transformComp) {
-    cameraComp = GetComponent<Camera>(currentSelection);
+    cameraComp = GetComponent<Camera>(selectedEntity);
     if (cameraComp)
       transform = cameraComp->GetTransform();
     else {
-      lightComp = GetComponent<Light>(currentSelection);
+      lightComp = GetComponent<Light>(selectedEntity);
       if (lightComp)
         transform = lightComp->GetTransform();
       else

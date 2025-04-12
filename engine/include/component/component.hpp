@@ -39,7 +39,8 @@ enum class TextureType : unsigned int {
   Metalness,
   Occlusion,
   Roughness,
-  CubeMap
+  CubeMap,
+  RadianceHDR
 };
 enum class PropertyType : unsigned int {
   Number,
@@ -80,7 +81,7 @@ struct EnumTraits<LightType> {
 template <>
 struct EnumTraits<TextureType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "CubeMap"};
+    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "CubeMap", "RadianceHDR"};
     return names;
   }
 };

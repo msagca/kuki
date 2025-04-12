@@ -10,6 +10,7 @@ bool InputManager::GetKey(int key) const {
   return it->second;
 }
 bool InputManager::GetButton(int button) const {
+  // TODO: add double click support
   auto it = buttonStates.find(button);
   if (it == buttonStates.end())
     return false;

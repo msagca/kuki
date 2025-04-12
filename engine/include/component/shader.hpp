@@ -30,6 +30,5 @@ public:
   void SetUniform(GLint, float);
   void SetUniform(GLint, int);
   void SetUniform(GLint, unsigned int);
-  void SetMVP(const glm::mat4&, const glm::mat4&, const glm::mat4&);
   void SetLight(const Light*, unsigned int = 0);
 };

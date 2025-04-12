@@ -1,19 +1,24 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <application.hpp>
-#include <component/texture.hpp>
-#include <render_system.hpp>
-#include <glm/gtx/quaternion.hpp>
-#include <functional>
-#include <unordered_map>
+#include <component/component.hpp>
 #include <component/light.hpp>
 #include <component/material.hpp>
 #include <component/mesh.hpp>
+#include <component/texture.hpp>
 #include <component/transform.hpp>
+#include <cstddef>
+#include <functional>
 #include <glad/glad.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <iostream>
-#include <component/component.hpp>
+#include <render_system.hpp>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <variant>
 int RenderSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   static std::unordered_map<unsigned int, unsigned int> assetToTexture;
   auto isTexture = app.AssetHasComponent<Texture>(assetId);
@@ -81,17 +86,45 @@ void RenderSystem::DrawAsset(unsigned int id) {
   });
 }
 void RenderSystem::DrawAsset(const Transform* transform, const Mesh& mesh, const Material& material) {
+  std::vector<glm::mat4> models{GetAssetWorldTransform(transform)};
+  std::vector<LitFallback> materials;
+  auto& litMaterial = std::get<LitMaterial>(material.material);
+  materials.push_back(litMaterial.fallback);
   auto shader = GetMaterialShader(material);
   shader->Use();
   material.Apply(*shader);
-  shader->SetUniform("useInstancing", false);
-  auto model = GetAssetWorldTransform(transform);
-  shader->SetMVP(model, assetCam.view, assetCam.projection);
+  shader->SetUniform("view", assetCam.view);
+  shader->SetUniform("projection", assetCam.projection);
   shader->SetUniform("viewPos", assetCam.position);
   static const Light dirLight;
   shader->SetLight(&dirLight);
   shader->SetUniform("dirExists", true);
   shader->SetUniform("pointCount", 0); // NOTE: without this line, the lighting will be impacted by (previously set) point lights in the scene
+  glNamedBufferData(instanceVBO, models.size() * sizeof(glm::mat4), models.data(), GL_DYNAMIC_DRAW);
+  auto bindingIndex = 0;
+  glVertexArrayVertexBuffer(mesh.vertexArray, bindingIndex, instanceVBO, 0, sizeof(glm::mat4));
+  for (auto i = 0; i < 4; ++i) {
+    auto attrib = 4 + i;
+    glVertexArrayAttribFormat(mesh.vertexArray, attrib, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4) * i);
+    glVertexArrayAttribBinding(mesh.vertexArray, attrib, bindingIndex);
+    glEnableVertexArrayAttrib(mesh.vertexArray, attrib);
+  }
+  glVertexArrayBindingDivisor(mesh.vertexArray, bindingIndex, 1);
+  bindingIndex++;
+  glNamedBufferData(materialVBO, materials.size() * sizeof(LitFallback), materials.data(), GL_DYNAMIC_DRAW);
+  glVertexArrayVertexBuffer(mesh.vertexArray, bindingIndex, materialVBO, 0, sizeof(LitFallback));
+  glVertexArrayAttribFormat(mesh.vertexArray, 8, 3, GL_FLOAT, GL_FALSE, offsetof(LitFallback, albedo));
+  glVertexArrayAttribBinding(mesh.vertexArray, 8, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 8);
+  glVertexArrayAttribFormat(mesh.vertexArray, 9, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, metalness));
+  glVertexArrayAttribBinding(mesh.vertexArray, 9, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 9);
+  glVertexArrayAttribFormat(mesh.vertexArray, 10, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, roughness));
+  glVertexArrayAttribBinding(mesh.vertexArray, 10, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 10);
+  glVertexArrayAttribFormat(mesh.vertexArray, 11, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, occlusion));
+  glVertexArrayAttribBinding(mesh.vertexArray, 11, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 11);
   glBindVertexArray(mesh.vertexArray);
   if (mesh.indexCount > 0)
     glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);

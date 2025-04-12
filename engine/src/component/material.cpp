@@ -3,7 +3,9 @@
 #include <component/shader.hpp>
 #include <glad/glad.h>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <string>
+#include <typeindex>
 #include <variant>
 #include <vector>
 void Material::Apply(Shader& shader) const {
@@ -22,10 +24,11 @@ void Material::SetProperty(Property property) {
   std::visit([&property](auto& mat) { mat.SetProperty(property); }, material);
 }
 void LitFallback::Apply(Shader& shader) const {
-  shader.SetUniform("fallback.albedo", albedo);
+  // NOTE: these are no longer uniforms, but rather vertex attributes
+  /*shader.SetUniform("fallback.albedo", albedo);
   shader.SetUniform("fallback.metalness", metalness);
   shader.SetUniform("fallback.occlusion", occlusion);
-  shader.SetUniform("fallback.roughness", roughness);
+  shader.SetUniform("fallback.roughness", roughness);*/
 }
 const std::string LitFallback::GetName() const {
   return "LitFallback";
@@ -68,37 +71,37 @@ void LitMaterial::Apply(Shader& shader) const {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, albedo.id);
     shader.SetUniform("material.albedo", 0);
-    shader.SetUniform("useAlbedoFallback", false);
+    shader.SetUniform("useAlbedoTexture", true);
   } else
-    shader.SetUniform("useAlbedoFallback", true);
+    shader.SetUniform("useAlbedoTexture", false);
   if (glIsTexture(normal.id)) {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, normal.id);
     shader.SetUniform("material.normal", 1);
-    shader.SetUniform("useNormalFallback", false);
+    shader.SetUniform("useNormalTexture", true);
   } else
-    shader.SetUniform("useNormalFallback", true);
+    shader.SetUniform("useNormalTexture", false);
   if (glIsTexture(metalness.id)) {
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, metalness.id);
     shader.SetUniform("material.metalness", 2);
-    shader.SetUniform("useMetalnessFallback", false);
+    shader.SetUniform("useMetalnessTexture", true);
   } else
-    shader.SetUniform("useMetalnessFallback", true);
+    shader.SetUniform("useMetalnessTexture", false);
   if (glIsTexture(occlusion.id)) {
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, occlusion.id);
     shader.SetUniform("material.occlusion", 3);
-    shader.SetUniform("useOcclusionFallback", false);
+    shader.SetUniform("useOcclusionTexture", true);
   } else
-    shader.SetUniform("useOcclusionFallback", true);
+    shader.SetUniform("useOcclusionTexture", false);
   if (glIsTexture(roughness.id)) {
     glActiveTexture(GL_TEXTURE4);
     glBindTexture(GL_TEXTURE_2D, roughness.id);
     shader.SetUniform("material.roughness", 4);
-    shader.SetUniform("useRoughnessFallback", false);
+    shader.SetUniform("useRoughnessTexture", true);
   } else
-    shader.SetUniform("useRoughnessFallback", true);
+    shader.SetUniform("useRoughnessTexture", false);
   fallback.Apply(shader);
 }
 const std::string LitMaterial::GetName() const {
@@ -137,9 +140,9 @@ void UnlitMaterial::Apply(Shader& shader) const {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, base.id);
     shader.SetUniform("material.base", 0);
-    shader.SetUniform("useBaseFallback", false);
+    shader.SetUniform("useBaseTexture", true);
   } else
-    shader.SetUniform("useBaseFallback", true);
+    shader.SetUniform("useBaseTexture", false);
   shader.SetUniform("fallback.base", fallback.base);
 }
 const std::string UnlitMaterial::GetName() const {

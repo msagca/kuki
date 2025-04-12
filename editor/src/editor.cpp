@@ -1,8 +1,10 @@
+#define IMGUI_ENABLE_FREETYPE
 #include <command.hpp>
 #include <component/camera.hpp>
 #include <component/light.hpp>
 #include <editor.hpp>
 #include <imgui.h>
+#include <imgui_freetype.h>
 #include <imfilebrowser.h>
 #include <ImGuizmo.h>
 #include <imgui_impl_glfw.h>
@@ -11,14 +13,15 @@
 #include <primitive.hpp>
 #include <render_system.hpp>
 #include <spdlog/spdlog.h>
-#include <string>
 class Application;
 Editor::Editor()
   : Application("Editor"), cameraController(inputManager), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
 void Editor::Start() {
-  SetInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
-  SetInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
-  SetInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderSystem::ToggleWireframeMode, "Toggle wireframe mode.");
+  RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
+  RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
+  RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderSystem::ToggleWireframeMode, "Toggle wireframe mode.");
+  RegisterEventCallback<EntityCreatedEvent>([this](const EntityCreatedEvent& event) { EntityCreatedCallback(event); });
+  RegisterEventCallback<EntityDeletedEvent>([this](const EntityDeletedEvent& event) { EntityDeletedCallback(event); });
   InitImGui();
   LoadDefaultAssets();
   LoadDefaultScene();
@@ -104,6 +107,10 @@ void Editor::InitImGui() {
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init();
   ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
+  // auto builder = ImGuiFreeType::GetBuilderForFreeType();
+  // io.Fonts->Clear();
+  // io.Fonts->AddFontDefault();
+  // builder->FontBuilder_Build(io.Fonts);
   fileBrowser.SetTitle("Browse Files");
   fileBrowser.SetTypeFilters({".gltf"});
 }

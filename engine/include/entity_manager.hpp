@@ -1,4 +1,5 @@
 #pragma once
+#include <event_dispatcher.hpp>
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/light.hpp>
@@ -7,11 +8,11 @@
 #include <component/transform.hpp>
 #include <component_manager.hpp>
 #include <kuki_export.h>
+#include <set>
 #include <string>
 #include <tuple>
 #include <typeindex>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility/octree.hpp>
 #include <utility/trie.hpp>
 #include <vector>
@@ -19,7 +20,7 @@
 class KUKI_API EntityManager {
 private:
   unsigned int nextId = 0;
-  std::unordered_set<unsigned int> ids;
+  std::set<unsigned int> ids;
   Trie names;
   Octree<unsigned int> octree;
   std::unordered_map<ComponentId, std::type_index> idToType; // NOTE: this is component type Id, not entity Id
@@ -27,14 +28,17 @@ private:
   std::unordered_map<std::string, unsigned int> nameToId;
   std::unordered_map<std::type_index, ComponentMask> typeToMask;
   std::unordered_map<std::type_index, IComponentManager*> typeToManager;
+  std::unordered_map<std::type_index, IEventDispatcher*> typeToDispatcher;
   std::unordered_map<unsigned int, std::string> idToName;
-  std::unordered_map<unsigned int, std::unordered_set<unsigned int>> idToChildren;
+  std::unordered_map<unsigned int, std::set<unsigned int>> idToChildren;
   std::unordered_map<unsigned int, unsigned int> idToParent;
   template <typename T>
   ComponentManager<T>* GetManager();
   IComponentManager* GetManager(std::type_index);
   IComponentManager* GetManager(const std::string&);
   IComponentManager* GetManager(ComponentId);
+  template <typename T>
+  EventDispatcher<T>* GetEventDispatcher();
   template <typename T>
   size_t GetComponentMask() const;
   void DeleteRecords(unsigned int);
@@ -105,6 +109,10 @@ public:
   void ForEachOctreeNode(F);
   template <typename F>
   void ForEachOctreeLeafNode(F);
+  template <typename T, typename F>
+  unsigned int RegisterCallback(F&&);
+  template <typename T>
+  void UnregisterCallback(unsigned int);
 };
 template <typename T>
 T* EntityManager::AddComponent(unsigned int id) {
@@ -200,6 +208,14 @@ size_t EntityManager::GetComponentMask() const {
     return 0;
   return static_cast<size_t>(it->second);
 }
+template <typename T>
+EventDispatcher<T>* EntityManager::GetEventDispatcher() {
+  auto type = std::type_index(typeid(T));
+  auto it = typeToDispatcher.find(type);
+  if (it == typeToDispatcher.end())
+    typeToDispatcher.emplace(type, new EventDispatcher<T>());
+  return static_cast<EventDispatcher<T>*>(typeToDispatcher[type]);
+}
 template <typename F>
 void EntityManager::ForEachVisibleEntity(const Camera& camera, F func) {
   UpdateOctree();
@@ -214,4 +230,14 @@ void EntityManager::ForEachOctreeNode(F func) {
 template <typename F>
 void EntityManager::ForEachOctreeLeafNode(F func) {
   octree.ForEachLeaf(func);
+}
+template <typename T, typename F>
+unsigned int EntityManager::RegisterCallback(F&& callback) {
+  auto dispatcher = GetEventDispatcher<T>();
+  return dispatcher->Subscribe(std::forward<F>(callback));
+}
+template <typename T>
+void EntityManager::UnregisterCallback(unsigned int id) {
+  auto dispatcher = GetEventDispatcher<T>();
+  dispatcher->Unsubscribe(id);
 }

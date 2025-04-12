@@ -9,6 +9,8 @@
 EntityManager::~EntityManager() {
   for (const auto& [type, manager] : typeToManager)
     delete manager;
+  for (const auto& [type, dispatcher] : typeToDispatcher)
+    delete dispatcher;
   names.Clear();
 }
 IComponentManager* EntityManager::GetManager(std::type_index type) {
@@ -34,6 +36,9 @@ unsigned int EntityManager::Create(std::string& name) {
   idToName[nextId] = name;
   ids.insert(nextId);
   nameToId[idToName[nextId]] = nextId;
+  EntityCreatedEvent event{nextId};
+  auto dispatcher = GetEventDispatcher<EntityCreatedEvent>();
+  dispatcher->Emit(event);
   return nextId++;
 }
 void EntityManager::DeleteRecords(unsigned int id) {
@@ -52,6 +57,9 @@ void EntityManager::Delete(unsigned int id) {
   if (ids.find(id) == ids.end())
     return;
   RemoveAllComponents(id);
+  EntityDeletedEvent event{id};
+  auto dispatcher = GetEventDispatcher<EntityDeletedEvent>();
+  dispatcher->Emit(event);
   ForEachChild(id, [this](unsigned int childId) {
     Delete(childId);
   });

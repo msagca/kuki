@@ -8,7 +8,7 @@ target_include_directories(
 )
 target_link_libraries(
   ${PROJECT_NAME}
-  PRIVATE kuki imgui imgui_filebrowser imguizmo
+  PRIVATE kuki imgui imgui_filebrowser imguizmo freetype
 )
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES $<TARGET_FILE:kuki> DESTINATION ${CMAKE_INSTALL_BINDIR})

@@ -9,7 +9,7 @@ struct Fallback {
 };
 uniform Material material;
 uniform Fallback fallback;
-uniform bool useBaseFallback;
+uniform bool useBaseTexture;
 void main() {
-    color = (useBaseFallback) ? fallback.base : vec4(texture(material.base, texCoord).rgb, 1.0);
+    color = (useBaseTexture) ? vec4(texture(material.base, texCoord).rgb, 1.0) : fallback.base;
 }

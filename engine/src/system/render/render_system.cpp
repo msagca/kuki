@@ -26,6 +26,7 @@ void RenderSystem::Start() {
   shaders.insert({skyboxShader->GetName(), skyboxShader});
   shaders.insert({skyboxFlatShader->GetName(), skyboxFlatShader});
   glGenBuffers(1, &instanceVBO);
+  glGenBuffers(1, &materialVBO);
 }
 void RenderSystem::Shutdown() {
   glDeleteFramebuffers(1, &assetFBO);
@@ -36,6 +37,8 @@ void RenderSystem::Shutdown() {
   glDeleteRenderbuffers(1, &sceneRBO);
   glDeleteTextures(1, &sceneMultiTexture);
   glDeleteTextures(1, &sceneTexture);
+  glDeleteVertexArrays(1, &instanceVBO);
+  glDeleteVertexArrays(1, &materialVBO);
 }
 bool RenderSystem::UpdateBuffers(unsigned int& fbo, unsigned int& rbo, unsigned int& texture, int width, int height, int samples) {
   auto multi = samples > 1;

@@ -27,6 +27,8 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/json)
 # spdlog
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog)
+# freetype
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/freetype)
 # Assimp
 set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
 set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF)
@@ -50,6 +52,7 @@ set(
   ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_widgets.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_opengl3.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/misc/freetype/imgui_freetype.cpp
 )
 add_library(imgui STATIC ${IMGUI_CPP_SOURCES})
 target_include_directories(
@@ -57,8 +60,9 @@ target_include_directories(
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui
     ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/misc/freetype
 )
-target_link_libraries(imgui PUBLIC OpenGL::GL glfw)
+target_link_libraries(imgui PUBLIC OpenGL::GL glfw freetype)
 set_target_properties(
   imgui
   PROPERTIES

@@ -1,57 +1,50 @@
+#include <cstring>
 #include <editor.hpp>
-#include <string>
 #include <imgui.h>
-void Editor::DisplayEntity(unsigned int id) {
+#include <string>
+#include <vector>
+void Editor::DisplayEntity(unsigned int id, std::vector<unsigned int>& entities, const ImGuiSelectionBasicStorage& selection) {
+  static const auto INPUT_TEXT_FLAGS = ImGuiTreeNodeFlags(ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
   static auto renameMode = false;
-  static auto renamedEntity = -1;
+  static auto entityBeingRenamed = -1;
   static char newName[256] = "";
-  ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
-  if (selectedEntities.find(id) != selectedEntities.end() || id >= lastSelection && id <= currentSelection)
-    nodeFlags |= ImGuiTreeNodeFlags_Selected;
+  auto nodeFlags = ImGuiTreeNodeFlags(ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick);
   if (!EntityHasChildren(id))
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
-  auto renaming = renamedEntity == id && renameMode;
-  auto nodeOpen = false;
-  if (renaming) {
+  entities.push_back(id);
+  if (selection.Contains(id))
+    nodeFlags |= ImGuiTreeNodeFlags_Selected;
+  ImGui::SetNextItemSelectionUserData(id);
+  if (renameMode && entityBeingRenamed == id) {
     // TODO: disable camera controls while renaming
     ImGui::AlignTextToFramePadding();
     ImGui::PushItemWidth(-1);
     ImGui::SetKeyboardFocusHere();
-    auto renameConfirmed = ImGui::InputText("##Rename", newName, IM_ARRAYSIZE(newName), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+    auto renameConfirmed = ImGui::InputText("##Rename", newName, IM_ARRAYSIZE(newName), INPUT_TEXT_FLAGS);
+    if (renameConfirmed) {
+      std::string nameStr = newName;
+      if (!nameStr.empty())
+        RenameEntity(id, nameStr);
+    }
     if (renameConfirmed || ImGui::IsItemDeactivated()) {
-      if (renameConfirmed || (ImGui::IsItemDeactivated() && !ImGui::IsItemDeactivatedAfterEdit())) {
-        std::string nameStr = newName;
-        if (!nameStr.empty())
-          RenameEntity(id, nameStr);
-      }
       renameMode = false;
-      renamedEntity = -1;
+      entityBeingRenamed = -1;
     }
     ImGui::PopItemWidth();
-  } else {
-    auto label = GetEntityName(id);
-    nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, "%s", label.c_str());
-    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
-      if (!addRangeToSelection) {
-        lastSelection = id;
-        if (!addToSelection)
-          clearSelection = true;
-      } else
-        lastSelection = currentSelection;
-      currentSelection = id;
-    }
-    // TODO: implement double click support in input manager
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-      strcpy(newName, GetEntityName(id).c_str());
-      renameMode = true;
-      renamedEntity = id;
-    }
+    return;
+  }
+  auto entityName = GetEntityName(id);
+  const char* name = entityName.c_str();
+  bool nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)id, nodeFlags, "%s", name);
+  if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    strcpy(newName, name);
+    renameMode = true;
+    entityBeingRenamed = id;
   }
   if (nodeOpen) {
     ForEachChildEntity(id, [&](unsigned int childId) {
-      DisplayEntity(childId);
+      DisplayEntity(childId, entities, selection);
     });
-    if (!renaming)
-      ImGui::TreePop();
+    ImGui::TreePop();
   }
-};
+}

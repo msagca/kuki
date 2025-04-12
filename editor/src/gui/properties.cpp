@@ -7,11 +7,11 @@
 #include <string>
 #include <variant>
 void Editor::DisplayProperties() {
-  if (currentSelection < 0)
+  if (selectedEntity < 0)
     return;
   ImGui::Begin("Properties");
   static IComponent* selectedComponent = nullptr;
-  auto components = GetAllComponents(currentSelection);
+  auto components = GetAllComponents(selectedEntity);
   for (auto i = 0; i < components.size(); ++i) {
     const auto& component = components[i];
     auto isSelected = (selectedComponent == component);
@@ -21,11 +21,11 @@ void Editor::DisplayProperties() {
       if (isSelected)
         selectedComponent = nullptr;
       else
-        selectedComponent = GetComponent(currentSelection, name);
+        selectedComponent = GetComponent(selectedEntity, name);
     }
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove")) {
-        RemoveComponent(currentSelection, name);
+        RemoveComponent(selectedEntity, name);
         if (selectedComponent == component)
           selectedComponent = nullptr;
       }
@@ -91,9 +91,9 @@ void Editor::DisplayProperties() {
     }
     ImGui::PopID();
   }
-  auto availableComponents = GetMissingComponents(currentSelection);
+  auto availableComponents = GetMissingComponents(selectedEntity);
   for (const auto& comp : availableComponents)
     if (ImGui::Selectable(comp.c_str()))
-      AddComponent(currentSelection, comp);
+      AddComponent(selectedEntity, comp);
   ImGui::End();
 }

@@ -1,10 +1,5 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <application.hpp>
-#include <render_system.hpp>
-#include <iostream>
-#include <typeindex>
-#include <unordered_map>
-#include <vector>
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/light.hpp>
@@ -17,8 +12,16 @@
 #include <glad/glad.h>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <iostream>
+#include <render_system.hpp>
+#include <typeindex>
+#include <unordered_map>
+#include <variant>
+#include <vector>
+#include <cstddef>
 int RenderSystem::RenderSceneToTexture(Camera* camera) {
   auto sceneCamera = app.GetActiveCamera();
   targetCamera = camera ? camera : sceneCamera;
@@ -70,48 +73,25 @@ void RenderSystem::DrawScene() {
       DrawEntitiesInstanced(vaoToMesh[vao], entities);
   DrawSkybox();
 }
-void RenderSystem::DrawEntity(const Transform* transform, const Mesh& mesh, const Material& material) {
-  auto shader = GetMaterialShader(material);
-  shader->Use();
-  material.Apply(*shader);
-  shader->SetUniform("useInstancing", false);
-  auto model = GetEntityWorldTransform(transform);
-  shader->SetMVP(model, targetCamera->view, targetCamera->projection);
-  shader->SetUniform("viewPos", targetCamera->position);
-  auto dirExists = false;
-  auto pointCount = 0;
-  app.ForEachEntity<Light>([&](unsigned int id, Light* light) {
-    shader->SetLight(light, pointCount);
-    if (light->type == LightType::Directional)
-      dirExists = true;
-    else
-      pointCount++;
-  });
-  shader->SetUniform("dirExists", dirExists);
-  shader->SetUniform("pointCount", pointCount);
-  glBindVertexArray(mesh.vertexArray);
-  if (mesh.indexCount > 0)
-    glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);
-  else
-    glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
-}
 void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<unsigned int>& entities) {
-  std::vector<Material> materials;
+  std::vector<LitFallback> materials;
   std::vector<glm::mat4> models;
   for (const auto id : entities) {
     auto [renderer, transform] = app.GetComponents<MeshRenderer, Transform>(id);
     if (!renderer || !transform)
       continue;
-    materials.push_back(renderer->material);
+    // TODO: do not assume lit material, add instanced rendering support to unlit materials
+    auto& litMaterial = std::get<LitMaterial>(renderer->material.material);
+    materials.push_back(litMaterial.fallback);
     models.push_back(GetEntityWorldTransform(transform));
   }
   if (materials.size() == 0)
     return;
   auto& material = materials[0];
-  auto shader = GetMaterialShader(material);
+  auto shader = shaders["Lit"];
   shader->Use();
-  material.Apply(*shader);
-  shader->SetUniform("useInstancing", true);
+  material.Apply(*shader); // this sets the textures for all instances, and the booleans that indicate whether to use them
+  // TODO: determine instances that use a different set of textures and process them separately
   shader->SetUniform("view", targetCamera->view);
   shader->SetUniform("projection", targetCamera->projection);
   shader->SetUniform("viewPos", targetCamera->position);
@@ -126,15 +106,32 @@ void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<uns
   });
   shader->SetUniform("dirExists", dirExists);
   shader->SetUniform("pointCount", pointCount);
-  glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-  glBufferData(GL_ARRAY_BUFFER, models.size() * sizeof(glm::mat4), models.data(), GL_DYNAMIC_DRAW);
-  glBindVertexArray(mesh.vertexArray);
-  unsigned int attribLocation = 4; // 0: i_position, 1: i_normal, 2: i_texCoord, 3: i_tangent
+  glNamedBufferData(instanceVBO, models.size() * sizeof(glm::mat4), models.data(), GL_DYNAMIC_DRAW);
+  auto bindingIndex = 0;
+  glVertexArrayVertexBuffer(mesh.vertexArray, bindingIndex, instanceVBO, 0, sizeof(glm::mat4));
   for (auto i = 0; i < 4; ++i) {
-    glEnableVertexAttribArray(attribLocation + i);
-    glVertexAttribPointer(attribLocation + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4) * i));
-    glVertexAttribDivisor(attribLocation + i, 1);
+    auto attrib = 4 + i;
+    glVertexArrayAttribFormat(mesh.vertexArray, attrib, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4) * i);
+    glVertexArrayAttribBinding(mesh.vertexArray, attrib, bindingIndex);
+    glEnableVertexArrayAttrib(mesh.vertexArray, attrib);
   }
+  glVertexArrayBindingDivisor(mesh.vertexArray, bindingIndex, 1);
+  bindingIndex++;
+  glNamedBufferData(materialVBO, materials.size() * sizeof(LitFallback), materials.data(), GL_DYNAMIC_DRAW);
+  glVertexArrayVertexBuffer(mesh.vertexArray, bindingIndex, materialVBO, 0, sizeof(LitFallback));
+  glVertexArrayAttribFormat(mesh.vertexArray, 8, 3, GL_FLOAT, GL_FALSE, offsetof(LitFallback, albedo));
+  glVertexArrayAttribBinding(mesh.vertexArray, 8, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 8);
+  glVertexArrayAttribFormat(mesh.vertexArray, 9, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, metalness));
+  glVertexArrayAttribBinding(mesh.vertexArray, 9, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 9);
+  glVertexArrayAttribFormat(mesh.vertexArray, 10, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, roughness));
+  glVertexArrayAttribBinding(mesh.vertexArray, 10, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 10);
+  glVertexArrayAttribFormat(mesh.vertexArray, 11, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, occlusion));
+  glVertexArrayAttribBinding(mesh.vertexArray, 11, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, 11);
+  glBindVertexArray(mesh.vertexArray);
   if (mesh.indexCount > 0)
     glDrawElementsInstanced(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0, models.size());
   else

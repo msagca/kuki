@@ -107,7 +107,11 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
   if (it != pathToId.end())
     return it->second;
   int width, height, nrComponents;
-  auto data = stbi_load(path.string().c_str(), &width, &height, &nrComponents, 0);
+  void* data = nullptr;
+  if (type == TextureType::RadianceHDR)
+    data = static_cast<void*>(stbi_loadf(path.string().c_str(), &width, &height, &nrComponents, 0));
+  else
+    data = static_cast<void*>(stbi_load(path.string().c_str(), &width, &height, &nrComponents, 0));
   if (!data) {
     std::cerr << "Failed to load the texture: " << path << std::endl;
     return -1;
@@ -123,11 +127,21 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
     format = GL_RG;
     break;
   case 3:
-    internalFormat = (type == TextureType::Albedo) ? GL_SRGB8 : GL_RGB8;
+    if (type == TextureType::RadianceHDR)
+      internalFormat = GL_RGB16F;
+    else if (type == TextureType::Albedo)
+      internalFormat = GL_SRGB8;
+    else
+      internalFormat = GL_RGB8;
     format = GL_RGB;
     break;
   case 4:
-    internalFormat = (type == TextureType::Albedo) ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+    if (type == TextureType::RadianceHDR)
+      internalFormat = GL_RGB16F;
+    else if (type == TextureType::Albedo)
+      internalFormat = GL_SRGB8_ALPHA8;
+    else
+      internalFormat = GL_RGBA8;
     format = GL_RGBA;
     break;
   default:
@@ -152,6 +166,7 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
     glGenerateTextureMipmap(textureId);
     break;
   case TextureType::Normal:
+  case TextureType::RadianceHDR:
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

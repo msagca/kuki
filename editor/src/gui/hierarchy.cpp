@@ -1,38 +1,46 @@
 #include <editor.hpp>
+#include <event_dispatcher.hpp>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
-#include <string>
-#include <utility>
 #include <spdlog/spdlog.h>
+#include <string>
+#include <vector>
 void Editor::DisplayHierarchy() {
-  ImGui::Begin("Hierarchy");
-  deleteSelected |= GetKey(GLFW_KEY_DELETE);
-  addRangeToSelection = GetKey(GLFW_KEY_LEFT_SHIFT);
-  addToSelection = GetKey(GLFW_KEY_LEFT_CONTROL);
-  if (currentSelection < lastSelection)
-    std::swap(currentSelection, lastSelection);
-  if (clearSelection) {
-    selectedEntities.clear();
-    clearSelection = false;
-  }
-  ForAllEntities([&](unsigned int id) {
-    if (addRangeToSelection && id >= lastSelection && id <= currentSelection || (addToSelection || deleteSelected) && id == currentSelection)
-      // FIXME: child entities are not displayed in a predictable order, so the selection range is usually not correct
-      selectedEntities.insert(id);
-    if (!EntityHasParent(id))
-      DisplayEntity(id);
+  std::vector<unsigned int> entities;
+  ForEachEntity([&](unsigned int id) {
+    entities.push_back(id);
   });
-  if (deleteSelected && !selectedEntities.empty()) {
-    for (const auto id : selectedEntities)
+  selection.UserData = reinterpret_cast<void*>(&entities);
+  selection.AdapterIndexToStorageId = [](ImGuiSelectionBasicStorage* self, int index) {
+    auto* entityIDs = reinterpret_cast<std::vector<unsigned int>*>(self->UserData);
+    if (index < 0 || index >= entityIDs->size())
+      return static_cast<unsigned int>(-1);
+    return (*entityIDs)[index];
+  };
+  ImGui::Begin("Hierarchy");
+  ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_None, selection.Size, entities.size());
+  selection.ApplyRequests(ms_io);
+  selectedEntity = -1;
+  for (const auto& id : entities) {
+    auto selected = selection.Contains(id);
+    ImGui::SetNextItemSelectionUserData(id);
+    ImGui::Selectable(GetEntityName(id).c_str(), &selected);
+    if (selected)
+      selectedEntity = id;
+  }
+  ms_io = ImGui::EndMultiSelect();
+  selection.ApplyRequests(ms_io);
+  auto deleteSelection = GetKey(GLFW_KEY_DELETE);
+  if (deleteSelection && selection.Size > 0) {
+    std::vector<unsigned int> entitiesToDelete;
+    for (const auto& id : entities)
+      if (selection.Contains(id))
+        entitiesToDelete.push_back(id);
+    for (const auto& id : entitiesToDelete)
       DeleteEntity(id);
-    spdlog::info("Deleted {} entities.", selectedEntities.size());
   }
-  if (deleteSelected || ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_LEFT)) {
-    lastSelection = -1;
-    currentSelection = -1;
-    deleteSelected = false;
-    selectedEntities.clear();
-  }
+  if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered())
+    selection.Clear();
   if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_RIGHT))
     ImGui::OpenPopup("CreateMenu");
   if (ImGui::BeginPopup("CreateMenu")) {
@@ -60,4 +68,10 @@ void Editor::DisplayHierarchy() {
   }
   ImGui::End();
   DisplayProperties();
+}
+void Editor::EntityCreatedCallback(const EntityCreatedEvent& event) {
+  selection.Clear();
+}
+void Editor::EntityDeletedCallback(const EntityDeletedEvent& event) {
+  selection.Clear();
 }

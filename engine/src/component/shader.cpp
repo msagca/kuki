@@ -112,11 +112,6 @@ void Shader::SetUniform(GLint loc, int value) {
 void Shader::SetUniform(GLint loc, unsigned int value) {
   glUniform1i(loc, value);
 }
-void Shader::SetMVP(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection) {
-  SetUniform("model", model);
-  SetUniform("view", view);
-  SetUniform("projection", projection);
-}
 void Shader::SetLight(const Light* light, unsigned int index) {
   if (light->type == LightType::Directional) {
     SetUniform("dirLight.direction", light->vector);

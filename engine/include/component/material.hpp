@@ -12,9 +12,9 @@ struct IMaterial : IComponent {
 /// @brief Fallback values to be used for lit materials in the absence of textures
 struct KUKI_API LitFallback final : IMaterial {
   glm::vec3 albedo{1.0f};
-  float metalness{.0f};
-  float roughness{.5f};
+  float metalness{.5f};
   float occlusion{1.0f};
+  float roughness{.5f};
   void Apply(Shader&) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;

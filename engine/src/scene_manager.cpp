@@ -1,4 +1,6 @@
+#include <scene.hpp>
 #include <scene_manager.hpp>
+#include <string>
 SceneManager::~SceneManager() {
   for (const auto& [_, scene] : idToScene)
     delete scene;

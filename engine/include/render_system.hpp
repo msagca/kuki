@@ -32,10 +32,10 @@ private:
   unsigned int sceneRBO = 0;
   unsigned int sceneTexture = 0;
   unsigned int instanceVBO = 0;
+  unsigned int materialVBO = 0;
   unsigned int gizmoMask = 0;
   bool UpdateBuffers(unsigned int&, unsigned int&, unsigned int&, int, int, int = 1);
   void DrawAsset(const Transform*, const Mesh&, const Material&);
-  void DrawEntity(const Transform*, const Mesh&, const Material&);
   void DrawEntitiesInstanced(const Mesh&, const std::vector<unsigned int>&);
   void DrawSkybox();
   void DrawScene();

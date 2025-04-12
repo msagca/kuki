@@ -6,7 +6,6 @@
 #include <imgui_sink.hpp>
 #include <mutex>
 #include <spdlog/spdlog.h>
-#include <unordered_set>
 class Editor final : public Application {
 private:
   CameraController cameraController;
@@ -14,21 +13,18 @@ private:
   ImGui::FileBrowser fileBrowser;
   std::shared_ptr<ImGuiSink<std::mutex>> imguiSink;
   std::shared_ptr<spdlog::logger> logger;
-  std::unordered_set<unsigned int> selectedEntities;
-  bool addRangeToSelection = false;
-  bool addToSelection = false;
-  bool clearSelection = false;
-  bool deleteSelected = false;
-  int currentSelection = -1;
-  int lastSelection = -1;
-  void DisplayEntity(unsigned int);
-  void DisplayHierarchy();
-  void DisplayProperties();
+  ImGuiSelectionBasicStorage selection;
+  int selectedEntity = -1;
   void DisplayAssets();
-  void DisplayScene();
   void DisplayConsole();
+  void DisplayEntity(unsigned int, std::vector<unsigned int>&, const ImGuiSelectionBasicStorage&);
+  void DisplayHierarchy();
   void DisplayLogs();
+  void DisplayProperties();
+  void DisplayScene();
   void DrawGizmos(float, float, unsigned int);
+  void EntityCreatedCallback(const EntityCreatedEvent&);
+  void EntityDeletedCallback(const EntityDeletedEvent&);
   void InitImGui();
   void InitLayout();
   void LoadDefaultAssets();

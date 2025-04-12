@@ -347,10 +347,10 @@ void Application::EnableAllKeys() {
 void Application::DisableAllKeys() {
   inputManager.DisableAllKeys();
 }
-void Application::SetInputCallback(int key, int action, std::function<void()> callback, std::string description) {
+void Application::RegisterInputCallback(int key, int action, std::function<void()> callback, std::string description) {
   inputManager.RegisterCallback(key, action, callback, description);
 }
-void Application::UnsetInputCallback(int key, int action) {
+void Application::UnregisterInputCallback(int key, int action) {
   inputManager.UnregisterCallback(key, action);
 }
 int Application::LoadModel(const std::filesystem::path& path) {

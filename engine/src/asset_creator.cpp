@@ -118,7 +118,7 @@ Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   mesh.vertexBuffer = vertexBuffer;
   glNamedBufferData(mesh.vertexBuffer, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
   glVertexArrayVertexBuffer(mesh.vertexArray, 0, mesh.vertexBuffer, 0, sizeof(Vertex));
-  glVertexArrayAttribFormat(mesh.vertexArray, 0, 3, GL_FLOAT, GL_FALSE, 0);
+  glVertexArrayAttribFormat(mesh.vertexArray, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
   glVertexArrayAttribBinding(mesh.vertexArray, 0, 0);
   glEnableVertexArrayAttrib(mesh.vertexArray, 0);
   glVertexArrayAttribFormat(mesh.vertexArray, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
