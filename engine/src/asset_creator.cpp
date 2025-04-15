@@ -116,19 +116,20 @@ Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   glCreateBuffers(1, &vertexBuffer);
   mesh.vertexArray = vertexArray;
   mesh.vertexBuffer = vertexBuffer;
+  auto bindingIndex = 0;
   glNamedBufferData(mesh.vertexBuffer, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
   glVertexArrayVertexBuffer(mesh.vertexArray, 0, mesh.vertexBuffer, 0, sizeof(Vertex));
   glVertexArrayAttribFormat(mesh.vertexArray, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
-  glVertexArrayAttribBinding(mesh.vertexArray, 0, 0);
+  glVertexArrayAttribBinding(mesh.vertexArray, 0, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vertexArray, 0);
   glVertexArrayAttribFormat(mesh.vertexArray, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
-  glVertexArrayAttribBinding(mesh.vertexArray, 1, 0);
+  glVertexArrayAttribBinding(mesh.vertexArray, 1, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vertexArray, 1);
   glVertexArrayAttribFormat(mesh.vertexArray, 2, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, texture));
-  glVertexArrayAttribBinding(mesh.vertexArray, 2, 0);
+  glVertexArrayAttribBinding(mesh.vertexArray, 2, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vertexArray, 2);
   glVertexArrayAttribFormat(mesh.vertexArray, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, tangent));
-  glVertexArrayAttribBinding(mesh.vertexArray, 3, 0);
+  glVertexArrayAttribBinding(mesh.vertexArray, 3, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vertexArray, 3);
   return mesh;
 }

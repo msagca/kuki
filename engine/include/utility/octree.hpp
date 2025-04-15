@@ -5,7 +5,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
-enum class Octant : unsigned int {
+enum class Octant : uint8_t {
   LeftBottomBack,
   LeftBottomFront,
   LeftTopBack,
@@ -31,8 +31,8 @@ private:
   const unsigned int maxItems;
   bool leaf;
   std::unordered_map<T, BoundingBox> items;
-  Octree* parent;
-  Octree* children[8];
+  Octree* parent{};
+  Octree* children[8]{};
   Octree(Octant, glm::vec3, glm::vec3, unsigned int, unsigned int, unsigned int, unsigned int);
   bool InsertToChildren(const T&, const BoundingBox&);
   bool InsertNoSubdivide(const T&, const BoundingBox&);

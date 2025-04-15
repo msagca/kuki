@@ -9,20 +9,20 @@ private:
   std::function<T()> generator;
   std::function<void(T)> destroyer;
   size_t capacity;
-  size_t count = 0; // number of initialized items
-  size_t last = 0; // index of the next available item
+  size_t count{}; // number of initialized items
+  size_t last{}; // index of the next available item
   void Resize();
 public:
   Pool(std::function<T()>, std::function<void(T)>, size_t = 2);
   size_t GetCapacity();
-  /// <returns>The number of items currently in use</returns>
+  /// @return The number of items currently in use
   size_t GetActive();
-  /// <returns>The number of items ready for use</returns>
+  /// @return The number of items ready for use
   size_t GetInactive();
-  /// <returns>The index of the next available item</returns>
+  /// @return The index of the next available item
   size_t Request();
   void Release(size_t);
-  /// <returns>A pointer to the item at the given index</returns>
+  /// @return A pointer to the item at the given index
   T* Get(size_t);
   template <typename F>
   void ForEach(F);

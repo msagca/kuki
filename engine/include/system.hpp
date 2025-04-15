@@ -9,6 +9,6 @@ public:
   System(Application&);
   virtual ~System() = default;
   virtual void Start() {};
-  virtual void Update(float, Scene*) {};
+  virtual void Update(double, Scene*) {};
   virtual void Shutdown() {};
 };

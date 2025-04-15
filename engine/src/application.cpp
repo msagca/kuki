@@ -18,10 +18,10 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/vector_float3.hpp>
-#include <iostream>
 #include <primitive.hpp>
 #include <random>
 #include <scene.hpp>
+#include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string>
 #include <system.hpp>
@@ -62,51 +62,69 @@ void Application::Init() {
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+  glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_SAMPLES, 4);
   window = glfwCreateWindow(WINDOW_WIdTH, WINDOW_HEIGHT, name.c_str(), nullptr, nullptr);
   if (!window) {
-    std::cerr << "Failed to create GLFW window." << std::endl;
+    spdlog::error("Failed to create GLFW window.");
     glfwTerminate();
     return;
   }
   glfwMakeContextCurrent(window);
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    std::cerr << "Failed to initialize GLAD." << std::endl;
+    spdlog::error("Failed to initialize GLAD.");
     return;
   }
-  auto version = glGetString(GL_VERSION);
-  std::cout << "OpenGL version: " << version << std::endl;
+  auto version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+  spdlog::info("OpenGL version: {}", version);
   int major, minor;
   glGetIntegerv(GL_MAJOR_VERSION, &major);
   glGetIntegerv(GL_MINOR_VERSION, &minor);
   if (major < 4 || (major == 4 && minor < 6)) {
-    std::cerr << "OpenGL 4.6 or higher is required." << std::endl;
-    return;
-  }
-  auto error = glGetError();
-  if (error != GL_NO_ERROR) {
-    std::cerr << "OpenGL error after initialization: " << error << std::endl;
+    spdlog::error("OpenGL 4.6 or higher is required.");
     return;
   }
   SetWindowIcon("image/logo.png"); // TODO: make this configurable
   glfwSwapInterval(0);
-  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-  glfwSetWindowUserPointer(window, this);
+  glfwSetCursorPosCallback(window, CursorPosCallback);
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-  glfwSetWindowCloseCallback(window, WindowCloseCallback);
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   glfwSetKeyCallback(window, KeyCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
-  glfwSetCursorPosCallback(window, CursorPosCallback);
+  glfwSetWindowCloseCallback(window, WindowCloseCallback);
+  glfwSetWindowUserPointer(window, this);
   glViewport(0, 0, WINDOW_WIdTH, WINDOW_HEIGHT);
-  glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_DEPTH_TEST);
-  glEnable(GL_CULL_FACE);
   glCullFace(GL_BACK);
-  glFrontFace(GL_CCW);
+  glEnable(GL_BLEND);
+  glEnable(GL_CULL_FACE);
+  glEnable(GL_DEBUG_OUTPUT);
+  glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+  glEnable(GL_DEPTH_TEST);
   glEnable(GL_MULTISAMPLE);
+  glFrontFace(GL_CCW);
+  glDebugMessageCallback([](GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
+    switch (severity) {
+    case GL_DEBUG_SEVERITY_HIGH:
+      spdlog::error(message);
+      break;
+    case GL_DEBUG_SEVERITY_MEDIUM:
+      spdlog::warn(message);
+      break;
+    case GL_DEBUG_SEVERITY_LOW:
+      spdlog::info(message);
+      break;
+    case GL_DEBUG_SEVERITY_NOTIFICATION:
+      spdlog::debug(message);
+      break;
+    default:
+      spdlog::trace(message);
+      break;
+    }
+  },
+    nullptr);
   glfwMaximizeWindow(window);
 }
 void Application::Start() {
@@ -119,7 +137,7 @@ bool Application::Status() {
 void Application::Update() {
   const auto timeNow = std::chrono::high_resolution_clock::now();
   static auto timeLast = timeNow;
-  deltaTime = std::chrono::duration<float>(timeNow - timeLast).count();
+  deltaTime = std::chrono::duration<double>(timeNow - timeLast).count();
   timeLast = timeNow;
   auto activeScene = GetActiveScene();
   if (!activeScene)
@@ -184,7 +202,7 @@ void Application::SetWindowIcon(const std::filesystem::path& path) {
     glfwSetWindowIcon(window, 1, images);
     stbi_image_free(data);
   } else
-    std::cerr << "Failed to load the icon: " << path << std::endl;
+    spdlog::error("Failed to load the icon: '{}'.", path.string());
 }
 int Application::CreateEntity(std::string& name) {
   auto scene = GetActiveScene();

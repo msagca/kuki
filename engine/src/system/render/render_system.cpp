@@ -1,15 +1,14 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <application.hpp>
-#include <render_system.hpp>
-#include <iostream>
-#include <ios>
-#include <variant>
 #include <component/material.hpp>
 #include <component/shader.hpp>
-#include <system.hpp>
 #include <glad/glad.h>
+#include <render_system.hpp>
+#include <spdlog/spdlog.h>
+#include <system.hpp>
+#include <variant>
 RenderSystem::RenderSystem(Application& app)
-  : System(app), texturePool(CreateTexture, DeleteTexture, 16) {}
+  : System(app), texturePool(CreatePooledTexture, DeletePooledTexture, 16) {}
 RenderSystem::~RenderSystem() {
   for (const auto& [_, shader] : shaders)
     delete shader;
@@ -25,8 +24,10 @@ void RenderSystem::Start() {
   shaders.insert({unlitShader->GetName(), unlitShader});
   shaders.insert({skyboxShader->GetName(), skyboxShader});
   shaders.insert({skyboxFlatShader->GetName(), skyboxFlatShader});
-  glGenBuffers(1, &instanceVBO);
-  glGenBuffers(1, &materialVBO);
+  glCreateBuffers(1, &instanceVBO);
+  glCreateBuffers(1, &materialVBO);
+  glGenTextures(1, &sceneTexture);
+  glGenTextures(1, &sceneMultiTexture);
 }
 void RenderSystem::Shutdown() {
   glDeleteFramebuffers(1, &assetFBO);
@@ -40,30 +41,35 @@ void RenderSystem::Shutdown() {
   glDeleteVertexArrays(1, &instanceVBO);
   glDeleteVertexArrays(1, &materialVBO);
 }
-bool RenderSystem::UpdateBuffers(unsigned int& fbo, unsigned int& rbo, unsigned int& texture, int width, int height, int samples) {
+bool RenderSystem::UpdateBuffers(unsigned int& framebuffer, unsigned int& renderbuffer, unsigned int& texture, int width, int height, int samples) {
   auto multi = samples > 1;
-  if (texture == 0)
-    glCreateTextures(multi ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, 1, &texture);
+  auto texTarget = multi ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+  glBindTexture(texTarget, texture);
   if (multi)
-    glTextureStorage2DMultisample(texture, samples, GL_RGBA16F, width, height, GL_TRUE);
+    glTexImage2DMultisample(texTarget, samples, GL_RGBA16F, width, height, GL_TRUE);
   else {
-    glTextureStorage2D(texture, 1, GL_RGBA16F, width, height);
-    glTextureParameteri(texture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTextureParameteri(texture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(texTarget, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(texTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(texTarget, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   }
-  if (rbo == 0)
-    glCreateRenderbuffers(1, &rbo);
+  glBindTexture(texTarget, 0);
+  if (renderbuffer == 0)
+    glGenRenderbuffers(1, &renderbuffer);
+  glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
   if (multi)
-    glNamedRenderbufferStorageMultisample(rbo, samples, GL_DEPTH24_STENCIL8, width, height);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH24_STENCIL8, width, height);
   else
-    glNamedRenderbufferStorage(rbo, GL_DEPTH24_STENCIL8, width, height);
-  if (fbo == 0)
-    glCreateFramebuffers(1, &fbo);
-  glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0, texture, 0);
-  glNamedFramebufferRenderbuffer(fbo, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
-  auto status = glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+  glBindRenderbuffer(GL_RENDERBUFFER, 0);
+  if (framebuffer == 0)
+    glGenFramebuffers(1, &framebuffer);
+  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texTarget, texture, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderbuffer);
+  auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
   if (status != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "Framebuffer is incomplete. Status: 0x" << std::hex << status << std::dec << std::endl;
+    spdlog::error("Framebuffer is incomplete ({0:x}).", status);
     return false;
   }
   return true;
@@ -81,11 +87,11 @@ Shader* RenderSystem::GetMaterialShader(const Material& material) {
     return shaders["Unlit"];
   return shaders["Lit"];
 }
-unsigned int RenderSystem::CreateTexture() {
+unsigned int RenderSystem::CreatePooledTexture() {
   unsigned int id;
   glGenTextures(1, &id);
   return id;
 }
-void RenderSystem::DeleteTexture(unsigned int id) {
+void RenderSystem::DeletePooledTexture(unsigned int id) {
   glDeleteTextures(1, &id);
 }

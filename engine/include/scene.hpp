@@ -1,6 +1,6 @@
 #pragma once
-#include <kuki_export.h>
 #include <entity_manager.hpp>
+#include <kuki_export.h>
 #include <utility/octree.hpp>
 class KUKI_API Scene {
 private:

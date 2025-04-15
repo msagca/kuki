@@ -1,7 +1,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <application.hpp>
 #include <component/camera.hpp>
-#include <component/component.hpp>
 #include <component/light.hpp>
 #include <component/material.hpp>
 #include <component/mesh.hpp>
@@ -10,18 +9,15 @@
 #include <component/texture.hpp>
 #include <component/transform.hpp>
 #include <glad/glad.h>
+#include <glm/detail/qualifier.hpp>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <glm/ext/vector_float3.hpp>
-#include <glm/ext/vector_float4.hpp>
 #include <glm/gtx/quaternion.hpp>
-#include <iostream>
 #include <render_system.hpp>
 #include <typeindex>
 #include <unordered_map>
 #include <variant>
 #include <vector>
-#include <cstddef>
 int RenderSystem::RenderSceneToTexture(Camera* camera) {
   auto sceneCamera = app.GetActiveCamera();
   targetCamera = camera ? camera : sceneCamera;
@@ -31,12 +27,8 @@ int RenderSystem::RenderSceneToTexture(Camera* camera) {
   auto width = config.screenWidth;
   auto height = config.screenHeight;
   targetCamera->SetProperty({"AspectRatio", static_cast<float>(width) / height});
-  auto multiBufferComplete = UpdateBuffers(sceneMultiFBO, sceneMultiRBO, sceneMultiTexture, width, height, 4);
-  auto singleBufferComplete = UpdateBuffers(sceneFBO, sceneRBO, sceneTexture, width, height);
-  if (!multiBufferComplete || !singleBufferComplete) {
-    std::cerr << "Failed to update framebuffers for scene rendering." << std::endl;
-    return -1;
-  }
+  UpdateBuffers(sceneMultiFBO, sceneMultiRBO, sceneMultiTexture, width, height, 4);
+  UpdateBuffers(sceneFBO, sceneRBO, sceneTexture, width, height);
   glBindFramebuffer(GL_FRAMEBUFFER, sceneMultiFBO);
   glViewport(0, 0, width, height);
   glClearColor(.0f, .0f, .0f, .0f);
@@ -74,68 +66,39 @@ void RenderSystem::DrawScene() {
   DrawSkybox();
 }
 void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<unsigned int>& entities) {
-  std::vector<LitFallback> materials;
-  std::vector<glm::mat4> models;
+  std::vector<LitFallbackData> materials;
+  std::vector<glm::mat4> transforms;
+  LitMaterial material{};
   for (const auto id : entities) {
     auto [renderer, transform] = app.GetComponents<MeshRenderer, Transform>(id);
     if (!renderer || !transform)
       continue;
-    // TODO: do not assume lit material, add instanced rendering support to unlit materials
+    // TODO: do not assume a lit material
     auto& litMaterial = std::get<LitMaterial>(renderer->material.material);
-    materials.push_back(litMaterial.fallback);
-    models.push_back(GetEntityWorldTransform(transform));
+    material = litMaterial;
+    materials.push_back(litMaterial.fallback.data);
+    transforms.push_back(GetEntityWorldTransform(transform));
   }
-  if (materials.size() == 0)
+  if (materials.empty())
     return;
-  auto& material = materials[0];
   auto shader = shaders["Lit"];
   shader->Use();
-  material.Apply(*shader); // this sets the textures for all instances, and the booleans that indicate whether to use them
-  // TODO: determine instances that use a different set of textures and process them separately
+  material.Apply(*shader);
   shader->SetUniform("view", targetCamera->view);
   shader->SetUniform("projection", targetCamera->projection);
   shader->SetUniform("viewPos", targetCamera->position);
-  auto dirExists = false;
-  auto pointCount = 0;
+  std::vector<const Light*> lights;
   app.ForEachEntity<Light>([&](unsigned int id, Light* light) {
-    shader->SetLight(light, pointCount);
-    if (light->type == LightType::Directional)
-      dirExists = true;
-    else
-      pointCount++;
+    lights.push_back(light);
   });
-  shader->SetUniform("dirExists", dirExists);
-  shader->SetUniform("pointCount", pointCount);
-  glNamedBufferData(instanceVBO, models.size() * sizeof(glm::mat4), models.data(), GL_DYNAMIC_DRAW);
-  auto bindingIndex = 0;
-  glVertexArrayVertexBuffer(mesh.vertexArray, bindingIndex, instanceVBO, 0, sizeof(glm::mat4));
-  for (auto i = 0; i < 4; ++i) {
-    auto attrib = 4 + i;
-    glVertexArrayAttribFormat(mesh.vertexArray, attrib, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4) * i);
-    glVertexArrayAttribBinding(mesh.vertexArray, attrib, bindingIndex);
-    glEnableVertexArrayAttrib(mesh.vertexArray, attrib);
-  }
-  glVertexArrayBindingDivisor(mesh.vertexArray, bindingIndex, 1);
-  bindingIndex++;
-  glNamedBufferData(materialVBO, materials.size() * sizeof(LitFallback), materials.data(), GL_DYNAMIC_DRAW);
-  glVertexArrayVertexBuffer(mesh.vertexArray, bindingIndex, materialVBO, 0, sizeof(LitFallback));
-  glVertexArrayAttribFormat(mesh.vertexArray, 8, 3, GL_FLOAT, GL_FALSE, offsetof(LitFallback, albedo));
-  glVertexArrayAttribBinding(mesh.vertexArray, 8, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 8);
-  glVertexArrayAttribFormat(mesh.vertexArray, 9, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, metalness));
-  glVertexArrayAttribBinding(mesh.vertexArray, 9, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 9);
-  glVertexArrayAttribFormat(mesh.vertexArray, 10, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, roughness));
-  glVertexArrayAttribBinding(mesh.vertexArray, 10, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 10);
-  glVertexArrayAttribFormat(mesh.vertexArray, 11, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, occlusion));
-  glVertexArrayAttribBinding(mesh.vertexArray, 11, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 11);
+  shader->SetLighting(lights);
+  shader->SetInstanceData(&mesh, transforms, materials, instanceVBO, materialVBO);
   glBindVertexArray(mesh.vertexArray);
   if (mesh.indexCount > 0)
-    glDrawElementsInstanced(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0, models.size());
+    glDrawElementsInstanced(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0, transforms.size());
   else
-    glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, models.size());
+    glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, transforms.size());
+  glBindVertexArray(0);
 }
 void RenderSystem::DrawSkybox() {
   auto assetId = app.GetAssetId("CubeInverted");

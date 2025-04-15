@@ -1,9 +1,10 @@
 #pragma once
 #include "light.hpp"
-#include <kuki_export.h>
+#include "material.hpp"
 #include <filesystem>
 #include <glad/glad.h>
 #include <glm/ext/matrix_float3x3.hpp>
+#include <kuki_export.h>
 #include <string>
 class KUKI_API Shader {
 private:
@@ -30,5 +31,6 @@ public:
   void SetUniform(GLint, float);
   void SetUniform(GLint, int);
   void SetUniform(GLint, unsigned int);
-  void SetLight(const Light*, unsigned int = 0);
+  void SetLighting(const std::vector<const Light*>&);
+  void SetInstanceData(const Mesh*, const std::vector<glm::mat4>&, const std::vector<LitFallbackData>&, unsigned int, unsigned int);
 };

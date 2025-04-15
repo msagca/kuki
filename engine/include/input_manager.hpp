@@ -1,17 +1,17 @@
 #pragma once
-#include <kuki_export.h>
 #include <functional>
 #include <GLFW/glfw3.h>
 #include <glm/ext/vector_float2.hpp>
+#include <kuki_export.h>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 class KUKI_API InputManager {
 private:
-  bool keysEnabled = true;
-  bool updateBindings;
-  double lastInputTime;
-  glm::vec2 mousePos;
+  bool keysEnabled{true};
+  bool updateBindings{false};
+  double lastInputTime{};
+  glm::vec2 mousePos{};
   std::unordered_map<int, bool> keyStates;
   std::unordered_map<int, bool> buttonStates;
   std::unordered_map<int, std::function<void()>> pressCallbacks;
@@ -26,9 +26,9 @@ private:
   void DisableKey(int);
   void EnableKey(int);
 public:
-  /// <returns>true if the key is pressed/repeated, false otherwise</returns>
+  /// @return true if the key is pressed/repeated, false otherwise
   bool GetKey(int) const;
-  /// <returns>true if the button is pressed/repeated, false otherwise</returns>
+  /// @return true if the button is pressed/repeated, false otherwise
   bool GetButton(int) const;
   /// @brief Get the vertical (W-S) and horizontal (A-D) input respectively as a 2D vector
   /// @return A float for each axis with a value of either 0, 1 (up/right) or -1 (down/left)

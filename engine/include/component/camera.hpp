@@ -1,24 +1,24 @@
 #pragma once
 #include "component.hpp"
 #include "component/mesh.hpp"
-#include <kuki_export.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/trigonometric.hpp>
+#include <kuki_export.h>
 #include <vector>
 struct KUKI_API Plane {
-  glm::vec3 point{.0f};
-  glm::vec3 normal{.0f};
+  glm::vec3 point{};
+  glm::vec3 normal{};
   bool OnPlane(const glm::vec3&, const glm::vec3&) const;
   float SignedDistance(const glm::vec3&) const;
 };
 struct KUKI_API Frustum {
-  Plane top;
-  Plane bottom;
-  Plane right;
-  Plane left;
-  Plane far;
-  Plane near;
+  Plane top{};
+  Plane bottom{};
+  Plane right{};
+  Plane left{};
+  Plane far{};
+  Plane near{};
   bool OverlapsFrustum(const BoundingBox&) const;
 };
 struct KUKI_API Camera final : IComponent {
@@ -29,7 +29,7 @@ struct KUKI_API Camera final : IComponent {
   glm::vec3 front{.0f, .0f, -1.0f};
   glm::vec3 up{.0f, 1.0f, .0f};
   glm::vec3 right{1.0f, .0f, .0f};
-  Frustum frustum;
+  Frustum frustum{};
   float pitch{glm::radians(-30.0f)};
   float yaw{glm::radians(-45.0f)};
   float fov{45.0f};

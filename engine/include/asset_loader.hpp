@@ -3,10 +3,10 @@
 #include <assimp/scene.h>
 #include <component/component.hpp>
 #include <component/material.hpp>
-#include <kuki_export.h>
 #include <entity_manager.hpp>
 #include <filesystem>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <kuki_export.h>
 #include <primitive.hpp>
 #include <string>
 #include <unordered_map>

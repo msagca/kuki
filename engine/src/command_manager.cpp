@@ -1,5 +1,10 @@
+#include <command.hpp>
 #include <command_manager.hpp>
+#include <iosfwd>
+#include <span>
 #include <sstream>
+#include <string>
+#include <vector>
 ICommand::ICommand(const std::string name)
   : name(name) {}
 const std::string& ICommand::GetName() const {

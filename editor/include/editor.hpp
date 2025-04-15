@@ -2,10 +2,11 @@
 #include <application.hpp>
 #include <camera_controller.hpp>
 #include <imgui.h>
-#include <imfilebrowser.h>
 #include <imgui_sink.hpp>
 #include <mutex>
 #include <spdlog/spdlog.h>
+/**/
+#include <imfilebrowser.h>
 class Editor final : public Application {
 private:
   CameraController cameraController;
@@ -14,7 +15,7 @@ private:
   std::shared_ptr<ImGuiSink<std::mutex>> imguiSink;
   std::shared_ptr<spdlog::logger> logger;
   ImGuiSelectionBasicStorage selection;
-  int selectedEntity = -1;
+  int selectedEntity{-1};
   void DisplayAssets();
   void DisplayConsole();
   void DisplayEntity(unsigned int, std::vector<unsigned int>&, const ImGuiSelectionBasicStorage&);

@@ -20,7 +20,7 @@ private:
   std::vector<T> components;
   std::unordered_map<unsigned int, unsigned int> entityToComponent;
   std::vector<unsigned int> componentToEntity;
-  unsigned int inactiveCount = 0; // TODO: to reclaim some memory, shrink the array if inactive count gets too high
+  unsigned int inactiveCount{}; // TODO: to reclaim some memory, shrink the array if inactive count gets too high
   template <typename F>
   void ForAll(F);
 public:

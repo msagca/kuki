@@ -1,7 +1,7 @@
 #pragma once
 #include "component.hpp"
-#include <kuki_export.h>
 #include <glm/ext/vector_float3.hpp>
+#include <kuki_export.h>
 #include <vector>
 struct KUKI_API Light final : IComponent {
   LightType type{LightType::Directional};

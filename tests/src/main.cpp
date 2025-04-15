@@ -1,9 +1,9 @@
+#include <component/mesh.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <gtest/gtest.h>
 #include <string>
 #include <utility/octree.hpp>
 #include <utility/trie.hpp>
-#include <component/mesh.hpp>
-#include <glm/ext/vector_float3.hpp>
 TEST(TrieTest, TestInsertDelete) {
   Trie trie;
   trie.Insert("Cube");

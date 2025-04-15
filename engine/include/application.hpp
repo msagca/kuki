@@ -2,8 +2,8 @@
 #include <app_config.hpp>
 #include <asset_loader.hpp>
 #include <command_manager.hpp>
-#include <kuki_export.h>
 #include <input_manager.hpp>
+#include <kuki_export.h>
 #include <scene.hpp>
 #include <scene_manager.hpp>
 #include <system.hpp>
@@ -25,9 +25,9 @@ private:
   SceneManager sceneManager;
   CommandManager commandManager;
 protected:
-  GLFWwindow* window = nullptr;
-  float deltaTime = .0f;
-  unsigned int activeSceneId = 0;
+  GLFWwindow* window{};
+  double deltaTime{};
+  unsigned int activeSceneId{};
   // TODO: create the necessary API functions and make the following private
   EntityManager assetManager;
   InputManager inputManager;

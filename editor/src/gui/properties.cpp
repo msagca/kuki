@@ -2,6 +2,7 @@
 #include <component/component.hpp>
 #include <editor.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <string>
@@ -56,14 +57,17 @@ void Editor::DisplayProperties() {
           component->SetProperty(Property(prop.name, valueInt));
       } else if (std::holds_alternative<float>(value)) {
         auto valueFloat = std::get<float>(value);
-        if (ImGui::InputFloat(prop.name.c_str(), &valueFloat))
+        if (prop.type == PropertyType::NumberRange) {
+          if (ImGui::SliderFloat(prop.name.c_str(), &valueFloat, .0f, 1.0f)) // TODO: add range to Property
+            component->SetProperty(Property(prop.name, valueFloat));
+        } else if (ImGui::InputFloat(prop.name.c_str(), &valueFloat))
           component->SetProperty(Property(prop.name, valueFloat));
       } else if (std::holds_alternative<bool>(value)) {
         auto valueBool = std::get<bool>(value);
         if (ImGui::Checkbox(prop.name.c_str(), &valueBool))
           component->SetProperty(Property(prop.name, valueBool));
       } else if (std::holds_alternative<CameraType>(value)) {
-        static auto items = EnumTraits<CameraType>::GetNames();
+        static auto& items = EnumTraits<CameraType>::GetNames();
         auto valueEnum = std::get<CameraType>(value);
         auto currentItem = static_cast<int>(valueEnum);
         if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
@@ -71,7 +75,7 @@ void Editor::DisplayProperties() {
           component->SetProperty(Property(prop.name, valueEnum));
         }
       } else if (std::holds_alternative<LightType>(value)) {
-        static auto items = EnumTraits<LightType>::GetNames();
+        static auto& items = EnumTraits<LightType>::GetNames();
         auto valueEnum = std::get<LightType>(value);
         auto currentItem = static_cast<int>(valueEnum);
         if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
@@ -79,7 +83,7 @@ void Editor::DisplayProperties() {
           component->SetProperty(Property(prop.name, valueEnum));
         }
       } else if (std::holds_alternative<TextureType>(value)) {
-        static auto items = EnumTraits<TextureType>::GetNames();
+        static auto& items = EnumTraits<TextureType>::GetNames();
         auto valueEnum = std::get<TextureType>(value);
         auto currentItem = static_cast<int>(valueEnum);
         if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {

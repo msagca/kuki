@@ -1,12 +1,11 @@
 #include <component/component.hpp>
 #include <component/light.hpp>
 #include <component/transform.hpp>
+#include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <string>
 #include <variant>
 #include <vector>
-#include <cmath>
-#include <glm/ext/quaternion_float.hpp>
 const std::string Light::GetName() const {
   return ComponentTraits<Light>::GetName();
 }

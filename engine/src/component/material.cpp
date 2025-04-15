@@ -25,30 +25,30 @@ void Material::SetProperty(Property property) {
 }
 void LitFallback::Apply(Shader& shader) const {
   // NOTE: these are no longer uniforms, but rather vertex attributes
-  /*shader.SetUniform("fallback.albedo", albedo);
-  shader.SetUniform("fallback.metalness", metalness);
-  shader.SetUniform("fallback.occlusion", occlusion);
-  shader.SetUniform("fallback.roughness", roughness);*/
+  /*shader.SetUniform("fallback.albedo", data.albedo);
+  shader.SetUniform("fallback.metalness", data.metalness);
+  shader.SetUniform("fallback.occlusion", data.occlusion);
+  shader.SetUniform("fallback.roughness", data.roughness);*/
 }
 const std::string LitFallback::GetName() const {
   return "LitFallback";
 }
 std::vector<Property> LitFallback::GetProperties() const {
-  return {{"AlbedoColor", albedo, PropertyType::Color}, {"MetalnessFactor", metalness}, {"OcclusionFactor", occlusion}, {"RoughnessFactor", roughness}};
+  return {{"AlbedoColor", data.albedo, PropertyType::Color}, {"MetalnessFactor", data.metalness, PropertyType::NumberRange}, {"OcclusionFactor", data.occlusion, PropertyType::NumberRange}, {"RoughnessFactor", data.roughness, PropertyType::NumberRange}};
 }
 void LitFallback::SetProperty(Property property) {
   if (std::holds_alternative<glm::vec3>(property.value)) {
     auto& value = std::get<glm::vec3>(property.value);
     if (property.name == "AlbedoColor")
-      albedo = value;
+      data.albedo = value;
   } else if (std::holds_alternative<float>(property.value)) {
     auto& value = std::get<float>(property.value);
     if (property.name == "MetalnessFactor")
-      metalness = value;
+      data.metalness = value;
     else if (property.name == "OcclusionFactor")
-      occlusion = value;
+      data.occlusion = value;
     else if (property.name == "RoughnessFactor")
-      roughness = value;
+      data.roughness = value;
   }
 }
 void UnlitFallback::Apply(Shader& shader) const {

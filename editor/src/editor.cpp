@@ -1,19 +1,27 @@
 #define IMGUI_ENABLE_FREETYPE
+#include <application.hpp>
 #include <command.hpp>
 #include <component/camera.hpp>
 #include <component/light.hpp>
 #include <editor.hpp>
+#include <event_dispatcher.hpp>
+#include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <imgui_freetype.h>
-#include <imfilebrowser.h>
-#include <ImGuizmo.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
+#include <imgui_sink.hpp>
+#include <memory>
+#include <mutex>
 #include <primitive.hpp>
 #include <render_system.hpp>
+#include <spdlog/logger.h>
 #include <spdlog/spdlog.h>
-class Application;
+#include <string>
+// NOTE: this comment is to prevent the following from being placed before imgui.h during includes sorting
+#include <imfilebrowser.h>
+#include <ImGuizmo.h>
 Editor::Editor()
   : Application("Editor"), cameraController(inputManager), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
 void Editor::Start() {
@@ -53,7 +61,7 @@ void Editor::UpdateView() {
   DisplayHierarchy();
   DisplayScene();
   DisplayConsole();
-  //DisplayLogs();
+  // DisplayLogs();
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
@@ -76,7 +84,7 @@ void Editor::InitLayout() {
   ImGui::DockBuilderDockWindow("Properties", rightBottomId);
   auto bottomId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Down, .3f, nullptr, &mainId);
   ImGui::DockBuilderDockWindow("Assets", bottomId);
-  //ImGui::DockBuilderDockWindow("Logs", bottomId);
+  // ImGui::DockBuilderDockWindow("Logs", bottomId);
   ImGui::DockBuilderFinish(dockspaceId);
 }
 void Editor::LoadDefaultScene() {
@@ -107,10 +115,10 @@ void Editor::InitImGui() {
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init();
   ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
-  // auto builder = ImGuiFreeType::GetBuilderForFreeType();
-  // io.Fonts->Clear();
-  // io.Fonts->AddFontDefault();
-  // builder->FontBuilder_Build(io.Fonts);
+  auto builder = ImGuiFreeType::GetBuilderForFreeType();
+  io.Fonts->Clear();
+  io.Fonts->AddFontDefault();
+  builder->FontBuilder_Build(io.Fonts);
   fileBrowser.SetTitle("Browse Files");
   fileBrowser.SetTypeFilters({".gltf"});
 }

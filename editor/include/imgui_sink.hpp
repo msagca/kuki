@@ -1,3 +1,4 @@
+#pragma once
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/spdlog.h>
 #include <string>

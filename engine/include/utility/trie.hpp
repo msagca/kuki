@@ -4,7 +4,7 @@
 struct KUKI_API TrieNode {
   std::unordered_map<char, TrieNode*> children;
   /// @brief The next number suffix available that can be appended to this node
-  unsigned int numSuffix = 0;
+  unsigned int numSuffix{};
   bool wordEnd = false;
 };
 class KUKI_API Trie {

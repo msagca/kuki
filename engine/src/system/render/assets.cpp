@@ -6,21 +6,16 @@
 #include <component/mesh.hpp>
 #include <component/texture.hpp>
 #include <component/transform.hpp>
-#include <cstddef>
 #include <functional>
 #include <glad/glad.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <glm/ext/vector_float4.hpp>
 #include <glm/gtx/quaternion.hpp>
-#include <iostream>
 #include <render_system.hpp>
-#include <unordered_map>
 #include <utility>
-#include <vector>
 #include <variant>
+#include <vector>
 int RenderSystem::RenderAssetToTexture(unsigned int assetId, int size) {
-  static std::unordered_map<unsigned int, unsigned int> assetToTexture;
   auto isTexture = app.AssetHasComponent<Texture>(assetId);
   auto isCubeMap = false;
   if (assetToTexture.find(assetId) == assetToTexture.end()) {
@@ -38,13 +33,8 @@ int RenderSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   auto textureId = assetToTexture[assetId]; // NOTE: this is the target texture that the asset will be rendered to
   if (!isTexture || isCubeMap) { // NOTE: for textures that are not cubemaps, we can directly use the OpenGL texture IDs
     size = std::max(1, size);
-    auto bufferComplete = UpdateBuffers(assetFBO, assetRBO, textureId, size, size);
-    if (!bufferComplete) {
-      std::cerr << "Failed to update framebuffer for asset rendering." << std::endl;
-      return -1;
-    }
+    UpdateBuffers(assetFBO, assetRBO, textureId, size, size, true);
     glBindFramebuffer(GL_FRAMEBUFFER, assetFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureId, 0);
     glViewport(0, 0, size, size);
     glClearColor(.0f, .0f, .0f, .0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -86,50 +76,26 @@ void RenderSystem::DrawAsset(unsigned int id) {
   });
 }
 void RenderSystem::DrawAsset(const Transform* transform, const Mesh& mesh, const Material& material) {
-  std::vector<glm::mat4> models{GetAssetWorldTransform(transform)};
-  std::vector<LitFallback> materials;
+  static const Light dirLight;
+  static const std::vector<const Light*> lights{&dirLight};
+  std::vector<glm::mat4> transforms{GetAssetWorldTransform(transform)};
+  std::vector<LitFallbackData> materials;
   auto& litMaterial = std::get<LitMaterial>(material.material);
-  materials.push_back(litMaterial.fallback);
+  materials.push_back(litMaterial.fallback.data);
   auto shader = GetMaterialShader(material);
   shader->Use();
   material.Apply(*shader);
   shader->SetUniform("view", assetCam.view);
   shader->SetUniform("projection", assetCam.projection);
   shader->SetUniform("viewPos", assetCam.position);
-  static const Light dirLight;
-  shader->SetLight(&dirLight);
-  shader->SetUniform("dirExists", true);
-  shader->SetUniform("pointCount", 0); // NOTE: without this line, the lighting will be impacted by (previously set) point lights in the scene
-  glNamedBufferData(instanceVBO, models.size() * sizeof(glm::mat4), models.data(), GL_DYNAMIC_DRAW);
-  auto bindingIndex = 0;
-  glVertexArrayVertexBuffer(mesh.vertexArray, bindingIndex, instanceVBO, 0, sizeof(glm::mat4));
-  for (auto i = 0; i < 4; ++i) {
-    auto attrib = 4 + i;
-    glVertexArrayAttribFormat(mesh.vertexArray, attrib, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4) * i);
-    glVertexArrayAttribBinding(mesh.vertexArray, attrib, bindingIndex);
-    glEnableVertexArrayAttrib(mesh.vertexArray, attrib);
-  }
-  glVertexArrayBindingDivisor(mesh.vertexArray, bindingIndex, 1);
-  bindingIndex++;
-  glNamedBufferData(materialVBO, materials.size() * sizeof(LitFallback), materials.data(), GL_DYNAMIC_DRAW);
-  glVertexArrayVertexBuffer(mesh.vertexArray, bindingIndex, materialVBO, 0, sizeof(LitFallback));
-  glVertexArrayAttribFormat(mesh.vertexArray, 8, 3, GL_FLOAT, GL_FALSE, offsetof(LitFallback, albedo));
-  glVertexArrayAttribBinding(mesh.vertexArray, 8, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 8);
-  glVertexArrayAttribFormat(mesh.vertexArray, 9, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, metalness));
-  glVertexArrayAttribBinding(mesh.vertexArray, 9, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 9);
-  glVertexArrayAttribFormat(mesh.vertexArray, 10, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, roughness));
-  glVertexArrayAttribBinding(mesh.vertexArray, 10, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 10);
-  glVertexArrayAttribFormat(mesh.vertexArray, 11, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallback, occlusion));
-  glVertexArrayAttribBinding(mesh.vertexArray, 11, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 11);
+  shader->SetLighting(lights);
+  shader->SetInstanceData(&mesh, transforms, materials, instanceVBO, materialVBO);
   glBindVertexArray(mesh.vertexArray);
   if (mesh.indexCount > 0)
     glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);
   else
     glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
+  glBindVertexArray(0);
 }
 glm::mat4 RenderSystem::GetAssetWorldTransform(const Transform* transform) {
   auto translation = glm::translate(glm::mat4(1.0f), transform->position);

@@ -1,11 +1,11 @@
 #pragma once
-#include <kuki_export.h>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
+#include <kuki_export.h>
 #include <string>
 #include <variant>
 #include <vector>
-enum class ComponentId : unsigned int {
+enum class ComponentId : uint8_t {
   Camera,
   Light,
   Material,
@@ -16,24 +16,24 @@ enum class ComponentId : unsigned int {
   Transform
 };
 enum class ComponentMask : size_t {
-  Camera = 1 << static_cast<unsigned int>(ComponentId::Camera),
-  Light = 1 << static_cast<unsigned int>(ComponentId::Light),
-  Material = 1 << static_cast<unsigned int>(ComponentId::Material),
-  MeshFilter = 1 << static_cast<unsigned int>(ComponentId::MeshFilter),
-  Mesh = 1 << static_cast<unsigned int>(ComponentId::Mesh),
-  MeshRenderer = 1 << static_cast<unsigned int>(ComponentId::MeshRenderer),
-  Texture = 1 << static_cast<unsigned int>(ComponentId::Texture),
-  Transform = 1 << static_cast<unsigned int>(ComponentId::Transform)
+  Camera = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Camera),
+  Light = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Light),
+  Material = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Material),
+  MeshFilter = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::MeshFilter),
+  Mesh = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Mesh),
+  MeshRenderer = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::MeshRenderer),
+  Texture = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Texture),
+  Transform = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Transform)
 };
-enum class CameraType : unsigned int {
+enum class CameraType : uint8_t {
   Perspective,
   Orthographic
 };
-enum class LightType : unsigned int {
+enum class LightType : uint8_t {
   Directional,
   Point
 };
-enum class TextureType : unsigned int {
+enum class TextureType : uint8_t {
   Albedo,
   Normal,
   Metalness,
@@ -42,15 +42,16 @@ enum class TextureType : unsigned int {
   CubeMap,
   RadianceHDR
 };
-enum class PropertyType : unsigned int {
+enum class PropertyType : uint8_t {
   Number,
+  NumberRange, // this will be a slider when displayed in the editor
   Color
 };
 struct KUKI_API Property {
   using PropertyValue = std::variant<int, float, bool, glm::vec3, glm::vec4, CameraType, LightType, TextureType>;
   std::string name;
-  PropertyType type;
-  PropertyValue value;
+  PropertyType type{};
+  PropertyValue value{};
   Property(const std::string&, PropertyValue, PropertyType = PropertyType::Number);
 };
 struct IComponent {

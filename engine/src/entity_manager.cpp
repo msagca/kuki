@@ -1,11 +1,11 @@
 #include <component/component.hpp>
+#include <component/mesh_filter.hpp>
 #include <component_manager.hpp>
 #include <entity_manager.hpp>
 #include <string>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
-#include <component/mesh_filter.hpp>
 EntityManager::~EntityManager() {
   for (const auto& [type, manager] : typeToManager)
     delete manager;

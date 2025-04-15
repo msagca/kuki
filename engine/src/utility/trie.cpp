@@ -60,7 +60,7 @@ void Trie::Delete(const std::string& word) {
 }
 void Trie::DeleteAll(TrieNode* node) {
   node->wordEnd = false;
-  for (auto [_, child] : node->children)
+  for (auto& [_, child] : node->children)
     DeleteAll(child);
 }
 void Trie::DeleteAll(const std::string& prefix) {

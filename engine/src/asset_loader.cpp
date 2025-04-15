@@ -9,7 +9,6 @@
 #include <component/component.hpp>
 #include <component/material.hpp>
 #include <component/mesh.hpp>
-#include <component/shader.hpp>
 #include <component/texture.hpp>
 #include <component/transform.hpp>
 #include <entity_manager.hpp>
@@ -19,8 +18,8 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
-#include <iostream>
 #include <primitive.hpp>
+#include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string>
 #include <vector>
@@ -65,7 +64,7 @@ int AssetLoader::LoadModel(const std::filesystem::path& path) {
   Assimp::Importer importer;
   const auto scene = importer.ReadFile(path.string(), aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
   if (!scene || !scene->mRootNode) {
-    std::cerr << "Assimp: " << importer.GetErrorString() << std::endl;
+    spdlog::error("Assimp: {}", importer.GetErrorString());
     return -1;
   }
   auto assetId = LoadNode(scene->mRootNode, scene, path.parent_path(), -1);
@@ -113,7 +112,7 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
   else
     data = static_cast<void*>(stbi_load(path.string().c_str(), &width, &height, &nrComponents, 0));
   if (!data) {
-    std::cerr << "Failed to load the texture: " << path << std::endl;
+    spdlog::error("Failed to load texture: '{}'.", path.string());
     return -1;
   }
   GLenum internalFormat, format;
@@ -146,7 +145,7 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
     break;
   default:
     stbi_image_free(data);
-    std::cerr << "Unsupported number of texture channels: " << nrComponents << std::endl;
+    spdlog::error("Unsupported number of texture channels: {}.", nrComponents);
     return -1;
   }
   unsigned int textureId;
@@ -186,7 +185,7 @@ int AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type
     }
     break;
   default:
-    std::cerr << "Unknown texture type: " << static_cast<int>(type) << std::endl;
+    spdlog::error("Unknown texture type: {}.", static_cast<int>(type));
     break;
   }
   auto name = path.stem().string();
@@ -203,7 +202,7 @@ bool AssetLoader::LoadCubeMapSide(unsigned int textureId, const std::filesystem:
   int width, height, nrComponents;
   auto data = stbi_load(path.string().c_str(), &width, &height, &nrComponents, 0);
   if (!data) {
-    std::cerr << "Failed to load texture: " << path << std::endl;
+    spdlog::error("Failed to load texture: '{}'.", path.string());
     return false;
   }
   glTextureSubImage3D(textureId, 0, 0, 0, side - GL_TEXTURE_CUBE_MAP_POSITIVE_X, width, height, 1, GL_RGB, GL_UNSIGNED_BYTE, data);
@@ -219,7 +218,7 @@ int AssetLoader::LoadCubeMap(std::string& name, const std::filesystem::path& top
     glTextureStorage2D(textureId, 1, GL_RGB8, width, height);
     stbi_image_free(data);
   } else {
-    std::cerr << "Failed to load texture: " << top << std::endl;
+    spdlog::error("Failed to load texture: '{}'.", top.string());
     glDeleteTextures(1, &textureId);
     return -1;
   }
