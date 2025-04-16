@@ -48,7 +48,7 @@ void RenderingSystem::DrawScene() {
   if (!camera)
     return;
   app.ForEachVisibleEntity(*camera, [&](unsigned int id) {
-    auto [transform, filter, renderer] = app.GetComponents<Transform, MeshFilter, MeshRenderer>(id);
+    auto [transform, filter, renderer] = app.GetEntityComponents<Transform, MeshFilter, MeshRenderer>(id);
     if (!transform || !filter || !renderer)
       return;
     auto vao = filter->mesh.vertexArray;
@@ -70,7 +70,7 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<
   std::vector<glm::mat4> transforms;
   LitMaterial material{};
   for (const auto id : entities) {
-    auto [renderer, transform] = app.GetComponents<MeshRenderer, Transform>(id);
+    auto [renderer, transform] = app.GetEntityComponents<MeshRenderer, Transform>(id);
     if (!renderer || !transform)
       continue;
     // TODO: do not assume a lit material
@@ -134,7 +134,7 @@ glm::mat4 RenderingSystem::GetEntityWorldTransform(const Transform* transform) {
   //transform->dirty = false;
   //}
   if (transform->parent >= 0)
-    if (auto parent = app.GetComponent<Transform>(transform->parent))
+    if (auto parent = app.GetEntityComponent<Transform>(transform->parent))
       transform->model = GetEntityWorldTransform(parent) * transform->model;
   return transform->model;
 }

@@ -58,7 +58,7 @@ Camera* Application::GetActiveCamera() {
   return scene->GetCamera();
 }
 void Application::Init() {
-  static const auto WINDOW_WIdTH = 800.0f;
+  static const auto WINDOW_WIDTH = 800.0f;
   static const auto WINDOW_HEIGHT = 600.0f;
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -67,7 +67,7 @@ void Application::Init() {
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_SAMPLES, 4);
-  window = glfwCreateWindow(WINDOW_WIdTH, WINDOW_HEIGHT, name.c_str(), nullptr, nullptr);
+  window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, name.c_str(), nullptr, nullptr);
   if (!window) {
     spdlog::error("Failed to create GLFW window.");
     glfwTerminate();
@@ -89,14 +89,14 @@ void Application::Init() {
   }
   SetWindowIcon("image/logo.png"); // TODO: make this configurable
   glfwSwapInterval(0);
+  glfwSetWindowUserPointer(window, this);
   glfwSetCursorPosCallback(window, CursorPosCallback);
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   glfwSetKeyCallback(window, KeyCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetWindowCloseCallback(window, WindowCloseCallback);
-  glfwSetWindowUserPointer(window, this);
-  glViewport(0, 0, WINDOW_WIdTH, WINDOW_HEIGHT);
+  glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glCullFace(GL_BACK);
   glEnable(GL_BLEND);
@@ -259,31 +259,31 @@ void Application::RenameEntity(unsigned int id, std::string& name) {
     return;
   scene->GetEntityManager().Rename(id, name);
 }
-IComponent* Application::AddComponent(unsigned int id, const std::string& name) {
+IComponent* Application::AddEntityComponent(unsigned int id, const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return nullptr;
   return scene->GetEntityManager().AddComponent(id, name);
 }
-void Application::RemoveComponent(unsigned int id, const std::string& name) {
+void Application::RemoveEntityComponent(unsigned int id, const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
   scene->GetEntityManager().RemoveComponent(id, name);
 }
-IComponent* Application::GetComponent(unsigned int id, const std::string& name) {
+IComponent* Application::GetEntityComponent(unsigned int id, const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return nullptr;
   return scene->GetEntityManager().GetComponent(id, name);
 }
-std::vector<IComponent*> Application::GetAllComponents(unsigned int id) {
+std::vector<IComponent*> Application::GetAllEntityComponents(unsigned int id) {
   auto scene = GetActiveScene();
   if (!scene)
     return std::vector<IComponent*>{};
   return scene->GetEntityManager().GetAllComponents(id);
 }
-std::vector<std::string> Application::GetMissingComponents(unsigned int id) {
+std::vector<std::string> Application::GetMissingEntityComponents(unsigned int id) {
   auto scene = GetActiveScene();
   if (!scene)
     return std::vector<std::string>{};
@@ -329,16 +329,16 @@ int Application::Spawn(std::string& name, int parentId, bool randomPos, float sp
   auto components = assetManager.GetAllComponents(assetId);
   for (auto c : components)
     if (auto t = dynamic_cast<Transform*>(c)) {
-      auto transform = AddComponent<Transform>(entityId);
+      auto transform = AddEntityComponent<Transform>(entityId);
       *transform = *t;
       transform->parent = parentId;
       if (randomPos)
         transform->position = GetRandomPosition(spawnRadius);
     } else if (auto m = dynamic_cast<Mesh*>(c)) {
-      auto filter = AddComponent<MeshFilter>(entityId);
+      auto filter = AddEntityComponent<MeshFilter>(entityId);
       filter->mesh = *m;
     } else if (auto m = dynamic_cast<Material*>(c)) {
-      auto renderer = AddComponent<MeshRenderer>(entityId);
+      auto renderer = AddEntityComponent<MeshRenderer>(entityId);
       renderer->material = *m;
     }
   assetManager.ForEachChild(assetId, [this, &entityId](unsigned int id) {

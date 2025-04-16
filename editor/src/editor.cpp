@@ -92,11 +92,11 @@ void Editor::LoadDefaultScene() {
   auto scene = CreateScene("Main");
   std::string entityName = "MainCamera";
   auto entityId = CreateEntity(entityName);
-  auto camera = AddComponent<Camera>(entityId);
+  auto camera = AddEntityComponent<Camera>(entityId);
   camera->Update();
   entityName = "MainLight";
   entityId = CreateEntity(entityName);
-  AddComponent<Light>(entityId);
+  AddEntityComponent<Light>(entityId);
 }
 void Editor::LoadDefaultAssets() {
   LoadPrimitive(PrimitiveId::Cube);

@@ -21,15 +21,15 @@ void Editor::DrawGizmos(float width, float height, unsigned int mask) {
   if (!camera)
     return;
   Transform transform;
-  Transform* transformComp = GetComponent<Transform>(selectedEntity);
+  Transform* transformComp = GetEntityComponent<Transform>(selectedEntity);
   Camera* cameraComp = nullptr;
   Light* lightComp = nullptr;
   if (!transformComp) {
-    cameraComp = GetComponent<Camera>(selectedEntity);
+    cameraComp = GetEntityComponent<Camera>(selectedEntity);
     if (cameraComp)
       transform = cameraComp->GetTransform();
     else {
-      lightComp = GetComponent<Light>(selectedEntity);
+      lightComp = GetEntityComponent<Light>(selectedEntity);
       if (lightComp)
         transform = lightComp->GetTransform();
       else

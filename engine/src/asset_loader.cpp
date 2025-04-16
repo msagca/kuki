@@ -28,23 +28,23 @@ AssetLoader::AssetLoader(EntityManager& assetManager)
   : assetManager(assetManager) {}
 int AssetLoader::LoadPrimitive(PrimitiveId id) {
   int assetId = -1;
-  switch (static_cast<unsigned int>(id)) {
-  case static_cast<unsigned int>(PrimitiveId::Cube):
+  switch (static_cast<uint8_t>(id)) {
+  case static_cast<uint8_t>(PrimitiveId::Cube):
     assetId = LoadMesh("Cube", Primitive::Cube());
     break;
-  case static_cast<unsigned int>(PrimitiveId::Sphere):
+  case static_cast<uint8_t>(PrimitiveId::Sphere):
     assetId = LoadMesh("Sphere", Primitive::Sphere());
     break;
-  case static_cast<unsigned int>(PrimitiveId::Cylinder):
+  case static_cast<uint8_t>(PrimitiveId::Cylinder):
     assetId = LoadMesh("Cylinder", Primitive::Cylinder());
     break;
-  case static_cast<unsigned int>(PrimitiveId::Plane):
+  case static_cast<uint8_t>(PrimitiveId::Plane):
     assetId = LoadMesh("Plane", Primitive::Plane());
     break;
-  case static_cast<unsigned int>(PrimitiveId::Frame):
+  case static_cast<uint8_t>(PrimitiveId::Frame):
     assetId = LoadMesh("Frame", Primitive::Frame());
     break;
-  case static_cast<unsigned int>(PrimitiveId::CubeInverted): {
+  case static_cast<uint8_t>(PrimitiveId::CubeInverted): {
     auto vertices = Primitive::Cube();
     Primitive::FlipWindingOrder(vertices);
     assetId = LoadMesh("CubeInverted", vertices);

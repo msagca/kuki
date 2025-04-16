@@ -77,22 +77,22 @@ public:
   bool EntityHasParent(unsigned int);
   bool EntityHasChildren(unsigned int);
   template <typename T>
-  T* AddComponent(unsigned int);
-  IComponent* AddComponent(unsigned int, const std::string&);
+  T* AddEntityComponent(unsigned int);
+  IComponent* AddEntityComponent(unsigned int, const std::string&);
   template <typename T>
-  void RemoveComponent(unsigned int);
-  void RemoveComponent(unsigned int, const std::string&);
+  void RemoveEntityComponent(unsigned int);
+  void RemoveEntityComponent(unsigned int, const std::string&);
   template <typename T>
-  T* GetComponent(unsigned int);
+  T* GetEntityComponent(unsigned int);
   template <typename T>
   T* GetAssetComponent(unsigned int);
   template <typename... T>
-  std::tuple<T*...> GetComponents(unsigned int);
+  std::tuple<T*...> GetEntityComponents(unsigned int);
   template <typename... T>
   std::tuple<T*...> GetAssetComponents(unsigned int);
-  IComponent* GetComponent(unsigned int, const std::string&);
-  std::vector<IComponent*> GetAllComponents(unsigned int);
-  std::vector<std::string> GetMissingComponents(unsigned int);
+  IComponent* GetEntityComponent(unsigned int, const std::string&);
+  std::vector<IComponent*> GetAllEntityComponents(unsigned int);
+  std::vector<std::string> GetMissingEntityComponents(unsigned int);
   template <typename... T, typename F>
   void ForEachEntity(F);
   template <typename F>
@@ -112,7 +112,7 @@ public:
   template <typename F>
   void ForEachOctreeLeafNode(F);
   template <typename... T>
-  bool HasComponents(unsigned int);
+  bool EntityHasComponents(unsigned int);
   template <typename... T>
   bool AssetHasComponents(unsigned int);
   template <typename T>
@@ -173,14 +173,14 @@ T* Application::GetSystem() {
   return nullptr;
 }
 template <typename T>
-T* Application::AddComponent(unsigned int id) {
+T* Application::AddEntityComponent(unsigned int id) {
   auto scene = GetActiveScene();
   if (!scene)
     return nullptr;
   return scene->GetEntityManager().AddComponent<T>(id);
 }
 template <typename T>
-void Application::RemoveComponent(unsigned int id) {
+void Application::RemoveEntityComponent(unsigned int id) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
@@ -195,14 +195,14 @@ bool Application::AssetHasComponent(unsigned int id) {
   return assetManager.HasComponent<T>(id);
 }
 template <typename... T>
-bool Application::HasComponents(unsigned int id) {
+bool Application::EntityHasComponents(unsigned int id) {
   auto scene = GetActiveScene();
   if (!scene)
     return false;
   return scene->GetEntityManager().HasComponents<T...>(id);
 }
 template <typename T>
-T* Application::GetComponent(unsigned int id) {
+T* Application::GetEntityComponent(unsigned int id) {
   auto scene = GetActiveScene();
   if (!scene)
     return nullptr;
@@ -270,8 +270,8 @@ void Application::ForEachOctreeLeafNode(F func) {
   scene->GetEntityManager().ForEachOctreeLeafNode(func);
 }
 template <typename... T>
-std::tuple<T*...> Application::GetComponents(unsigned int id) {
-  return std::make_tuple(GetComponent<T>(id)...);
+std::tuple<T*...> Application::GetEntityComponents(unsigned int id) {
+  return std::make_tuple(GetEntityComponent<T>(id)...);
 }
 template <typename... T>
 std::tuple<T*...> Application::GetAssetComponents(unsigned int id) {
