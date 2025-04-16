@@ -6,9 +6,9 @@
 #include <input_manager.hpp>
 class CameraController {
 private:
-  Camera camera;
-  Camera* cameraPtr{nullptr};
-  InputManager& inputManager;
+  kuki::Camera camera;
+  kuki::Camera* cameraPtr{nullptr};
+  kuki::InputManager& inputManager;
   float moveSpeed{5.0f};
   float mouseSensitivity{.001f};
   bool movementEnabled{true};
@@ -16,9 +16,9 @@ private:
   void UpdatePosition(float);
   void UpdateRotation(glm::vec2);
 public:
-  CameraController(InputManager&);
-  void SetCamera(Camera*);
-  Camera* GetCamera();
+  CameraController(kuki::InputManager&);
+  void SetCamera(kuki::Camera*);
+  kuki::Camera* GetCamera();
   void Update(float);
   void ToggleMovement(bool);
   void ToggleRotation(bool);

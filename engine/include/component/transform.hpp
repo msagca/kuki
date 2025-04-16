@@ -4,6 +4,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <kuki_export.h>
 #include <vector>
+namespace kuki {
 struct KUKI_API Transform final : IComponent {
   glm::vec3 position{};
   glm::quat rotation{1.0f, .0f, .0f, .0f};
@@ -15,3 +16,4 @@ struct KUKI_API Transform final : IComponent {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;
 };
+} // namespace kuki

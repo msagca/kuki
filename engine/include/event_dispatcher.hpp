@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+namespace kuki {
 class IEventDispatcher {
 public:
   virtual ~IEventDispatcher() = default;
@@ -38,3 +39,4 @@ struct EntityCreatedEvent {
 struct EntityDeletedEvent {
   unsigned int id;
 };
+} // namespace kuki

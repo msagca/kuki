@@ -3,6 +3,7 @@
 #include <span>
 #include <spdlog/spdlog.h>
 #include <string>
+namespace kuki {
 DeleteCommand::DeleteCommand()
   : ICommand("delete") {}
 std::string DeleteCommand::GetMessage(int code) {
@@ -27,3 +28,4 @@ int DeleteCommand::Execute(Application* app, const std::span<std::string> args) 
   message = "";
   return 0;
 }
+} // namespace kuki

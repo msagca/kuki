@@ -16,8 +16,8 @@
 #include <render_system.hpp>
 #include <typeindex>
 #include <unordered_map>
-#include <variant>
 #include <vector>
+namespace kuki {
 int RenderSystem::RenderSceneToTexture(Camera* camera) {
   auto sceneCamera = app.GetActiveCamera();
   targetCamera = camera ? camera : sceneCamera;
@@ -138,3 +138,4 @@ glm::mat4 RenderSystem::GetEntityWorldTransform(const Transform* transform) {
       transform->model = GetEntityWorldTransform(parent) * transform->model;
   return transform->model;
 }
+} // namespace kuki

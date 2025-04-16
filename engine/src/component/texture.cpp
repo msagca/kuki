@@ -3,6 +3,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+namespace kuki {
 const std::string Texture::GetName() const {
   return ComponentTraits<Texture>::GetName();
 }
@@ -18,3 +19,4 @@ void Texture::SetProperty(Property property) {
     type = value;
   }
 }
+} // namespace kuki

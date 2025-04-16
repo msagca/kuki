@@ -6,6 +6,7 @@
 #include <primitive.hpp>
 #include <utility>
 #include <vector>
+namespace kuki {
 const static auto PI = glm::pi<float>();
 std::vector<Vertex> Primitive::Frame() {
   return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
@@ -179,3 +180,4 @@ void Primitive::FlipWindingOrder(std::vector<Vertex>& vertices) {
     // swap vertex #0 and vertex #1 of the triangle
     std::swap(vertices[i - 1], vertices[i]);
 }
+} // namespace kuki

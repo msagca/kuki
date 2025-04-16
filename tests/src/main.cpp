@@ -4,6 +4,7 @@
 #include <string>
 #include <utility/octree.hpp>
 #include <utility/trie.hpp>
+using namespace kuki;
 TEST(TrieTest, TestInsertDelete) {
   Trie trie;
   trie.Insert("Cube");

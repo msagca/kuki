@@ -1,6 +1,7 @@
 #include <kuki_export.h>
 #include <unordered_map>
 #include <string>
+namespace kuki {
 struct KUKI_API TrieNode {
   std::unordered_map<char, TrieNode*> children;
   /// @brief The next number suffix available that can be appended to this node
@@ -50,3 +51,4 @@ void Trie::ForEach(TrieNode* node, const std::string& prefix, F func) {
   for (auto& [c, child] : node->children)
     ForEach(child, prefix + c, func);
 }
+} // namespace kuki

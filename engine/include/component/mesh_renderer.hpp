@@ -3,6 +3,7 @@
 #include "component/material.hpp"
 #include <kuki_export.h>
 #include <vector>
+namespace kuki {
 struct KUKI_API MeshRenderer final : IComponent {
   int shader{};
   Material material{};
@@ -10,3 +11,4 @@ struct KUKI_API MeshRenderer final : IComponent {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;
 };
+} // namespace kuki

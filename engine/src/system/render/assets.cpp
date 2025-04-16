@@ -12,9 +12,8 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <render_system.hpp>
-#include <utility>
-#include <variant>
 #include <vector>
+namespace kuki {
 int RenderSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   auto isTexture = app.AssetHasComponent<Texture>(assetId);
   auto isCubeMap = false;
@@ -127,3 +126,4 @@ BoundingBox RenderSystem::GetAssetBounds(unsigned int id) {
   calculateBounds(id);
   return bounds;
 }
+} // namespace kuki

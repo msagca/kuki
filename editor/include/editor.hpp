@@ -7,10 +7,10 @@
 #include <spdlog/spdlog.h>
 /**/
 #include <imfilebrowser.h>
-class Editor final : public Application {
+class Editor final : public kuki::Application {
 private:
   CameraController cameraController;
-  Camera editorCamera;
+  kuki::Camera editorCamera;
   ImGui::FileBrowser fileBrowser;
   std::shared_ptr<ImGuiSink<std::mutex>> imguiSink;
   std::shared_ptr<spdlog::logger> logger;
@@ -24,8 +24,8 @@ private:
   void DisplayProperties();
   void DisplayScene();
   void DrawGizmos(float, float, unsigned int);
-  void EntityCreatedCallback(const EntityCreatedEvent&);
-  void EntityDeletedCallback(const EntityDeletedEvent&);
+  void EntityCreatedCallback(const kuki::EntityCreatedEvent&);
+  void EntityDeletedCallback(const kuki::EntityDeletedEvent&);
   void InitImGui();
   void InitLayout();
   void LoadDefaultAssets();

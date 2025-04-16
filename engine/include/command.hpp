@@ -2,6 +2,7 @@
 #include <kuki_export.h>
 #include <span>
 #include <string>
+namespace kuki {
 class Application;
 class KUKI_API ICommand {
 protected:
@@ -28,3 +29,4 @@ public:
   std::string GetMessage(int) override;
   int Execute(Application*, const std::span<std::string>) override;
 };
+} // namespace kuki

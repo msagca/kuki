@@ -7,6 +7,7 @@
 #include <glm/ext/vector_float4.hpp>
 #include <render_system.hpp>
 #include <utility/octree.hpp>
+namespace kuki {
 void RenderSystem::DrawGizmos() {
   auto manipulatorEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
   auto viewFrustumEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::ViewFrustum)) != 0;
@@ -84,3 +85,4 @@ unsigned int RenderSystem::GetGizmoMask() const {
 void RenderSystem::SetGizmoMask(unsigned int mask) {
   gizmoMask = mask;
 }
+} // namespace kuki

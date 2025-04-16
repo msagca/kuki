@@ -6,6 +6,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+namespace kuki {
 const std::string Light::GetName() const {
   return ComponentTraits<Light>::GetName();
 }
@@ -59,3 +60,4 @@ void Light::SetTransform(const Transform& transform) {
   } else if (type == LightType::Point)
     vector = transform.position;
 }
+} // namespace kuki

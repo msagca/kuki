@@ -3,6 +3,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+namespace kuki {
 const std::string MeshRenderer::GetName() const {
   return ComponentTraits<MeshRenderer>::GetName();
 }
@@ -19,3 +20,4 @@ void MeshRenderer::SetProperty(Property property) {
   }
   material.SetProperty(property);
 }
+} // namespace kuki

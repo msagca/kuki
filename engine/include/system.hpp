@@ -1,6 +1,7 @@
 #pragma once
 #include <kuki_export.h>
 #include <scene.hpp>
+namespace kuki {
 class Application;
 class KUKI_API System {
 protected:
@@ -12,3 +13,4 @@ public:
   virtual void Update(double, Scene*) {};
   virtual void Shutdown() {};
 };
+} // namespace kuki

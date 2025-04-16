@@ -2,6 +2,7 @@
 #include <cassert>
 #include <functional>
 #include <vector>
+namespace kuki {
 template <typename T>
 class Pool {
 private:
@@ -82,3 +83,4 @@ void Pool<T>::Clear() {
   for (auto i = 0; i < count; i++)
     destroyer(memory[i]);
 }
+} // namespace kuki

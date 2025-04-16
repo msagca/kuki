@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <utility/octree.hpp>
 #include <utility/pool.hpp>
+namespace kuki {
 enum class GizmoID : uint8_t {
   Manipulator,
   ViewFrustum,
@@ -74,3 +75,4 @@ public:
   void SetGizmoMask(unsigned int);
   static void ToggleWireframeMode();
 };
+} // namespace kuki

@@ -1,6 +1,7 @@
 #include <list>
 #include <string>
 #include <utility/trie.hpp>
+namespace kuki {
 Trie::Trie() {
   root = new TrieNode();
 }
@@ -111,3 +112,4 @@ void Trie::ClearChildren(TrieNode* node) {
   }
   node->children.clear();
 }
+} // namespace kuki

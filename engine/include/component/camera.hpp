@@ -6,6 +6,7 @@
 #include <glm/trigonometric.hpp>
 #include <kuki_export.h>
 #include <vector>
+namespace kuki {
 struct KUKI_API Plane {
   glm::vec3 point{};
   glm::vec3 normal{};
@@ -51,3 +52,4 @@ struct KUKI_API Camera final : IComponent {
   void Frame(const BoundingBox&);
   bool OverlapsFrustum(const BoundingBox&) const;
 };
+} // namespace kuki

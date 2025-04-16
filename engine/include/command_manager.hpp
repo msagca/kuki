@@ -3,6 +3,7 @@
 #include <kuki_export.h>
 #include <unordered_map>
 #include <vector>
+namespace kuki {
 class Application;
 class KUKI_API CommandManager {
 private:
@@ -15,3 +16,4 @@ public:
   void Unregister(const std::string&);
   int Dispatch(Application*, const std::string&, std::string&);
 };
+} // namespace kuki

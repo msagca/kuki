@@ -17,6 +17,7 @@
 #include <primitive.hpp>
 #include <variant>
 #include <vector>
+namespace kuki {
 Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesystem::path& root) {
   Material material;
   material.material = LitMaterial{};
@@ -149,3 +150,4 @@ void AssetLoader::CalculateBounds(Mesh& mesh, const std::vector<Vertex>& vertice
     mesh.bounds.max = glm::max(mesh.bounds.max, vertex.position);
   }
 }
+} // namespace kuki

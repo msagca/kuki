@@ -1,4 +1,5 @@
 #include <game.hpp>
+using namespace kuki;
 Game::Game()
   : Application("Game") {}
 void Game::Start() {}

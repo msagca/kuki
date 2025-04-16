@@ -4,6 +4,7 @@
 #include <span>
 #include <spdlog/spdlog.h>
 #include <string>
+namespace kuki {
 SpawnCommand::SpawnCommand()
   : ICommand("spawn") {}
 std::string SpawnCommand::GetMessage(int code) {
@@ -54,3 +55,4 @@ int SpawnCommand::Execute(Application* app, const std::span<std::string> args) {
   message = "";
   return 0;
 }
+} // namespace kuki

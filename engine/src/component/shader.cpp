@@ -15,6 +15,7 @@
 #include <spdlog/spdlog.h>
 #include <string>
 #include <vector>
+namespace kuki {
 Shader::Shader(const std::string& name, const std::filesystem::path& vert, const std::filesystem::path& frag)
   : name(name) {
   auto vertText = Read(vert);
@@ -173,3 +174,4 @@ void Shader::SetInstanceData(const Mesh* mesh, const std::vector<glm::mat4>& tra
   glVertexArrayAttribBinding(mesh->vertexArray, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
 }
+} // namespace kuki

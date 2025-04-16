@@ -10,6 +10,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+namespace kuki {
 bool Plane::OnPlane(const glm::vec3& center, const glm::vec3& extents) const {
   const auto r = glm::dot(glm::abs(normal), extents);
   return SignedDistance(center) + r >= 0;
@@ -129,3 +130,4 @@ void Camera::Frame(const BoundingBox& bounds) {
 bool Camera::OverlapsFrustum(const BoundingBox& bounds) const {
   return frustum.OverlapsFrustum(bounds);
 }
+} // namespace kuki

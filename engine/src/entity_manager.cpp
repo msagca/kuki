@@ -6,6 +6,7 @@
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
+namespace kuki {
 EntityManager::~EntityManager() {
   for (const auto& [type, manager] : typeToManager)
     delete manager;
@@ -214,3 +215,4 @@ void EntityManager::UpdateOctree() {
     octree.Insert(id, filter->mesh.bounds);
   });
 }
+} // namespace kuki

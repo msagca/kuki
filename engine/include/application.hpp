@@ -8,6 +8,7 @@
 #include <scene_manager.hpp>
 #include <system.hpp>
 #include <vector>
+namespace kuki {
 class KUKI_API Application {
 private:
   std::string name;
@@ -288,3 +289,4 @@ void Application::UnregisterEventCallback(unsigned int id) {
     return;
   scene->GetEntityManager().UnregisterCallback<T>();
 }
+} // namespace kuki

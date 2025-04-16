@@ -7,6 +7,7 @@
 #include <imgui.h>
 #include <string>
 #include <variant>
+using namespace kuki;
 void Editor::DisplayProperties() {
   if (selectedEntity < 0)
     return;

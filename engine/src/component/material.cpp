@@ -8,6 +8,7 @@
 #include <typeindex>
 #include <variant>
 #include <vector>
+namespace kuki {
 void Material::Apply(Shader& shader) const {
   std::visit([&shader](const auto& mat) { mat.Apply(shader); }, material);
 }
@@ -160,3 +161,4 @@ void UnlitMaterial::SetProperty(Property property) {
   else
     fallback.SetProperty(property);
 }
+} // namespace kuki

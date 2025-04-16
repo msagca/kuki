@@ -16,6 +16,7 @@
 #include <utility/octree.hpp>
 #include <utility/trie.hpp>
 #include <vector>
+namespace kuki {
 /// @brief Manages entities and their components in a scene
 class KUKI_API EntityManager {
 private:
@@ -241,3 +242,4 @@ void EntityManager::UnregisterCallback(unsigned int id) {
   auto dispatcher = GetEventDispatcher<T>();
   dispatcher->Unsubscribe(id);
 }
+} // namespace kuki

@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 #include <string>
 #include <vector>
+using namespace kuki;
 void Editor::DisplayHierarchy() {
   std::vector<unsigned int> entities;
   ForEachEntity([&](unsigned int id) {

@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+namespace kuki {
 class KUKI_API InputManager {
 private:
   bool keysEnabled{true};
@@ -60,3 +61,4 @@ template <typename... T>
 void InputManager::EnableKeys(T... args) {
   (EnableKey(args), ...);
 }
+} // namespace kuki

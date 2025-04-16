@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+namespace kuki {
 class KUKI_API AssetLoader {
 private:
   EntityManager& assetManager;
@@ -35,3 +36,4 @@ public:
   int LoadTexture(const std::filesystem::path&, TextureType = TextureType::Albedo);
   int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
 };
+} // namespace kuki

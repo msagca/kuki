@@ -22,6 +22,7 @@
 // NOTE: this comment is to prevent the following from being placed before imgui.h during includes sorting
 #include <imfilebrowser.h>
 #include <ImGuizmo.h>
+using namespace kuki;
 Editor::Editor()
   : Application("Editor"), cameraController(inputManager), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
 void Editor::Start() {

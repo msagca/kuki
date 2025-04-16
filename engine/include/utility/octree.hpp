@@ -5,6 +5,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+namespace kuki {
 enum class Octant : uint8_t {
   LeftBottomBack,
   LeftBottomFront,
@@ -301,3 +302,4 @@ void Octree<T>::ForEachInFrustumInternal(const Camera& camera, F func, std::unor
     for (auto i = 0; i < 8; ++i)
       children[i]->ForEachInFrustumInternal(camera, func, visited);
 }
+} // namespace kuki

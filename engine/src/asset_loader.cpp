@@ -23,6 +23,7 @@
 #include <stb_image.h>
 #include <string>
 #include <vector>
+namespace kuki {
 AssetLoader::AssetLoader(EntityManager& assetManager)
   : assetManager(assetManager) {}
 int AssetLoader::LoadPrimitive(PrimitiveId id) {
@@ -258,3 +259,4 @@ int AssetLoader::LoadMesh(std::string& name, const std::vector<Vertex>& vertices
 glm::mat4 AssetLoader::AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4& aiMatrix) {
   return {{aiMatrix.a1, aiMatrix.b1, aiMatrix.c1, aiMatrix.d1}, {aiMatrix.a2, aiMatrix.b2, aiMatrix.c2, aiMatrix.d2}, {aiMatrix.a3, aiMatrix.b3, aiMatrix.c3, aiMatrix.d3}, {aiMatrix.a4, aiMatrix.b4, aiMatrix.c4, aiMatrix.d4}};
 }
+} // namespace kuki

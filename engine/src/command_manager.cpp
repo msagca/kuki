@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+namespace kuki {
 ICommand::ICommand(const std::string name)
   : name(name) {}
 const std::string& ICommand::GetName() const {
@@ -59,3 +60,4 @@ int CommandManager::Dispatch(Application* app, const std::string& input, std::st
   message = it->second->GetMessage(code);
   return code;
 }
+} // namespace kuki

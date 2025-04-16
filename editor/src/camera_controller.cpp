@@ -7,6 +7,7 @@
 #include <glm/ext/vector_float3.hpp>
 #include <input_manager.hpp>
 #include <glm/trigonometric.hpp>
+using namespace kuki;
 CameraController::CameraController(InputManager& inputManager)
   : inputManager(inputManager) {}
 void CameraController::UpdatePosition(float deltaTime) {

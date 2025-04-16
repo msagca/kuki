@@ -7,6 +7,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+namespace kuki {
 BoundingBox::BoundingBox()
   : min(glm::vec3(std::numeric_limits<float>::max())), max(glm::vec3(std::numeric_limits<float>::lowest())) {}
 BoundingBox::BoundingBox(glm::vec3 min, glm::vec3 max) {
@@ -63,3 +64,4 @@ void Mesh::SetProperty(Property property) {
       bounds.max = value;
   }
 }
+} // namespace kuki

@@ -4,6 +4,7 @@
 #include <render_system.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
+using namespace kuki;
 void Editor::DisplayAssets() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);

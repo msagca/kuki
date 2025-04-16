@@ -1,6 +1,6 @@
 #pragma once
 #include <application.hpp>
-class Game final : public Application {
+class Game final : public kuki::Application {
 public:
   Game();
   void Start() override;

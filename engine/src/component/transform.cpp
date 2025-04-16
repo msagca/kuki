@@ -6,6 +6,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+namespace kuki {
 const std::string Transform::GetName() const {
   return ComponentTraits<Transform>::GetName();
 }
@@ -29,3 +30,4 @@ void Transform::SetProperty(Property property) {
     parent = value;
   }
 }
+} // namespace kuki

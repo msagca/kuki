@@ -5,6 +5,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+namespace kuki {
 enum class ComponentId : uint8_t {
   Camera,
   Light,
@@ -204,3 +205,4 @@ struct ComponentTraits<Transform> {
     return ComponentMask::Transform;
   }
 };
+} // namespace kuki

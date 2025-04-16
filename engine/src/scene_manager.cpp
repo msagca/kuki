@@ -1,6 +1,7 @@
 #include <scene.hpp>
 #include <scene_manager.hpp>
 #include <string>
+namespace kuki {
 SceneManager::~SceneManager() {
   for (const auto& [_, scene] : idToScene)
     delete scene;
@@ -45,3 +46,4 @@ bool SceneManager::Has(unsigned int id) {
 bool SceneManager::Has(const std::string& name) {
   return nameToId.find(name) != nameToId.end();
 }
+} // namespace kuki

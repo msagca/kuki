@@ -3,6 +3,7 @@
 #include <scene.hpp>
 #include <string>
 #include <unordered_map>
+namespace kuki {
 class KUKI_API SceneManager {
 private:
   unsigned int nextId{0};
@@ -18,3 +19,4 @@ public:
   bool Has(unsigned int);
   bool Has(const std::string&);
 };
+} // namespace kuki

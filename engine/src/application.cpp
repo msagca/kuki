@@ -26,6 +26,7 @@
 #include <string>
 #include <system.hpp>
 #include <vector>
+namespace kuki {
 Application::Application(const std::string& name)
   : name(name), assetManager(), assetLoader(assetManager), inputManager(), sceneManager(), commandManager() {}
 const std::string& Application::GetName() const {
@@ -380,3 +381,4 @@ int Application::LoadPrimitive(PrimitiveId id) {
 int Application::LoadCubeMap(std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {
   return assetLoader.LoadCubeMap(name, top, bottom, right, left, front, back);
 }
+} // namespace kuki

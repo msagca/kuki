@@ -3,6 +3,7 @@
 #include "texture.hpp"
 #include <kuki_export.h>
 #include <typeindex>
+namespace kuki {
 class Shader;
 struct IMaterial : IComponent {
   virtual ~IMaterial() = default;
@@ -60,3 +61,4 @@ struct KUKI_API Material : IMaterial {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;
 };
+} // namespace kuki

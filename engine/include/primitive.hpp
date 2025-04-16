@@ -3,6 +3,7 @@
 #include <glm/ext/vector_float3.hpp>
 #include <kuki_export.h>
 #include <vector>
+namespace kuki {
 struct Vertex {
   glm::vec3 position{};
   glm::vec3 normal{};
@@ -37,3 +38,4 @@ public:
   static std::vector<Vertex> Plane();
   static std::vector<Vertex> Sphere(int = 4);
 };
+} // namespace kuki

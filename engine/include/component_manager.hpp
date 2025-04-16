@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+namespace kuki {
 class IComponentManager {
 public:
   virtual ~IComponentManager() = default;
@@ -113,3 +114,4 @@ void ComponentManager<T>::ForAll(F func) {
   for (const auto& c : components)
     func(c);
 }
+} // namespace kuki

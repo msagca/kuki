@@ -2,6 +2,7 @@
 #include <entity_manager.hpp>
 #include <scene.hpp>
 #include <string>
+namespace kuki {
 Scene::Scene(const std::string& name, unsigned int id)
   : name(name), id(id), entityManager() {}
 std::string Scene::GetName() const {
@@ -17,3 +18,4 @@ Camera* Scene::GetCamera() {
 EntityManager& Scene::GetEntityManager() {
   return entityManager;
 }
+} // namespace kuki

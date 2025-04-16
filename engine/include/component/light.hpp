@@ -3,6 +3,7 @@
 #include <glm/ext/vector_float3.hpp>
 #include <kuki_export.h>
 #include <vector>
+namespace kuki {
 struct KUKI_API Light final : IComponent {
   LightType type{LightType::Directional};
   glm::vec3 vector{.2f, 1.0f, .3f};
@@ -19,3 +20,4 @@ struct KUKI_API Light final : IComponent {
   Transform GetTransform() const;
   void SetTransform(const Transform&);
 };
+} // namespace kuki

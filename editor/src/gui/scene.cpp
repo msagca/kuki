@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <render_system.hpp>
 #include <string>
+using namespace kuki;
 void Editor::DisplayScene() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);

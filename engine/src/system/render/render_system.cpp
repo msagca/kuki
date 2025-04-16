@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 #include <system.hpp>
 #include <variant>
+namespace kuki {
 RenderSystem::RenderSystem(Application& app)
   : System(app), texturePool(CreatePooledTexture, DeletePooledTexture, 16) {}
 RenderSystem::~RenderSystem() {
@@ -95,3 +96,4 @@ unsigned int RenderSystem::CreatePooledTexture() {
 void RenderSystem::DeletePooledTexture(unsigned int id) {
   glDeleteTextures(1, &id);
 }
+} // namespace kuki

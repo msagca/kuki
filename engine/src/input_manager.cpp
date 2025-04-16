@@ -3,6 +3,7 @@
 #include <input_manager.hpp>
 #include <string>
 #include <unordered_map>
+namespace kuki {
 bool InputManager::GetKey(int key) const {
   auto it = keyStates.find(key);
   if (it == keyStates.end())
@@ -186,3 +187,4 @@ std::string InputManager::GLFWKeyToString(int key) {
     return "";
   }
 }
+} // namespace kuki

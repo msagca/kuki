@@ -6,6 +6,7 @@
 #include <glm/ext/matrix_float3x3.hpp>
 #include <kuki_export.h>
 #include <string>
+namespace kuki {
 class KUKI_API Shader {
 private:
   GLuint id;
@@ -34,3 +35,4 @@ public:
   void SetLighting(const std::vector<const Light*>&);
   void SetInstanceData(const Mesh*, const std::vector<glm::mat4>&, const std::vector<LitFallbackData>&, unsigned int, unsigned int);
 };
+} // namespace kuki

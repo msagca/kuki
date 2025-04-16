@@ -3,6 +3,7 @@
 #include <glad/glad.h>
 #include <kuki_export.h>
 #include <vector>
+namespace kuki {
 struct KUKI_API BoundingBox {
   /// @brief Minimum local bounds of the mesh at scale 1
   glm::vec3 min{};
@@ -24,3 +25,4 @@ struct KUKI_API Mesh final : IComponent {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;
 };
+} // namespace kuki
