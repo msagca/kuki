@@ -8,14 +8,37 @@ bool InputManager::GetKey(int key) const {
   auto it = keyStates.find(key);
   if (it == keyStates.end())
     return false;
-  return it->second;
+  return it->second == GLFW_PRESS || it->second == GLFW_REPEAT;
 }
 bool InputManager::GetButton(int button) const {
-  // TODO: add double click support
   auto it = buttonStates.find(button);
   if (it == buttonStates.end())
     return false;
-  return it->second;
+  return it->second == GLFW_PRESS || it->second == GLFW_REPEAT;
+}
+bool InputManager::GetKeyDown(int key) const {
+  auto it = keyStates.find(key);
+  if (it == keyStates.end())
+    return false;
+  return it->second == GLFW_PRESS;
+}
+bool InputManager::GetButtonDown(int button) const {
+  auto it = buttonStates.find(button);
+  if (it == buttonStates.end())
+    return false;
+  return it->second == GLFW_PRESS;
+}
+bool InputManager::GetKeyUp(int key) const {
+  auto it = keyStates.find(key);
+  if (it == keyStates.end())
+    return false;
+  return it->second == GLFW_RELEASE;
+}
+bool InputManager::GetButtonUp(int button) const {
+  auto it = buttonStates.find(button);
+  if (it == buttonStates.end())
+    return false;
+  return it->second == GLFW_RELEASE;
 }
 glm::vec2 InputManager::GetWASD() const {
   glm::vec2 wasd(.0f, .0f);
@@ -54,12 +77,11 @@ void InputManager::CursorPosCallback(GLFWwindow* window, double xpos, double ypo
 }
 void InputManager::SetKeyState(int key, int action) {
   lastInputTime = glfwGetTime();
-  // NOTE: key state is either true (press or repeat) or false (release)
   if (!keysEnabled)
     return;
   if (disabledKeys.find(key) != disabledKeys.end())
     return;
-  keyStates[key] = action == GLFW_PRESS || action == GLFW_REPEAT;
+  keyStates[key] = action;
   if (action == GLFW_PRESS) {
     if (pressCallbacks.find(key) != pressCallbacks.end())
       pressCallbacks[key]();
@@ -69,7 +91,7 @@ void InputManager::SetKeyState(int key, int action) {
 }
 void InputManager::SetButtonState(int button, int action) {
   lastInputTime = glfwGetTime();
-  buttonStates[button] = action == GLFW_PRESS || action == GLFW_REPEAT;
+  buttonStates[button] = action;
   if (action == GLFW_PRESS) {
     if (pressCallbacks.find(button) != pressCallbacks.end())
       pressCallbacks[button]();
@@ -115,12 +137,14 @@ const std::unordered_map<std::string, std::string>& InputManager::GetKeyBindings
 }
 void InputManager::DisableKey(int key) {
   disabledKeys.insert(key);
+  keyStates.erase(key);
 }
 void InputManager::EnableKey(int key) {
   disabledKeys.erase(key);
 }
 void InputManager::DisableAllKeys() {
   keysEnabled = false;
+  keyStates.clear();
 }
 void InputManager::EnableAllKeys() {
   keysEnabled = true;

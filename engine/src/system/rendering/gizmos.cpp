@@ -5,10 +5,10 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-#include <render_system.hpp>
+#include <system/rendering.hpp>
 #include <utility/octree.hpp>
 namespace kuki {
-void RenderSystem::DrawGizmos() {
+void RenderingSystem::DrawGizmos() {
   auto manipulatorEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
   auto viewFrustumEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::ViewFrustum)) != 0;
   auto frustumCullingEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::FrustumCulling)) != 0;
@@ -17,7 +17,7 @@ void RenderSystem::DrawGizmos() {
   if (frustumCullingEnabled)
     DrawFrustumCulling();
 }
-void RenderSystem::DrawFrustumCulling() {
+void RenderingSystem::DrawFrustumCulling() {
   auto assetId = app.GetAssetId("Cube");
   auto mesh = app.GetAssetComponent<Mesh>(assetId);
   if (!mesh)
@@ -54,7 +54,7 @@ void RenderSystem::DrawFrustumCulling() {
       glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
   });
 }
-void RenderSystem::DrawViewFrustum() {
+void RenderingSystem::DrawViewFrustum() {
   auto assetId = app.GetAssetId("Cube");
   auto mesh = app.GetAssetComponent<Mesh>(assetId);
   if (!mesh)
@@ -79,10 +79,10 @@ void RenderSystem::DrawViewFrustum() {
     glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
   glEnable(GL_CULL_FACE);
 }
-unsigned int RenderSystem::GetGizmoMask() const {
+unsigned int RenderingSystem::GetGizmoMask() const {
   return gizmoMask;
 }
-void RenderSystem::SetGizmoMask(unsigned int mask) {
+void RenderingSystem::SetGizmoMask(unsigned int mask) {
   gizmoMask = mask;
 }
 } // namespace kuki

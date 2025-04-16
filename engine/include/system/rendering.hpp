@@ -1,9 +1,9 @@
 #pragma once
+#include "system.hpp"
 #include <component/texture.hpp>
 #include <entity_manager.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <kuki_export.h>
-#include <system.hpp>
 #include <unordered_map>
 #include <utility/octree.hpp>
 #include <utility/pool.hpp>
@@ -19,7 +19,7 @@ enum class GizmoMask : size_t {
   FrustumCulling = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoID::FrustumCulling),
 };
 class Application;
-class KUKI_API RenderSystem final : public System {
+class KUKI_API RenderingSystem final : public System {
 private:
   std::unordered_map<std::string, Shader*> shaders;
   Camera assetCam{};
@@ -64,8 +64,8 @@ private:
   BoundingBox GetAssetBounds(unsigned int);
   Shader* GetMaterialShader(const Material&);
 public:
-  RenderSystem(Application&);
-  ~RenderSystem();
+  RenderingSystem(Application&);
+  ~RenderingSystem();
   void Start() override;
   // void Update(double, Scene*) override;
   void Shutdown() override;

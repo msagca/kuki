@@ -31,7 +31,7 @@ void Editor::DisplayHierarchy() {
   }
   ms_io = ImGui::EndMultiSelect();
   selection.ApplyRequests(ms_io);
-  auto deleteSelection = GetKey(GLFW_KEY_DELETE);
+  auto deleteSelection = GetKeyDown(GLFW_KEY_DELETE);
   if (deleteSelection && selection.Size > 0) {
     std::vector<unsigned int> entitiesToDelete;
     for (const auto& id : entities)
@@ -42,7 +42,7 @@ void Editor::DisplayHierarchy() {
   }
   if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered())
     selection.Clear();
-  if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButton(GLFW_MOUSE_BUTTON_RIGHT))
+  if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButtonDown(GLFW_MOUSE_BUTTON_RIGHT))
     ImGui::OpenPopup("CreateMenu");
   if (ImGui::BeginPopup("CreateMenu")) {
     if (ImGui::BeginMenu("Create")) {

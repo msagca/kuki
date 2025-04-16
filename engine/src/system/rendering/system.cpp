@@ -3,19 +3,19 @@
 #include <component/material.hpp>
 #include <component/shader.hpp>
 #include <glad/glad.h>
-#include <render_system.hpp>
 #include <spdlog/spdlog.h>
-#include <system.hpp>
+#include <system/rendering.hpp>
+#include <system/system.hpp>
 #include <variant>
 namespace kuki {
-RenderSystem::RenderSystem(Application& app)
+RenderingSystem::RenderingSystem(Application& app)
   : System(app), texturePool(CreatePooledTexture, DeletePooledTexture, 16) {}
-RenderSystem::~RenderSystem() {
+RenderingSystem::~RenderingSystem() {
   for (const auto& [_, shader] : shaders)
     delete shader;
   shaders.clear();
 }
-void RenderSystem::Start() {
+void RenderingSystem::Start() {
   assetCam.Update();
   auto litShader = new Shader("Lit", "shader/lit.vert", "shader/lit.frag");
   auto unlitShader = new Shader("Unlit", "shader/unlit.vert", "shader/unlit.frag");
@@ -30,7 +30,7 @@ void RenderSystem::Start() {
   glGenTextures(1, &sceneTexture);
   glGenTextures(1, &sceneMultiTexture);
 }
-void RenderSystem::Shutdown() {
+void RenderingSystem::Shutdown() {
   glDeleteFramebuffers(1, &assetFBO);
   glDeleteFramebuffers(1, &sceneFBO);
   glDeleteFramebuffers(1, &sceneMultiFBO);
@@ -42,7 +42,7 @@ void RenderSystem::Shutdown() {
   glDeleteVertexArrays(1, &instanceVBO);
   glDeleteVertexArrays(1, &materialVBO);
 }
-bool RenderSystem::UpdateBuffers(unsigned int& framebuffer, unsigned int& renderbuffer, unsigned int& texture, int width, int height, int samples) {
+bool RenderingSystem::UpdateBuffers(unsigned int& framebuffer, unsigned int& renderbuffer, unsigned int& texture, int width, int height, int samples) {
   auto multi = samples > 1;
   auto texTarget = multi ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
   glBindTexture(texTarget, texture);
@@ -75,7 +75,7 @@ bool RenderSystem::UpdateBuffers(unsigned int& framebuffer, unsigned int& render
   }
   return true;
 }
-void RenderSystem::ToggleWireframeMode() {
+void RenderingSystem::ToggleWireframeMode() {
   static auto enabled = false;
   enabled = !enabled;
   if (enabled)
@@ -83,17 +83,17 @@ void RenderSystem::ToggleWireframeMode() {
   else
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
-Shader* RenderSystem::GetMaterialShader(const Material& material) {
+Shader* RenderingSystem::GetMaterialShader(const Material& material) {
   if (std::holds_alternative<UnlitMaterial>(material.material))
     return shaders["Unlit"];
   return shaders["Lit"];
 }
-unsigned int RenderSystem::CreatePooledTexture() {
+unsigned int RenderingSystem::CreatePooledTexture() {
   unsigned int id;
   glGenTextures(1, &id);
   return id;
 }
-void RenderSystem::DeletePooledTexture(unsigned int id) {
+void RenderingSystem::DeletePooledTexture(unsigned int id) {
   glDeleteTextures(1, &id);
 }
 } // namespace kuki

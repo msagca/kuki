@@ -1,8 +1,8 @@
 #include <application.hpp>
 #include <editor.hpp>
 #include <imgui.h>
-#include <render_system.hpp>
 #include <string>
+#include <system/rendering.hpp>
 using namespace kuki;
 void Editor::DisplayScene() {
   static const ImVec2 uv0(.0f, 1.0f);
@@ -37,7 +37,7 @@ void Editor::DisplayScene() {
   }
   cameraController.ToggleRotation(flying);
   cameraController.Update(deltaTime);
-  auto renderSystem = GetSystem<RenderSystem>();
+  auto renderSystem = GetSystem<RenderingSystem>();
   if (renderSystem) {
     renderSystem->SetGizmoMask(gizmoMask); // NOTE: sets the render system specific gizmo flags
     auto texture = renderSystem->RenderSceneToTexture(&editorCamera);

@@ -19,7 +19,7 @@ void CameraController::UpdatePosition(float deltaTime) {
   static const auto maxBoostFactor = 5.0f;
   static const auto boostRampUpTime = 3.0f;
   static const auto boostRampDownTime = 2.0f;
-  auto shiftHeld = inputManager.GetKey(GLFW_KEY_LEFT_SHIFT);
+  auto shiftHeld = inputManager.GetKeyDown(GLFW_KEY_LEFT_SHIFT);
   if (shiftHeld)
     boostTime = std::min(boostTime + deltaTime, boostRampUpTime);
   else
@@ -50,7 +50,7 @@ void CameraController::Update(float deltaTime) {
   static auto firstEnter = true;
   static glm::vec2 mousePos;
   static glm::vec2 mouseLast;
-  if (inputManager.GetButton(GLFW_MOUSE_BUTTON_2)) {
+  if (inputManager.GetButtonDown(GLFW_MOUSE_BUTTON_2)) {
     mousePos = inputManager.GetMousePos();
     if (firstEnter)
       mouseLast = mousePos;

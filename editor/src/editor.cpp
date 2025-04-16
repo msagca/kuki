@@ -15,10 +15,10 @@
 #include <memory>
 #include <mutex>
 #include <primitive.hpp>
-#include <render_system.hpp>
 #include <spdlog/logger.h>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <system/rendering.hpp>
 // NOTE: this comment is to prevent the following from being placed before imgui.h during includes sorting
 #include <imfilebrowser.h>
 #include <ImGuizmo.h>
@@ -28,14 +28,14 @@ Editor::Editor()
 void Editor::Start() {
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
-  RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderSystem::ToggleWireframeMode, "Toggle wireframe mode.");
+  RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderingSystem::ToggleWireframeMode, "Toggle wireframe mode.");
   RegisterEventCallback<EntityCreatedEvent>([this](const EntityCreatedEvent& event) { EntityCreatedCallback(event); });
   RegisterEventCallback<EntityDeletedEvent>([this](const EntityDeletedEvent& event) { EntityDeletedCallback(event); });
   InitImGui();
   LoadDefaultAssets();
   LoadDefaultScene();
   cameraController.SetCamera(&editorCamera);
-  CreateSystem<RenderSystem>(static_cast<Application&>(*this));
+  CreateSystem<RenderingSystem>(static_cast<Application&>(*this));
   RegisterCommand(new SpawnCommand());
   RegisterCommand(new DeleteCommand());
   spdlog::register_logger(logger);

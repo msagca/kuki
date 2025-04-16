@@ -8,7 +8,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <ImGuizmo.h>
-#include <render_system.hpp>
+#include <system/rendering.hpp>
 using namespace kuki;
 void Editor::DrawGizmos(float width, float height, unsigned int mask) {
   if (selectedEntity < 0)

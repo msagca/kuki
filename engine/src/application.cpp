@@ -24,7 +24,7 @@
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string>
-#include <system.hpp>
+#include <system/system.hpp>
 #include <vector>
 namespace kuki {
 Application::Application(const std::string& name)
@@ -354,11 +354,17 @@ void Application::SpawnMulti(const std::string& name, int count, float radius) {
     Spawn(nameTemp, -1, true, radius);
   }
 }
-bool Application::GetKey(int key) const {
-  return inputManager.GetKey(key);
+bool Application::GetKeyDown(int key) const {
+  return inputManager.GetKeyDown(key);
 }
-bool Application::GetButton(int button) const {
-  return inputManager.GetButton(button);
+bool Application::GetButtonDown(int button) const {
+  return inputManager.GetButtonDown(button);
+}
+bool Application::GetKeyUp(int key) const {
+  return inputManager.GetKeyUp(key);
+}
+bool Application::GetButtonUp(int button) const {
+  return inputManager.GetButtonUp(button);
 }
 void Application::EnableAllKeys() {
   inputManager.EnableAllKeys();

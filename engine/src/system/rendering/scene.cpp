@@ -13,12 +13,12 @@
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/gtx/quaternion.hpp>
-#include <render_system.hpp>
+#include <system/rendering.hpp>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
 namespace kuki {
-int RenderSystem::RenderSceneToTexture(Camera* camera) {
+int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   auto sceneCamera = app.GetActiveCamera();
   targetCamera = camera ? camera : sceneCamera;
   if (!targetCamera)
@@ -41,7 +41,7 @@ int RenderSystem::RenderSceneToTexture(Camera* camera) {
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return sceneTexture;
 }
-void RenderSystem::DrawScene() {
+void RenderingSystem::DrawScene() {
   std::unordered_map<unsigned int, std::unordered_map<std::type_index, std::vector<unsigned int>>> vaoToMatToEntities;
   std::unordered_map<unsigned int, Mesh> vaoToMesh;
   auto camera = app.GetActiveCamera();
@@ -65,7 +65,7 @@ void RenderSystem::DrawScene() {
       DrawEntitiesInstanced(vaoToMesh[vao], entities);
   DrawSkybox();
 }
-void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<unsigned int>& entities) {
+void RenderingSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<unsigned int>& entities) {
   std::vector<LitFallbackData> materials;
   std::vector<glm::mat4> transforms;
   LitMaterial material{};
@@ -100,7 +100,7 @@ void RenderSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<uns
     glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, transforms.size());
   glBindVertexArray(0);
 }
-void RenderSystem::DrawSkybox() {
+void RenderingSystem::DrawSkybox() {
   auto assetId = app.GetAssetId("CubeInverted");
   auto mesh = app.GetAssetComponent<Mesh>(assetId);
   if (!mesh)
@@ -125,7 +125,7 @@ void RenderSystem::DrawSkybox() {
     glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
   glDepthFunc(GL_LESS);
 }
-glm::mat4 RenderSystem::GetEntityWorldTransform(const Transform* transform) {
+glm::mat4 RenderingSystem::GetEntityWorldTransform(const Transform* transform) {
   //if (transform->dirty) {
   auto translation = glm::translate(glm::mat4(1.0f), transform->position);
   auto rotation = glm::toMat4(transform->rotation);

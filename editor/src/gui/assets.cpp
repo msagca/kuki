@@ -1,9 +1,9 @@
 #include <application.hpp>
 #include <editor.hpp>
 #include <imgui.h>
-#include <render_system.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <system/rendering.hpp>
 using namespace kuki;
 void Editor::DisplayAssets() {
   static const ImVec2 uv0(.0f, 1.0f);
@@ -12,7 +12,7 @@ void Editor::DisplayAssets() {
   static const ImVec2 TILE_SIZE(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
   static const auto TILE_PADDING = 2.0f;
   static const auto TILE_TOTAL_SIZE = THUMBNAIL_SIZE + TILE_PADDING;
-  auto renderSystem = GetSystem<RenderSystem>();
+  auto renderSystem = GetSystem<RenderingSystem>();
   if (!renderSystem)
     return;
   ImGui::Begin("Assets");

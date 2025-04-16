@@ -13,8 +13,8 @@ private:
   bool updateBindings{false};
   double lastInputTime{};
   glm::vec2 mousePos{};
-  std::unordered_map<int, bool> keyStates;
-  std::unordered_map<int, bool> buttonStates;
+  std::unordered_map<int, int> keyStates;
+  std::unordered_map<int, int> buttonStates;
   std::unordered_map<int, std::function<void()>> pressCallbacks;
   std::unordered_map<int, std::function<void()>> releaseCallbacks;
   std::unordered_set<int> disabledKeys;
@@ -27,16 +27,24 @@ private:
   void DisableKey(int);
   void EnableKey(int);
 public:
-  /// @return true if the key is pressed/repeated, false otherwise
+  /// @return true if the key is pressed or repeated, false otherwise
   bool GetKey(int) const;
-  /// @return true if the button is pressed/repeated, false otherwise
+  /// @return true if the button is pressed or repeated, false otherwise
   bool GetButton(int) const;
+  /// @return true if the key is pressed, false otherwise
+  bool GetKeyDown(int) const;
+  /// @return true if the button is pressed, false otherwise
+  bool GetButtonDown(int) const;
+  /// @return true if the key is released, false otherwise
+  bool GetKeyUp(int) const;
+  /// @return true if the button is released, false otherwise
+  bool GetButtonUp(int) const;
   /// @brief Get the vertical (W-S) and horizontal (A-D) input respectively as a 2D vector
   /// @return A float for each axis with a value of either 0, 1 (up/right) or -1 (down/left)
   glm::vec2 GetWASD() const;
   glm::vec2 GetArrow() const;
   glm::vec2 GetMousePos() const;
-  /// @return time passed since last user input
+  /// @return Time passed since last user input
   double GetInactivityTime() const;
   /// @brief Register a function to be called when the specified key-action combination is observed
   void RegisterCallback(int, int, std::function<void()>, std::string = "");

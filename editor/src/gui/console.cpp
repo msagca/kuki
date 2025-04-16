@@ -10,9 +10,9 @@ void Editor::DisplayConsole() {
   static auto consoleVisible = false;
   static bool displayMessage = false;
   static std::string commandMessage;
-  if (!consoleVisible && GetKey(GLFW_KEY_SPACE))
+  if (!consoleVisible && GetKeyDown(GLFW_KEY_SPACE))
     consoleVisible = true;
-  if (consoleVisible && GetKey(GLFW_KEY_ESCAPE))
+  if (consoleVisible && GetKeyDown(GLFW_KEY_ESCAPE))
     consoleVisible = false;
   if (consoleVisible)
     DisableKeys<int>(GLFW_KEY_W, GLFW_KEY_S, GLFW_KEY_A, GLFW_KEY_D, GLFW_KEY_V);

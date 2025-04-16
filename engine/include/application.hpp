@@ -6,7 +6,7 @@
 #include <kuki_export.h>
 #include <scene.hpp>
 #include <scene_manager.hpp>
-#include <system.hpp>
+#include <system/system.hpp>
 #include <vector>
 namespace kuki {
 class KUKI_API Application {
@@ -119,8 +119,10 @@ public:
   bool AssetHasComponent(unsigned int);
   int Spawn(std::string&, int = -1, bool = false, float = 10.0f);
   void SpawnMulti(const std::string&, int, float);
-  bool GetKey(int) const;
-  bool GetButton(int) const;
+  bool GetKeyDown(int) const;
+  bool GetButtonDown(int) const;
+  bool GetKeyUp(int) const;
+  bool GetButtonUp(int) const;
   template <typename... T>
   void DisableKeys(T...);
   template <typename... T>

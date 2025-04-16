@@ -11,10 +11,10 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtx/quaternion.hpp>
-#include <render_system.hpp>
+#include <system/rendering.hpp>
 #include <vector>
 namespace kuki {
-int RenderSystem::RenderAssetToTexture(unsigned int assetId, int size) {
+int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   auto isTexture = app.AssetHasComponent<Texture>(assetId);
   auto isCubeMap = false;
   if (assetToTexture.find(assetId) == assetToTexture.end()) {
@@ -45,7 +45,7 @@ int RenderSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   }
   return textureId;
 }
-void RenderSystem::DrawSkyboxFlat(unsigned int id) {
+void RenderingSystem::DrawSkyboxFlat(unsigned int id) {
   auto texture = app.GetAssetComponent<Texture>(id);
   if (!texture)
     return;
@@ -64,7 +64,7 @@ void RenderSystem::DrawSkyboxFlat(unsigned int id) {
   else
     glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
 }
-void RenderSystem::DrawAsset(unsigned int id) {
+void RenderingSystem::DrawAsset(unsigned int id) {
   auto bounds = GetAssetBounds(id);
   assetCam.Frame(bounds);
   auto [transform, mesh, material] = app.GetAssetComponents<Transform, Mesh, Material>(id);
@@ -74,7 +74,7 @@ void RenderSystem::DrawAsset(unsigned int id) {
     DrawAsset(childId);
   });
 }
-void RenderSystem::DrawAsset(const Transform* transform, const Mesh& mesh, const Material& material) {
+void RenderingSystem::DrawAsset(const Transform* transform, const Mesh& mesh, const Material& material) {
   static const Light dirLight;
   static const std::vector<const Light*> lights{&dirLight};
   std::vector<glm::mat4> transforms{GetAssetWorldTransform(transform)};
@@ -96,7 +96,7 @@ void RenderSystem::DrawAsset(const Transform* transform, const Mesh& mesh, const
     glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
   glBindVertexArray(0);
 }
-glm::mat4 RenderSystem::GetAssetWorldTransform(const Transform* transform) {
+glm::mat4 RenderingSystem::GetAssetWorldTransform(const Transform* transform) {
   auto translation = glm::translate(glm::mat4(1.0f), transform->position);
   auto rotation = glm::toMat4(transform->rotation);
   auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
@@ -106,11 +106,11 @@ glm::mat4 RenderSystem::GetAssetWorldTransform(const Transform* transform) {
       transform->model = GetAssetWorldTransform(parent) * transform->model;
   return transform->model;
 }
-glm::vec3 RenderSystem::GetAssetWorldPosition(const Transform* transform) {
+glm::vec3 RenderingSystem::GetAssetWorldPosition(const Transform* transform) {
   auto model = GetAssetWorldTransform(transform);
   return model[3];
 }
-BoundingBox RenderSystem::GetAssetBounds(unsigned int id) {
+BoundingBox RenderingSystem::GetAssetBounds(unsigned int id) {
   BoundingBox bounds;
   std::function<void(unsigned int)> calculateBounds = [&](unsigned int assetId) {
     auto [mesh, transform] = app.GetAssetComponents<Mesh, Transform>(assetId);
