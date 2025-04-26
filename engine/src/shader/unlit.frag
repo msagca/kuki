@@ -1,15 +1,13 @@
 #version 460 core
 in vec2 texCoord;
+in vec4 baseColor;
 out vec4 color;
+flat in int textureMask;
 struct Material {
     sampler2D base;
 };
-struct Fallback {
-    vec4 base;
-};
 uniform Material material;
-uniform Fallback fallback;
-uniform bool useBaseTexture;
 void main() {
-    color = (useBaseTexture) ? vec4(texture(material.base, texCoord).rgb, 1.0) : fallback.base;
+    bool useBaseTexture = (textureMask & 0x1) != 0;
+    color = (useBaseTexture) ? vec4(texture(material.base, texCoord).rgb, 1.0) : baseColor;
 }

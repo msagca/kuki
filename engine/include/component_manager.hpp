@@ -2,7 +2,6 @@
 #include <component/mesh.hpp>
 #include <component/shader.hpp>
 #include <component/texture.hpp>
-#include <glad/glad.h>
 #include <unordered_map>
 #include <utility>
 #include <vector>

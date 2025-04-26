@@ -1,6 +1,5 @@
 #pragma once
 #include "component.hpp"
-#include <glad/glad.h>
 #include <kuki_export.h>
 #include <vector>
 namespace kuki {

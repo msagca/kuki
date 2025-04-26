@@ -43,6 +43,15 @@ enum class TextureType : uint8_t {
   CubeMap,
   RadianceHDR
 };
+enum class TextureMask : size_t {
+  Albedo = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Albedo),
+  Normal = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Normal),
+  Metalness = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Metalness),
+  Occlusion = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Occlusion),
+  Roughness = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Roughness),
+  CubeMap = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::CubeMap),
+  RadianceHDR = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::RadianceHDR)
+};
 enum class PropertyType : uint8_t {
   Number,
   NumberRange, // this will be a slider when displayed in the editor
@@ -63,7 +72,7 @@ struct IComponent {
 };
 template <typename T>
 struct EnumTraits {
-  static_assert(sizeof(T) == 0, "EnumTraits must be specialized for this type");
+  static_assert(sizeof(T) == 0, "EnumTraits must be specialized for this type.");
   static const std::vector<const char*>& GetNames();
 };
 template <>
@@ -96,7 +105,7 @@ struct EnumTraits<PropertyType> {
 };
 template <typename T>
 struct ComponentTraits {
-  static_assert(sizeof(T) == 0, "ComponentTraits must be specialized for this type");
+  static_assert(sizeof(T) == 0, "ComponentTraits must be specialized for this type.");
   static const std::string GetName();
   static ComponentId GetId();
   static ComponentMask GetMask();

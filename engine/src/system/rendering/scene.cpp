@@ -1,4 +1,5 @@
 #define GLM_ENABLE_EXPERIMENTAL
+#include <glad/glad.h>
 #include <application.hpp>
 #include <component/camera.hpp>
 #include <component/light.hpp>
@@ -8,7 +9,6 @@
 #include <component/mesh_renderer.hpp>
 #include <component/texture.hpp>
 #include <component/transform.hpp>
-#include <glad/glad.h>
 #include <glm/detail/qualifier.hpp>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -17,6 +17,7 @@
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
+#include <variant>
 namespace kuki {
 int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   auto sceneCamera = app.GetActiveCamera();
@@ -27,19 +28,19 @@ int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   auto width = config.screenWidth;
   auto height = config.screenHeight;
   targetCamera->SetProperty({"AspectRatio", static_cast<float>(width) / height});
-  UpdateBuffers(sceneMultiFBO, sceneMultiRBO, sceneMultiTexture, width, height, 4);
-  UpdateBuffers(sceneFBO, sceneRBO, sceneTexture, width, height);
-  glBindFramebuffer(GL_FRAMEBUFFER, sceneMultiFBO);
+  UpdateAttachments(framebufferMulti, renderbufferSceneMulti, textureSceneMulti, width, height, 4);
+  UpdateAttachments(framebuffer, renderbufferScene, textureScene, width, height);
+  glBindFramebuffer(GL_FRAMEBUFFER, framebufferMulti);
   glViewport(0, 0, width, height);
   glClearColor(.0f, .0f, .0f, .0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   DrawScene();
   DrawGizmos();
-  glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneMultiFBO);
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sceneFBO);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, framebufferMulti);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
   glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  return sceneTexture;
+  return textureScene;
 }
 void RenderingSystem::DrawScene() {
   std::unordered_map<unsigned int, std::unordered_map<std::type_index, std::vector<unsigned int>>> vaoToMatToEntities;
@@ -63,7 +64,7 @@ void RenderingSystem::DrawScene() {
   for (const auto& [vao, matToEntities] : vaoToMatToEntities)
     for (const auto& [mat, entities] : matToEntities)
       DrawEntitiesInstanced(vaoToMesh[vao], entities);
-  DrawSkybox();
+  DrawSkybox(app.GetAssetId("Skybox"));
 }
 void RenderingSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<unsigned int>& entities) {
   std::vector<LitFallbackData> materials;
@@ -71,17 +72,18 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<
   LitMaterial material{};
   for (const auto id : entities) {
     auto [renderer, transform] = app.GetEntityComponents<MeshRenderer, Transform>(id);
+    // TODO: to avoid repeated get component calls, construct materials and transforms arrays inside the ForEachVisibleEntity lambda in the caller
     if (!renderer || !transform)
       continue;
-    // TODO: do not assume a lit material
+    // FIXME: do not assume a lit material
     auto& litMaterial = std::get<LitMaterial>(renderer->material.material);
     material = litMaterial;
-    materials.push_back(litMaterial.fallback.data);
+    materials.push_back(litMaterial.fallback);
     transforms.push_back(GetEntityWorldTransform(transform));
   }
   if (materials.empty())
     return;
-  auto shader = shaders["Lit"];
+  auto shader = static_cast<LitShader*>(shaders["Lit"]);
   shader->Use();
   material.Apply(*shader);
   shader->SetUniform("view", targetCamera->view);
@@ -92,7 +94,7 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<
     lights.push_back(light);
   });
   shader->SetLighting(lights);
-  shader->SetInstanceData(&mesh, transforms, materials, instanceVBO, materialVBO);
+  shader->SetInstanceData(&mesh, transforms, materials, transformVBO, materialVBO);
   glBindVertexArray(mesh.vertexArray);
   if (mesh.indexCount > 0)
     glDrawElementsInstanced(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0, transforms.size());
@@ -100,29 +102,28 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<
     glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, transforms.size());
   glBindVertexArray(0);
 }
-void RenderingSystem::DrawSkybox() {
-  auto assetId = app.GetAssetId("CubeInverted");
-  auto mesh = app.GetAssetComponent<Mesh>(assetId);
-  if (!mesh)
+void RenderingSystem::DrawSkybox(unsigned int skyboxAssetId) {
+  auto cubeAssetId = app.GetAssetId("CubeInverted");
+  auto cubeMesh = app.GetAssetComponent<Mesh>(cubeAssetId);
+  if (!cubeMesh)
     return;
   auto shader = shaders["Skybox"];
   shader->Use();
   auto view = glm::mat4(glm::mat3(targetCamera->view));
   shader->SetUniform("view", view);
   shader->SetUniform("projection", targetCamera->projection);
-  assetId = app.GetAssetId("Skybox");
-  auto texture = app.GetAssetComponent<Texture>(assetId);
+  auto texture = app.GetAssetComponent<Texture>(skyboxAssetId);
   if (!texture)
     return;
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_CUBE_MAP, texture->id);
   shader->SetUniform("skybox", 0);
   glDepthFunc(GL_LEQUAL);
-  glBindVertexArray(mesh->vertexArray);
-  if (mesh->indexCount > 0)
-    glDrawElements(GL_TRIANGLES, mesh->indexCount, GL_UNSIGNED_INT, 0);
+  glBindVertexArray(cubeMesh->vertexArray);
+  if (cubeMesh->indexCount > 0)
+    glDrawElements(GL_TRIANGLES, cubeMesh->indexCount, GL_UNSIGNED_INT, 0);
   else
-    glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
+    glDrawArrays(GL_TRIANGLES, 0, cubeMesh->vertexCount);
   glDepthFunc(GL_LESS);
 }
 glm::mat4 RenderingSystem::GetEntityWorldTransform(const Transform* transform) {

@@ -2,6 +2,7 @@
 #include <application.hpp>
 #include <command.hpp>
 #include <component/camera.hpp>
+#include <component/component.hpp>
 #include <component/light.hpp>
 #include <editor.hpp>
 #include <event_dispatcher.hpp>
@@ -106,7 +107,8 @@ void Editor::LoadDefaultAssets() {
   LoadPrimitive(PrimitiveId::Plane);
   LoadPrimitive(PrimitiveId::Sphere);
   std::string assetName = "Skybox";
-  LoadCubeMap(assetName, "image/skybox/top.jpg", "image/skybox/bottom.jpg", "image/skybox/right.jpg", "image/skybox/left.jpg", "image/skybox/front.jpg", "image/skybox/back.jpg");
+  LoadCubeMapAsync(assetName, "image/skybox/top.jpg", "image/skybox/bottom.jpg", "image/skybox/right.jpg", "image/skybox/left.jpg", "image/skybox/front.jpg", "image/skybox/back.jpg");
+  LoadTextureAsync("image/radiance.hdr", TextureType::RadianceHDR);
 }
 void Editor::InitImGui() {
   IMGUI_CHECKVERSION();

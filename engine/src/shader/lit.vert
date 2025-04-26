@@ -7,6 +7,7 @@ out vec3 albedo;
 out float metalness;
 out float occlusion;
 out float roughness;
+flat out int textureMask;
 layout(location = 0) in vec3 i_position;
 layout(location = 1) in vec3 i_normal;
 layout(location = 2) in vec2 i_texCoord;
@@ -19,6 +20,7 @@ layout(location = 8) in vec3 i_albedo;
 layout(location = 9) in float i_metalness;
 layout(location = 10) in float i_occlusion;
 layout(location = 11) in float i_roughness;
+layout(location = 12) in int i_textureMask;
 uniform mat4 view;
 uniform mat4 projection;
 void main() {
@@ -32,5 +34,6 @@ void main() {
     metalness = i_metalness;
     occlusion = i_occlusion;
     roughness = i_roughness;
+    textureMask = i_textureMask;
     gl_Position = projection * view * worldPosition;
 }

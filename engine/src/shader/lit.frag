@@ -8,6 +8,7 @@ in vec3 albedo;
 in float metalness;
 in float occlusion;
 in float roughness;
+flat in int textureMask; // indicates the availability of textures
 out vec4 color;
 struct Material {
     sampler2D albedo;
@@ -33,11 +34,6 @@ struct PointLight {
 };
 uniform vec3 viewPos;
 uniform Material material;
-uniform bool useAlbedoTexture;
-uniform bool useNormalTexture;
-uniform bool useMetalnessTexture;
-uniform bool useOcclusionTexture;
-uniform bool useRoughnessTexture;
 uniform bool dirExists;
 uniform DirLight dirLight;
 uniform int pointCount;
@@ -117,6 +113,11 @@ vec3 CalculatePointLight(PointLight light, vec3 A, vec3 N, vec3 M, vec3 O, vec3 
     return (kD * A / PI + specular) * radiance * NdotL + light.ambient * A * O * attenuation;
 }
 void main() {
+    bool useAlbedoTexture = (textureMask & 0x1) != 0;
+    bool useNormalTexture = (textureMask & 0x2) != 0;
+    bool useMetalnessTexture = (textureMask & 0x4) != 0;
+    bool useOcclusionTexture = (textureMask & 0x8) != 0;
+    bool useRoughnessTexture = (textureMask & 0x10) != 0;
     vec3 A = (useAlbedoTexture) ? texture(material.albedo, texCoord).rgb : albedo;
     vec3 N = (useNormalTexture) ? GetNormalFromTexture() : normal;
     vec3 M = (useMetalnessTexture) ? texture(material.metalness, texCoord).rgb : vec3(metalness);

@@ -1,7 +1,8 @@
-#define GLM_ENABLE_EXPERIMENTAL
 #define STB_IMAGE_IMPLEMENTATION
+#include <glad/glad.h>
 #include <app_config.hpp>
 #include <application.hpp>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <command.hpp>
@@ -15,12 +16,12 @@
 #include <entity_manager.hpp>
 #include <filesystem>
 #include <functional>
-#include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/vector_float3.hpp>
 #include <primitive.hpp>
 #include <random>
 #include <scene.hpp>
+#include <system/rendering.hpp>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string>
@@ -28,7 +29,7 @@
 #include <vector>
 namespace kuki {
 Application::Application(const std::string& name)
-  : name(name), assetManager(), assetLoader(assetManager), inputManager(), sceneManager(), commandManager() {}
+  : name(name), assetManager(), assetLoader(this, assetManager), inputManager(), sceneManager(), commandManager() {}
 const std::string& Application::GetName() const {
   return name;
 }
@@ -106,26 +107,7 @@ void Application::Init() {
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_MULTISAMPLE);
   glFrontFace(GL_CCW);
-  glDebugMessageCallback([](GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
-    switch (severity) {
-    case GL_DEBUG_SEVERITY_HIGH:
-      spdlog::error(message);
-      break;
-    case GL_DEBUG_SEVERITY_MEDIUM:
-      spdlog::warn(message);
-      break;
-    case GL_DEBUG_SEVERITY_LOW:
-      spdlog::info(message);
-      break;
-    case GL_DEBUG_SEVERITY_NOTIFICATION:
-      spdlog::debug(message);
-      break;
-    default:
-      spdlog::trace(message);
-      break;
-    }
-  },
-    nullptr);
+  glDebugMessageCallback(DebugMessageCallback, nullptr);
   glfwMaximizeWindow(window);
 }
 void Application::Start() {
@@ -140,6 +122,7 @@ void Application::Update() {
   static auto timeLast = timeNow;
   deltaTime = std::chrono::duration<double>(timeNow - timeLast).count();
   timeLast = timeNow;
+  assetLoader.Update();
   auto activeScene = GetActiveScene();
   if (!activeScene)
     return;
@@ -176,6 +159,71 @@ void Application::WindowCloseCallback(GLFWwindow* window) {
 }
 void Application::FramebufferSizeCallback(GLFWwindow* window, int width, int height) {
   glViewport(0, 0, width, height);
+}
+void Application::DebugMessageCallback(unsigned int source, unsigned int type, unsigned int id, unsigned int severity, int length, const char* message, const void* userParam) {
+  std::string sourceStr, typeStr;
+  switch (source) {
+  case GL_DEBUG_SOURCE_API:
+    sourceStr = "API";
+    break;
+  case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
+    sourceStr = "Window System";
+    break;
+  case GL_DEBUG_SOURCE_SHADER_COMPILER:
+    sourceStr = "Shader Compiler";
+    break;
+  case GL_DEBUG_SOURCE_THIRD_PARTY:
+    sourceStr = "Third Party";
+    break;
+  case GL_DEBUG_SOURCE_APPLICATION:
+    sourceStr = "Application";
+    break;
+  case GL_DEBUG_SOURCE_OTHER:
+    sourceStr = "Other";
+    break;
+  }
+  switch (type) {
+  case GL_DEBUG_TYPE_ERROR:
+    typeStr = "Error";
+    break;
+  case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+    typeStr = "Deprecated Behavior";
+    break;
+  case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+    typeStr = "Undefined Behavior";
+    break;
+  case GL_DEBUG_TYPE_PORTABILITY:
+    typeStr = "Portability";
+    break;
+  case GL_DEBUG_TYPE_PERFORMANCE:
+    typeStr = "Performance";
+    break;
+  case GL_DEBUG_TYPE_MARKER:
+    typeStr = "Marker";
+    break;
+  case GL_DEBUG_TYPE_PUSH_GROUP:
+    typeStr = "Push Group";
+    break;
+  case GL_DEBUG_TYPE_POP_GROUP:
+    typeStr = "Pop Group";
+    break;
+  case GL_DEBUG_TYPE_OTHER:
+    typeStr = "Other";
+    break;
+  }
+  switch (severity) {
+  case GL_DEBUG_SEVERITY_HIGH:
+    spdlog::error("OpenGL {} {}: {}", sourceStr, typeStr, message);
+    break;
+  case GL_DEBUG_SEVERITY_MEDIUM:
+    spdlog::warn("OpenGL {} {}: {}", sourceStr, typeStr, message);
+    break;
+  case GL_DEBUG_SEVERITY_LOW:
+    spdlog::info("OpenGL {} {}: {}", sourceStr, typeStr, message);
+    break;
+  default:
+    spdlog::debug("OpenGL {} {}: {}", sourceStr, typeStr, message);
+  }
 }
 void Application::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
   auto instance = static_cast<Application*>(glfwGetWindowUserPointer(window));
@@ -216,6 +264,12 @@ void Application::DeleteEntity(unsigned int id) {
   if (!scene)
     return;
   scene->GetEntityManager().Delete(id);
+}
+int Application::CreateAsset(std::string& name) {
+  return assetManager.Create(name);
+}
+void Application::DeleteAsset(unsigned int id) {
+  assetManager.Delete(id);
 }
 void Application::DeleteEntity(const std::string& name) {
   auto scene = GetActiveScene();
@@ -322,6 +376,7 @@ glm::vec3 Application::GetRandomPosition(float r) {
   return direction * radius;
 }
 int Application::Spawn(std::string& name, int parentId, bool randomPos, float spawnRadius) {
+  // TODO: this shouldn't be a part of the Application class
   auto assetId = assetManager.GetId(name);
   if (assetId < 0)
     return -1;
@@ -378,13 +433,23 @@ void Application::RegisterInputCallback(int key, int action, std::function<void(
 void Application::UnregisterInputCallback(int key, int action) {
   inputManager.UnregisterCallback(key, action);
 }
-int Application::LoadModel(const std::filesystem::path& path) {
-  return assetLoader.LoadModel(path);
+int Application::RenderRadianceToCubeMap(unsigned int assetId) {
+  auto renderingSystem = GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return -1;
+  return renderingSystem->RenderRadianceToCubeMap(assetId);
+}
+void Application::LoadModelAsync(const std::filesystem::path& path) {
+  assetLoader.LoadModelAsync(path);
+}
+void Application::LoadTextureAsync(const std::filesystem::path& path, TextureType type) {
+  assetLoader.LoadTextureAsync(path, type);
 }
 int Application::LoadPrimitive(PrimitiveId id) {
   return assetLoader.LoadPrimitive(id);
 }
-int Application::LoadCubeMap(std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {
-  return assetLoader.LoadCubeMap(name, top, bottom, right, left, front, back);
+void Application::LoadCubeMapAsync(const std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {
+  std::array<std::filesystem::path, 6> paths{right, left, top, bottom, front, back};
+  assetLoader.LoadCubeMapAsync(name, paths);
 }
 } // namespace kuki

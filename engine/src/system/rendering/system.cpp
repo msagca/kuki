@@ -1,8 +1,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
+#include <glad/glad.h>
 #include <application.hpp>
 #include <component/material.hpp>
 #include <component/shader.hpp>
-#include <glad/glad.h>
 #include <spdlog/spdlog.h>
 #include <system/rendering.hpp>
 #include <system/system.hpp>
@@ -17,34 +17,37 @@ RenderingSystem::~RenderingSystem() {
 }
 void RenderingSystem::Start() {
   assetCam.Update();
-  auto litShader = new Shader("Lit", "shader/lit.vert", "shader/lit.frag");
-  auto unlitShader = new Shader("Unlit", "shader/unlit.vert", "shader/unlit.frag");
+  auto litShader = new LitShader("Lit", "shader/lit.vert", "shader/lit.frag");
+  auto unlitShader = new UnlitShader("Unlit", "shader/unlit.vert", "shader/unlit.frag");
   auto skyboxShader = new Shader("Skybox", "shader/skybox.vert", "shader/skybox.frag");
   auto skyboxFlatShader = new Shader("SkyboxFlat", "shader/skybox_flat.vert", "shader/skybox_flat.frag");
+  auto radianceShader = new Shader("Radiance", "shader/radiance.vert", "shader/radiance.frag");
   shaders.insert({litShader->GetName(), litShader});
   shaders.insert({unlitShader->GetName(), unlitShader});
   shaders.insert({skyboxShader->GetName(), skyboxShader});
   shaders.insert({skyboxFlatShader->GetName(), skyboxFlatShader});
-  glCreateBuffers(1, &instanceVBO);
+  shaders.insert({radianceShader->GetName(), radianceShader});
+  glCreateBuffers(1, &transformVBO);
   glCreateBuffers(1, &materialVBO);
-  glGenTextures(1, &sceneTexture);
-  glGenTextures(1, &sceneMultiTexture);
+  glGenTextures(1, &textureScene);
+  glGenTextures(1, &textureSceneMulti);
 }
 void RenderingSystem::Shutdown() {
-  glDeleteFramebuffers(1, &assetFBO);
-  glDeleteFramebuffers(1, &sceneFBO);
-  glDeleteFramebuffers(1, &sceneMultiFBO);
-  glDeleteRenderbuffers(1, &assetRBO);
-  glDeleteRenderbuffers(1, &sceneMultiRBO);
-  glDeleteRenderbuffers(1, &sceneRBO);
-  glDeleteTextures(1, &sceneMultiTexture);
-  glDeleteTextures(1, &sceneTexture);
-  glDeleteVertexArrays(1, &instanceVBO);
+  glDeleteFramebuffers(1, &framebuffer);
+  glDeleteFramebuffers(1, &framebufferMulti);
+  glDeleteRenderbuffers(1, &renderbufferAsset);
+  glDeleteRenderbuffers(1, &renderbufferSceneMulti);
+  glDeleteRenderbuffers(1, &renderbufferScene);
+  glDeleteTextures(1, &textureSceneMulti);
+  glDeleteTextures(1, &textureScene);
+  glDeleteVertexArrays(1, &transformVBO);
   glDeleteVertexArrays(1, &materialVBO);
 }
-bool RenderingSystem::UpdateBuffers(unsigned int& framebuffer, unsigned int& renderbuffer, unsigned int& texture, int width, int height, int samples) {
+bool RenderingSystem::UpdateAttachments(unsigned int& framebuffer, unsigned int& renderbuffer, unsigned int& texture, int width, int height, int samples) {
   auto multi = samples > 1;
   auto texTarget = multi ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+  if (texture == 0)
+    glGenTextures(1, &texture);
   glBindTexture(texTarget, texture);
   if (multi)
     glTexImage2DMultisample(texTarget, samples, GL_RGBA16F, width, height, GL_TRUE);

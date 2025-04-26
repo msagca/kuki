@@ -4,6 +4,7 @@
 #include <command_manager.hpp>
 #include <input_manager.hpp>
 #include <kuki_export.h>
+#include <primitive.hpp>
 #include <scene.hpp>
 #include <scene_manager.hpp>
 #include <system/system.hpp>
@@ -17,6 +18,7 @@ private:
   void Init();
   static void WindowCloseCallback(GLFWwindow*);
   static void FramebufferSizeCallback(GLFWwindow*, int, int);
+  static void DebugMessageCallback(unsigned int, unsigned int, unsigned int, unsigned int, int, const char*, const void*);
   static void CursorPosCallback(GLFWwindow*, double, double);
   static void KeyCallback(GLFWwindow*, int, int, int, int);
   static void MouseButtonCallback(GLFWwindow*, int, int, int);
@@ -64,7 +66,9 @@ public:
   Scene* GetActiveScene();
   Camera* GetActiveCamera();
   int CreateEntity(std::string&);
+  int CreateAsset(std::string&);
   void DeleteEntity(unsigned int);
+  void DeleteAsset(unsigned int);
   void DeleteEntity(const std::string&);
   void DeleteAllEntities();
   void DeleteAllEntities(const std::string&);
@@ -78,6 +82,8 @@ public:
   bool EntityHasChildren(unsigned int);
   template <typename T>
   T* AddEntityComponent(unsigned int);
+  template <typename T>
+  T* AddAssetComponent(unsigned int);
   IComponent* AddEntityComponent(unsigned int, const std::string&);
   template <typename T>
   void RemoveEntityComponent(unsigned int);
@@ -131,9 +137,11 @@ public:
   void DisableAllKeys();
   void RegisterInputCallback(int, int, std::function<void()>, std::string = "");
   void UnregisterInputCallback(int, int);
-  int LoadModel(const std::filesystem::path&);
+  int RenderRadianceToCubeMap(unsigned int);
+  void LoadModelAsync(const std::filesystem::path&);
+  void LoadTextureAsync(const std::filesystem::path&, TextureType = TextureType::Albedo);
   int LoadPrimitive(PrimitiveId);
-  int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
+  void LoadCubeMapAsync(const std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
   template <typename T, typename F>
   int RegisterEventCallback(F&&);
   template <typename T>
@@ -178,6 +186,10 @@ T* Application::AddEntityComponent(unsigned int id) {
   if (!scene)
     return nullptr;
   return scene->GetEntityManager().AddComponent<T>(id);
+}
+template <typename T>
+T* Application::AddAssetComponent(unsigned int id) {
+  return assetManager.AddComponent<T>(id);
 }
 template <typename T>
 void Application::RemoveEntityComponent(unsigned int id) {

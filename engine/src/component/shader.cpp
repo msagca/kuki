@@ -26,16 +26,16 @@ Shader::Shader(const std::string& name, const std::filesystem::path& vert, const
   glAttachShader(id, vertId);
   glAttachShader(id, fragId);
   glLinkProgram(id);
-  GLint success;
+  int success;
   glGetProgramiv(id, GL_LINK_STATUS, &success);
   if (!success)
-    spdlog::error("Failed to link shader: {}", name);
+    spdlog::error("Failed to link shader: {}.", name);
   else
     CacheLocations();
   glDeleteShader(vertId);
   glDeleteShader(fragId);
 }
-GLuint Shader::GetId() const {
+unsigned int Shader::GetId() const {
   return id;
 }
 const std::string& Shader::GetName() const {
@@ -47,36 +47,36 @@ void Shader::Use() const {
 std::string Shader::Read(const std::filesystem::path& path) {
   std::ifstream fs(path);
   if (!fs) {
-    spdlog::error("Failed to open shader file: {}", path.string());
+    spdlog::error("Failed to open shader file: '{}'.", path.string());
     return "";
   }
   std::stringstream ss;
   ss << fs.rdbuf();
   if (fs.fail()) {
-    spdlog::error("Failed to read shader file: {}", path.string());
+    spdlog::error("Failed to read shader file: '{}'.", path.string());
     return "";
   }
   fs.close();
   return ss.str();
 }
-GLuint Shader::Compile(const char* text, GLenum type) {
+unsigned int Shader::Compile(const char* text, unsigned int type) {
   auto id = glCreateShader(type);
   glShaderSource(id, 1, &text, nullptr);
   glCompileShader(id);
-  GLint success;
+  int success;
   glGetShaderiv(id, GL_COMPILE_STATUS, &success);
   if (!success)
-    spdlog::error("Failed to compile shader: {}", name);
+    spdlog::error("Failed to compile shader: {}.", name);
   return id;
 }
 void Shader::CacheLocations() {
-  GLint params = 0;
+  int params = 0;
   glGetProgramiv(id, GL_ACTIVE_UNIFORMS, &params);
-  const GLsizei bufSize = 256;
-  GLchar name[bufSize];
-  GLsizei length;
-  GLint size;
-  GLenum type;
+  const int bufSize = 256;
+  char name[bufSize];
+  int length;
+  int size;
+  unsigned int type;
   for (auto i = 0; i < params; ++i) {
     glGetActiveUniform(id, i, bufSize, &length, &size, &type, name);
     locations[name] = glGetUniformLocation(id, name);
@@ -100,27 +100,29 @@ void Shader::SetUniform(const std::string& name, unsigned int value) {
 void Shader::SetUniform(const std::string& name, int value) {
   glUniform1i(locations[name], value);
 }
-void Shader::SetUniform(GLint loc, const glm::mat4& value) {
+void Shader::SetUniform(int loc, const glm::mat4& value) {
   glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 }
-void Shader::SetUniform(GLint loc, const glm::vec3& value) {
+void Shader::SetUniform(int loc, const glm::vec3& value) {
   glUniform3fv(loc, 1, glm::value_ptr(value));
 }
-void Shader::SetUniform(GLint loc, const glm::vec4& value) {
+void Shader::SetUniform(int loc, const glm::vec4& value) {
   glUniform4fv(loc, 1, glm::value_ptr(value));
 }
-void Shader::SetUniform(GLint loc, float value) {
+void Shader::SetUniform(int loc, float value) {
   glUniform1f(loc, value);
 }
-void Shader::SetUniform(GLint loc, int value) {
+void Shader::SetUniform(int loc, int value) {
   glUniform1i(loc, value);
 }
-void Shader::SetUniform(GLint loc, unsigned int value) {
+void Shader::SetUniform(int loc, unsigned int value) {
   glUniform1i(loc, value);
 }
-void Shader::SetLighting(const std::vector<const Light*>& lights) {
+LitShader::LitShader(const std::string& name, const std::filesystem::path& vert, const std::filesystem::path& frag)
+  : Shader(name, vert, frag) {}
+void LitShader::SetLighting(const std::vector<const Light*>& lights) {
   auto dirExists = false;
-  auto index = 0;
+  auto pointIndex = 0;
   for (const auto& light : lights)
     if (light->type == LightType::Directional) {
       SetUniform("dirLight.direction", light->vector);
@@ -129,7 +131,7 @@ void Shader::SetLighting(const std::vector<const Light*>& lights) {
       SetUniform("dirLight.specular", light->specular);
       dirExists = true;
     } else {
-      auto offset = index * 7;
+      auto offset = pointIndex * 7;
       SetUniform(locations["pointLights[0].position"] + offset, light->vector);
       SetUniform(locations["pointLights[0].ambient"] + offset, light->ambient);
       SetUniform(locations["pointLights[0].diffuse"] + offset, light->diffuse);
@@ -137,12 +139,13 @@ void Shader::SetLighting(const std::vector<const Light*>& lights) {
       SetUniform(locations["pointLights[0].constant"] + offset, light->constant);
       SetUniform(locations["pointLights[0].linear"] + offset, light->linear);
       SetUniform(locations["pointLights[0].quadratic"] + offset, light->quadratic);
-      index++;
+      pointIndex++;
     }
-  SetUniform("pointCount", index);
+  SetUniform("pointCount", pointIndex);
   SetUniform("dirExists", dirExists);
 }
-void Shader::SetInstanceData(const Mesh* mesh, const std::vector<glm::mat4>& transforms, const std::vector<LitFallbackData>& materials, unsigned int transformBuffer, unsigned int materialBuffer) {
+void LitShader::SetInstanceData(const Mesh* mesh, const std::vector<glm::mat4>& transforms, const std::vector<LitFallbackData>& materials, unsigned int transformBuffer, unsigned int materialBuffer) {
+  assert(transforms.size() == materials.size() && "Transforms and materials arrays must have the same size.");
   auto bindingIndex = 1;
   glNamedBufferData(transformBuffer, transforms.size() * sizeof(glm::mat4), transforms.data(), GL_DYNAMIC_DRAW);
   glVertexArrayVertexBuffer(mesh->vertexArray, bindingIndex, transformBuffer, 0, sizeof(glm::mat4));
@@ -171,6 +174,37 @@ void Shader::SetInstanceData(const Mesh* mesh, const std::vector<glm::mat4>& tra
   glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
   attribIndex++;
   glVertexArrayAttribFormat(mesh->vertexArray, attribIndex, 1, GL_FLOAT, GL_FALSE, offsetof(LitFallbackData, roughness));
+  glVertexArrayAttribBinding(mesh->vertexArray, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
+  attribIndex++;
+  glVertexArrayAttribIFormat(mesh->vertexArray, attribIndex, 1, GL_INT, offsetof(LitFallbackData, textureMask));
+  glVertexArrayAttribBinding(mesh->vertexArray, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
+}
+UnlitShader::UnlitShader(const std::string& name, const std::filesystem::path& vert, const std::filesystem::path& frag)
+  : Shader(name, vert, frag) {}
+void UnlitShader::SetInstanceData(const Mesh* mesh, const std::vector<glm::mat4>& transforms, const std::vector<UnlitFallbackData>& materials, unsigned int transformBuffer, unsigned int materialBuffer) {
+  assert(transforms.size() == materials.size() && "Transforms and materials arrays must have the same size.");
+  auto bindingIndex = 1;
+  glNamedBufferData(transformBuffer, transforms.size() * sizeof(glm::mat4), transforms.data(), GL_DYNAMIC_DRAW);
+  glVertexArrayVertexBuffer(mesh->vertexArray, bindingIndex, transformBuffer, 0, sizeof(glm::mat4));
+  glVertexArrayBindingDivisor(mesh->vertexArray, bindingIndex, 1);
+  auto attribIndex = 4;
+  for (auto i = 0; i < 4; ++i) {
+    glVertexArrayAttribFormat(mesh->vertexArray, attribIndex, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4) * i);
+    glVertexArrayAttribBinding(mesh->vertexArray, attribIndex, bindingIndex);
+    glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
+    attribIndex++;
+  }
+  bindingIndex++;
+  glNamedBufferData(materialBuffer, materials.size() * sizeof(UnlitFallbackData), materials.data(), GL_DYNAMIC_DRAW);
+  glVertexArrayVertexBuffer(mesh->vertexArray, bindingIndex, materialBuffer, 0, sizeof(UnlitFallbackData));
+  glVertexArrayBindingDivisor(mesh->vertexArray, bindingIndex, 1);
+  glVertexArrayAttribFormat(mesh->vertexArray, attribIndex, 4, GL_FLOAT, GL_FALSE, offsetof(UnlitFallbackData, base));
+  glVertexArrayAttribBinding(mesh->vertexArray, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
+  attribIndex++;
+  glVertexArrayAttribIFormat(mesh->vertexArray, attribIndex, 1, GL_INT, offsetof(UnlitFallbackData, textureMask));
   glVertexArrayAttribBinding(mesh->vertexArray, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
 }

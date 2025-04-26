@@ -1,39 +1,80 @@
 #pragma once
+#include <array>
 #include <assimp/material.h>
 #include <assimp/scene.h>
 #include <component/component.hpp>
 #include <component/material.hpp>
+#include <component/mesh.hpp>
 #include <entity_manager.hpp>
+#include <event_queue.hpp>
 #include <filesystem>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <kuki_export.h>
 #include <primitive.hpp>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <future>
 namespace kuki {
+struct TextureData {
+  std::string name{};
+  TextureType type{TextureType::Albedo};
+  void* data{};
+  int width{};
+  int height{};
+  int channels{1};
+};
+struct MaterialData {
+  std::string name{};
+  std::array<TextureData, 5> data{};
+};
+struct CubeMapData {
+  std::string name{};
+  std::array<TextureData, 6> data{};
+};
+struct PendingMaterial {
+  MaterialData data;
+  std::promise<Material> materialPromise;
+};
+struct PendingMesh {
+  aiMesh* source;
+  std::promise<Mesh> meshPromise;
+};
+class Application;
 class KUKI_API AssetLoader {
 private:
+  Application* app;
   EntityManager& assetManager;
-  std::unordered_map<std::filesystem::path, unsigned int> pathToId;
+  EventQueue<CubeMapData> cubeMapLoadQueue;
+  EventQueue<PendingMaterial*> materialCreateQueue;
+  EventQueue<PendingMesh*> meshCreateQueue;
+  EventQueue<TextureData> textureLoadQueue;
   glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4&);
-  int LoadNode(aiNode*, const aiScene*, const std::filesystem::path&, int = -1);
-  Material CreateMaterial(aiMaterial*, const std::filesystem::path&);
-  bool LoadCubeMapSide(unsigned int, const std::filesystem::path&, int);
-  Mesh CreateMesh(aiMesh*);
+  int CreateCubeMapAsset(const CubeMapData&);
+  int CreateMaterialAsset(const MaterialData&);
+  int CreateTextureAsset(const TextureData&);
+  int LoadNode(const aiNode*, const aiScene*, const std::filesystem::path&, const std::vector<Material>&, const std::vector<Mesh>&, int = -1);
+  Material CreateMaterial(const MaterialData&);
+  MaterialData LoadMaterial(const aiMaterial*, const std::filesystem::path&);
+  Mesh CreateMesh(const aiMesh*);
   Mesh CreateMesh(const std::vector<Vertex>&);
   Mesh CreateMesh(const std::vector<Vertex>&, const std::vector<unsigned int>&);
   Mesh CreateVertexBuffer(const std::vector<Vertex>&);
-  void CreateIndexBuffer(Mesh&, const std::vector<unsigned int>&);
+  std::future<Material> QueueMaterialCreation(const MaterialData&);
+  std::future<Mesh> QueueMeshCreation(aiMesh*);
+  Texture CreateTexture(const TextureData&);
+  TextureData LoadTexture(const std::filesystem::path&, TextureType = TextureType::Albedo);
   void CalculateBounds(Mesh&, const std::vector<Vertex>&);
+  void CreateIndexBuffer(Mesh&, const std::vector<unsigned int>&);
 public:
-  AssetLoader(EntityManager&);
+  AssetLoader(Application*, EntityManager&);
+  /// @brief Process pending load operations
+  void Update();
   int LoadMesh(const std::string&, const std::vector<Vertex>&);
-  int LoadMesh(std::string&, const std::vector<Vertex>&);
   int LoadMesh(std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
-  int LoadModel(const std::filesystem::path&);
+  int LoadMesh(std::string&, const std::vector<Vertex>&);
   int LoadPrimitive(PrimitiveId);
-  int LoadTexture(const std::filesystem::path&, TextureType = TextureType::Albedo);
-  int LoadCubeMap(std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
+  void LoadCubeMapAsync(const std::string&, const std::array<std::filesystem::path, 6>&);
+  void LoadModelAsync(const std::filesystem::path&);
+  void LoadTextureAsync(const std::filesystem::path&, TextureType = TextureType::Albedo);
 };
 } // namespace kuki

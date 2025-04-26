@@ -1,8 +1,8 @@
 #pragma once
 #include <entity_manager.hpp>
 #include <kuki_export.h>
-#include <utility/octree.hpp>
 namespace kuki {
+class Camera;
 class KUKI_API Scene {
 private:
   std::string name;

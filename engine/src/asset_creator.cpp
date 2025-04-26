@@ -1,3 +1,5 @@
+#include <glad/glad.h>
+#include <application.hpp>
 #include <asset_loader.hpp>
 #include <assimp/material.h>
 #include <assimp/mesh.h>
@@ -8,64 +10,179 @@
 #include <component/texture.hpp>
 #include <cstddef>
 #include <entity_manager.hpp>
-#include <filesystem>
-#include <glad/glad.h>
 #include <glm/detail/type_vec2.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <limits>
 #include <primitive.hpp>
+#include <spdlog/spdlog.h>
+#include <stb_image.h>
 #include <variant>
 #include <vector>
+#include <cmath>
+#include <filesystem>
+#include <utility>
 namespace kuki {
-Material AssetLoader::CreateMaterial(aiMaterial* aiMaterial, const std::filesystem::path& root) {
-  Material material;
+Texture AssetLoader::CreateTexture(const TextureData& data) {
+  Texture texture{};
+  if (!data.data) {
+    spdlog::error("Failed to read texture data.");
+    return texture;
+  }
+  GLenum internalFormat, format;
+  switch (data.channels) {
+  case 1:
+    internalFormat = GL_R8;
+    format = GL_RED;
+    break;
+  case 2:
+    internalFormat = GL_RG8;
+    format = GL_RG;
+    break;
+  case 3:
+    if (data.type == TextureType::RadianceHDR)
+      internalFormat = GL_RGB16F;
+    else if (data.type == TextureType::Albedo)
+      internalFormat = GL_SRGB8;
+    else
+      internalFormat = GL_RGB8;
+    format = GL_RGB;
+    break;
+  case 4:
+    if (data.type == TextureType::RadianceHDR)
+      internalFormat = GL_RGB16F;
+    else if (data.type == TextureType::Albedo)
+      internalFormat = GL_SRGB8_ALPHA8;
+    else
+      internalFormat = GL_RGBA8;
+    format = GL_RGBA;
+    break;
+  default:
+    spdlog::error("Unsupported number of texture channels: {}.", data.channels);
+    stbi_image_free(data.data);
+    return texture;
+  }
+  unsigned int textureId;
+  glCreateTextures(GL_TEXTURE_2D, 1, &textureId);
+  int levels = 1;
+  if (data.type == TextureType::Albedo)
+    levels = std::log2(std::max(data.width, data.height)) + 1;
+  glTextureStorage2D(textureId, levels, internalFormat, data.width, data.height);
+  glTextureSubImage2D(textureId, 0, 0, 0, data.width, data.height, format, GL_UNSIGNED_BYTE, data.data);
+  stbi_image_free(data.data);
+  switch (data.type) {
+  case TextureType::Albedo:
+    glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glGenerateTextureMipmap(textureId);
+    break;
+  case TextureType::Normal:
+  case TextureType::RadianceHDR:
+    glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    break;
+  case TextureType::Roughness:
+  case TextureType::Metalness:
+  case TextureType::Occlusion:
+    glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    if (data.channels == 1) {
+      glTextureParameteri(textureId, GL_TEXTURE_SWIZZLE_G, GL_RED);
+      glTextureParameteri(textureId, GL_TEXTURE_SWIZZLE_B, GL_RED);
+      glTextureParameteri(textureId, GL_TEXTURE_SWIZZLE_A, GL_ONE);
+    }
+    break;
+  default:
+    spdlog::error("Unknown texture type: {}.", static_cast<int>(data.type));
+    break;
+  }
+  texture.id = textureId;
+  texture.type = data.type;
+  return texture;
+}
+int AssetLoader::CreateTextureAsset(const TextureData& data) {
+  auto name = data.name;
+  auto assetId = assetManager.Create(name);
+  auto texture = assetManager.AddComponent<Texture>(assetId);
+  *texture = CreateTexture(data);
+  if (data.type == TextureType::RadianceHDR)
+    app->RenderRadianceToCubeMap(assetId);
+  spdlog::info("Texture is created: {}.", name);
+  return assetId;
+}
+int AssetLoader::CreateCubeMapAsset(const CubeMapData& event) {
+  unsigned int textureId;
+  glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &textureId);
+  glTextureStorage2D(textureId, 1, GL_RGB8, event.data[0].width, event.data[0].height);
+  for (auto i = 0; i < 6; ++i) {
+    auto& data = event.data[i];
+    glTextureSubImage3D(textureId, 0, 0, 0, i, data.width, data.height, 1, GL_RGB, GL_UNSIGNED_BYTE, data.data);
+    stbi_image_free(data.data);
+  }
+  glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTextureParameteri(textureId, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  auto name = event.name;
+  auto assetId = assetManager.Create(name);
+  auto texture = assetManager.AddComponent<Texture>(assetId);
+  texture->id = textureId;
+  texture->type = TextureType::CubeMap;
+  spdlog::info("Cube map is created: {}.", name);
+  return assetId;
+}
+Material AssetLoader::CreateMaterial(const MaterialData& data) {
+  Material material{};
   material.material = LitMaterial{};
-  auto& pbrMaterial = std::get<LitMaterial>(material.material);
-  aiString path;
-  if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
-    aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &path);
-    auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(fullPath, TextureType::Albedo);
-    auto texture = assetManager.GetComponent<Texture>(id);
-    if (texture)
-      pbrMaterial.albedo = *texture;
-  }
-  if (aiMaterial->GetTextureCount(aiTextureType_NORMALS) > 0) {
-    aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &path);
-    auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(fullPath, TextureType::Normal);
-    auto texture = assetManager.GetComponent<Texture>(id);
-    if (texture)
-      pbrMaterial.normal = *texture;
-  }
-  if (aiMaterial->GetTextureCount(aiTextureType_METALNESS) > 0) {
-    aiMaterial->GetTexture(aiTextureType_METALNESS, 0, &path);
-    auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(fullPath, TextureType::Metalness);
-    auto texture = assetManager.GetComponent<Texture>(id);
-    if (texture)
-      pbrMaterial.metalness = *texture;
-  }
-  if (aiMaterial->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
-    aiMaterial->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
-    auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(fullPath, TextureType::Occlusion);
-    auto texture = assetManager.GetComponent<Texture>(id);
-    if (texture)
-      pbrMaterial.occlusion = *texture;
-  }
-  if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
-    aiMaterial->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
-    auto fullPath = root / path.C_Str();
-    auto id = LoadTexture(fullPath, TextureType::Roughness);
-    auto texture = assetManager.GetComponent<Texture>(id);
-    if (texture)
-      pbrMaterial.roughness = *texture;
+  auto litMaterial = std::get_if<LitMaterial>(&material.material);
+  for (auto i = 0; i < data.data.size(); ++i) {
+    auto texture = CreateTexture(data.data[i]);
+    if (texture.id == 0)
+      continue;
+    if (litMaterial) {
+      switch (texture.type) {
+      case TextureType::Albedo:
+        litMaterial->data.albedo = texture.id;
+        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Albedo);
+        break;
+      case TextureType::Normal:
+        litMaterial->data.normal = texture.id;
+        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Normal);
+        break;
+      case TextureType::Metalness:
+        litMaterial->data.metalness = texture.id;
+        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Metalness);
+        break;
+      case TextureType::Occlusion:
+        litMaterial->data.occlusion = texture.id;
+        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Occlusion);
+        break;
+      case TextureType::Roughness:
+        litMaterial->data.roughness = texture.id;
+        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Roughness);
+        break;
+      default:
+        break;
+      }
+    }
   }
   return material;
 }
-Mesh AssetLoader::CreateMesh(aiMesh* aiMesh) {
+int AssetLoader::CreateMaterialAsset(const MaterialData& data) {
+  auto name = data.name;
+  auto assetId = assetManager.Create(name);
+  auto material = assetManager.AddComponent<Material>(assetId);
+  *material = CreateMaterial(data);
+  return assetId;
+}
+Mesh AssetLoader::CreateMesh(const aiMesh* aiMesh) {
   std::vector<Vertex> vertices;
   for (auto i = 0; i < aiMesh->mNumVertices; ++i) {
     Vertex vertex{};
@@ -119,19 +236,23 @@ Mesh AssetLoader::CreateVertexBuffer(const std::vector<Vertex>& vertices) {
   mesh.vertexBuffer = vertexBuffer;
   auto bindingIndex = 0;
   glNamedBufferData(mesh.vertexBuffer, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
-  glVertexArrayVertexBuffer(mesh.vertexArray, 0, mesh.vertexBuffer, 0, sizeof(Vertex));
-  glVertexArrayAttribFormat(mesh.vertexArray, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
-  glVertexArrayAttribBinding(mesh.vertexArray, 0, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 0);
-  glVertexArrayAttribFormat(mesh.vertexArray, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
-  glVertexArrayAttribBinding(mesh.vertexArray, 1, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 1);
-  glVertexArrayAttribFormat(mesh.vertexArray, 2, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, texture));
-  glVertexArrayAttribBinding(mesh.vertexArray, 2, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 2);
-  glVertexArrayAttribFormat(mesh.vertexArray, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, tangent));
-  glVertexArrayAttribBinding(mesh.vertexArray, 3, bindingIndex);
-  glEnableVertexArrayAttrib(mesh.vertexArray, 3);
+  glVertexArrayVertexBuffer(mesh.vertexArray, bindingIndex, mesh.vertexBuffer, 0, sizeof(Vertex));
+  auto attribIndex = 0;
+  glVertexArrayAttribFormat(mesh.vertexArray, attribIndex, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
+  glVertexArrayAttribBinding(mesh.vertexArray, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, attribIndex);
+  attribIndex++;
+  glVertexArrayAttribFormat(mesh.vertexArray, attribIndex, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
+  glVertexArrayAttribBinding(mesh.vertexArray, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, attribIndex);
+  attribIndex++;
+  glVertexArrayAttribFormat(mesh.vertexArray, attribIndex, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, texture));
+  glVertexArrayAttribBinding(mesh.vertexArray, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, attribIndex);
+  attribIndex++;
+  glVertexArrayAttribFormat(mesh.vertexArray, attribIndex, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, tangent));
+  glVertexArrayAttribBinding(mesh.vertexArray, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vertexArray, attribIndex);
   return mesh;
 }
 void AssetLoader::CreateIndexBuffer(Mesh& mesh, const std::vector<unsigned int>& indices) {

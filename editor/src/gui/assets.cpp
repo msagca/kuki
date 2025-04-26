@@ -62,7 +62,7 @@ void Editor::DisplayAssets() {
   fileBrowser.Display();
   if (fileBrowser.HasSelected()) {
     auto filepath = fileBrowser.GetSelected();
-    LoadModel(filepath);
+    LoadModelAsync(filepath);
     spdlog::info("Loaded model file '{}'.", filepath.string());
     fileBrowser.ClearSelected();
   }
