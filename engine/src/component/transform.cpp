@@ -27,7 +27,8 @@ void Transform::SetProperty(Property property) {
     dirty = true; // TODO: propagate changes to children
   } else if (std::holds_alternative<int>(property.value)) {
     auto& value = std::get<int>(property.value);
-    parent = value;
+    if (property.name == "Parent")
+      parent = value;
   }
 }
 } // namespace kuki

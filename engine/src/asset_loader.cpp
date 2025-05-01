@@ -1,4 +1,5 @@
 #define GLM_ENABLE_EXPERIMENTAL
+#define TINYEXR_IMPLEMENTATION
 #include <application.hpp>
 #include <array>
 #include <asset_loader.hpp>
@@ -26,8 +27,10 @@
 #include <stb_image.h>
 #include <string>
 #include <thread>
-#include <vector>
+#include <tinyexr.h>
 #include <future>
+#include <type_traits>
+#include <vector>
 namespace kuki {
 AssetLoader::AssetLoader(Application* app, EntityManager& assetManager)
   : app(app), assetManager(assetManager) {}
@@ -154,8 +157,6 @@ MaterialData AssetLoader::LoadMaterial(const aiMaterial* aiMaterial, const std::
     auto texture = LoadTexture(fullPath, TextureType::Albedo);
     if (texture.data)
       data.data[0] = texture;
-    else
-      stbi_image_free(texture.data);
   }
   if (aiMaterial->GetTextureCount(aiTextureType_NORMALS) > 0) {
     aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &path);
@@ -163,8 +164,6 @@ MaterialData AssetLoader::LoadMaterial(const aiMaterial* aiMaterial, const std::
     auto texture = LoadTexture(fullPath, TextureType::Normal);
     if (texture.data)
       data.data[1] = texture;
-    else
-      stbi_image_free(texture.data);
   }
   if (aiMaterial->GetTextureCount(aiTextureType_METALNESS) > 0) {
     aiMaterial->GetTexture(aiTextureType_METALNESS, 0, &path);
@@ -172,8 +171,6 @@ MaterialData AssetLoader::LoadMaterial(const aiMaterial* aiMaterial, const std::
     auto texture = LoadTexture(fullPath, TextureType::Metalness);
     if (texture.data)
       data.data[2] = texture;
-    else
-      stbi_image_free(texture.data);
   }
   if (aiMaterial->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
     aiMaterial->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
@@ -181,8 +178,6 @@ MaterialData AssetLoader::LoadMaterial(const aiMaterial* aiMaterial, const std::
     auto texture = LoadTexture(fullPath, TextureType::Occlusion);
     if (texture.data)
       data.data[3] = texture;
-    else
-      stbi_image_free(texture.data);
   }
   if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
     aiMaterial->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
@@ -190,8 +185,6 @@ MaterialData AssetLoader::LoadMaterial(const aiMaterial* aiMaterial, const std::
     auto texture = LoadTexture(fullPath, TextureType::Roughness);
     if (texture.data)
       data.data[4] = texture;
-    else
-      stbi_image_free(texture.data);
   }
   spdlog::info("Material is loaded: {}.", data.name);
   return data;
@@ -202,8 +195,7 @@ void AssetLoader::LoadTextureAsync(const std::filesystem::path& path, TextureTyp
     if (data.data) {
       textureLoadQueue.Push(std::move(data));
       spdlog::info("Texture is loaded: '{}'.", path.string());
-    } else
-      stbi_image_free(data.data);
+    }
   }).detach();
 }
 TextureData AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type) {
@@ -214,18 +206,50 @@ TextureData AssetLoader::LoadTexture(const std::filesystem::path& path, TextureT
   }
   data.name = path.stem().string();
   data.type = type;
+  auto ext = path.extension().string();
   auto pathStr = path.string();
-  const char* cPathStr = pathStr.c_str();
-  auto bytesPerChannel = (type == TextureType::RadianceHDR) ? 4 : 1;
-  if (bytesPerChannel > 2)
-    data.data = stbi_loadf(cPathStr, &data.width, &data.height, &data.channels, 0);
-  else if (bytesPerChannel > 1)
-    data.data = stbi_load_16(cPathStr, &data.width, &data.height, &data.channels, 0);
-  else
-    data.data = stbi_load(cPathStr, &data.width, &data.height, &data.channels, 0);
-  if (!data.data)
-    spdlog::error("Failed to load texture: '{}'.", pathStr);
+  const char* pathCStr = pathStr.c_str();
+  if (ext == ".exr") {
+    data.type = TextureType::EXR;
+    data.channels = 4;
+    float* exrData = nullptr;
+    const char* errMessage = nullptr;
+    auto result = LoadEXR(&exrData, &data.width, &data.height, pathCStr, &errMessage);
+    if (result != TINYEXR_SUCCESS) {
+      if (errMessage) {
+        spdlog::error("TinyEXR: ", errMessage);
+        FreeEXRErrorMessage(errMessage);
+      }
+    } else
+      data.data = reinterpret_cast<void*>(exrData);
+  } else {
+    auto bytesPerChannel = (type == TextureType::HDR) ? 4 : 1;
+    if (bytesPerChannel > 2)
+      data.data = stbi_loadf(pathCStr, &data.width, &data.height, &data.channels, 0);
+    else if (bytesPerChannel > 1)
+      data.data = stbi_load_16(pathCStr, &data.width, &data.height, &data.channels, 0);
+    else
+      data.data = stbi_load(pathCStr, &data.width, &data.height, &data.channels, 0);
+    if (!data.data)
+      spdlog::error("Failed to load texture: '{}'.", pathStr);
+  }
   return data;
+}
+int AssetLoader::LoadCubeMap(const std::string& name, const std::array<std::filesystem::path, 6>& paths) {
+  CubeMapData data;
+  data.name = name;
+  for (auto i = 0; i < 6; ++i) {
+    auto& path = paths[i];
+    auto texture = LoadTexture(path);
+    if (texture.data)
+      data.data[i] = texture;
+    else {
+      for (auto j = 0; j < i; ++j)
+        stbi_image_free(data.data[j].data);
+      return -1;
+    }
+  }
+  return CreateCubeMapAsset(data);
 }
 void AssetLoader::LoadCubeMapAsync(const std::string& name, const std::array<std::filesystem::path, 6>& paths) {
   std::thread([this, name, paths]() {
@@ -237,7 +261,6 @@ void AssetLoader::LoadCubeMapAsync(const std::string& name, const std::array<std
       if (texture.data)
         data.data[i] = texture;
       else {
-        stbi_image_free(texture.data);
         for (auto j = 0; j < i; ++j)
           stbi_image_free(data.data[j].data);
         return;

@@ -1,12 +1,11 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glad/glad.h>
 #include <application.hpp>
-#include <component/material.hpp>
+#include <component/component.hpp>
 #include <component/shader.hpp>
 #include <spdlog/spdlog.h>
 #include <system/rendering.hpp>
 #include <system/system.hpp>
-#include <variant>
 namespace kuki {
 RenderingSystem::RenderingSystem(Application& app)
   : System(app), texturePool(CreatePooledTexture, DeletePooledTexture, 16) {}
@@ -19,14 +18,15 @@ void RenderingSystem::Start() {
   assetCam.Update();
   auto litShader = new LitShader("Lit", "shader/lit.vert", "shader/lit.frag");
   auto unlitShader = new UnlitShader("Unlit", "shader/unlit.vert", "shader/unlit.frag");
-  auto skyboxShader = new Shader("Skybox", "shader/skybox.vert", "shader/skybox.frag");
-  auto skyboxFlatShader = new Shader("SkyboxFlat", "shader/skybox_flat.vert", "shader/skybox_flat.frag");
-  auto radianceShader = new Shader("Radiance", "shader/radiance.vert", "shader/radiance.frag");
-  shaders.insert({litShader->GetName(), litShader});
-  shaders.insert({unlitShader->GetName(), unlitShader});
-  shaders.insert({skyboxShader->GetName(), skyboxShader});
-  shaders.insert({skyboxFlatShader->GetName(), skyboxFlatShader});
-  shaders.insert({radianceShader->GetName(), radianceShader});
+  auto skyboxShader = new Shader("Skybox", "shader/skybox.vert", "shader/skybox.frag", MaterialType::Skybox);
+  auto cubeMapEquirectShader = new Shader("CubeMapEquirect", "shader/cubemap_equirect.vert", "shader/cubemap_equirect.frag", MaterialType::CubeMapEquirect);
+  auto equirectCubeMapShader = new Shader("EquirectCubeMap", "shader/equirect_cubemap.vert", "shader/equirect_cubemap.frag", MaterialType::EquirectCubeMap);
+  // TODO: prevent overwrites during insertions
+  shaders.insert({litShader->GetType(), litShader});
+  shaders.insert({unlitShader->GetType(), unlitShader});
+  shaders.insert({skyboxShader->GetType(), skyboxShader});
+  shaders.insert({cubeMapEquirectShader->GetType(), cubeMapEquirectShader});
+  shaders.insert({equirectCubeMapShader->GetType(), equirectCubeMapShader});
   glCreateBuffers(1, &transformVBO);
   glCreateBuffers(1, &materialVBO);
   glGenTextures(1, &textureScene);
@@ -86,10 +86,21 @@ void RenderingSystem::ToggleWireframeMode() {
   else
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
-Shader* RenderingSystem::GetMaterialShader(const Material& material) {
-  if (std::holds_alternative<UnlitMaterial>(material.material))
-    return shaders["Unlit"];
-  return shaders["Lit"];
+Shader* RenderingSystem::GetShader(MaterialType type) {
+  switch (type) {
+  case MaterialType::Lit:
+    return shaders[MaterialType::Lit];
+  case MaterialType::Unlit:
+    return shaders[MaterialType::Unlit];
+  case MaterialType::Skybox:
+    return shaders[MaterialType::Skybox];
+  case MaterialType::CubeMapEquirect:
+    return shaders[MaterialType::CubeMapEquirect];
+  case MaterialType::EquirectCubeMap:
+    return shaders[MaterialType::EquirectCubeMap];
+  default:
+    return nullptr;
+  }
 }
 unsigned int RenderingSystem::CreatePooledTexture() {
   unsigned int id;

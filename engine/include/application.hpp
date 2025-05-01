@@ -25,15 +25,14 @@ private:
   void SetWindowIcon(const std::filesystem::path&);
   glm::vec3 GetRandomPosition(float);
   AssetLoader assetLoader;
-  SceneManager sceneManager;
   CommandManager commandManager;
-protected:
-  GLFWwindow* window{};
-  double deltaTime{};
-  unsigned int activeSceneId{};
-  // TODO: create the necessary API functions and make the following private
   EntityManager assetManager;
   InputManager inputManager;
+  SceneManager sceneManager;
+protected:
+  GLFWwindow* window{};
+  float deltaTime{};
+  unsigned int activeSceneId{};
 public:
   Application(const std::string&);
   virtual ~Application() = default;
@@ -101,6 +100,8 @@ public:
   std::vector<std::string> GetMissingEntityComponents(unsigned int);
   template <typename... T, typename F>
   void ForEachEntity(F);
+  template <typename... T, typename F>
+  void ForEachAsset(F);
   template <typename F>
   void ForEachChildEntity(unsigned int, F);
   template <typename F>
@@ -129,6 +130,9 @@ public:
   bool GetButtonDown(int) const;
   bool GetKeyUp(int) const;
   bool GetButtonUp(int) const;
+  glm::vec2 GetMousePos() const;
+  glm::vec2 GetWASDKeys() const;
+  glm::vec2 GetArrowKeys() const;
   template <typename... T>
   void DisableKeys(T...);
   template <typename... T>
@@ -137,10 +141,11 @@ public:
   void DisableAllKeys();
   void RegisterInputCallback(int, int, std::function<void()>, std::string = "");
   void UnregisterInputCallback(int, int);
-  int RenderRadianceToCubeMap(unsigned int);
+  int CreateCubeMapFromEquirect(unsigned int);
   void LoadModelAsync(const std::filesystem::path&);
   void LoadTextureAsync(const std::filesystem::path&, TextureType = TextureType::Albedo);
   int LoadPrimitive(PrimitiveId);
+  int LoadCubeMap(const std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
   void LoadCubeMapAsync(const std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
   template <typename T, typename F>
   int RegisterEventCallback(F&&);
@@ -230,6 +235,10 @@ void Application::ForEachEntity(F func) {
   if (!scene)
     return;
   scene->GetEntityManager().ForEach<T...>(func);
+}
+template <typename... T, typename F>
+void Application::ForEachAsset(F func) {
+  assetManager.ForEach<T...>(func);
 }
 template <typename F>
 void Application::ForEachChildEntity(unsigned int parent, F func) {

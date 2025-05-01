@@ -1,15 +1,17 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glad/glad.h>
 #include <application.hpp>
+#include <component/component.hpp>
+#include <component/material.hpp>
 #include <component/mesh.hpp>
+#include <component/shader.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <system/rendering.hpp>
 #include <utility/octree.hpp>
-#include <component/shader.hpp>
 #include <vector>
-#include <component/material.hpp>
 namespace kuki {
 void RenderingSystem::DrawGizmos() {
   auto manipulatorEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
@@ -21,19 +23,15 @@ void RenderingSystem::DrawGizmos() {
     DrawFrustumCulling();
 }
 void RenderingSystem::DrawFrustumCulling() {
+  auto camera = app.GetActiveCamera();
+  if (!camera)
+    return;
   auto assetId = app.GetAssetId("Cube");
   auto mesh = app.GetAssetComponent<Mesh>(assetId);
   if (!mesh)
     return;
-  auto shader = static_cast<UnlitShader*>(shaders["Unlit"]);
-  shader->Use();
   glm::vec4 color{};
   color.a = .2f;
-  auto camera = app.GetActiveCamera();
-  if (!camera)
-    return;
-  shader->SetUniform("view", targetCamera->view);
-  shader->SetUniform("projection", targetCamera->projection);
   std::vector<glm::mat4> transforms;
   std::vector<UnlitFallbackData> materials;
   app.ForEachOctreeLeafNode([&](Octree<unsigned int>* octree, Octant octant) {
@@ -54,40 +52,33 @@ void RenderingSystem::DrawFrustumCulling() {
     material.base = color;
     materials.push_back(material);
   });
-  shader->SetInstanceData(mesh, transforms, materials, transformVBO, materialVBO);
-  glBindVertexArray(mesh->vertexArray);
-  if (mesh->indexCount > 0)
-    glDrawElementsInstanced(GL_TRIANGLES, mesh->indexCount, GL_UNSIGNED_INT, 0, transforms.size());
-  else
-    glDrawArraysInstanced(GL_TRIANGLES, 0, mesh->vertexCount, transforms.size());
-  glBindVertexArray(0);
+  auto shader = static_cast<UnlitShader*>(GetShader(MaterialType::Unlit));
+  shader->Use();
+  shader->SetCamera(targetCamera);
+  shader->SetMaterialFallback(mesh, materials, materialVBO);
+  shader->SetTransform(mesh, transforms, transformVBO);
+  shader->DrawInstanced(mesh, transforms.size());
 }
 void RenderingSystem::DrawViewFrustum() {
+  static UnlitMaterial material;
+  auto camera = app.GetActiveCamera();
+  if (!camera)
+    return;
   auto assetId = app.GetAssetId("Cube");
   auto mesh = app.GetAssetComponent<Mesh>(assetId);
   if (!mesh)
     return;
-  auto shader = static_cast<UnlitShader*>(shaders["Unlit"]);
-  shader->Use();
-  auto sceneCamera = app.GetActiveCamera();
-  if (!sceneCamera)
-    return;
+  material.fallback.base = glm::vec4(.5f, .5f, .0f, .2f);
   auto model = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)); // scale up local coordinates (-.5f, .5f) to NDC (-1.0f, 1.0f)
-  model = glm::inverse(sceneCamera->projection * sceneCamera->view) * model;
-  shader->SetUniform("view", targetCamera->view);
-  shader->SetUniform("projection", targetCamera->projection);
-  std::vector<glm::mat4> transforms{model};
-  UnlitFallbackData material{};
-  material.base = glm::vec4(.5f, .5f, .0f, .2f);
-  std::vector<UnlitFallbackData> materials{material};
-  shader->SetInstanceData(mesh, transforms, materials, transformVBO, materialVBO);
+  model = glm::inverse(camera->projection * camera->view) * model;
+  auto shader = static_cast<UnlitShader*>(GetShader(MaterialType::Unlit));
+  shader->Use();
+  shader->SetCamera(targetCamera);
+  shader->SetMaterial(&material);
+  shader->SetMaterialFallback(mesh, material.fallback, materialVBO);
+  shader->SetTransform(mesh, model, transformVBO);
   glDisable(GL_CULL_FACE);
-  glBindVertexArray(mesh->vertexArray);
-  if (mesh->indexCount > 0)
-    glDrawElementsInstanced(GL_TRIANGLES, mesh->indexCount, GL_UNSIGNED_INT, 0, transforms.size());
-  else
-    glDrawArraysInstanced(GL_TRIANGLES, 0, mesh->vertexCount, transforms.size());
-  glBindVertexArray(0);
+  shader->DrawInstanced(mesh, 1);
   glEnable(GL_CULL_FACE);
 }
 unsigned int RenderingSystem::GetGizmoMask() const {

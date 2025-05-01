@@ -40,8 +40,10 @@ void Editor::DisplayHierarchy() {
     for (const auto& id : entitiesToDelete)
       DeleteEntity(id);
   }
-  if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered())
+  if (GetButtonDown(GLFW_MOUSE_BUTTON_LEFT) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered()) {
     selection.Clear();
+    assetMask = -1;
+  }
   if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButtonDown(GLFW_MOUSE_BUTTON_RIGHT))
     ImGui::OpenPopup("CreateMenu");
   if (ImGui::BeginPopup("CreateMenu")) {

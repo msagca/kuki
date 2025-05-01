@@ -1,9 +1,13 @@
 #define IMGUI_ENABLE_FREETYPE
 #include <application.hpp>
+#include <camera_controller.hpp>
 #include <command.hpp>
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/light.hpp>
+#include <component/mesh_filter.hpp>
+#include <component/mesh_renderer.hpp>
+#include <component/script.hpp>
 #include <editor.hpp>
 #include <event_dispatcher.hpp>
 #include <GLFW/glfw3.h>
@@ -20,12 +24,18 @@
 #include <spdlog/spdlog.h>
 #include <string>
 #include <system/rendering.hpp>
+#include <system/scripting.hpp>
+#include <type_traits>
 // NOTE: this comment is to prevent the following from being placed before imgui.h during includes sorting
 #include <imfilebrowser.h>
 #include <ImGuizmo.h>
+#include <component/mesh.hpp>
+#include <component/material.hpp>
+#include <variant>
+#include <component/texture.hpp>
 using namespace kuki;
 Editor::Editor()
-  : Application("Editor"), cameraController(inputManager), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
+  : Application("Editor"), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
 void Editor::Start() {
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
@@ -33,16 +43,18 @@ void Editor::Start() {
   RegisterEventCallback<EntityCreatedEvent>([this](const EntityCreatedEvent& event) { EntityCreatedCallback(event); });
   RegisterEventCallback<EntityDeletedEvent>([this](const EntityDeletedEvent& event) { EntityDeletedCallback(event); });
   InitImGui();
+  auto& editorApp = static_cast<Application&>(*this);
+  CreateSystem<RenderingSystem>(editorApp);
+  //CreateSystem<ScriptingSystem>(editorApp);
+  RegisterCommand(new SpawnCommand(editorApp));
+  RegisterCommand(new DeleteCommand(editorApp));
+  spdlog::register_logger(logger);
   LoadDefaultAssets();
   LoadDefaultScene();
-  cameraController.SetCamera(&editorCamera);
-  CreateSystem<RenderingSystem>(static_cast<Application&>(*this));
-  RegisterCommand(new SpawnCommand());
-  RegisterCommand(new DeleteCommand());
-  spdlog::register_logger(logger);
   Application::Start();
 }
 void Editor::Update() {
+  cameraController->Update(deltaTime);
   UpdateView();
   Application::Update();
 }
@@ -91,10 +103,26 @@ void Editor::InitLayout() {
 }
 void Editor::LoadDefaultScene() {
   auto scene = CreateScene("Main");
-  std::string entityName = "MainCamera";
+  std::string entityName = "EditorCamera";
   auto entityId = CreateEntity(entityName);
-  auto camera = AddEntityComponent<Camera>(entityId);
-  camera->Update();
+  AddEntityComponent<Camera>(entityId);
+  cameraController = std::make_unique<CameraController>(*this, entityId);
+  /*auto script = AddEntityComponent<Script>(entityId);
+  script->id = entityId;
+  auto scriptingSystem = GetSystem<ScriptingSystem>();
+  scriptingSystem->Register<CameraController>(entityId);*/
+  entityName = "Skybox";
+  entityId = CreateEntity(entityName);
+  auto filter = AddEntityComponent<MeshFilter>(entityId);
+  filter->mesh = *GetAssetComponent<Mesh>(GetAssetId("CubeInverted"));
+  auto renderer = AddEntityComponent<MeshRenderer>(entityId);
+  renderer->material.material = UnlitMaterial{};
+  auto& unlitMaterial = std::get<UnlitMaterial>(renderer->material.material);
+  unlitMaterial.data.base = GetAssetComponent<Texture>(GetAssetId("Skybox"))->id;
+  unlitMaterial.type = MaterialType::Skybox;
+  entityName = "MainCamera";
+  entityId = CreateEntity(entityName);
+  AddEntityComponent<Camera>(entityId);
   entityName = "MainLight";
   entityId = CreateEntity(entityName);
   AddEntityComponent<Light>(entityId);
@@ -107,8 +135,7 @@ void Editor::LoadDefaultAssets() {
   LoadPrimitive(PrimitiveId::Plane);
   LoadPrimitive(PrimitiveId::Sphere);
   std::string assetName = "Skybox";
-  LoadCubeMapAsync(assetName, "image/skybox/top.jpg", "image/skybox/bottom.jpg", "image/skybox/right.jpg", "image/skybox/left.jpg", "image/skybox/front.jpg", "image/skybox/back.jpg");
-  LoadTextureAsync("image/radiance.hdr", TextureType::RadianceHDR);
+  LoadCubeMap(assetName, "image/skybox/top.jpg", "image/skybox/bottom.jpg", "image/skybox/right.jpg", "image/skybox/left.jpg", "image/skybox/front.jpg", "image/skybox/back.jpg");
 }
 void Editor::InitImGui() {
   IMGUI_CHECKVERSION();
@@ -123,5 +150,4 @@ void Editor::InitImGui() {
   io.Fonts->AddFontDefault();
   builder->FontBuilder_Build(io.Fonts);
   fileBrowser.SetTitle("Browse Files");
-  fileBrowser.SetTypeFilters({".gltf"});
 }

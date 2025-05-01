@@ -1,10 +1,19 @@
 #include <application.hpp>
+#include <component/component.hpp>
+#include <component/texture.hpp>
+#include <cstdint>
 #include <editor.hpp>
 #include <imgui.h>
-#include <spdlog/spdlog.h>
 #include <string>
 #include <system/rendering.hpp>
+#include <utility>
+#include <vector>
 using namespace kuki;
+enum class FileType : uint8_t {
+  None,
+  Model,
+  Image
+};
 void Editor::DisplayAssets() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);
@@ -12,6 +21,7 @@ void Editor::DisplayAssets() {
   static const ImVec2 TILE_SIZE(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
   static const auto TILE_PADDING = 2.0f;
   static const auto TILE_TOTAL_SIZE = THUMBNAIL_SIZE + TILE_PADDING;
+  static auto fileType = FileType::None;
   auto renderSystem = GetSystem<RenderingSystem>();
   if (!renderSystem)
     return;
@@ -23,30 +33,51 @@ void Editor::DisplayAssets() {
   auto cursorStartPos = ImGui::GetCursorPos();
   if (ImGui::BeginPopupContextWindow()) {
     if (ImGui::BeginMenu("Import")) {
-      if (ImGui::Selectable("Model"))
+      if (ImGui::Selectable("Image")) {
+        fileType = FileType::Image;
+        fileBrowser.SetTypeFilters({".exr", ".hdr"});
         fileBrowser.Open();
+      }
+      if (ImGui::Selectable("Model")) {
+        fileType = FileType::Model;
+        fileBrowser.SetTypeFilters({".gltf"});
+        fileBrowser.Open();
+      }
       ImGui::EndMenu();
     }
     ImGui::EndPopup();
   }
   auto tileCount = 0;
-  ForEachRootAsset([&](unsigned int assetId) {
+  std::vector<unsigned int> assetIds;
+  if (assetMask == -1)
+    ForEachRootAsset([&assetIds](unsigned int assetId) { assetIds.push_back(assetId); });
+  else if ((assetMask & static_cast<int>(ComponentMask::Texture)) != 0)
+    ForEachAsset<Texture>([&assetIds](unsigned int assetId, Texture* _) { assetIds.push_back(assetId); });
+  for (const auto id : assetIds) {
     ImVec2 tilePos(cursorStartPos.x + (tileCount % tilesPerRow) * TILE_TOTAL_SIZE, cursorStartPos.y + (tileCount / tilesPerRow) * TILE_TOTAL_SIZE);
     auto tileTop = tilePos.y;
     auto tileBottom = tilePos.y + THUMBNAIL_SIZE;
     if (tileBottom >= scrollY && tileTop <= scrollY + visibleHeight) {
       ImGui::SetCursorPos(tilePos);
-      ImGui::PushID(assetId);
+      ImGui::PushID(id);
       // TODO: no need to render all assets in every frame, call this only if a new asset has been added
-      auto textureId = renderSystem->RenderAssetToTexture(assetId, THUMBNAIL_SIZE);
-      auto assetName = GetAssetName(assetId);
+      auto textureId = renderSystem->RenderAssetToTexture(id, THUMBNAIL_SIZE);
+      auto assetName = GetAssetName(id);
       ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(.0f, .0f));
       if (ImGui::ImageButton(std::to_string(textureId).c_str(), textureId, TILE_SIZE, uv0, uv1)) {
-        // TODO: implement selection logic here
+        auto textureComp = GetAssetComponent<Texture>(id);
+        if (textureComp) {
+          selectedProperty.value = int{textureComp->id};
+          if (selectedEntity >= 0) {
+            auto component = GetEntityComponent(selectedEntity, selectedComponentName);
+            if (component)
+              component->SetProperty(selectedProperty);
+          }
+        }
+        selectedComponentName = "";
       }
       if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
         ImGui::SetDragDropPayload("SPAWN_ASSET", assetName.c_str(), (assetName.size() + 1) * sizeof(char));
-        ImGui::Text("%s", assetName.c_str());
         ImGui::EndDragDropSource();
       }
       ImGui::PopStyleVar();
@@ -57,13 +88,16 @@ void Editor::DisplayAssets() {
       ImGui::PopID();
     }
     tileCount++;
-  });
+  }
   ImGui::End();
   fileBrowser.Display();
   if (fileBrowser.HasSelected()) {
     auto filepath = fileBrowser.GetSelected();
-    LoadModelAsync(filepath);
-    spdlog::info("Loaded model file '{}'.", filepath.string());
+    if (fileType == FileType::Model)
+      LoadModelAsync(filepath);
+    else if (fileType == FileType::Image)
+      LoadTextureAsync(filepath, TextureType::HDR);
     fileBrowser.ClearSelected();
+    fileType = FileType::None;
   }
 }

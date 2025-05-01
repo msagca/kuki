@@ -9,53 +9,58 @@
 #include <variant>
 #include <vector>
 namespace kuki {
-void Material::Apply(Shader& shader) const {
-  std::visit([&shader](const auto& mat) { mat.Apply(shader); }, material);
+void Material::Apply(Shader* shader) const {
+  std::visit([&shader](const auto& material) { material.Apply(shader); }, material);
 }
 std::type_index Material::GetTypeIndex() const {
-  return std::visit([](const auto& mat) -> std::type_index { return typeid(mat); }, material);
+  return std::visit([](const auto& material) -> std::type_index { return typeid(material); }, material);
+}
+MaterialType Material::GetType() const {
+  return std::visit([](const auto& material) -> MaterialType { return material.type; }, material);
 }
 const std::string Material::GetName() const {
   return ComponentTraits<Material>::GetName();
 }
 std::vector<Property> Material::GetProperties() const {
-  return std::visit([](const auto& mat) { return mat.GetProperties(); }, material);
+  return std::visit([](const auto& material) { return material.GetProperties(); }, material);
 }
 void Material::SetProperty(Property property) {
-  std::visit([&property](auto& mat) { mat.SetProperty(property); }, material);
+  std::visit([&property](auto& material) { material.SetProperty(property); }, material);
 }
-void LitMaterial::Apply(Shader& shader) const {
+void LitMaterial::Apply(Shader* shader) const {
+  if (type != shader->GetType())
+    return;
   if (data.albedo > 0) {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, data.albedo);
-    shader.SetUniform("material.albedo", 0);
+    shader->SetUniform("material.albedo", 0);
   }
   if (data.normal > 0) {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, data.normal);
-    shader.SetUniform("material.normal", 1);
+    shader->SetUniform("material.normal", 1);
   }
   if (data.metalness > 0) {
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, data.metalness);
-    shader.SetUniform("material.metalness", 2);
+    shader->SetUniform("material.metalness", 2);
   }
   if (data.occlusion > 0) {
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, data.occlusion);
-    shader.SetUniform("material.occlusion", 3);
+    shader->SetUniform("material.occlusion", 3);
   }
   if (data.roughness > 0) {
     glActiveTexture(GL_TEXTURE4);
     glBindTexture(GL_TEXTURE_2D, data.roughness);
-    shader.SetUniform("material.roughness", 4);
+    shader->SetUniform("material.roughness", 4);
   }
 }
 const std::string LitMaterial::GetName() const {
   return "LitMaterial";
 }
 std::vector<Property> LitMaterial::GetProperties() const {
-  return {{"AlbedoTexture", data.albedo}, {"NormalTexture", data.normal}, {"MetalnessTexture", data.metalness}, {"OcclusionTexture", data.occlusion}, {"RoughnessTexture", data.roughness}, {"AlbedoColor", fallback.albedo, PropertyType::Color}, {"MetalnessFactor", fallback.metalness, PropertyType::NumberRange}, {"OcclusionFactor", fallback.occlusion, PropertyType::NumberRange}, {"RoughnessFactor", fallback.roughness, PropertyType::NumberRange}, {"TextureMask", fallback.textureMask}};
+  return {{"Type", type}, {"AlbedoTexture", data.albedo, PropertyType::Texture}, {"NormalTexture", data.normal, PropertyType::Texture}, {"MetalnessTexture", data.metalness, PropertyType::Texture}, {"OcclusionTexture", data.occlusion, PropertyType::Texture}, {"RoughnessTexture", data.roughness, PropertyType::Texture}, {"AlbedoColor", fallback.albedo, PropertyType::Color}, {"Metalness", fallback.metalness, PropertyType::NumberRange}, {"Occlusion", fallback.occlusion, PropertyType::NumberRange}, {"Roughness", fallback.roughness, PropertyType::NumberRange}, {"TextureMask", fallback.textureMask}};
 }
 void LitMaterial::SetProperty(Property property) {
   if (std::holds_alternative<int>(property.value)) {
@@ -78,37 +83,59 @@ void LitMaterial::SetProperty(Property property) {
       fallback.albedo = value;
   } else if (std::holds_alternative<float>(property.value)) {
     auto& value = std::get<float>(property.value);
-    if (property.name == "MetalnessFactor")
+    if (property.name == "Metalness")
       fallback.metalness = value;
-    else if (property.name == "OcclusionFactor")
+    else if (property.name == "Occlusion")
       fallback.occlusion = value;
-    else if (property.name == "RoughnessFactor")
+    else if (property.name == "Roughness")
       fallback.roughness = value;
+  } else if (std::holds_alternative<MaterialType>(property.value)) {
+    auto& value = std::get<MaterialType>(property.value);
+    if (property.name == "Type")
+      type = value;
   }
 }
-void UnlitMaterial::Apply(Shader& shader) const {
+void UnlitMaterial::Apply(Shader* shader) const {
+  if (type != shader->GetType())
+    return;
   if (data.base > 0) {
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, data.base);
-    shader.SetUniform("material.base", 0);
+    if (type == MaterialType::Skybox) {
+      glBindTexture(GL_TEXTURE_CUBE_MAP, data.base);
+      shader->SetUniform("skybox", 0);
+    } else if (type == MaterialType::CubeMapEquirect) {
+      glBindTexture(GL_TEXTURE_CUBE_MAP, data.base);
+      shader->SetUniform("cubeMap", 0);
+    } else if (type == MaterialType::EquirectCubeMap) {
+      glBindTexture(GL_TEXTURE_2D, data.base);
+      shader->SetUniform("equirect", 0);
+    } else {
+      glBindTexture(GL_TEXTURE_2D, data.base);
+      shader->SetUniform("material.base", 0);
+    }
   }
 }
 const std::string UnlitMaterial::GetName() const {
   return "UnlitMaterial";
 }
 std::vector<Property> UnlitMaterial::GetProperties() const {
-  return {{"BaseTexture", data.base}, {"BaseColor", fallback.base, PropertyType::Color}, {"TextureMask", fallback.textureMask}};
+  return {{"Type", type}, {"BaseTexture", data.base, PropertyType::Texture}, {"BaseColor", fallback.base, PropertyType::Color}, {"TextureMask", fallback.textureMask}};
 }
 void UnlitMaterial::SetProperty(Property property) {
   if (std::holds_alternative<glm::vec4>(property.value)) {
     auto& value = std::get<glm::vec4>(property.value);
-    fallback.base = value;
+    if (property.name == "BaseColor")
+      fallback.base = value;
   } else if (std::holds_alternative<int>(property.value)) {
     auto& value = std::get<int>(property.value);
     if (property.name == "BaseTexture")
       data.base = value;
     else if (property.name == "TextureMask")
       fallback.textureMask = value;
+  } else if (std::holds_alternative<MaterialType>(property.value)) {
+    auto& value = std::get<MaterialType>(property.value);
+    if (property.name == "Type")
+      type = value;
   }
 }
 } // namespace kuki

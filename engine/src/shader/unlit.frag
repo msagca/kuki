@@ -1,8 +1,8 @@
 #version 460 core
 in vec2 texCoord;
 in vec4 baseColor;
-out vec4 color;
 flat in int textureMask;
+out vec4 color;
 struct Material {
     sampler2D base;
 };

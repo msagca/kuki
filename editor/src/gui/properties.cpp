@@ -1,6 +1,7 @@
 #include <application.hpp>
 #include <component/component.hpp>
 #include <editor.hpp>
+#include <GLFW/glfw3.h>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -9,9 +10,12 @@
 #include <variant>
 using namespace kuki;
 void Editor::DisplayProperties() {
+  static const auto TEXTURE_SIZE = ImVec2(64, 64);
   if (selectedEntity < 0)
     return;
   ImGui::Begin("Properties");
+  if (GetButtonDown(GLFW_MOUSE_BUTTON_LEFT) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered())
+    assetMask = -1;
   static IComponent* selectedComponent = nullptr;
   auto components = GetAllEntityComponents(selectedEntity);
   for (auto i = 0; i < components.size(); ++i) {
@@ -33,6 +37,7 @@ void Editor::DisplayProperties() {
       }
       ImGui::EndPopup();
     }
+    PropertyType prevPropType{};
     auto properties = component->GetProperties();
     for (auto j = 0; j < properties.size(); ++j) {
       auto& prop = properties[j];
@@ -54,12 +59,27 @@ void Editor::DisplayProperties() {
           component->SetProperty(Property(prop.name, valueVec4));
       } else if (std::holds_alternative<int>(value)) {
         auto valueInt = std::get<int>(value);
-        if (ImGui::InputInt(prop.name.c_str(), &valueInt))
+        auto nameCStr = prop.name.c_str();
+        if (prop.type == PropertyType::Texture) {
+          if (prevPropType == PropertyType::Texture)
+            ImGui::SameLine();
+          ImGui::BeginGroup();
+          ImGui::Text("%s", nameCStr);
+          if (ImGui::ImageButton(nameCStr, valueInt, TEXTURE_SIZE)) {
+            // TODO: store and retrieve preview image IDs for cubemaps since the cubemap texture cannot be displayed directly
+            // TODO: support filtering by texture type
+            assetMask = 0;
+            assetMask |= static_cast<int>(ComponentMask::Texture);
+            selectedComponentName = name;
+            selectedProperty = prop;
+          }
+          ImGui::EndGroup();
+        } else if (ImGui::InputInt(nameCStr, &valueInt))
           component->SetProperty(Property(prop.name, valueInt));
       } else if (std::holds_alternative<float>(value)) {
         auto valueFloat = std::get<float>(value);
         if (prop.type == PropertyType::NumberRange) {
-          if (ImGui::SliderFloat(prop.name.c_str(), &valueFloat, .0f, 1.0f)) // TODO: add range to Property
+          if (ImGui::SliderFloat(prop.name.c_str(), &valueFloat, .0f, 1.0f)) // TODO: add range to Property, and use those values instead of the hardcoded .0f-1.0f range
             component->SetProperty(Property(prop.name, valueFloat));
         } else if (ImGui::InputFloat(prop.name.c_str(), &valueFloat))
           component->SetProperty(Property(prop.name, valueFloat));
@@ -83,6 +103,14 @@ void Editor::DisplayProperties() {
           valueEnum = static_cast<LightType>(currentItem);
           component->SetProperty(Property(prop.name, valueEnum));
         }
+      } else if (std::holds_alternative<MaterialType>(value)) {
+        static auto& items = EnumTraits<MaterialType>::GetNames();
+        auto valueEnum = std::get<MaterialType>(value);
+        auto currentItem = static_cast<int>(valueEnum);
+        if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
+          valueEnum = static_cast<MaterialType>(currentItem);
+          component->SetProperty(Property(prop.name, valueEnum));
+        }
       } else if (std::holds_alternative<TextureType>(value)) {
         static auto& items = EnumTraits<TextureType>::GetNames();
         auto valueEnum = std::get<TextureType>(value);
@@ -92,6 +120,7 @@ void Editor::DisplayProperties() {
           component->SetProperty(Property(prop.name, valueEnum));
         }
       }
+      prevPropType = prop.type;
       ImGui::PopID();
     }
     ImGui::PopID();

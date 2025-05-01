@@ -8,15 +8,21 @@ const std::string Texture::GetName() const {
   return ComponentTraits<Texture>::GetName();
 }
 std::vector<Property> Texture::GetProperties() const {
-  return {{"Type", type}, {"Id", id}};
+  return {{"Type", type}, {"Width", width}, {"Height", height}, {"Id", id, PropertyType::Texture}};
 }
 void Texture::SetProperty(Property property) {
   if (std::holds_alternative<int>(property.value)) {
     auto& value = std::get<int>(property.value);
-    id = value;
+    if (property.name == "Id")
+      id = value;
+    else if (property.name == "Width")
+      width = value;
+    else if (property.name == "Height")
+      height = value;
   } else if (std::holds_alternative<TextureType>(property.value)) {
     auto& value = std::get<TextureType>(property.value);
-    type = value;
+    if (property.name == "Type")
+      type = value;
   }
 }
 } // namespace kuki

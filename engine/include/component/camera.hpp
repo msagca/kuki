@@ -26,12 +26,12 @@ struct KUKI_API Camera final : IComponent {
   CameraType type{CameraType::Perspective};
   glm::mat4 view{};
   glm::mat4 projection{};
-  glm::vec3 position{-4.0f, 3.0f, 5.0f};
+  glm::vec3 position{-5.0f, 1.0f, 5.0f};
   glm::vec3 front{.0f, .0f, -1.0f};
   glm::vec3 up{.0f, 1.0f, .0f};
   glm::vec3 right{1.0f, .0f, .0f};
   Frustum frustum{};
-  float pitch{glm::radians(-30.0f)};
+  float pitch{glm::radians(-15.0f)};
   float yaw{glm::radians(-45.0f)};
   float fov{45.0f};
   float aspectRatio{1.0f};

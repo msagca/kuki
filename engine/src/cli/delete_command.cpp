@@ -4,8 +4,8 @@
 #include <spdlog/spdlog.h>
 #include <string>
 namespace kuki {
-DeleteCommand::DeleteCommand()
-  : ICommand("delete") {}
+DeleteCommand::DeleteCommand(Application& app)
+  : ICommand("delete", app) {}
 std::string DeleteCommand::GetMessage(int code) {
   switch (code) {
   case 0:
@@ -14,7 +14,7 @@ std::string DeleteCommand::GetMessage(int code) {
     return "Usage: delete <name_pattern>";
   }
 }
-int DeleteCommand::Execute(Application* app, const std::span<std::string> args) {
+int DeleteCommand::Execute(const std::span<std::string> args) {
   if (args.size() != 1)
     return -1;
   auto& pattern = args[0];
@@ -22,9 +22,9 @@ int DeleteCommand::Execute(Application* app, const std::span<std::string> args) 
   auto last = pattern.back();
   if (last == '*') {
     pattern.pop_back();
-    app->DeleteAllEntities(pattern);
+    app.DeleteAllEntities(pattern);
   } else
-    app->DeleteEntity(pattern);
+    app.DeleteEntity(pattern);
   message = "";
   return 0;
 }

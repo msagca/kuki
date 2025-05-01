@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 namespace kuki {
-ICommand::ICommand(const std::string name)
-  : name(name) {}
+ICommand::ICommand(const std::string name, Application& app)
+  : name(name), app(app) {}
 const std::string& ICommand::GetName() const {
   return name;
 }
@@ -56,7 +56,7 @@ int CommandManager::Dispatch(Application* app, const std::string& input, std::st
     return 2;
   }
   std::span<std::string> args(tokens.begin() + 1, tokens.end());
-  auto code = it->second->Execute(app, args);
+  auto code = it->second->Execute(args);
   message = it->second->GetMessage(code);
   return code;
 }

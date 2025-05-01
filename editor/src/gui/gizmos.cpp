@@ -17,9 +17,7 @@ void Editor::DrawGizmos(float width, float height, unsigned int mask) {
   auto manipulatorEnabled = (mask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
   if (!manipulatorEnabled)
     return;
-  auto camera = cameraController.GetCamera();
-  if (!camera)
-    return;
+  auto camera = cameraController->GetCamera();
   Transform transform;
   Transform* transformComp = GetEntityComponent<Transform>(selectedEntity);
   Camera* cameraComp = nullptr;

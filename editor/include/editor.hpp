@@ -1,5 +1,6 @@
 #pragma once
 #include <application.hpp>
+#include <component/component.hpp>
 #include <camera_controller.hpp>
 #include <imgui.h>
 #include <imgui_sink.hpp>
@@ -9,13 +10,15 @@
 #include <imfilebrowser.h>
 class Editor final : public kuki::Application {
 private:
-  CameraController cameraController;
-  kuki::Camera editorCamera;
   ImGui::FileBrowser fileBrowser;
   std::shared_ptr<ImGuiSink<std::mutex>> imguiSink;
   std::shared_ptr<spdlog::logger> logger;
-  ImGuiSelectionBasicStorage selection;
+  ImGuiSelectionBasicStorage selection{};
   int selectedEntity{-1};
+  std::string selectedComponentName{};
+  kuki::Property selectedProperty;
+  int assetMask{-1}; // for filtering assets by type
+  std::unique_ptr<CameraController> cameraController;
   void DisplayAssets();
   void DisplayConsole();
   void DisplayEntity(unsigned int, std::vector<unsigned int>&, const ImGuiSelectionBasicStorage&);

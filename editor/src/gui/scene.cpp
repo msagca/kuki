@@ -3,14 +3,19 @@
 #include <imgui.h>
 #include <string>
 #include <system/rendering.hpp>
+#include <system/scripting.hpp>
+#include <utility>
+#include <camera_controller.hpp>
+#include <component/camera.hpp>
+#include <component/script.hpp>
 using namespace kuki;
 void Editor::DisplayScene() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);
   static auto gizmoMask = static_cast<unsigned int>(GizmoMask::Manipulator);
   static auto flying = false;
-  ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_MenuBar);
-  if (ImGui::BeginMenuBar()) {
+  ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse /*| ImGuiWindowFlags_MenuBar*/);
+  /*if (ImGui::BeginMenuBar()) {
     if (ImGui::BeginMenu("Gizmos")) {
       auto manipulatorEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
       // TODO: manipulator gizmo is currently implemented by the editor, this won't have any impact on the render system
@@ -25,7 +30,7 @@ void Editor::DisplayScene() {
       ImGui::EndMenu();
     }
     ImGui::EndMenuBar();
-  }
+  }*/
   if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !flying) {
     flying = true;
     ImGui::SetWindowFocus();
@@ -35,12 +40,11 @@ void Editor::DisplayScene() {
     flying = false;
     ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
   }
-  cameraController.ToggleRotation(flying);
-  cameraController.Update(deltaTime);
+  cameraController->ToggleRotation(flying);
   auto renderSystem = GetSystem<RenderingSystem>();
   if (renderSystem) {
     renderSystem->SetGizmoMask(gizmoMask); // NOTE: sets the render system specific gizmo flags
-    auto texture = renderSystem->RenderSceneToTexture(&editorCamera);
+    auto texture = renderSystem->RenderSceneToTexture(cameraController->GetCamera());
     if (texture > 0) {
       auto& config = GetConfig();
       auto width = config.screenWidth;

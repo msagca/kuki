@@ -8,16 +8,9 @@ const std::string MeshRenderer::GetName() const {
   return ComponentTraits<MeshRenderer>::GetName();
 }
 std::vector<Property> MeshRenderer::GetProperties() const {
-  std::vector<Property> properties = {{"Shader", shader}};
-  auto matProperties = material.GetProperties();
-  properties.insert(properties.end(), matProperties.begin(), matProperties.end());
-  return properties;
+  return material.GetProperties();
 }
 void MeshRenderer::SetProperty(Property property) {
-  if (std::holds_alternative<int>(property.value)) {
-    auto& value = std::get<int>(property.value);
-    shader = value;
-  }
   material.SetProperty(property);
 }
 } // namespace kuki

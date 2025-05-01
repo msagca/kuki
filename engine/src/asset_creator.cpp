@@ -20,8 +20,6 @@
 #include <variant>
 #include <vector>
 #include <cmath>
-#include <filesystem>
-#include <utility>
 namespace kuki {
 Texture AssetLoader::CreateTexture(const TextureData& data) {
   Texture texture{};
@@ -30,6 +28,7 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
     return texture;
   }
   GLenum internalFormat, format;
+  auto isHDR = data.type == TextureType::HDR || data.type == TextureType::EXR;
   switch (data.channels) {
   case 1:
     internalFormat = GL_R8;
@@ -40,7 +39,7 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
     format = GL_RG;
     break;
   case 3:
-    if (data.type == TextureType::RadianceHDR)
+    if (isHDR)
       internalFormat = GL_RGB16F;
     else if (data.type == TextureType::Albedo)
       internalFormat = GL_SRGB8;
@@ -49,8 +48,8 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
     format = GL_RGB;
     break;
   case 4:
-    if (data.type == TextureType::RadianceHDR)
-      internalFormat = GL_RGB16F;
+    if (isHDR)
+      internalFormat = GL_RGBA16F;
     else if (data.type == TextureType::Albedo)
       internalFormat = GL_SRGB8_ALPHA8;
     else
@@ -68,7 +67,7 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
   if (data.type == TextureType::Albedo)
     levels = std::log2(std::max(data.width, data.height)) + 1;
   glTextureStorage2D(textureId, levels, internalFormat, data.width, data.height);
-  glTextureSubImage2D(textureId, 0, 0, 0, data.width, data.height, format, GL_UNSIGNED_BYTE, data.data);
+  glTextureSubImage2D(textureId, 0, 0, 0, data.width, data.height, format, isHDR ? GL_FLOAT : GL_UNSIGNED_BYTE, data.data);
   stbi_image_free(data.data);
   switch (data.type) {
   case TextureType::Albedo:
@@ -79,7 +78,8 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
     glGenerateTextureMipmap(textureId);
     break;
   case TextureType::Normal:
-  case TextureType::RadianceHDR:
+  case TextureType::HDR:
+  case TextureType::EXR:
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -102,35 +102,42 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
     spdlog::error("Unknown texture type: {}.", static_cast<int>(data.type));
     break;
   }
-  texture.id = textureId;
   texture.type = data.type;
+  texture.width = data.width;
+  texture.height = data.height;
+  texture.id = textureId;
   return texture;
 }
 int AssetLoader::CreateTextureAsset(const TextureData& data) {
+  auto texture = CreateTexture(data);
+  if (texture.id == 0)
+    return -1;
   auto name = data.name;
   auto assetId = assetManager.Create(name);
-  auto texture = assetManager.AddComponent<Texture>(assetId);
-  *texture = CreateTexture(data);
-  if (data.type == TextureType::RadianceHDR)
-    app->RenderRadianceToCubeMap(assetId);
+  auto textureComp = assetManager.AddComponent<Texture>(assetId);
+  *textureComp = texture;
+  auto isHDR = data.type == TextureType::HDR || data.type == TextureType::EXR;
+  if (isHDR)
+    app->CreateCubeMapFromEquirect(assetId);
   spdlog::info("Texture is created: {}.", name);
   return assetId;
 }
-int AssetLoader::CreateCubeMapAsset(const CubeMapData& event) {
+int AssetLoader::CreateCubeMapAsset(const CubeMapData& data) {
   unsigned int textureId;
   glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &textureId);
-  glTextureStorage2D(textureId, 1, GL_RGB8, event.data[0].width, event.data[0].height);
+  auto isHDR = data.data[0].type == TextureType::HDR || data.data[0].type == TextureType::EXR;
+  glTextureStorage2D(textureId, 1, isHDR ? GL_RGB16F : GL_RGB8, data.data[0].width, data.data[0].height);
   for (auto i = 0; i < 6; ++i) {
-    auto& data = event.data[i];
-    glTextureSubImage3D(textureId, 0, 0, 0, i, data.width, data.height, 1, GL_RGB, GL_UNSIGNED_BYTE, data.data);
-    stbi_image_free(data.data);
+    auto& textureData = data.data[i];
+    glTextureSubImage3D(textureId, 0, 0, 0, i, textureData.width, textureData.height, 1, isHDR ? GL_FLOAT : GL_RGB, GL_UNSIGNED_BYTE, textureData.data);
+    stbi_image_free(textureData.data);
   }
   glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glTextureParameteri(textureId, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-  auto name = event.name;
+  auto name = data.name;
   auto assetId = assetManager.Create(name);
   auto texture = assetManager.AddComponent<Texture>(assetId);
   texture->id = textureId;
@@ -143,29 +150,30 @@ Material AssetLoader::CreateMaterial(const MaterialData& data) {
   material.material = LitMaterial{};
   auto litMaterial = std::get_if<LitMaterial>(&material.material);
   for (auto i = 0; i < data.data.size(); ++i) {
-    auto texture = CreateTexture(data.data[i]);
-    if (texture.id == 0)
+    auto assetId = CreateTextureAsset(data.data[i]);
+    auto texture = assetManager.GetComponent<Texture>(assetId);
+    if (!texture || texture->id == 0)
       continue;
     if (litMaterial) {
-      switch (texture.type) {
+      switch (texture->type) {
       case TextureType::Albedo:
-        litMaterial->data.albedo = texture.id;
+        litMaterial->data.albedo = texture->id;
         litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Albedo);
         break;
       case TextureType::Normal:
-        litMaterial->data.normal = texture.id;
+        litMaterial->data.normal = texture->id;
         litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Normal);
         break;
       case TextureType::Metalness:
-        litMaterial->data.metalness = texture.id;
+        litMaterial->data.metalness = texture->id;
         litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Metalness);
         break;
       case TextureType::Occlusion:
-        litMaterial->data.occlusion = texture.id;
+        litMaterial->data.occlusion = texture->id;
         litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Occlusion);
         break;
       case TextureType::Roughness:
-        litMaterial->data.roughness = texture.id;
+        litMaterial->data.roughness = texture->id;
         litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Roughness);
         break;
       default:

@@ -32,8 +32,10 @@ void Light::SetProperty(Property property) {
       linear = value;
     else if (property.name == "Quadratic")
       quadratic = value;
-  } else if (std::holds_alternative<LightType>(property.value))
-    type = std::get<LightType>(property.value);
+  } else if (std::holds_alternative<LightType>(property.value)) {
+    if (property.name == "Type")
+      type = std::get<LightType>(property.value);
+  }
 }
 Transform Light::GetTransform() const {
   static const auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);

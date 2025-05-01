@@ -26,7 +26,7 @@ IComponentManager* EntityManager::GetManager(const std::string& name) {
     return nullptr;
   return GetManager(it->second);
 }
-IComponentManager* EntityManager::GetManager(ComponentId id) {
+IComponentManager* EntityManager::GetManager(ComponentType id) {
   auto it = idToType.find(id);
   if (it == idToType.end())
     return nullptr;
@@ -148,7 +148,7 @@ int EntityManager::GetParent(unsigned int id) const {
 size_t EntityManager::GetCount() const {
   return ids.size();
 }
-IComponent* EntityManager::AddComponent(unsigned int id, ComponentId componentId) {
+IComponent* EntityManager::AddComponent(unsigned int id, ComponentType componentId) {
   if (ids.find(id) == ids.end())
     return nullptr;
   auto manager = GetManager(componentId);
@@ -164,7 +164,7 @@ IComponent* EntityManager::AddComponent(unsigned int id, const std::string& name
     return nullptr;
   return &manager->AddBase(id);
 }
-void EntityManager::RemoveComponent(unsigned int id, ComponentId componentId) {
+void EntityManager::RemoveComponent(unsigned int id, ComponentType componentId) {
   auto manager = GetManager(componentId);
   if (!manager)
     return;

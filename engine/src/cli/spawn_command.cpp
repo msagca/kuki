@@ -5,8 +5,8 @@
 #include <spdlog/spdlog.h>
 #include <string>
 namespace kuki {
-SpawnCommand::SpawnCommand()
-  : ICommand("spawn") {}
+SpawnCommand::SpawnCommand(Application& app)
+  : ICommand("spawn", app) {}
 std::string SpawnCommand::GetMessage(int code) {
   switch (code) {
   case 0:
@@ -21,11 +21,11 @@ std::string SpawnCommand::GetMessage(int code) {
     return "Usage: spawn <item_name> [ <item_count> [spawn_radius] ]";
   }
 }
-int SpawnCommand::Execute(Application* app, const std::span<std::string> args) {
+int SpawnCommand::Execute(const std::span<std::string> args) {
   if (args.size() < 1 || args.size() > 3)
     return -1;
   auto& assetName = args[0];
-  auto assetId = app->GetAssetId(assetName);
+  auto assetId = app.GetAssetId(assetName);
   if (assetId < 0) {
     message = assetName;
     return -2;
@@ -50,7 +50,7 @@ int SpawnCommand::Execute(Application* app, const std::span<std::string> args) {
       return -4;
     }
   }
-  app->SpawnMulti(assetName, count, radius);
+  app.SpawnMulti(assetName, count, radius);
   spdlog::info("Created {} copies of the asset '{}' within a radius of {} units.", count, assetName, radius);
   message = "";
   return 0;

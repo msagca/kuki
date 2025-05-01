@@ -10,7 +10,7 @@ public:
   System(Application&);
   virtual ~System() = default;
   virtual void Start() {};
-  virtual void Update(double, Scene*) {};
+  virtual void Update(float) {};
   virtual void Shutdown() {};
 };
 } // namespace kuki

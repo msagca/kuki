@@ -8,20 +8,20 @@
 #include <utility/octree.hpp>
 #include <utility/pool.hpp>
 namespace kuki {
-enum class GizmoID : uint8_t {
+enum class GizmoType : uint8_t {
   Manipulator,
   ViewFrustum,
   FrustumCulling
 };
 enum class GizmoMask : size_t {
-  Manipulator = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoID::Manipulator),
-  ViewFrustum = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoID::ViewFrustum),
-  FrustumCulling = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoID::FrustumCulling),
+  Manipulator = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoType::Manipulator),
+  ViewFrustum = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoType::ViewFrustum),
+  FrustumCulling = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoType::FrustumCulling),
 };
 class Application;
 class KUKI_API RenderingSystem final : public System {
 private:
-  std::unordered_map<std::string, Shader*> shaders;
+  std::unordered_map<MaterialType, Shader*> shaders;
   Camera assetCam{};
   Camera* targetCamera{};
   Pool<unsigned int> texturePool;
@@ -45,15 +45,14 @@ private:
   /// @param samples Number of samples for multisampling, default: 1 (no multisampling)
   /// @return true if the framebuffer is complete, false otherwise
   bool UpdateAttachments(unsigned int&, unsigned int&, unsigned int&, int, int, int = 1);
-  void DrawAsset(const Transform*, const Mesh&, const Material&);
-  void DrawEntitiesInstanced(const Mesh&, const std::vector<unsigned int>&);
-  void DrawSkybox(unsigned int);
-  void DrawScene();
+  void DrawAsset(const Transform*, const Mesh*, const Material*);
   void DrawAsset(unsigned int);
+  void DrawEntitiesInstanced(const Mesh*, const std::vector<unsigned int>&);
+  void DrawFrustumCulling();
+  void DrawGizmos();
+  void DrawScene();
   /// @brief Draws a skybox asset by applying equirectangular projection to it
   void DrawSkyboxFlat(unsigned int);
-  void DrawGizmos();
-  void DrawFrustumCulling();
   void DrawViewFrustum();
   static unsigned int CreatePooledTexture();
   static void DeletePooledTexture(unsigned int);
@@ -61,16 +60,15 @@ private:
   glm::mat4 GetAssetWorldTransform(const Transform*);
   glm::vec3 GetAssetWorldPosition(const Transform*);
   BoundingBox GetAssetBounds(unsigned int);
-  Shader* GetMaterialShader(const Material&);
+  Shader* GetShader(MaterialType);
 public:
   RenderingSystem(Application&);
   ~RenderingSystem();
   void Start() override;
-  // void Update(double, Scene*) override;
   void Shutdown() override;
   int RenderSceneToTexture(Camera* = nullptr);
   int RenderAssetToTexture(unsigned int, int);
-  int RenderRadianceToCubeMap(unsigned int);
+  int CreateCubeMapFromEquirect(unsigned int);
   unsigned int GetGizmoMask() const;
   void SetGizmoMask(unsigned int);
   static void ToggleWireframeMode();

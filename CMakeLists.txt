@@ -71,11 +71,11 @@ set_target_properties(
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/imgui
 )
 # ImGuizmo
-set(
-  IMGUIZMO_CPP_SOURCES
+add_library(
+  imguizmo
+  STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/ImGuizmo.cpp
 )
-add_library(imguizmo STATIC ${IMGUIZMO_CPP_SOURCES})
 target_include_directories(
   imguizmo
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo
@@ -112,6 +112,25 @@ add_library(stb INTERFACE)
 target_include_directories(
   stb
   INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
+)
+# tinyexr
+add_library(
+  tinyexr
+  STATIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr/deps/miniz/miniz.c
+)
+target_include_directories(
+  tinyexr
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr/deps/miniz
+)
+set_target_properties(
+  tinyexr
+  PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/tinyexr
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/tinyexr
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/external/tinyexr
 )
 # ImGui file browser
 add_library(imgui_filebrowser INTERFACE)

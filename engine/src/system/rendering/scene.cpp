@@ -2,22 +2,21 @@
 #include <glad/glad.h>
 #include <application.hpp>
 #include <component/camera.hpp>
+#include <component/component.hpp>
 #include <component/light.hpp>
 #include <component/material.hpp>
 #include <component/mesh.hpp>
 #include <component/mesh_filter.hpp>
 #include <component/mesh_renderer.hpp>
-#include <component/texture.hpp>
+#include <component/shader.hpp>
 #include <component/transform.hpp>
 #include <glm/detail/qualifier.hpp>
-#include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <system/rendering.hpp>
-#include <typeindex>
 #include <unordered_map>
 #include <vector>
-#include <variant>
+#include <glm/ext/matrix_float3x3.hpp>
 namespace kuki {
 int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   auto sceneCamera = app.GetActiveCamera();
@@ -43,88 +42,85 @@ int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   return textureScene;
 }
 void RenderingSystem::DrawScene() {
-  std::unordered_map<unsigned int, std::unordered_map<std::type_index, std::vector<unsigned int>>> vaoToMatToEntities;
+  std::unordered_map<unsigned int, std::vector<unsigned int>> vaoToEntities;
   std::unordered_map<unsigned int, Mesh> vaoToMesh;
-  auto camera = app.GetActiveCamera();
-  if (!camera)
-    return;
-  app.ForEachVisibleEntity(*camera, [&](unsigned int id) {
-    auto [transform, filter, renderer] = app.GetEntityComponents<Transform, MeshFilter, MeshRenderer>(id);
-    if (!transform || !filter || !renderer)
+  // FIXME: app.ForEachVisibleEntity does not work as expected, and it may skip things like a skybox
+  // TODO: repeat this query only after entity addition/deletion or component updates (set flags in entity manager and check them each frame)
+  app.ForEachEntity<MeshFilter, MeshRenderer>([this, &vaoToMesh, &vaoToEntities](unsigned int id, MeshFilter* filter, MeshRenderer* renderer) {
+    if (!filter || !renderer)
       return;
+    auto materialType = renderer->material.GetType();
+    if (materialType == MaterialType::Skybox) {
+      auto shader = GetShader(materialType);
+      shader->Use();
+      auto model = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f));
+      shader->SetUniform("model", model);
+      auto view = glm::mat4(glm::mat3(targetCamera->view));
+      shader->SetUniform("view", view);
+      shader->SetUniform("projection", targetCamera->projection);
+      shader->SetMaterial(&renderer->material);
+      glDepthFunc(GL_LEQUAL);
+      shader->Draw(&filter->mesh);
+      glDepthFunc(GL_LESS);
+      return;
+    }
     auto vao = filter->mesh.vertexArray;
     vaoToMesh[vao] = filter->mesh;
-    if (vaoToMatToEntities.find(vao) == vaoToMatToEntities.end())
-      vaoToMatToEntities[vao] = {};
-    auto mat = renderer->material.GetTypeIndex();
-    if (vaoToMatToEntities[vao].find(mat) == vaoToMatToEntities[vao].end())
-      vaoToMatToEntities[vao][mat] = {};
-    vaoToMatToEntities[vao][mat].push_back(id);
+    if (vaoToEntities.find(vao) == vaoToEntities.end())
+      vaoToEntities[vao] = {};
+    vaoToEntities[vao].push_back(id);
   });
-  for (const auto& [vao, matToEntities] : vaoToMatToEntities)
-    for (const auto& [mat, entities] : matToEntities)
-      DrawEntitiesInstanced(vaoToMesh[vao], entities);
-  DrawSkybox(app.GetAssetId("Skybox"));
+  for (const auto& [vao, entities] : vaoToEntities)
+    DrawEntitiesInstanced(&vaoToMesh[vao], entities);
 }
-void RenderingSystem::DrawEntitiesInstanced(const Mesh& mesh, const std::vector<unsigned int>& entities) {
-  std::vector<LitFallbackData> materials;
-  std::vector<glm::mat4> transforms;
-  LitMaterial material{};
+void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<unsigned int>& entities) {
+  std::vector<LitFallbackData> litMaterials;
+  std::vector<UnlitFallbackData> unlitMaterials;
+  std::vector<glm::mat4> litTransforms;
+  std::vector<glm::mat4> unlitTransforms;
+  // NOTE: the following variables will store the last instance of that material type
+  Material materialLit;
+  Material materialUnlit;
+  // TODO: a separate draw call shall be invoked per unique material configuration (e.g. different albedo textures)
   for (const auto id : entities) {
     auto [renderer, transform] = app.GetEntityComponents<MeshRenderer, Transform>(id);
-    // TODO: to avoid repeated get component calls, construct materials and transforms arrays inside the ForEachVisibleEntity lambda in the caller
     if (!renderer || !transform)
       continue;
-    // FIXME: do not assume a lit material
-    auto& litMaterial = std::get<LitMaterial>(renderer->material.material);
-    material = litMaterial;
-    materials.push_back(litMaterial.fallback);
-    transforms.push_back(GetEntityWorldTransform(transform));
+    if (renderer->material.GetType() == MaterialType::Lit) {
+      materialLit = renderer->material;
+      auto& litMaterial = std::get<LitMaterial>(materialLit.material);
+      litMaterials.push_back(litMaterial.fallback);
+      litTransforms.push_back(GetEntityWorldTransform(transform));
+    } else if (renderer->material.GetType() == MaterialType::Unlit) {
+      materialUnlit = renderer->material;
+      auto& unlitMaterial = std::get<UnlitMaterial>(materialUnlit.material);
+      unlitMaterials.push_back(unlitMaterial.fallback);
+      unlitTransforms.push_back(GetEntityWorldTransform(transform));
+    } // else ...
   }
-  if (materials.empty())
-    return;
-  auto shader = static_cast<LitShader*>(shaders["Lit"]);
-  shader->Use();
-  material.Apply(*shader);
-  shader->SetUniform("view", targetCamera->view);
-  shader->SetUniform("projection", targetCamera->projection);
-  shader->SetUniform("viewPos", targetCamera->position);
-  std::vector<const Light*> lights;
-  app.ForEachEntity<Light>([&](unsigned int id, Light* light) {
-    lights.push_back(light);
-  });
-  shader->SetLighting(lights);
-  shader->SetInstanceData(&mesh, transforms, materials, transformVBO, materialVBO);
-  glBindVertexArray(mesh.vertexArray);
-  if (mesh.indexCount > 0)
-    glDrawElementsInstanced(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0, transforms.size());
-  else
-    glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, transforms.size());
-  glBindVertexArray(0);
-}
-void RenderingSystem::DrawSkybox(unsigned int skyboxAssetId) {
-  auto cubeAssetId = app.GetAssetId("CubeInverted");
-  auto cubeMesh = app.GetAssetComponent<Mesh>(cubeAssetId);
-  if (!cubeMesh)
-    return;
-  auto shader = shaders["Skybox"];
-  shader->Use();
-  auto view = glm::mat4(glm::mat3(targetCamera->view));
-  shader->SetUniform("view", view);
-  shader->SetUniform("projection", targetCamera->projection);
-  auto texture = app.GetAssetComponent<Texture>(skyboxAssetId);
-  if (!texture)
-    return;
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_CUBE_MAP, texture->id);
-  shader->SetUniform("skybox", 0);
-  glDepthFunc(GL_LEQUAL);
-  glBindVertexArray(cubeMesh->vertexArray);
-  if (cubeMesh->indexCount > 0)
-    glDrawElements(GL_TRIANGLES, cubeMesh->indexCount, GL_UNSIGNED_INT, 0);
-  else
-    glDrawArrays(GL_TRIANGLES, 0, cubeMesh->vertexCount);
-  glDepthFunc(GL_LESS);
+  if (litMaterials.size() > 0) {
+    auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
+    std::vector<const Light*> lights;
+    app.ForEachEntity<Light>([&](unsigned int id, Light* light) {
+      lights.push_back(light);
+    });
+    shader->Use();
+    shader->SetCamera(targetCamera);
+    shader->SetLighting(lights);
+    shader->SetMaterial(&materialLit);
+    shader->SetMaterialFallback(mesh, litMaterials, materialVBO);
+    shader->SetTransform(mesh, litTransforms, transformVBO);
+    shader->DrawInstanced(mesh, litTransforms.size());
+  }
+  if (unlitMaterials.size() > 0) {
+    auto shader = static_cast<UnlitShader*>(GetShader(MaterialType::Unlit));
+    shader->Use();
+    shader->SetCamera(targetCamera);
+    shader->SetMaterial(&materialUnlit);
+    shader->SetMaterialFallback(mesh, unlitMaterials, materialVBO);
+    shader->SetTransform(mesh, unlitTransforms, transformVBO);
+    shader->DrawInstanced(mesh, unlitTransforms.size());
+  }
 }
 glm::mat4 RenderingSystem::GetEntityWorldTransform(const Transform* transform) {
   //if (transform->dirty) {

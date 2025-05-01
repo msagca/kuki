@@ -49,6 +49,7 @@ private:
   EventQueue<PendingMesh*> meshCreateQueue;
   EventQueue<TextureData> textureLoadQueue;
   glm::mat4 AssimpMatrix4x4ToGlmMat4(const aiMatrix4x4&);
+  // NOTE: functions that start with Create* shall be called from the main thread sice OpenGL context is only available on the main thread
   int CreateCubeMapAsset(const CubeMapData&);
   int CreateMaterialAsset(const MaterialData&);
   int CreateTextureAsset(const TextureData&);
@@ -73,6 +74,7 @@ public:
   int LoadMesh(std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
   int LoadMesh(std::string&, const std::vector<Vertex>&);
   int LoadPrimitive(PrimitiveId);
+  int LoadCubeMap(const std::string&, const std::array<std::filesystem::path, 6>&);
   void LoadCubeMapAsync(const std::string&, const std::array<std::filesystem::path, 6>&);
   void LoadModelAsync(const std::filesystem::path&);
   void LoadTextureAsync(const std::filesystem::path&, TextureType = TextureType::Albedo);

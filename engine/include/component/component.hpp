@@ -6,25 +6,27 @@
 #include <variant>
 #include <vector>
 namespace kuki {
-enum class ComponentId : uint8_t {
+enum class ComponentType : uint8_t {
   Camera,
   Light,
   Material,
   MeshFilter,
   Mesh,
   MeshRenderer,
+  Script,
   Texture,
   Transform
 };
 enum class ComponentMask : size_t {
-  Camera = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Camera),
-  Light = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Light),
-  Material = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Material),
-  MeshFilter = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::MeshFilter),
-  Mesh = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Mesh),
-  MeshRenderer = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::MeshRenderer),
-  Texture = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Texture),
-  Transform = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentId::Transform)
+  Camera = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Camera),
+  Light = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Light),
+  Material = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Material),
+  MeshFilter = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::MeshFilter),
+  Mesh = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Mesh),
+  MeshRenderer = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::MeshRenderer),
+  Script = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Script),
+  Texture = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Texture),
+  Transform = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Transform)
 };
 enum class CameraType : uint8_t {
   Perspective,
@@ -34,6 +36,14 @@ enum class LightType : uint8_t {
   Directional,
   Point
 };
+/// @brief Each material type shall correspond to a shader
+enum class MaterialType : uint8_t {
+  Lit,
+  Unlit,
+  Skybox,
+  CubeMapEquirect,
+  EquirectCubeMap
+};
 enum class TextureType : uint8_t {
   Albedo,
   Normal,
@@ -41,7 +51,8 @@ enum class TextureType : uint8_t {
   Occlusion,
   Roughness,
   CubeMap,
-  RadianceHDR
+  HDR,
+  EXR // same as HDR, but this requires flipping as TinyEXR uses a different coordinate system for textures
 };
 enum class TextureMask : size_t {
   Albedo = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Albedo),
@@ -50,19 +61,22 @@ enum class TextureMask : size_t {
   Occlusion = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Occlusion),
   Roughness = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Roughness),
   CubeMap = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::CubeMap),
-  RadianceHDR = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::RadianceHDR)
+  HDR = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::HDR),
+  EXR = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::EXR)
 };
 enum class PropertyType : uint8_t {
+  Color, // color wheel
   Number,
-  NumberRange, // this will be a slider when displayed in the editor
-  Color
+  NumberRange, // slider
+  Script, // dropdown
+  Texture // image
 };
 struct KUKI_API Property {
-  using PropertyValue = std::variant<int, float, bool, glm::vec3, glm::vec4, CameraType, LightType, TextureType>;
-  std::string name;
-  PropertyType type{};
+  using PropertyValue = std::variant<int, float, bool, glm::vec3, glm::vec4, CameraType, LightType, MaterialType, TextureType>;
+  std::string name{};
   PropertyValue value{};
-  Property(const std::string&, PropertyValue, PropertyType = PropertyType::Number);
+  PropertyType type{PropertyType::Number};
+  Property(const std::string& = "", const PropertyValue& = 0, PropertyType = PropertyType::Number);
 };
 struct IComponent {
   virtual ~IComponent() = default;
@@ -90,16 +104,23 @@ struct EnumTraits<LightType> {
   }
 };
 template <>
+struct EnumTraits<MaterialType> {
+  static const std::vector<const char*>& GetNames() {
+    static const std::vector<const char*> names = {"Lit", "Unlit", "Skybox", "CubeMapEquirect", "EquirectCubeMap"};
+    return names;
+  }
+};
+template <>
 struct EnumTraits<TextureType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "CubeMap", "RadianceHDR"};
+    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "CubeMap", "HDR", "EXR"};
     return names;
   }
 };
 template <>
 struct EnumTraits<PropertyType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Number", "Color"};
+    static const std::vector<const char*> names = {"Color", "Number", "NumberRange", "Script", "Texture "};
     return names;
   }
 };
@@ -107,7 +128,7 @@ template <typename T>
 struct ComponentTraits {
   static_assert(sizeof(T) == 0, "ComponentTraits must be specialized for this type.");
   static const std::string GetName();
-  static ComponentId GetId();
+  static ComponentType GetId();
   static ComponentMask GetMask();
 };
 struct Camera;
@@ -116,6 +137,7 @@ struct Material;
 struct MeshFilter;
 struct Mesh;
 struct MeshRenderer;
+struct Script;
 struct Texture;
 struct Transform;
 template <>
@@ -123,8 +145,8 @@ struct ComponentTraits<Camera> {
   static const std::string GetName() {
     return "Camera";
   }
-  static ComponentId GetId() {
-    return ComponentId::Camera;
+  static ComponentType GetId() {
+    return ComponentType::Camera;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Camera;
@@ -135,8 +157,8 @@ struct ComponentTraits<Light> {
   static const std::string GetName() {
     return "Light";
   }
-  static ComponentId GetId() {
-    return ComponentId::Light;
+  static ComponentType GetId() {
+    return ComponentType::Light;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Light;
@@ -147,8 +169,8 @@ struct ComponentTraits<Material> {
   static const std::string GetName() {
     return "Material";
   }
-  static ComponentId GetId() {
-    return ComponentId::Material;
+  static ComponentType GetId() {
+    return ComponentType::Material;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Material;
@@ -159,8 +181,8 @@ struct ComponentTraits<MeshFilter> {
   static const std::string GetName() {
     return "MeshFilter";
   }
-  static ComponentId GetId() {
-    return ComponentId::MeshFilter;
+  static ComponentType GetId() {
+    return ComponentType::MeshFilter;
   }
   static ComponentMask GetMask() {
     return ComponentMask::MeshFilter;
@@ -171,8 +193,8 @@ struct ComponentTraits<Mesh> {
   static const std::string GetName() {
     return "Mesh";
   }
-  static ComponentId GetId() {
-    return ComponentId::Mesh;
+  static ComponentType GetId() {
+    return ComponentType::Mesh;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Mesh;
@@ -183,11 +205,23 @@ struct ComponentTraits<MeshRenderer> {
   static const std::string GetName() {
     return "MeshRenderer";
   }
-  static ComponentId GetId() {
-    return ComponentId::MeshRenderer;
+  static ComponentType GetId() {
+    return ComponentType::MeshRenderer;
   }
   static ComponentMask GetMask() {
     return ComponentMask::MeshRenderer;
+  }
+};
+template <>
+struct ComponentTraits<Script> {
+  static const std::string GetName() {
+    return "Script";
+  }
+  static ComponentType GetId() {
+    return ComponentType::Script;
+  }
+  static ComponentMask GetMask() {
+    return ComponentMask::Script;
   }
 };
 template <>
@@ -195,8 +229,8 @@ struct ComponentTraits<Texture> {
   static const std::string GetName() {
     return "Texture";
   }
-  static ComponentId GetId() {
-    return ComponentId::Texture;
+  static ComponentType GetId() {
+    return ComponentType::Texture;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Texture;
@@ -207,8 +241,8 @@ struct ComponentTraits<Transform> {
   static const std::string GetName() {
     return "Transform";
   }
-  static ComponentId GetId() {
-    return ComponentId::Transform;
+  static ComponentType GetId() {
+    return ComponentType::Transform;
   }
   static ComponentMask GetMask() {
     return ComponentMask::Transform;

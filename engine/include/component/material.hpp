@@ -1,6 +1,5 @@
 #pragma once
 #include "component.hpp"
-#include "texture.hpp"
 #include <kuki_export.h>
 #include <typeindex>
 namespace kuki {
@@ -29,28 +28,31 @@ struct UnlitFallbackData {
 struct IMaterial : IComponent {
   virtual ~IMaterial() = default;
   /// @brief Apply this material to the given shader (set shader properties)
-  virtual void Apply(Shader& shader) const = 0;
+  virtual void Apply(Shader*) const = 0;
 };
 struct KUKI_API LitMaterial final : IMaterial {
+  MaterialType type{MaterialType::Lit};
   LitData data{};
   LitFallbackData fallback{};
-  void Apply(Shader&) const override;
+  void Apply(Shader*) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
 struct KUKI_API UnlitMaterial final : IMaterial {
+  MaterialType type{MaterialType::Unlit};
   UnlitData data{};
   UnlitFallbackData fallback{};
-  void Apply(Shader&) const override;
+  void Apply(Shader*) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
 struct KUKI_API Material : IMaterial {
   std::variant<LitMaterial, UnlitMaterial> material;
-  void Apply(Shader& shader) const override;
   std::type_index GetTypeIndex() const;
+  MaterialType GetType() const;
+  void Apply(Shader*) const override;
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;

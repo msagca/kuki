@@ -1,10 +1,6 @@
 #pragma once
 #include <component/camera.hpp>
 #include <component/component.hpp>
-#include <component/light.hpp>
-#include <component/mesh_filter.hpp>
-#include <component/mesh_renderer.hpp>
-#include <component/transform.hpp>
 #include <component_manager.hpp>
 #include <event_dispatcher.hpp>
 #include <kuki_export.h>
@@ -24,7 +20,7 @@ private:
   std::set<unsigned int> ids;
   Trie names;
   Octree<unsigned int> octree;
-  std::unordered_map<ComponentId, std::type_index> idToType; // NOTE: this is component type Id, not entity Id
+  std::unordered_map<ComponentType, std::type_index> idToType; // NOTE: this is component type Id, not entity Id
   std::unordered_map<std::string, std::type_index> nameToType;
   std::unordered_map<std::string, unsigned int> nameToId;
   std::unordered_map<std::type_index, ComponentMask> typeToMask;
@@ -37,7 +33,7 @@ private:
   ComponentManager<T>* GetManager();
   IComponentManager* GetManager(std::type_index);
   IComponentManager* GetManager(const std::string&);
-  IComponentManager* GetManager(ComponentId);
+  IComponentManager* GetManager(ComponentType);
   template <typename T>
   EventDispatcher<T>* GetEventDispatcher();
   template <typename T>
@@ -65,13 +61,13 @@ public:
   size_t GetCount() const;
   template <typename T>
   T* AddComponent(unsigned int);
-  IComponent* AddComponent(unsigned int, ComponentId);
+  IComponent* AddComponent(unsigned int, ComponentType);
   IComponent* AddComponent(unsigned int, const std::string&);
   template <typename... T>
   std::tuple<T*...> AddComponents(unsigned int);
   template <typename T>
   void RemoveComponent(unsigned int);
-  void RemoveComponent(unsigned int, ComponentId);
+  void RemoveComponent(unsigned int, ComponentType);
   void RemoveComponent(unsigned int, const std::string&);
   template <typename... T>
   void RemoveComponents(unsigned int);

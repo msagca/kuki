@@ -120,14 +120,11 @@ bool Application::Status() {
 void Application::Update() {
   const auto timeNow = std::chrono::high_resolution_clock::now();
   static auto timeLast = timeNow;
-  deltaTime = std::chrono::duration<double>(timeNow - timeLast).count();
+  deltaTime = std::chrono::duration<float>(timeNow - timeLast).count();
   timeLast = timeNow;
   assetLoader.Update();
-  auto activeScene = GetActiveScene();
-  if (!activeScene)
-    return;
   for (auto system : systems)
-    system->Update(deltaTime, activeScene);
+    system->Update(deltaTime);
   glfwSwapBuffers(window);
   glfwPollEvents();
 };
@@ -251,7 +248,7 @@ void Application::SetWindowIcon(const std::filesystem::path& path) {
     glfwSetWindowIcon(window, 1, images);
     stbi_image_free(data);
   } else
-    spdlog::error("Failed to load the icon: '{}'.", path.string());
+    spdlog::error("Failed to load app icon: '{}'.", path.string());
 }
 int Application::CreateEntity(std::string& name) {
   auto scene = GetActiveScene();
@@ -421,6 +418,15 @@ bool Application::GetKeyUp(int key) const {
 bool Application::GetButtonUp(int button) const {
   return inputManager.GetButtonUp(button);
 }
+glm::vec2 Application::GetMousePos() const {
+  return inputManager.GetMousePos();
+};
+glm::vec2 Application::GetWASDKeys() const {
+  return inputManager.GetWASD();
+};
+glm::vec2 Application::GetArrowKeys() const {
+  return inputManager.GetArrow();
+};
 void Application::EnableAllKeys() {
   inputManager.EnableAllKeys();
 }
@@ -433,11 +439,11 @@ void Application::RegisterInputCallback(int key, int action, std::function<void(
 void Application::UnregisterInputCallback(int key, int action) {
   inputManager.UnregisterCallback(key, action);
 }
-int Application::RenderRadianceToCubeMap(unsigned int assetId) {
+int Application::CreateCubeMapFromEquirect(unsigned int assetId) {
   auto renderingSystem = GetSystem<RenderingSystem>();
   if (!renderingSystem)
     return -1;
-  return renderingSystem->RenderRadianceToCubeMap(assetId);
+  return renderingSystem->CreateCubeMapFromEquirect(assetId);
 }
 void Application::LoadModelAsync(const std::filesystem::path& path) {
   assetLoader.LoadModelAsync(path);
@@ -447,6 +453,10 @@ void Application::LoadTextureAsync(const std::filesystem::path& path, TextureTyp
 }
 int Application::LoadPrimitive(PrimitiveId id) {
   return assetLoader.LoadPrimitive(id);
+}
+int Application::LoadCubeMap(const std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {
+  std::array<std::filesystem::path, 6> paths{right, left, top, bottom, front, back};
+  return assetLoader.LoadCubeMap(name, paths);
 }
 void Application::LoadCubeMapAsync(const std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {
   std::array<std::filesystem::path, 6> paths{right, left, top, bottom, front, back};
