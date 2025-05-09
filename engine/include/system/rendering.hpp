@@ -3,7 +3,7 @@
 #include <component/texture.hpp>
 #include <entity_manager.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <unordered_map>
 #include <utility/octree.hpp>
 #include <utility/pool.hpp>
@@ -19,7 +19,7 @@ enum class GizmoMask : size_t {
   FrustumCulling = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoType::FrustumCulling),
 };
 class Application;
-class KUKI_API RenderingSystem final : public System {
+class KUKI_ENGINE_API RenderingSystem final : public System {
 private:
   std::unordered_map<MaterialType, Shader*> shaders;
   Camera assetCam{};
@@ -43,16 +43,18 @@ private:
   /// @param width Width of the attachments
   /// @param height Height of the attachments
   /// @param samples Number of samples for multisampling, default: 1 (no multisampling)
+  /// @param cubeMap Whether the texture is a cubemap or not, default: false
   /// @return true if the framebuffer is complete, false otherwise
-  bool UpdateAttachments(unsigned int&, unsigned int&, unsigned int&, int, int, int = 1);
+  bool UpdateAttachments(unsigned int&, unsigned int&, unsigned int&, int, int, int = 1, bool = false);
   void DrawAsset(const Transform*, const Mesh*, const Material*);
   void DrawAsset(unsigned int);
   void DrawEntitiesInstanced(const Mesh*, const std::vector<unsigned int>&);
   void DrawFrustumCulling();
   void DrawGizmos();
   void DrawScene();
+  void DrawSkybox(const Skybox* skybox);
   /// @brief Draws a skybox asset by applying equirectangular projection to it
-  void DrawSkyboxFlat(unsigned int);
+  void DrawSkyboxAsset(unsigned int);
   void DrawViewFrustum();
   static unsigned int CreatePooledTexture();
   static void DeletePooledTexture(unsigned int);
@@ -68,7 +70,8 @@ public:
   void Shutdown() override;
   int RenderSceneToTexture(Camera* = nullptr);
   int RenderAssetToTexture(unsigned int, int);
-  int CreateCubeMapFromEquirect(unsigned int);
+  Texture CreateCubeMapFromEquirect(Texture);
+  Texture CreateIrradianceMapFromCubeMap(Texture);
   unsigned int GetGizmoMask() const;
   void SetGizmoMask(unsigned int);
   static void ToggleWireframeMode();

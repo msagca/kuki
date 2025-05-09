@@ -11,18 +11,16 @@ std::vector<Property> Texture::GetProperties() const {
   return {{"Type", type}, {"Width", width}, {"Height", height}, {"Id", id, PropertyType::Texture}};
 }
 void Texture::SetProperty(Property property) {
-  if (std::holds_alternative<int>(property.value)) {
-    auto& value = std::get<int>(property.value);
+  if (auto value = std::get_if<int>(&property.value)) {
     if (property.name == "Id")
-      id = value;
+      id = *value;
     else if (property.name == "Width")
-      width = value;
+      width = *value;
     else if (property.name == "Height")
-      height = value;
-  } else if (std::holds_alternative<TextureType>(property.value)) {
-    auto& value = std::get<TextureType>(property.value);
+      height = *value;
+  } else if (auto value = std::get_if<TextureType>(&property.value)) {
     if (property.name == "Type")
-      type = value;
+      type = *value;
   }
 }
 } // namespace kuki

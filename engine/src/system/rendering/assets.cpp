@@ -7,54 +7,55 @@
 #include <component/mesh.hpp>
 #include <component/shader.hpp>
 #include <component/texture.hpp>
+#include <component/skybox.hpp>
 #include <component/transform.hpp>
 #include <functional>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <spdlog/spdlog.h>
-#include <string>
 #include <system/rendering.hpp>
 #include <vector>
+#include <cstdint>
 namespace kuki {
 int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
-  auto isTexture = app.AssetHasComponent<Texture>(assetId);
+  auto [texture, skybox] = app.GetAssetComponents<Texture, Skybox>(assetId);
   auto isCubeMap = false;
   auto isPresent = assetToTexture.find(assetId) != assetToTexture.end();
   if (!isPresent) {
-    if (isTexture) {
-      auto texture = app.GetAssetComponent<Texture>(assetId);
+    if (texture) {
       isCubeMap = texture->type == TextureType::CubeMap;
       if (!isCubeMap) // NOTE: for textures that are not cubemaps, we can directly use the OpenGL texture IDs
         assetToTexture[assetId] = texture->id;
-    }
-    if (!isTexture || isCubeMap) {
+    } else {
       auto itemId = texturePool.Request();
       assetToTexture[assetId] = *texturePool.Get(itemId);
     }
   }
   auto textureId = assetToTexture[assetId]; // NOTE: this is the target texture that the asset will be rendered to
-  if (!isPresent && (!isTexture || isCubeMap)) {
+  if (!isPresent && !texture) {
     size = std::max(1, size);
-    UpdateAttachments(framebuffer, renderbufferAsset, textureId, size, size, true);
+    UpdateAttachments(framebuffer, renderbufferAsset, textureId, size, size, 1, isCubeMap);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glViewport(0, 0, size, size);
     glClearColor(.0f, .0f, .0f, .0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    if (isCubeMap)
-      DrawSkyboxFlat(assetId);
+    if (isCubeMap || skybox)
+      DrawSkyboxAsset(assetId);
     else
       DrawAsset(assetId);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
   }
+  if (skybox)
+    skybox->id.z = textureId;
   return textureId;
 }
-void RenderingSystem::DrawSkyboxFlat(unsigned int id) {
+void RenderingSystem::DrawSkyboxAsset(unsigned int id) {
   static UnlitMaterial material;
-  auto texture = app.GetAssetComponent<Texture>(id);
-  if (!texture)
+  auto [texture, skybox] = app.GetAssetComponents<Texture, Skybox>(id);
+  if (!texture && !skybox)
     return;
-  material.data.base = texture->id;
+  material.data.base = skybox ? skybox->id.x : texture->id;
   material.type = MaterialType::CubeMapEquirect;
   auto frameId = app.GetAssetId("Frame");
   auto mesh = app.GetAssetComponent<Mesh>(frameId);
@@ -91,58 +92,86 @@ void RenderingSystem::DrawAsset(const Transform* transform, const Mesh* mesh, co
   shader->SetTransform(mesh, model, transformVBO);
   shader->Draw(mesh);
 }
-int RenderingSystem::CreateCubeMapFromEquirect(unsigned int equirectAssetId) {
-  auto equirectTexture = app.GetAssetComponent<Texture>(equirectAssetId);
-  auto width = equirectTexture->width / 4; // 360 / 90
-  auto height = equirectTexture->height / 2; // 180 / 90
-  unsigned int cubeMapTextureId;
-  glGenTextures(1, &cubeMapTextureId);
-  glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMapTextureId);
-  for (auto i = 0; i < 6; ++i)
-    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  auto projection = glm::perspective(glm::radians(90.0f), 1.0f, .1f, 10.0f);
+Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect) {
+  Texture texture{};
+  texture.type = TextureType::CubeMap;
   auto shader = GetShader(MaterialType::EquirectCubeMap);
+  if (!shader) {
+    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::EquirectCubeMap)));
+    return texture;
+  }
+  auto cubeId = app.GetAssetId("CubeInverted");
+  auto mesh = app.GetAssetComponent<Mesh>(cubeId);
+  if (!mesh) {
+    spdlog::warn("Cube mesh not found.");
+    return texture;
+  }
+  auto width = equirect.width / 4; // 360 / 90
+  auto height = equirect.height / 2; // 180 / 90
+  auto projection = glm::perspective(glm::radians(90.0f), 1.0f, .1f, 10.0f);
   shader->Use();
   shader->SetUniform("equirect", 0);
   shader->SetUniform("projection", projection);
   auto model = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f));
   shader->SetUniform("model", model);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, equirectTexture->id);
-  glViewport(0, 0, width, height);
-  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-  auto assetId = app.GetAssetId("CubeInverted"); // faces of an inverted cube mesh look towards the origin where the camera is (this is needed since backface culling is enabled)
-  auto mesh = app.GetAssetComponent<Mesh>(assetId);
-  if (!mesh) {
-    spdlog::warn("Cube mesh not found. Cannot convert equirectangular map to cube map.");
-    return -1;
-  }
-  auto isEXR = equirectTexture->type == TextureType::EXR;
+  auto isEXR = equirect.type == TextureType::EXR;
   glm::mat4 viewMatrices[] = {glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(1.0f, .0f, .0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(-1.0f, .0f, .0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, isEXR ? -1.0f : 1.0f, .0f), glm::vec3(.0f, .0f, isEXR ? -1.0f : 1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f), glm::vec3(.0f, .0f, isEXR ? 1.0f : -1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, isEXR ? -1.0f : 1.0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, isEXR ? 1.0f : -1.0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f))};
+  unsigned int cubeMapId{};
+  UpdateAttachments(framebuffer, renderbufferAsset, cubeMapId, width, height, 1, true);
+  texture.id = cubeMapId;
+  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, equirect.id);
+  glViewport(0, 0, width, height);
   for (auto i = 0; i < 6; ++i) {
     shader->SetUniform("view", viewMatrices[i]);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, cubeMapTextureId, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, cubeMapId, 0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     shader->Draw(mesh);
   }
-  auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  if (status != GL_FRAMEBUFFER_COMPLETE) {
-    spdlog::error("Framebuffer not complete.");
-    return -1;
+  return texture;
+}
+Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
+  Texture texture{};
+  texture.type = TextureType::CubeMap;
+  auto shader = GetShader(MaterialType::CubeMapIrradiance);
+  if (!shader) {
+    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::CubeMapIrradiance)));
+    return texture;
   }
-  std::string name = app.GetAssetName(equirectAssetId) + "CubeMap";
-  auto cubeMapAssetId = app.CreateAsset(name);
-  auto cubeMapTexture = app.AddAssetComponent<Texture>(cubeMapAssetId);
-  cubeMapTexture->id = cubeMapTextureId;
-  cubeMapTexture->type = TextureType::CubeMap;
-  spdlog::info("HDR cube map is created: {}.", name);
-  return cubeMapAssetId;
+  auto cubeId = app.GetAssetId("CubeInverted");
+  auto mesh = app.GetAssetComponent<Mesh>(cubeId);
+  if (!mesh) {
+    spdlog::warn("Cube mesh not found.");
+    return texture;
+  }
+  auto width = 32;
+  auto height = 32;
+  texture.width = width;
+  texture.height = height;
+  auto projection = glm::perspective(glm::radians(90.0f), 1.0f, .1f, 10.0f);
+  shader->Use();
+  shader->SetUniform("cubeMap", 0);
+  shader->SetUniform("projection", projection);
+  auto model = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f));
+  shader->SetUniform("model", model);
+  glm::mat4 viewMatrices[] = {glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(1.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(-1.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, 1.0f, .0f), glm::vec3(.0f, .0f, 1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f), glm::vec3(.0f, .0f, -1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, 1.0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, -1.0f), glm::vec3(.0f, -1.0f, .0f))};
+  unsigned int irradianceMapId{};
+  UpdateAttachments(framebuffer, renderbufferAsset, irradianceMapId, width, height, 1, true);
+  texture.id = irradianceMapId;
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
+  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+  glViewport(0, 0, width, height);
+  for (auto i = 0; i < 6; ++i) {
+    shader->SetUniform("view", viewMatrices[i]);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, irradianceMapId, 0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    shader->Draw(mesh);
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  return texture;
 }
 glm::mat4 RenderingSystem::GetAssetWorldTransform(const Transform* transform) {
   auto translation = glm::translate(glm::mat4(1.0f), transform->position);

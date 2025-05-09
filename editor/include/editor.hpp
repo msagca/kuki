@@ -33,10 +33,11 @@ private:
   void InitLayout();
   void LoadDefaultAssets();
   void LoadDefaultScene();
-  void Shutdown() override;
+  void Init() override;
   void Start() override;
   void Update() override;
   void UpdateView();
+  void Shutdown() override;
 public:
   Editor();
 };

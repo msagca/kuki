@@ -9,14 +9,18 @@
 #include <component/mesh_filter.hpp>
 #include <component/mesh_renderer.hpp>
 #include <component/shader.hpp>
+#include <component/texture.hpp>
 #include <component/transform.hpp>
+#include <component/skybox.hpp>
 #include <glm/detail/qualifier.hpp>
+#include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <system/rendering.hpp>
 #include <unordered_map>
+#include <variant>
 #include <vector>
-#include <glm/ext/matrix_float3x3.hpp>
 namespace kuki {
 int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   auto sceneCamera = app.GetActiveCamera();
@@ -44,26 +48,11 @@ int RenderingSystem::RenderSceneToTexture(Camera* camera) {
 void RenderingSystem::DrawScene() {
   std::unordered_map<unsigned int, std::vector<unsigned int>> vaoToEntities;
   std::unordered_map<unsigned int, Mesh> vaoToMesh;
-  // FIXME: app.ForEachVisibleEntity does not work as expected, and it may skip things like a skybox
+  // FIXME: app.ForEachVisibleEntity does not work as expected
   // TODO: repeat this query only after entity addition/deletion or component updates (set flags in entity manager and check them each frame)
   app.ForEachEntity<MeshFilter, MeshRenderer>([this, &vaoToMesh, &vaoToEntities](unsigned int id, MeshFilter* filter, MeshRenderer* renderer) {
     if (!filter || !renderer)
       return;
-    auto materialType = renderer->material.GetType();
-    if (materialType == MaterialType::Skybox) {
-      auto shader = GetShader(materialType);
-      shader->Use();
-      auto model = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f));
-      shader->SetUniform("model", model);
-      auto view = glm::mat4(glm::mat3(targetCamera->view));
-      shader->SetUniform("view", view);
-      shader->SetUniform("projection", targetCamera->projection);
-      shader->SetMaterial(&renderer->material);
-      glDepthFunc(GL_LEQUAL);
-      shader->Draw(&filter->mesh);
-      glDepthFunc(GL_LESS);
-      return;
-    }
     auto vao = filter->mesh.vertexArray;
     vaoToMesh[vao] = filter->mesh;
     if (vaoToEntities.find(vao) == vaoToEntities.end())
@@ -72,13 +61,37 @@ void RenderingSystem::DrawScene() {
   });
   for (const auto& [vao, entities] : vaoToEntities)
     DrawEntitiesInstanced(&vaoToMesh[vao], entities);
+  app.ForFirstEntity<Skybox>([this](unsigned int id, Skybox* skybox) {
+    DrawSkybox(skybox);
+  });
+}
+void RenderingSystem::DrawSkybox(const Skybox* skybox) {
+  if (!skybox)
+    return;
+  auto cubeAsset = app.GetAssetId("CubeInverted");
+  auto mesh = app.GetAssetComponent<Mesh>(cubeAsset);
+  if (!mesh)
+    return;
+  auto shader = GetShader(MaterialType::Skybox);
+  shader->Use();
+  auto model = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f));
+  shader->SetUniform("model", model);
+  auto view = glm::mat4(glm::mat3(targetCamera->view));
+  shader->SetUniform("view", view);
+  shader->SetUniform("projection", targetCamera->projection);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->id.x);
+  shader->SetUniform("skybox", 0);
+  glDepthFunc(GL_LEQUAL);
+  shader->Draw(mesh);
+  glDepthFunc(GL_LESS);
 }
 void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<unsigned int>& entities) {
   std::vector<LitFallbackData> litMaterials;
   std::vector<UnlitFallbackData> unlitMaterials;
   std::vector<glm::mat4> litTransforms;
   std::vector<glm::mat4> unlitTransforms;
-  // NOTE: the following variables will store the last instance of that material type
+  // NOTE: following variables will store the last instance of that material type
   Material materialLit;
   Material materialUnlit;
   // TODO: a separate draw call shall be invoked per unique material configuration (e.g. different albedo textures)
@@ -99,6 +112,10 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<
     } // else ...
   }
   if (litMaterials.size() > 0) {
+    Skybox* skybox{};
+    app.ForFirstEntity<Skybox>([this, &skybox](unsigned int id, Skybox* skyboxComp) {
+      skybox = skyboxComp;
+    });
     auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
     std::vector<const Light*> lights;
     app.ForEachEntity<Light>([&](unsigned int id, Light* light) {
@@ -107,6 +124,14 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<
     shader->Use();
     shader->SetCamera(targetCamera);
     shader->SetLighting(lights);
+    if (skybox) {
+      // TODO: let the shader handle which texture unit to use
+      glActiveTexture(GL_TEXTURE5); // units 0-4 are used by other textures such as albedo map
+      glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->id.y);
+      shader->SetUniform("irradianceMap", 5);
+      shader->SetUniform("useIrradianceMap", true);
+    } else
+      shader->SetUniform("useIrradianceMap", false);
     shader->SetMaterial(&materialLit);
     shader->SetMaterialFallback(mesh, litMaterials, materialVBO);
     shader->SetTransform(mesh, litTransforms, transformVBO);

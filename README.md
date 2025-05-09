@@ -7,7 +7,7 @@ I'm teaching myself graphics programming, game engine architecture and C++ throu
 ### Requirements
 
 - `git`, `cmake`
-- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community) (with **Desktop development with C++** workload installed)
+- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community) (install **Desktop development with C++** workload)
 - **Linux:** `ninja` (or `make`), `gcc`, `g++`
 
 ### Instructions

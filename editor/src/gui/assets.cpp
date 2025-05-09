@@ -1,5 +1,6 @@
 #include <application.hpp>
 #include <component/component.hpp>
+#include <component/skybox.hpp>
 #include <component/texture.hpp>
 #include <cstdint>
 #include <editor.hpp>
@@ -8,6 +9,7 @@
 #include <system/rendering.hpp>
 #include <utility>
 #include <vector>
+#include <glm/ext/vector_uint3.hpp>
 using namespace kuki;
 enum class FileType : uint8_t {
   None,
@@ -51,8 +53,10 @@ void Editor::DisplayAssets() {
   std::vector<unsigned int> assetIds;
   if (assetMask == -1)
     ForEachRootAsset([&assetIds](unsigned int assetId) { assetIds.push_back(assetId); });
-  else if ((assetMask & static_cast<int>(ComponentMask::Texture)) != 0)
+  else if ((assetMask & (static_cast<int>(ComponentMask::Texture) | static_cast<int>(ComponentMask::Skybox))) != 0) {
     ForEachAsset<Texture>([&assetIds](unsigned int assetId, Texture* _) { assetIds.push_back(assetId); });
+    ForEachAsset<Skybox>([&assetIds](unsigned int assetId, Skybox* _) { assetIds.push_back(assetId); });
+  }
   for (const auto id : assetIds) {
     ImVec2 tilePos(cursorStartPos.x + (tileCount % tilesPerRow) * TILE_TOTAL_SIZE, cursorStartPos.y + (tileCount / tilesPerRow) * TILE_TOTAL_SIZE);
     auto tileTop = tilePos.y;
@@ -60,17 +64,19 @@ void Editor::DisplayAssets() {
     if (tileBottom >= scrollY && tileTop <= scrollY + visibleHeight) {
       ImGui::SetCursorPos(tilePos);
       ImGui::PushID(id);
-      // TODO: no need to render all assets in every frame, call this only if a new asset has been added
       auto textureId = renderSystem->RenderAssetToTexture(id, THUMBNAIL_SIZE);
       auto assetName = GetAssetName(id);
       ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(.0f, .0f));
       if (ImGui::ImageButton(std::to_string(textureId).c_str(), textureId, TILE_SIZE, uv0, uv1)) {
-        auto textureComp = GetAssetComponent<Texture>(id);
-        if (textureComp) {
-          selectedProperty.value = int{textureComp->id};
-          if (selectedEntity >= 0) {
-            auto component = GetEntityComponent(selectedEntity, selectedComponentName);
-            if (component)
+        if (selectedEntity >= 0) {
+          auto component = GetEntityComponent(selectedEntity, selectedComponentName);
+          if (component) {
+            auto [textureComp, skyboxComp] = GetAssetComponents<Texture, Skybox>(id);
+            if (skyboxComp)
+              selectedProperty.value = glm::uvec3{skyboxComp->id};
+            else if (textureComp)
+              selectedProperty.value = int{textureComp->id};
+            if (skyboxComp || textureComp)
               component->SetProperty(selectedProperty);
           }
         }

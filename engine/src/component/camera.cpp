@@ -30,30 +30,29 @@ std::vector<Property> Camera::GetProperties() const {
   return {{"Type", type}, {"Position", position}, {"Pitch", glm::degrees(pitch)}, {"Yaw", glm::degrees(yaw)}, {"FOV", fov}, {"AspectRatio", aspectRatio}, {"NearPlane", nearPlane}, {"FarPlane", farPlane}, {"OrthoSize", orthoSize}};
 }
 void Camera::SetProperty(Property property) {
-  if (std::holds_alternative<float>(property.value)) {
-    auto& value = std::get<float>(property.value);
+  if (auto value = std::get_if<float>(&property.value)) {
     if (property.name == "Pitch")
-      pitch = glm::radians(value);
+      pitch = glm::radians(*value);
     else if (property.name == "Yaw")
-      yaw = glm::radians(value);
+      yaw = glm::radians(*value);
     else if (property.name == "FOV")
-      fov = value;
+      fov = *value;
     else if (property.name == "AspectRatio")
-      aspectRatio = value;
+      aspectRatio = *value;
     else if (property.name == "NearPlane")
-      nearPlane = value;
+      nearPlane = *value;
     else if (property.name == "FarPlane")
-      farPlane = value;
+      farPlane = *value;
     else if (property.name == "OrthoSize")
-      orthoSize = value;
+      orthoSize = *value;
     UpdateDirection();
     UpdateView();
     UpdateProjection();
-  } else if (std::holds_alternative<glm::vec3>(property.value)) {
-    position = std::get<glm::vec3>(property.value);
+  } else if (auto value = std::get_if<glm::vec3>(&property.value)) {
+    position = *value;
     UpdateView();
-  } else if (std::holds_alternative<CameraType>(property.value)) {
-    type = std::get<CameraType>(property.value);
+  } else if (auto value = std::get_if<CameraType>(&property.value)) {
+    type = *value;
     UpdateProjection();
   }
   UpdateFrustum();

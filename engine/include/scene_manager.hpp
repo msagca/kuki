@@ -1,10 +1,10 @@
 #pragma once
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <scene.hpp>
 #include <string>
 #include <unordered_map>
 namespace kuki {
-class KUKI_API SceneManager {
+class KUKI_ENGINE_API SceneManager {
 private:
   unsigned int nextId{0};
   std::unordered_map<unsigned int, Scene*> idToScene;

@@ -4,7 +4,7 @@
 #include <spdlog/spdlog.h>
 namespace kuki {
 class Application;
-class KUKI_API ScriptingSystem final : public System {
+class KUKI_ENGINE_API ScriptingSystem final : public System {
 private:
   std::unordered_map<unsigned int, IScript*> scripts;
 public:

@@ -1,7 +1,7 @@
 #pragma once
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <vector>
 namespace kuki {
 struct Vertex {
@@ -24,7 +24,7 @@ enum class PrimitiveId : uint8_t {
   Frame
 };
 /// @brief A container class for functions that construct primitive shapes
-class KUKI_API Primitive {
+class KUKI_ENGINE_API Primitive {
 private:
   static std::vector<Triangle> CreateOctahedron();
   static std::vector<Triangle> CreateIcosahedron();

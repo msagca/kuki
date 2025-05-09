@@ -8,6 +8,7 @@
 #include <imgui.h>
 #include <string>
 #include <variant>
+#include <glm/ext/vector_uint3.hpp>
 using namespace kuki;
 void Editor::DisplayProperties() {
   static const auto TEXTURE_SIZE = ImVec2(64, 64);
@@ -44,10 +45,21 @@ void Editor::DisplayProperties() {
       auto value = prop.value;
       ImGui::PushID(static_cast<int>(j));
       if (std::holds_alternative<glm::vec3>(value)) {
+        static auto uniformScale = false;
         auto valueVec3 = std::get<glm::vec3>(value);
         if (prop.type == PropertyType::Color) {
           if (ImGui::ColorEdit3(prop.name.c_str(), glm::value_ptr(valueVec3)))
             component->SetProperty(Property(prop.name, valueVec3));
+        } else if (prop.type == PropertyType::Scale) {
+          if (uniformScale) {
+            if (ImGui::InputFloat("Scale", &valueVec3.x)) {
+              valueVec3 = glm::vec3(valueVec3.x);
+              component->SetProperty(Property(prop.name, valueVec3));
+            }
+          } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3)))
+            component->SetProperty(Property(prop.name, valueVec3));
+          ImGui::SameLine();
+          ImGui::Checkbox("Uniform", &uniformScale);
         } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3)))
           component->SetProperty(Property(prop.name, valueVec3));
       } else if (std::holds_alternative<glm::vec4>(value)) {
@@ -57,6 +69,16 @@ void Editor::DisplayProperties() {
             component->SetProperty(Property(prop.name, valueVec4));
         } else if (ImGui::InputFloat4(prop.name.c_str(), glm::value_ptr(valueVec4)))
           component->SetProperty(Property(prop.name, valueVec4));
+      } else if (std::holds_alternative<glm::uvec3>(value)) {
+        auto valueInt = std::get<glm::uvec3>(value);
+        auto nameCStr = prop.name.c_str();
+        ImGui::Text("%s", nameCStr);
+        if (ImGui::ImageButton(nameCStr, valueInt.z, TEXTURE_SIZE)) {
+          assetMask = 0;
+          assetMask |= static_cast<int>(ComponentMask::Skybox);
+          selectedComponentName = name;
+          selectedProperty = prop;
+        }
       } else if (std::holds_alternative<int>(value)) {
         auto valueInt = std::get<int>(value);
         auto nameCStr = prop.name.c_str();
@@ -66,8 +88,6 @@ void Editor::DisplayProperties() {
           ImGui::BeginGroup();
           ImGui::Text("%s", nameCStr);
           if (ImGui::ImageButton(nameCStr, valueInt, TEXTURE_SIZE)) {
-            // TODO: store and retrieve preview image IDs for cubemaps since the cubemap texture cannot be displayed directly
-            // TODO: support filtering by texture type
             assetMask = 0;
             assetMask |= static_cast<int>(ComponentMask::Texture);
             selectedComponentName = name;

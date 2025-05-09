@@ -1,10 +1,10 @@
 #pragma once
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <span>
 #include <string>
 namespace kuki {
 class Application;
-class KUKI_API ICommand {
+class KUKI_ENGINE_API ICommand {
 protected:
   const std::string name;
   std::string message;
@@ -18,13 +18,13 @@ public:
   virtual std::string GetMessage(int = -1) = 0;
   virtual int Execute(const std::span<std::string>) = 0;
 };
-class KUKI_API SpawnCommand final : public ICommand {
+class KUKI_ENGINE_API SpawnCommand final : public ICommand {
 public:
   SpawnCommand(Application&);
   std::string GetMessage(int) override;
   int Execute(const std::span<std::string>) override;
 };
-class KUKI_API DeleteCommand final : public ICommand {
+class KUKI_ENGINE_API DeleteCommand final : public ICommand {
 public:
   DeleteCommand(Application&);
   std::string GetMessage(int) override;

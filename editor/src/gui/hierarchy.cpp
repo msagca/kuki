@@ -8,9 +8,6 @@
 using namespace kuki;
 void Editor::DisplayHierarchy() {
   std::vector<unsigned int> entities;
-  ForEachEntity([&](unsigned int id) {
-    entities.push_back(id);
-  });
   selection.UserData = reinterpret_cast<void*>(&entities);
   selection.AdapterIndexToStorageId = [](ImGuiSelectionBasicStorage* self, int index) {
     auto* entityIDs = reinterpret_cast<std::vector<unsigned int>*>(self->UserData);
@@ -19,16 +16,12 @@ void Editor::DisplayHierarchy() {
     return (*entityIDs)[index];
   };
   ImGui::Begin("Hierarchy");
-  ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_None, selection.Size, entities.size());
+  ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_None, selection.Size, GetEntityCount());
   selection.ApplyRequests(ms_io);
   selectedEntity = -1;
-  for (const auto& id : entities) {
-    auto selected = selection.Contains(id);
-    ImGui::SetNextItemSelectionUserData(id);
-    ImGui::Selectable(GetEntityName(id).c_str(), &selected);
-    if (selected)
-      selectedEntity = id;
-  }
+  ForEachRootEntity([this, &entities](unsigned int id) {
+    DisplayEntity(id, entities, selection);
+  });
   ms_io = ImGui::EndMultiSelect();
   selection.ApplyRequests(ms_io);
   auto deleteSelection = GetKeyDown(GLFW_KEY_DELETE);

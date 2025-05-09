@@ -2,12 +2,12 @@
 #include <functional>
 #include <GLFW/glfw3.h>
 #include <glm/ext/vector_float2.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 namespace kuki {
-class KUKI_API InputManager {
+class KUKI_ENGINE_API InputManager {
 private:
   bool keysEnabled{true};
   bool updateBindings{false};

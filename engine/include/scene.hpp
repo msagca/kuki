@@ -1,9 +1,9 @@
 #pragma once
 #include <entity_manager.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 namespace kuki {
 class Camera;
-class KUKI_API Scene {
+class KUKI_ENGINE_API Scene {
 private:
   std::string name;
   unsigned int id;

@@ -1,11 +1,11 @@
 #pragma once
 #include <command.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <unordered_map>
 #include <vector>
 namespace kuki {
 class Application;
-class KUKI_API CommandManager {
+class KUKI_ENGINE_API CommandManager {
 private:
   std::unordered_map<std::string, ICommand*> commands;
   std::string GetCommands();

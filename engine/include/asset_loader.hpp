@@ -9,7 +9,7 @@
 #include <event_queue.hpp>
 #include <filesystem>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <primitive.hpp>
 #include <string>
 #include <vector>
@@ -40,7 +40,7 @@ struct PendingMesh {
   std::promise<Mesh> meshPromise;
 };
 class Application;
-class KUKI_API AssetLoader {
+class KUKI_ENGINE_API AssetLoader {
 private:
   Application* app;
   EntityManager& assetManager;
@@ -53,7 +53,9 @@ private:
   int CreateCubeMapAsset(const CubeMapData&);
   int CreateMaterialAsset(const MaterialData&);
   int CreateTextureAsset(const TextureData&);
+  int CreateSkyboxAsset(unsigned int);
   int LoadNode(const aiNode*, const aiScene*, const std::filesystem::path&, const std::vector<Material>&, const std::vector<Mesh>&, int = -1);
+  Texture CreateCubeMap(const CubeMapData&);
   Material CreateMaterial(const MaterialData&);
   MaterialData LoadMaterial(const aiMaterial*, const std::filesystem::path&);
   Mesh CreateMesh(const aiMesh*);

@@ -4,10 +4,10 @@
 #include "material.hpp"
 #include <filesystem>
 #include <glm/ext/matrix_float3x3.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <string>
 namespace kuki {
-class KUKI_API Shader {
+class KUKI_ENGINE_API Shader {
 private:
   unsigned int id;
   const std::string name;
@@ -44,7 +44,7 @@ public:
   virtual void Draw(const Mesh*);
   void DrawInstanced(const Mesh*, unsigned int);
 };
-class KUKI_API LitShader final : public Shader {
+class KUKI_ENGINE_API LitShader final : public Shader {
 public:
   LitShader(const std::string&, const std::filesystem::path&, const std::filesystem::path&);
   void SetCamera(const Camera*) override;
@@ -55,7 +55,7 @@ public:
   void SetMaterialFallback(const Mesh*, const std::vector<LitFallbackData>&, unsigned int);
   void Draw(const Mesh*) override;
 };
-class KUKI_API UnlitShader final : public Shader {
+class KUKI_ENGINE_API UnlitShader final : public Shader {
 public:
   UnlitShader(const std::string&, const std::filesystem::path&, const std::filesystem::path&);
   /// @brief Set unlit material fallback attributes for a single instance

@@ -5,9 +5,13 @@
 #include <component/camera.hpp>
 #include <component/component.hpp>
 #include <component/light.hpp>
+#include <component/material.hpp>
+#include <component/mesh.hpp>
 #include <component/mesh_filter.hpp>
 #include <component/mesh_renderer.hpp>
 #include <component/script.hpp>
+#include <component/skybox.hpp>
+#include <component/texture.hpp>
 #include <editor.hpp>
 #include <event_dispatcher.hpp>
 #include <GLFW/glfw3.h>
@@ -26,20 +30,18 @@
 #include <system/rendering.hpp>
 #include <system/scripting.hpp>
 #include <type_traits>
+#include <variant>
 // NOTE: this comment is to prevent the following from being placed before imgui.h during includes sorting
 #include <imfilebrowser.h>
 #include <ImGuizmo.h>
-#include <component/mesh.hpp>
-#include <component/material.hpp>
-#include <variant>
-#include <component/texture.hpp>
 using namespace kuki;
 Editor::Editor()
-  : Application("Editor"), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
-void Editor::Start() {
-  RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor.");
-  RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [&]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor.");
-  RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderingSystem::ToggleWireframeMode, "Toggle wireframe mode.");
+  : Application("Kuki Editor"), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
+void Editor::Init() {
+  Application::Init();
+  RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor");
+  RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor");
+  RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderingSystem::ToggleWireframeMode, "Toggle wireframe mode");
   RegisterEventCallback<EntityCreatedEvent>([this](const EntityCreatedEvent& event) { EntityCreatedCallback(event); });
   RegisterEventCallback<EntityDeletedEvent>([this](const EntityDeletedEvent& event) { EntityDeletedCallback(event); });
   InitImGui();
@@ -49,9 +51,11 @@ void Editor::Start() {
   RegisterCommand(new SpawnCommand(editorApp));
   RegisterCommand(new DeleteCommand(editorApp));
   spdlog::register_logger(logger);
+}
+void Editor::Start() {
+  Application::Start();
   LoadDefaultAssets();
   LoadDefaultScene();
-  Application::Start();
 }
 void Editor::Update() {
   cameraController->Update(deltaTime);
@@ -115,17 +119,14 @@ void Editor::LoadDefaultScene() {
   entityId = CreateEntity(entityName);
   auto filter = AddEntityComponent<MeshFilter>(entityId);
   filter->mesh = *GetAssetComponent<Mesh>(GetAssetId("CubeInverted"));
-  auto renderer = AddEntityComponent<MeshRenderer>(entityId);
-  renderer->material.material = UnlitMaterial{};
-  auto& unlitMaterial = std::get<UnlitMaterial>(renderer->material.material);
-  unlitMaterial.data.base = GetAssetComponent<Texture>(GetAssetId("Skybox"))->id;
-  unlitMaterial.type = MaterialType::Skybox;
+  auto skybox = AddEntityComponent<Skybox>(entityId);
+  *skybox = *GetAssetComponent<Skybox>(GetAssetId("Skybox"));
   entityName = "MainCamera";
   entityId = CreateEntity(entityName);
   AddEntityComponent<Camera>(entityId);
-  entityName = "MainLight";
+  /*entityName = "MainLight";
   entityId = CreateEntity(entityName);
-  AddEntityComponent<Light>(entityId);
+  AddEntityComponent<Light>(entityId);*/
 }
 void Editor::LoadDefaultAssets() {
   LoadPrimitive(PrimitiveId::Cube);

@@ -14,27 +14,25 @@ std::vector<Property> Light::GetProperties() const {
   return {{"Type", type}, {"Vector", vector}, {"Ambient", ambient, PropertyType::Color}, {"Diffuse", diffuse, PropertyType::Color}, {"Specular", specular, PropertyType::Color}, {"Constant", constant}, {"Linear", linear}, {"Quadratic", quadratic}};
 }
 void Light::SetProperty(Property property) {
-  if (std::holds_alternative<glm::vec3>(property.value)) {
-    auto& value = std::get<glm::vec3>(property.value);
+  if (auto value = std::get_if<glm::vec3>(&property.value)) {
     if (property.name == "Vector")
-      vector = value;
+      vector = *value;
     else if (property.name == "Ambient")
-      ambient = value;
+      ambient = *value;
     else if (property.name == "Diffuse")
-      diffuse = value;
+      diffuse = *value;
     else if (property.name == "Specular")
-      specular = value;
-  } else if (std::holds_alternative<float>(property.value)) {
-    auto& value = std::get<float>(property.value);
+      specular = *value;
+  } else if (auto value = std::get_if<float>(&property.value)) {
     if (property.name == "Constant")
-      constant = value;
+      constant = *value;
     else if (property.name == "Linear")
-      linear = value;
+      linear = *value;
     else if (property.name == "Quadratic")
-      quadratic = value;
-  } else if (std::holds_alternative<LightType>(property.value)) {
+      quadratic = *value;
+  } else if (auto value = std::get_if<LightType>(&property.value)) {
     if (property.name == "Type")
-      type = std::get<LightType>(property.value);
+      type = *value;
   }
 }
 Transform Light::GetTransform() const {

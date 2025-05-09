@@ -1,7 +1,8 @@
 #pragma once
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-#include <kuki_export.h>
+#include <glm/ext/vector_uint3.hpp>
+#include <kuki_engine_export.h>
 #include <string>
 #include <variant>
 #include <vector>
@@ -14,6 +15,7 @@ enum class ComponentType : uint8_t {
   Mesh,
   MeshRenderer,
   Script,
+  Skybox,
   Texture,
   Transform
 };
@@ -25,6 +27,7 @@ enum class ComponentMask : size_t {
   Mesh = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Mesh),
   MeshRenderer = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::MeshRenderer),
   Script = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Script),
+  Skybox = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Skybox),
   Texture = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Texture),
   Transform = static_cast<size_t>(1) << static_cast<uint8_t>(ComponentType::Transform)
 };
@@ -42,7 +45,8 @@ enum class MaterialType : uint8_t {
   Unlit,
   Skybox,
   CubeMapEquirect,
-  EquirectCubeMap
+  EquirectCubeMap,
+  CubeMapIrradiance
 };
 enum class TextureType : uint8_t {
   Albedo,
@@ -68,11 +72,13 @@ enum class PropertyType : uint8_t {
   Color, // color wheel
   Number,
   NumberRange, // slider
+  Scale,
   Script, // dropdown
+  Skybox, // image pair
   Texture // image
 };
-struct KUKI_API Property {
-  using PropertyValue = std::variant<int, float, bool, glm::vec3, glm::vec4, CameraType, LightType, MaterialType, TextureType>;
+struct KUKI_ENGINE_API Property {
+  using PropertyValue = std::variant<int, float, bool, glm::uvec3, glm::vec3, glm::vec4, CameraType, LightType, MaterialType, TextureType>;
   std::string name{};
   PropertyValue value{};
   PropertyType type{PropertyType::Number};
@@ -106,7 +112,7 @@ struct EnumTraits<LightType> {
 template <>
 struct EnumTraits<MaterialType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Lit", "Unlit", "Skybox", "CubeMapEquirect", "EquirectCubeMap"};
+    static const std::vector<const char*> names = {"Lit", "Unlit", "Skybox", "CubeMapEquirect", "EquirectCubeMap", "CubeMapIrradiance"};
     return names;
   }
 };
@@ -138,6 +144,7 @@ struct MeshFilter;
 struct Mesh;
 struct MeshRenderer;
 struct Script;
+struct Skybox;
 struct Texture;
 struct Transform;
 template <>
@@ -222,6 +229,18 @@ struct ComponentTraits<Script> {
   }
   static ComponentMask GetMask() {
     return ComponentMask::Script;
+  }
+};
+template <>
+struct ComponentTraits<Skybox> {
+  static const std::string GetName() {
+    return "Skybox";
+  }
+  static ComponentType GetId() {
+    return ComponentType::Skybox;
+  }
+  static ComponentMask GetMask() {
+    return ComponentMask::Skybox;
   }
 };
 template <>

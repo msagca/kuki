@@ -12,10 +12,9 @@ std::vector<Property> Script::GetProperties() const {
   return {{"Id", id, PropertyType::Script}};
 }
 void Script::SetProperty(Property property) {
-  if (std::holds_alternative<int>(property.value)) {
-    auto& value = std::get<int>(property.value);
+  if (auto value = std::get_if<int>(&property.value)) {
     if (property.name == "Id")
-      id = value;
+      id = *value;
   }
 }
 IScript::IScript(Application& app, unsigned int entityId)

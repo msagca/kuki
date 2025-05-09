@@ -1,10 +1,10 @@
 #pragma once
 #include "component.hpp"
 #include <glm/ext/vector_float3.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <vector>
 namespace kuki {
-struct KUKI_API Light final : IComponent {
+struct KUKI_ENGINE_API Light final : IComponent {
   LightType type{LightType::Directional};
   glm::vec3 vector{.2f, 1.0f, .3f};
   glm::vec3 ambient{.2f};

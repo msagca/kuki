@@ -29,7 +29,6 @@
 #include <thread>
 #include <tinyexr.h>
 #include <future>
-#include <type_traits>
 #include <vector>
 namespace kuki {
 AssetLoader::AssetLoader(Application* app, EntityManager& assetManager)

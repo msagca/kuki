@@ -12,6 +12,7 @@
 #include <component/mesh.hpp>
 #include <component/mesh_filter.hpp>
 #include <component/mesh_renderer.hpp>
+#include <component/texture.hpp>
 #include <component/transform.hpp>
 #include <entity_manager.hpp>
 #include <filesystem>
@@ -286,6 +287,12 @@ void Application::DeleteAllEntities(const std::string& prefix) {
     return;
   scene->GetEntityManager().DeleteAll(prefix);
 }
+size_t Application::GetEntityCount() {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return 0;
+  return scene->GetEntityManager().GetCount();
+}
 std::string Application::GetEntityName(unsigned int id) {
   auto scene = GetActiveScene();
   if (!scene)
@@ -439,11 +446,17 @@ void Application::RegisterInputCallback(int key, int action, std::function<void(
 void Application::UnregisterInputCallback(int key, int action) {
   inputManager.UnregisterCallback(key, action);
 }
-int Application::CreateCubeMapFromEquirect(unsigned int assetId) {
+Texture Application::CreateCubeMapFromEquirect(Texture equirect) {
   auto renderingSystem = GetSystem<RenderingSystem>();
   if (!renderingSystem)
-    return -1;
-  return renderingSystem->CreateCubeMapFromEquirect(assetId);
+    return Texture{};
+  return renderingSystem->CreateCubeMapFromEquirect(equirect);
+}
+Texture Application::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
+  auto renderingSystem = GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return Texture{};
+  return renderingSystem->CreateIrradianceMapFromCubeMap(cubeMap);
 }
 void Application::LoadModelAsync(const std::filesystem::path& path) {
   assetLoader.LoadModelAsync(path);

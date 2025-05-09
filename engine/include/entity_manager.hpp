@@ -3,7 +3,7 @@
 #include <component/component.hpp>
 #include <component_manager.hpp>
 #include <event_dispatcher.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <set>
 #include <string>
 #include <tuple>
@@ -14,7 +14,7 @@
 #include <vector>
 namespace kuki {
 /// @brief Manages entities and their components in a scene
-class KUKI_API EntityManager {
+class KUKI_ENGINE_API EntityManager {
 private:
   unsigned int nextId{};
   std::set<unsigned int> ids;
@@ -88,6 +88,9 @@ public:
   T* GetFirstComponent();
   std::vector<IComponent*> GetAllComponents(unsigned int);
   std::vector<std::string> GetMissingComponents(unsigned int);
+  /// @brief Execute a function on the first entity with specified components
+  template <typename... T, typename F>
+  void ForFirst(F);
   /// @brief Execute a function on entities with specified components
   template <typename... T, typename F>
   void ForEach(F);
@@ -156,6 +159,15 @@ std::tuple<T*...> EntityManager::GetComponents(unsigned int id) {
 template <typename T>
 T* EntityManager::GetFirstComponent() {
   return GetManager<T>()->GetFirst();
+}
+template <typename... T, typename F>
+void EntityManager::ForFirst(F func) {
+  for (const auto id : ids)
+    if (HasComponents<T...>(id)) {
+      auto components = GetComponents<T...>(id);
+      std::apply([&](T*... args) { func(id, args...); }, components);
+      return;
+    }
 }
 template <typename... T, typename F>
 void EntityManager::ForEach(F func) {

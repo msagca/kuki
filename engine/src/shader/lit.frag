@@ -38,6 +38,8 @@ uniform bool dirExists;
 uniform DirLight dirLight;
 uniform int pointCount;
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
+uniform samplerCube irradianceMap;
+uniform bool useIrradianceMap;
 const float PI = 3.1415927;
 vec3 GetNormalFromTexture() {
     vec3 tangentNormal = texture(material.normal, texCoord).xyz * 2.0 - 1.0;
@@ -49,6 +51,9 @@ vec3 GetNormalFromTexture() {
 }
 vec3 FresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, vec3 roughness) {
+    return F0 + (max(vec3(1.0) - roughness, F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 float DistributionGGX(vec3 N, vec3 H, float R) {
     float a = R * R;
@@ -125,7 +130,16 @@ void main() {
     vec3 R = (useRoughnessTexture) ? texture(material.roughness, texCoord).rgb : vec3(roughness);
     vec3 V = normalize(viewPos - position);
     vec3 finalColor = vec3(0.0);
-    if (dirExists)
+    if (useIrradianceMap) {
+        vec3 F0 = vec3(0.04);
+        F0 = mix(F0, A, M);
+        vec3 kS = FresnelSchlickRoughness(max(dot(N, V), 0.0), F0, R);
+        vec3 kD = 1.0 - kS;
+        vec3 irradiance = texture(irradianceMap, N).rgb;
+        vec3 diffuse = irradiance * A;
+        vec3 ambient = (kD * diffuse) * O;
+        finalColor += ambient;
+    } else if (dirExists)
         finalColor += CalculateDirectionalLight(dirLight, A, N, M, O, R, V);
     for (int i = 0; i < pointCount; ++i)
         finalColor += CalculatePointLight(pointLights[i], A, N, M, O, R, V, position);

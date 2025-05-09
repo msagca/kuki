@@ -1,6 +1,6 @@
 #pragma once
 #include "component.hpp"
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <typeindex>
 namespace kuki {
 class Shader;
@@ -30,7 +30,7 @@ struct IMaterial : IComponent {
   /// @brief Apply this material to the given shader (set shader properties)
   virtual void Apply(Shader*) const = 0;
 };
-struct KUKI_API LitMaterial final : IMaterial {
+struct KUKI_ENGINE_API LitMaterial final : IMaterial {
   MaterialType type{MaterialType::Lit};
   LitData data{};
   LitFallbackData fallback{};
@@ -39,7 +39,7 @@ struct KUKI_API LitMaterial final : IMaterial {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
-struct KUKI_API UnlitMaterial final : IMaterial {
+struct KUKI_ENGINE_API UnlitMaterial final : IMaterial {
   MaterialType type{MaterialType::Unlit};
   UnlitData data{};
   UnlitFallbackData fallback{};
@@ -48,7 +48,7 @@ struct KUKI_API UnlitMaterial final : IMaterial {
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property property) override;
 };
-struct KUKI_API Material : IMaterial {
+struct KUKI_ENGINE_API Material : IMaterial {
   std::variant<LitMaterial, UnlitMaterial> material;
   std::type_index GetTypeIndex() const;
   MaterialType GetType() const;

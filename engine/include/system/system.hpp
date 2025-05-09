@@ -1,9 +1,9 @@
 #pragma once
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <scene.hpp>
 namespace kuki {
 class Application;
-class KUKI_API System {
+class KUKI_ENGINE_API System {
 protected:
   Application& app;
 public:

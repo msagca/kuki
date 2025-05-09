@@ -1,9 +1,9 @@
 #pragma once
 #include "component.hpp"
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <vector>
 namespace kuki {
-struct KUKI_API Texture final : IComponent {
+struct KUKI_ENGINE_API Texture final : IComponent {
   TextureType type{};
   int width{};
   int height{};

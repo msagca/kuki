@@ -3,19 +3,18 @@
 #include <asset_loader.hpp>
 #include <command_manager.hpp>
 #include <input_manager.hpp>
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <primitive.hpp>
 #include <scene.hpp>
 #include <scene_manager.hpp>
 #include <system/system.hpp>
 #include <vector>
 namespace kuki {
-class KUKI_API Application {
+class KUKI_ENGINE_API Application {
 private:
   std::string name;
   AppConfig config;
   std::vector<System*> systems;
-  void Init();
   static void WindowCloseCallback(GLFWwindow*);
   static void FramebufferSizeCallback(GLFWwindow*, int, int);
   static void DebugMessageCallback(unsigned int, unsigned int, unsigned int, unsigned int, int, const char*, const void*);
@@ -39,6 +38,8 @@ public:
   const std::string& GetName() const;
   void Configure(const AppConfig&);
   const AppConfig& GetConfig() const;
+  /// @brief Initialize app window, graphics API, and the systems
+  virtual void Init();
   /// @brief Start the systems
   virtual void Start();
   /// @return true if the application is running, false otherwise
@@ -71,6 +72,7 @@ public:
   void DeleteEntity(const std::string&);
   void DeleteAllEntities();
   void DeleteAllEntities(const std::string&);
+  size_t GetEntityCount();
   std::string GetEntityName(unsigned int);
   std::string GetAssetName(unsigned int);
   int GetEntityId(const std::string&);
@@ -98,6 +100,8 @@ public:
   IComponent* GetEntityComponent(unsigned int, const std::string&);
   std::vector<IComponent*> GetAllEntityComponents(unsigned int);
   std::vector<std::string> GetMissingEntityComponents(unsigned int);
+  template <typename... T, typename F>
+  void ForFirstEntity(F);
   template <typename... T, typename F>
   void ForEachEntity(F);
   template <typename... T, typename F>
@@ -141,7 +145,8 @@ public:
   void DisableAllKeys();
   void RegisterInputCallback(int, int, std::function<void()>, std::string = "");
   void UnregisterInputCallback(int, int);
-  int CreateCubeMapFromEquirect(unsigned int);
+  Texture CreateCubeMapFromEquirect(Texture);
+  Texture CreateIrradianceMapFromCubeMap(Texture);
   void LoadModelAsync(const std::filesystem::path&);
   void LoadTextureAsync(const std::filesystem::path&, TextureType = TextureType::Albedo);
   int LoadPrimitive(PrimitiveId);
@@ -228,6 +233,13 @@ T* Application::GetEntityComponent(unsigned int id) {
 template <typename T>
 T* Application::GetAssetComponent(unsigned int id) {
   return assetManager.GetComponent<T>(id);
+}
+template <typename... T, typename F>
+void Application::ForFirstEntity(F func) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().ForFirst<T...>(func);
 }
 template <typename... T, typename F>
 void Application::ForEachEntity(F func) {

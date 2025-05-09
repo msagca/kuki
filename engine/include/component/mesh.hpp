@@ -1,9 +1,9 @@
 #pragma once
 #include "component.hpp"
-#include <kuki_export.h>
+#include <kuki_engine_export.h>
 #include <vector>
 namespace kuki {
-struct KUKI_API BoundingBox {
+struct KUKI_ENGINE_API BoundingBox {
   /// @brief Minimum local bounds of the mesh at scale 1
   glm::vec3 min{};
   /// @brief Maximum local bounds of the mesh at scale 1
@@ -13,7 +13,7 @@ struct KUKI_API BoundingBox {
   /// @brief Get the world space bounds
   BoundingBox GetWorldBounds(const Transform*);
 };
-struct KUKI_API Mesh final : IComponent {
+struct KUKI_ENGINE_API Mesh final : IComponent {
   int vertexArray{};
   int vertexBuffer{};
   int indexBuffer{};

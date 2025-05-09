@@ -1,3 +1,3 @@
 @echo off
-cmake -B build --preset Debug
-cmake --build build --config Debug
+cmake -B build
+cmake --build build

@@ -44,24 +44,22 @@ std::vector<Property> Mesh::GetProperties() const {
   return {{"VertexArray", vertexArray}, {"VertexBuffer", vertexBuffer}, {"IndexBuffer", indexBuffer}, {"VertexCount", vertexCount}, {"IndexCount", indexCount}, {"MinBound", bounds.min}, {"MaxBound", bounds.max}};
 }
 void Mesh::SetProperty(Property property) {
-  if (std::holds_alternative<int>(property.value)) {
-    auto& value = std::get<int>(property.value);
+  if (auto value = std::get_if<int>(&property.value)) {
     if (property.name == "VertexArray")
-      vertexArray = value;
+      vertexArray = *value;
     else if (property.name == "VertexBuffer")
-      vertexBuffer = value;
+      vertexBuffer = *value;
     else if (property.name == "IndexBuffer")
-      indexBuffer = value;
+      indexBuffer = *value;
     else if (property.name == "VertexCount")
-      vertexCount = value;
+      vertexCount = *value;
     else if (property.name == "IndexCount")
-      indexCount = value;
-  } else if (std::holds_alternative<glm::vec3>(property.value)) {
-    auto& value = std::get<glm::vec3>(property.value);
+      indexCount = *value;
+  } else if (auto value = std::get_if<glm::vec3>(&property.value)) {
     if (property.name == "MinBound")
-      bounds.min = value;
+      bounds.min = *value;
     else if (property.name == "MaxBound")
-      bounds.max = value;
+      bounds.max = *value;
   }
 }
 } // namespace kuki

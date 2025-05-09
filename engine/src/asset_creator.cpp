@@ -7,6 +7,7 @@
 #include <component/component.hpp>
 #include <component/material.hpp>
 #include <component/mesh.hpp>
+#include <component/skybox.hpp>
 #include <component/texture.hpp>
 #include <cstddef>
 #include <entity_manager.hpp>
@@ -20,6 +21,7 @@
 #include <variant>
 #include <vector>
 #include <cmath>
+#include <string>
 namespace kuki {
 Texture AssetLoader::CreateTexture(const TextureData& data) {
   Texture texture{};
@@ -116,32 +118,53 @@ int AssetLoader::CreateTextureAsset(const TextureData& data) {
   auto assetId = assetManager.Create(name);
   auto textureComp = assetManager.AddComponent<Texture>(assetId);
   *textureComp = texture;
+  spdlog::info("Texture is created: {}.", name);
   auto isHDR = data.type == TextureType::HDR || data.type == TextureType::EXR;
   if (isHDR)
-    app->CreateCubeMapFromEquirect(assetId);
-  spdlog::info("Texture is created: {}.", name);
+    CreateSkyboxAsset(assetId);
   return assetId;
 }
-int AssetLoader::CreateCubeMapAsset(const CubeMapData& data) {
+int AssetLoader::CreateSkyboxAsset(unsigned int assetId) {
+  std::string name = app->GetAssetName(assetId) + "Skybox";
+  auto texture = app->GetAssetComponent<Texture>(assetId);
+  auto skyboxId = app->CreateAsset(name);
+  auto skybox = app->AddAssetComponent<Skybox>(skyboxId);
+  auto cubeMap = app->CreateCubeMapFromEquirect(*texture);
+  skybox->id.x = cubeMap.id;
+  skybox->id.y = app->CreateIrradianceMapFromCubeMap(cubeMap).id;
+  spdlog::info("Skybox is created: {}.", name);
+  return skyboxId;
+}
+Texture AssetLoader::CreateCubeMap(const CubeMapData& data) {
+  Texture texture{};
   unsigned int textureId;
   glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &textureId);
   auto isHDR = data.data[0].type == TextureType::HDR || data.data[0].type == TextureType::EXR;
-  glTextureStorage2D(textureId, 1, isHDR ? GL_RGB16F : GL_RGB8, data.data[0].width, data.data[0].height);
+  auto width = data.data[0].width;
+  auto height = data.data[0].height;
+  glTextureStorage2D(textureId, 1, isHDR ? GL_RGB16F : GL_RGB8, width, height);
   for (auto i = 0; i < 6; ++i) {
     auto& textureData = data.data[i];
     glTextureSubImage3D(textureId, 0, 0, 0, i, textureData.width, textureData.height, 1, isHDR ? GL_FLOAT : GL_RGB, GL_UNSIGNED_BYTE, textureData.data);
     stbi_image_free(textureData.data);
   }
   glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glTextureParameteri(textureId, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  texture.type = TextureType::CubeMap;
+  texture.id = textureId;
+  texture.width = width;
+  texture.height = height;
+  return texture;
+}
+int AssetLoader::CreateCubeMapAsset(const CubeMapData& data) {
+  auto texture = CreateCubeMap(data);
   auto name = data.name;
   auto assetId = assetManager.Create(name);
-  auto texture = assetManager.AddComponent<Texture>(assetId);
-  texture->id = textureId;
-  texture->type = TextureType::CubeMap;
+  auto skybox = assetManager.AddComponent<Skybox>(assetId);
+  skybox->id.x = texture.id;
+  skybox->id.y = app->CreateIrradianceMapFromCubeMap(texture).id;
   spdlog::info("Cube map is created: {}.", name);
   return assetId;
 }

@@ -12,8 +12,10 @@ void Editor::DisplayEntity(unsigned int id, std::vector<unsigned int>& entities,
   if (!EntityHasChildren(id))
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
   entities.push_back(id);
-  if (selection.Contains(id))
+  if (selection.Contains(id)) {
     nodeFlags |= ImGuiTreeNodeFlags_Selected;
+    selectedEntity = id;
+  }
   ImGui::SetNextItemSelectionUserData(id);
   if (renameMode && entityBeingRenamed == id) {
     // TODO: disable camera controls while renaming
