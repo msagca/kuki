@@ -11,7 +11,7 @@ class KUKI_ENGINE_API IShader {
 private:
   const std::string name;
 protected:
-  unsigned int id;
+  unsigned int id{0};
   std::string Read(const std::filesystem::path&);
   unsigned int Compile(const char*, int);
   void CacheLocations();

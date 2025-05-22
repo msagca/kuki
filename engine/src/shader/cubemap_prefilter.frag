@@ -1,8 +1,10 @@
 #version 460 core
 in vec3 worldPos;
 out vec4 color;
-uniform float roughness;
 uniform samplerCube cubeMap;
+uniform float roughness;
+uniform int mipLevels;
+uniform int mipWidth;
 const float PI = 3.14159265359;
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
     float a = roughness * roughness;
@@ -44,11 +46,11 @@ void main() {
     vec3 N = normalize(worldPos);
     vec3 R = N;
     vec3 V = R;
-    const uint SAMPLE_COUNT = 1024u;
     vec3 prefilteredColor = vec3(0.0);
     float totalWeight = 0.0;
-    for (uint i = 0u; i < SAMPLE_COUNT; ++i) {
-        vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+    uint sampleCount = uint(mix(1024.0, 4096.0, roughness * roughness));
+    for (uint i = 0u; i < sampleCount; ++i) {
+        vec2 Xi = Hammersley(i, sampleCount);
         vec3 H = ImportanceSampleGGX(Xi, N, roughness);
         vec3 L = normalize(2.0 * dot(V, H) * H - V);
         float NdotL = max(dot(N, L), 0.0);
@@ -57,10 +59,10 @@ void main() {
             float NdotH = max(dot(N, H), 0.0);
             float HdotV = max(dot(H, V), 0.0);
             float pdf = D * NdotH / (4.0 * HdotV) + 0.0001;
-            float resolution = 512.0;
-            float saTexel = 4.0 * PI / (6.0 * resolution * resolution);
-            float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
+            float saTexel = 4.0 * PI / (6.0 * mipWidth * mipWidth);
+            float saSample = 1.0 / (float(sampleCount) * pdf + 0.0001);
             float mipLevel = roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel);
+            mipLevel = clamp(mipLevel, 0.0, mipLevels - 1.0);
             prefilteredColor += textureLod(cubeMap, L, mipLevel).rgb * NdotL;
             totalWeight += NdotL;
         }

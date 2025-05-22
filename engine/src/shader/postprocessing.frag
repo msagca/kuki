@@ -5,8 +5,8 @@ uniform sampler2D hdrTexture;
 uniform float exposure;
 uniform float gamma;
 void main() {
-    vec3 hdrColor = texture(hdrTexture, texCoord).rgb;
-    vec3 toneMapped = vec3(1.0) - exp(-hdrColor * exposure);
-    vec3 gammaCorrected = pow(toneMapped, vec3(1.0 / gamma));
-    color = vec4(gammaCorrected, 1.0);
+    vec4 hdrColor = texture(hdrTexture, texCoord);
+    vec4 toneMapped = vec4(vec3(1.0) - exp(-hdrColor.rgb * exposure), hdrColor.a);
+    vec4 gammaCorrected = pow(toneMapped, vec4(1.0 / gamma));
+    color = gammaCorrected;
 }

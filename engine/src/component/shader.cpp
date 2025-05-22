@@ -78,11 +78,11 @@ void IShader::SetUniform(const std::string& name, const glm::vec4& value) {
 void IShader::SetUniform(const std::string& name, float value) {
   glUniform1f(locations[name], value);
 }
-void IShader::SetUniform(const std::string& name, unsigned int value) {
-  glUniform1i(locations[name], value);
-}
 void IShader::SetUniform(const std::string& name, int value) {
   glUniform1i(locations[name], value);
+}
+void IShader::SetUniform(const std::string& name, unsigned int value) {
+  glUniform1ui(locations[name], value);
 }
 void IShader::SetUniform(int loc, const glm::mat4& value) {
   glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(value));
@@ -100,7 +100,7 @@ void IShader::SetUniform(int loc, int value) {
   glUniform1i(loc, value);
 }
 void IShader::SetUniform(int loc, unsigned int value) {
-  glUniform1i(loc, value);
+  glUniform1ui(loc, value);
 }
 ComputeShader::ComputeShader(const std::string& name, const std::filesystem::path& comp, ComputeType type)
   : IShader(name), type(type) {
@@ -203,7 +203,7 @@ void LitShader::SetLighting(const std::vector<const Light*>& lights) {
       SetUniform("dirLight.diffuse", light->diffuse);
       SetUniform("dirLight.specular", light->specular);
       dirExists = true;
-    } else {
+    } else if (light->type == LightType::Point) {
       auto offset = pointIndex * 7;
       SetUniform(locations["pointLights[0].position"] + offset, light->vector);
       SetUniform(locations["pointLights[0].ambient"] + offset, light->ambient);

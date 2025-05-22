@@ -32,16 +32,16 @@ struct PointLight {
     float linear;
     float quadratic;
 };
-uniform vec3 viewPos;
-uniform Material material;
-uniform bool hasDirLight;
-uniform DirLight dirLight;
-uniform int pointCount;
-uniform PointLight pointLights[MAX_POINT_LIGHTS];
 uniform samplerCube irradianceMap;
 uniform samplerCube prefilterMap;
 uniform sampler2D brdfLUT;
+uniform vec3 viewPos;
 uniform bool hasSkybox;
+uniform bool hasDirLight;
+uniform int pointCount;
+uniform Material material;
+uniform DirLight dirLight;
+uniform PointLight pointLights[MAX_POINT_LIGHTS];
 const float PI = 3.14159265359;
 const float MAX_REFLECTION_LOD = 4.0;
 vec3 GetNormalFromTexture() {
@@ -85,36 +85,36 @@ vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
 vec3 DirLightContribution(DirLight light, vec3 F0, vec3 A, vec3 N, vec3 M, vec3 R, vec3 V) {
     vec3 L = normalize(light.direction);
     vec3 H = normalize(V + L);
-    vec3 radiance = light.diffuse;
+    float NdotL = max(dot(N, L), 0.0);
     float NDF = DistributionGGX(N, H, R.r);
     float G = GeometrySmith(N, V, L, R.r);
     vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
     vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-    vec3 specular = numerator / denominator;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
     kD *= 1.0 - M;
-    float NdotL = max(dot(N, L), 0.0);
-    return (kD * A / PI + specular) * radiance * NdotL;
+    vec3 diffuse = (A / PI) * light.diffuse;
+    vec3 specular = numerator / denominator;
+    return (kD * diffuse + specular * light.specular) * NdotL;
 }
 vec3 PointLightContribution(PointLight light, vec3 F0, vec3 A, vec3 N, vec3 M, vec3 R, vec3 V, vec3 position) {
     vec3 L = normalize(light.position - position);
     vec3 H = normalize(V + L);
-    float distance = length(light.position - position);
-    float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * distance * distance);
-    vec3 radiance = light.diffuse * attenuation;
+    float NdotL = max(dot(N, L), 0.0);
     float NDF = DistributionGGX(N, H, R.r);
     float G = GeometrySmith(N, V, L, R.r);
     vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
     vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-    vec3 specular = numerator / denominator;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
     kD *= 1.0 - M;
-    float NdotL = max(dot(N, L), 0.0);
-    return (kD * A / PI + specular) * radiance * NdotL;
+    float distance = length(light.position - position);
+    float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * distance * distance);
+    vec3 diffuse = (A / PI) * light.diffuse * attenuation;
+    vec3 specular = numerator / denominator;
+    return (kD * diffuse + specular * light.specular) * NdotL;
 }
 void main() {
     bool useAlbedoTexture = (textureMask & 0x1) != 0;

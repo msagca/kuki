@@ -2,7 +2,6 @@
 #include <glad/glad.h>
 #include "pool.hpp"
 #include <kuki_engine_export.h>
-#include <functional>
 namespace kuki {
 struct KUKI_ENGINE_API TextureParams {
   int width{1024};

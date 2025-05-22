@@ -42,8 +42,11 @@ void RenderingSystem::Shutdown() {
   glDeleteRenderbuffers(1, &renderbufferMulti);
   glDeleteVertexArrays(1, &materialVBO);
   glDeleteVertexArrays(1, &transformVBO);
+  for (const auto& [_, compute] : computes)
+    delete compute;
   for (const auto& [_, shader] : shaders)
     delete shader;
+  computes.clear();
   shaders.clear();
   texturePool.Clear();
 }

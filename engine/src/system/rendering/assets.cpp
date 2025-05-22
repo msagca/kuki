@@ -21,12 +21,11 @@
 namespace kuki {
 int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   static const auto MIN_SIZE = 16;
-  size = std::max(MIN_SIZE, size);
+  auto textureSize = std::max(MIN_SIZE, size);
   auto [texture, skybox] = app.GetAssetComponents<Texture, Skybox>(assetId);
   auto isCubeMap = false;
   auto isPresent = assetToTexture.find(assetId) != assetToTexture.end();
-  TextureParams params{size, size};
-  params.format = GL_RGBA16F;
+  TextureParams params{textureSize, textureSize, GL_TEXTURE_2D, GL_RGBA16F};
   if (!isPresent) {
     if (texture) {
       isCubeMap = texture->type == TextureType::CubeMap;
@@ -43,7 +42,7 @@ int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
     auto textureIdPre = texturePool.Request(params);
     UpdateAttachments(framebuffer, renderbuffer, textureIdPre, params);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    glViewport(0, 0, size, size);
+    glViewport(0, 0, textureSize, textureSize);
     glClearColor(.0f, .0f, .0f, .0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     if (isCubeMap || skybox)
@@ -59,16 +58,16 @@ int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   return textureIdPost;
 }
 void RenderingSystem::DrawSkyboxAsset(unsigned int id) {
-  static UnlitMaterial material;
-  auto [texture, skybox] = app.GetAssetComponents<Texture, Skybox>(id);
-  if (!texture && !skybox)
+  auto skybox = app.GetAssetComponent<Skybox>(id);
+  if (!skybox || skybox->data.skybox == 0)
     return;
-  material.data.base = skybox ? skybox->data.skybox : texture->id;
-  material.type = MaterialType::CubeMapEquirect;
   auto frameId = app.GetAssetId("Frame");
   auto mesh = app.GetAssetComponent<Mesh>(frameId);
   if (!mesh)
     return;
+  static UnlitMaterial material;
+  material.data.base = skybox->data.skybox;
+  material.type = MaterialType::CubeMapEquirect;
   auto shader = GetShader(MaterialType::CubeMapEquirect);
   shader->Use();
   shader->SetUniform("model", glm::mat4(1.0));
@@ -115,8 +114,8 @@ Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect) {
     spdlog::warn("Cube mesh not found.");
     return texture;
   }
-  auto width = equirect.width / 4; // 360 / 90
-  auto height = equirect.height / 2; // 180 / 90
+  const auto width = equirect.width / 4; // 360 / 90
+  const auto height = equirect.height / 2; // 180 / 90
   auto projection = glm::perspective(glm::radians(90.0f), 1.0f, .1f, 10.0f);
   shader->Use();
   shader->SetUniform("projection", projection);
@@ -156,8 +155,8 @@ Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
     spdlog::warn("Cube mesh not found.");
     return texture;
   }
-  auto width = 32;
-  auto height = 32;
+  const auto width = 32;
+  const auto height = width;
   texture.width = width;
   texture.height = height;
   auto projection = glm::perspective(glm::radians(90.0f), 1.0f, .1f, 10.0f);
@@ -198,8 +197,8 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
     spdlog::warn("Cube mesh not found.");
     return texture;
   }
-  auto width = 128;
-  auto height = width;
+  const auto width = 1024;
+  const auto height = width;
   texture.width = width;
   texture.height = height;
   auto projection = glm::perspective(glm::radians(90.0f), 1.0f, .1f, 10.0f);
@@ -215,16 +214,16 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
   texture.id = textureId;
   glActiveTexture(GL_TEXTURE0);
   shader->SetUniform("cubeMap", 0);
+  shader->SetUniform("mipLevels", params.mipmaps);
   glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
   glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
   for (auto i = 0; i < params.mipmaps; ++i) {
-    auto mipWidth = static_cast<unsigned int>(width * std::pow(.5f, i));
-    auto mipHeight = static_cast<unsigned int>(height * std::pow(.5f, i));
-    glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, mipWidth, mipHeight);
+    auto mipWidth = static_cast<int>(width * std::pow(.5f, i));
+    auto mipHeight = static_cast<int>(height * std::pow(.5f, i));
     glViewport(0, 0, mipWidth, mipHeight);
     auto roughness = static_cast<float>(i) / (params.mipmaps - 1);
     shader->SetUniform("roughness", roughness);
+    shader->SetUniform("mipWidth", mipWidth);
     for (auto j = 0; j < 6; ++j) {
       shader->SetUniform("view", viewMatrices[j]);
       glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + j, textureId, i);
@@ -243,8 +242,8 @@ Texture RenderingSystem::CreateBRDF_LUT() {
     spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::BRDF)));
     return texture;
   }
-  const int width = 512;
-  const int height = 512;
+  const auto width = 512;
+  const auto height = width;
   texture.width = width;
   texture.height = height;
   TextureParams params{width, height, GL_TEXTURE_2D, GL_RG16F};
