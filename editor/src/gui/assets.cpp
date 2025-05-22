@@ -1,3 +1,4 @@
+#include <system/rendering.hpp>
 #include <application.hpp>
 #include <component/component.hpp>
 #include <component/skybox.hpp>
@@ -6,10 +7,8 @@
 #include <editor.hpp>
 #include <imgui.h>
 #include <string>
-#include <system/rendering.hpp>
 #include <utility>
 #include <vector>
-#include <glm/ext/vector_uint3.hpp>
 using namespace kuki;
 enum class FileType : uint8_t {
   None,
@@ -73,7 +72,7 @@ void Editor::DisplayAssets() {
           if (component) {
             auto [textureComp, skyboxComp] = GetAssetComponents<Texture, Skybox>(id);
             if (skyboxComp)
-              selectedProperty.value = glm::uvec3{skyboxComp->id};
+              selectedProperty.value = SkyboxData{skyboxComp->data};
             else if (textureComp)
               selectedProperty.value = int{textureComp->id};
             if (skyboxComp || textureComp)

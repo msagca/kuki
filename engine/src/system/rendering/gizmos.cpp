@@ -1,5 +1,5 @@
 #define GLM_ENABLE_EXPERIMENTAL
-#include <glad/glad.h>
+#include <system/rendering.hpp>
 #include <application.hpp>
 #include <component/component.hpp>
 #include <component/material.hpp>
@@ -9,7 +9,6 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-#include <system/rendering.hpp>
 #include <utility/octree.hpp>
 #include <vector>
 namespace kuki {

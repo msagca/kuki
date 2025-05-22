@@ -1,12 +1,12 @@
 #pragma once
 #include "component.hpp"
-#include "texture.hpp"
 #include <kuki_engine_export.h>
 #include <glm/ext/vector_uint3.hpp>
 #include <vector>
 namespace kuki {
+/// @brief Texture IDs associated with a skybox component
 struct KUKI_ENGINE_API Skybox final : IComponent {
-  glm::uvec3 id{}; // skybox (x) + irradiance map (y) + preview (z) texture IDs
+  SkyboxData data{};
   const std::string GetName() const override;
   std::vector<Property> GetProperties() const override;
   void SetProperty(Property) override;

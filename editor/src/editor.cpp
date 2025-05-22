@@ -1,5 +1,7 @@
 #define IMGUI_ENABLE_FREETYPE
+#include <system/rendering.hpp>
 #include <application.hpp>
+#include <app_config.hpp>
 #include <camera_controller.hpp>
 #include <command.hpp>
 #include <component/camera.hpp>
@@ -27,7 +29,6 @@
 #include <spdlog/logger.h>
 #include <spdlog/spdlog.h>
 #include <string>
-#include <system/rendering.hpp>
 #include <system/scripting.hpp>
 #include <type_traits>
 #include <variant>
@@ -36,7 +37,7 @@
 #include <ImGuizmo.h>
 using namespace kuki;
 Editor::Editor()
-  : Application("Kuki Editor"), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
+  : Application(AppConfig{"Kuki Editor", "image/logo.png"}), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
 void Editor::Init() {
   Application::Init();
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor");
@@ -120,23 +121,20 @@ void Editor::LoadDefaultScene() {
   auto filter = AddEntityComponent<MeshFilter>(entityId);
   filter->mesh = *GetAssetComponent<Mesh>(GetAssetId("CubeInverted"));
   auto skybox = AddEntityComponent<Skybox>(entityId);
-  *skybox = *GetAssetComponent<Skybox>(GetAssetId("Skybox"));
   entityName = "MainCamera";
   entityId = CreateEntity(entityName);
   AddEntityComponent<Camera>(entityId);
-  /*entityName = "MainLight";
+  entityName = "MainLight";
   entityId = CreateEntity(entityName);
-  AddEntityComponent<Light>(entityId);*/
+  AddEntityComponent<Light>(entityId);
 }
 void Editor::LoadDefaultAssets() {
-  LoadPrimitive(PrimitiveId::Cube);
-  LoadPrimitive(PrimitiveId::CubeInverted);
-  LoadPrimitive(PrimitiveId::Cylinder);
-  LoadPrimitive(PrimitiveId::Frame);
-  LoadPrimitive(PrimitiveId::Plane);
-  LoadPrimitive(PrimitiveId::Sphere);
-  std::string assetName = "Skybox";
-  LoadCubeMap(assetName, "image/skybox/top.jpg", "image/skybox/bottom.jpg", "image/skybox/right.jpg", "image/skybox/left.jpg", "image/skybox/front.jpg", "image/skybox/back.jpg");
+  LoadPrimitive(PrimitiveType::Cube);
+  LoadPrimitive(PrimitiveType::CubeInverted);
+  LoadPrimitive(PrimitiveType::Cylinder);
+  LoadPrimitive(PrimitiveType::Frame);
+  LoadPrimitive(PrimitiveType::Plane);
+  LoadPrimitive(PrimitiveType::Sphere);
 }
 void Editor::InitImGui() {
   IMGUI_CHECKVERSION();

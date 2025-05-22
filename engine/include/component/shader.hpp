@@ -7,34 +7,47 @@
 #include <kuki_engine_export.h>
 #include <string>
 namespace kuki {
-class KUKI_ENGINE_API Shader {
+class KUKI_ENGINE_API IShader {
 private:
-  unsigned int id;
   const std::string name;
-  MaterialType type;
-  std::string Read(const std::filesystem::path&);
-  unsigned int Compile(const char*, unsigned int);
-  void CacheLocations();
 protected:
+  unsigned int id;
+  std::string Read(const std::filesystem::path&);
+  unsigned int Compile(const char*, int);
+  void CacheLocations();
   std::unordered_map<std::string, int> locations;
 public:
-  Shader(const std::string&, const std::filesystem::path&, const std::filesystem::path&, MaterialType = MaterialType::Unlit);
-  unsigned int GetId() const;
+  IShader(const std::string&);
+  virtual ~IShader() = default;
   const std::string& GetName() const;
-  MaterialType GetType() const;
+  unsigned int GetId() const;
   void Use() const;
-  void SetUniform(const std::string&, const glm::mat4&);
-  void SetUniform(const std::string&, const glm::vec3&);
-  void SetUniform(const std::string&, const glm::vec4&);
-  void SetUniform(const std::string&, float);
-  void SetUniform(const std::string&, int);
-  void SetUniform(const std::string&, unsigned int);
-  void SetUniform(int, const glm::mat4&);
-  void SetUniform(int, const glm::vec3&);
-  void SetUniform(int, const glm::vec4&);
-  void SetUniform(int, float);
-  void SetUniform(int, int);
-  void SetUniform(int, unsigned int);
+  void SetUniform(const std::string& name, const glm::mat4& value);
+  void SetUniform(const std::string& name, const glm::vec3& value);
+  void SetUniform(const std::string& name, const glm::vec4& value);
+  void SetUniform(const std::string& name, float value);
+  void SetUniform(const std::string& name, int value);
+  void SetUniform(const std::string& name, unsigned int value);
+  void SetUniform(int location, const glm::mat4& value);
+  void SetUniform(int location, const glm::vec3& value);
+  void SetUniform(int location, const glm::vec4& value);
+  void SetUniform(int location, float value);
+  void SetUniform(int location, int value);
+  void SetUniform(int location, unsigned int value);
+};
+class KUKI_ENGINE_API ComputeShader : public IShader {
+private:
+  ComputeType type;
+public:
+  ComputeShader(const std::string&, const std::filesystem::path&, ComputeType = ComputeType::BRDF);
+  ComputeType GetType() const;
+};
+class KUKI_ENGINE_API Shader : public IShader {
+private:
+  MaterialType type;
+public:
+  Shader(const std::string&, const std::filesystem::path&, const std::filesystem::path&, MaterialType = MaterialType::Unlit);
+  MaterialType GetType() const;
   virtual void SetCamera(const Camera*);
   void SetMaterial(const IMaterial*);
   /// @brief Set transform attributes for a single instance

@@ -8,7 +8,6 @@
 #include <imgui.h>
 #include <string>
 #include <variant>
-#include <glm/ext/vector_uint3.hpp>
 using namespace kuki;
 void Editor::DisplayProperties() {
   static const auto TEXTURE_SIZE = ImVec2(64, 64);
@@ -69,11 +68,11 @@ void Editor::DisplayProperties() {
             component->SetProperty(Property(prop.name, valueVec4));
         } else if (ImGui::InputFloat4(prop.name.c_str(), glm::value_ptr(valueVec4)))
           component->SetProperty(Property(prop.name, valueVec4));
-      } else if (std::holds_alternative<glm::uvec3>(value)) {
-        auto valueInt = std::get<glm::uvec3>(value);
+      } else if (std::holds_alternative<SkyboxData>(value)) {
+        auto valueSkybox = std::get<SkyboxData>(value);
         auto nameCStr = prop.name.c_str();
         ImGui::Text("%s", nameCStr);
-        if (ImGui::ImageButton(nameCStr, valueInt.z, TEXTURE_SIZE)) {
+        if (ImGui::ImageButton(nameCStr, valueSkybox.preview, TEXTURE_SIZE)) {
           assetMask = 0;
           assetMask |= static_cast<int>(ComponentMask::Skybox);
           selectedComponentName = name;

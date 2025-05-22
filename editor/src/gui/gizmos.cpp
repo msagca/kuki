@@ -1,3 +1,4 @@
+#include <system/rendering.hpp>
 #include <editor.hpp>
 #include <camera_controller.hpp>
 #include <component/camera.hpp>
@@ -8,7 +9,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <ImGuizmo.h>
-#include <system/rendering.hpp>
 using namespace kuki;
 void Editor::DrawGizmos(float width, float height, unsigned int mask) {
   if (selectedEntity < 0)

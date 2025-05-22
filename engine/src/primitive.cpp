@@ -66,7 +66,7 @@ std::vector<Vertex> Primitive::Cube() {
     {{-.5f, .5f, -.5f}, {.0f, 1.0f, .0f}, {1.0f, .0f}, {1.0f, .0f, .0f}}};
 }
 std::vector<Vertex> Primitive::Sphere(int level) {
-  std::vector<Triangle> triangles = CreateOctahedron();
+  std::vector<Triangle> triangles = CreateIcosahedron();
   triangles = Subdivide(triangles, level);
   std::vector<Vertex> vertices;
   vertices.reserve(triangles.size() * 18);

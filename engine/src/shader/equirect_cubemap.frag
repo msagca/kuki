@@ -1,5 +1,5 @@
 #version 460 core
-in vec3 localPos;
+in vec3 worldPos;
 out vec4 color;
 uniform sampler2D equirect;
 const vec2 invAtan = vec2(0.1591, 0.3183); // 1/(2*PI), 1/PI
@@ -10,6 +10,6 @@ vec2 SampleSphericalMap(vec3 v) {
     return uv;
 }
 void main() {
-    vec2 uv = SampleSphericalMap(normalize(localPos));
+    vec2 uv = SampleSphericalMap(normalize(worldPos));
     color = vec4(texture(equirect, uv).rgb, 1.0);
 }

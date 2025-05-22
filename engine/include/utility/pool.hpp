@@ -1,86 +1,52 @@
 #pragma once
-#include <cassert>
 #include <functional>
-#include <vector>
 namespace kuki {
-template <typename T>
+template <typename TKey, typename TVal>
 class Pool {
-private:
-  std::vector<T> memory;
-  std::function<T()> generator;
-  std::function<void(T)> destroyer;
-  size_t capacity;
-  size_t count{}; // number of initialized items
-  size_t last{}; // index of the next available item
-  void Resize();
+protected:
+  template <typename T>
+  static constexpr bool has_std_hash = requires(T key) {
+    { std::hash<T>{}(key) } -> std::convertible_to<size_t>;
+  };
+  template <typename T>
+  static constexpr bool has_member_hash = requires {
+    typename T::Hash;
+    requires std::invocable<typename T::Hash, const T&> && std::convertible_to<std::invoke_result_t<typename T::Hash, const T&>, size_t>;
+  };
+  static_assert(has_std_hash<TKey> || has_member_hash<TKey>, "TKey must either be hashable by std::hash or provide a Hash member type.");
+  using HashType = std::conditional_t<has_std_hash<TKey>,
+    std::hash<TKey>,
+    typename TKey::Hash>;
+  std::unordered_map<TKey, std::vector<TVal>, HashType> pool;
+  virtual TVal Allocate(const TKey&) = 0;
+  virtual void Reallocate(const TKey& key, TVal& val) {}
 public:
-  Pool(std::function<T()>, std::function<void(T)>, size_t = 2);
-  size_t GetCapacity();
-  /// @return The number of items currently in use
-  size_t GetActive();
-  /// @return The number of items ready for use
-  size_t GetInactive();
-  /// @return The index of the next available item
-  size_t Request();
-  void Release(size_t);
-  /// @return A pointer to the item at the given index
-  T* Get(size_t);
-  template <typename F>
-  void ForEach(F);
-  void Clear();
+  Pool() = default;
+  virtual ~Pool() = default;
+  TVal Request(const TKey& key) {
+    auto it = pool.find(key);
+    if (it != pool.end() && !it->second.empty()) {
+      auto val = std::move(it->second.back());
+      it->second.pop_back();
+      return val;
+    }
+    return Allocate(key);
+  }
+  template <typename... Vals>
+  void Release(const TKey& key, Vals&&... vals) {
+    static_assert((std::is_convertible_v<std::decay_t<Vals>, TVal> && ...), "All arguments must be convertible to TVal.");
+    auto& resources = pool[key];
+    (resources.push_back(std::forward<Vals>(vals)), ...);
+  }
+  virtual void Clear() {
+    pool.clear();
+  }
+  void PreAllocate(const TKey& key, size_t count) {
+    auto& resources = pool[key];
+    auto len = resources.size();
+    resources.reserve(len + count);
+    for (auto i = 0; i < count; ++i)
+      resources.push_back(Allocate(key));
+  }
 };
-template <typename T>
-Pool<T>::Pool(std::function<T()> generator, std::function<void(T)> destroyer, size_t capacity)
-  : generator(generator), destroyer(destroyer), capacity(capacity) {
-  memory.resize(this->capacity);
-}
-template <typename T>
-size_t Pool<T>::GetCapacity() {
-  return capacity;
-}
-template <typename T>
-size_t Pool<T>::GetActive() {
-  return last;
-}
-template <typename T>
-size_t Pool<T>::GetInactive() {
-  return count - last;
-}
-template <typename T>
-void Pool<T>::Resize() {
-  capacity *= 2;
-  memory.resize(capacity);
-}
-template <typename T>
-size_t Pool<T>::Request() {
-  assert(last <= count && "Pool: Last index cannot be greater than the item count.");
-  if (last >= memory.size())
-    Resize();
-  if (last >= count)
-    memory[count++] = generator();
-  return last++;
-}
-template <typename T>
-void Pool<T>::Release(size_t index) {
-  if (index >= last)
-    return;
-  std::swap(memory[index], memory[--last]);
-}
-template <typename T>
-T* Pool<T>::Get(size_t index) {
-  if (index >= last)
-    return nullptr;
-  return &memory[index];
-}
-template <typename T>
-template <typename F>
-void Pool<T>::ForEach(F func) {
-  for (auto i = 0; i < last; i++)
-    func(memory[i]);
-}
-template <typename T>
-void Pool<T>::Clear() {
-  for (auto i = 0; i < count; i++)
-    destroyer(memory[i]);
-}
 } // namespace kuki

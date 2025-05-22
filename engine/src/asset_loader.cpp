@@ -36,32 +36,30 @@ AssetLoader::AssetLoader(Application* app, EntityManager& assetManager)
 void AssetLoader::Update() {
   while (auto eventOpt = textureLoadQueue.Pop())
     CreateTextureAsset(*eventOpt);
-  while (auto eventOpt = cubeMapLoadQueue.Pop())
-    CreateCubeMapAsset(*eventOpt);
   while (auto eventOpt = materialCreateQueue.Pop())
     (*eventOpt)->materialPromise.set_value(CreateMaterial((*eventOpt)->data));
   while (auto eventOpt = meshCreateQueue.Pop())
     (*eventOpt)->meshPromise.set_value(CreateMesh((*eventOpt)->source));
 }
-int AssetLoader::LoadPrimitive(PrimitiveId id) {
+int AssetLoader::LoadPrimitive(PrimitiveType id) {
   int assetId = -1;
   switch (static_cast<uint8_t>(id)) {
-  case static_cast<uint8_t>(PrimitiveId::Cube):
+  case static_cast<uint8_t>(PrimitiveType::Cube):
     assetId = LoadMesh("Cube", Primitive::Cube());
     break;
-  case static_cast<uint8_t>(PrimitiveId::Sphere):
+  case static_cast<uint8_t>(PrimitiveType::Sphere):
     assetId = LoadMesh("Sphere", Primitive::Sphere());
     break;
-  case static_cast<uint8_t>(PrimitiveId::Cylinder):
+  case static_cast<uint8_t>(PrimitiveType::Cylinder):
     assetId = LoadMesh("Cylinder", Primitive::Cylinder());
     break;
-  case static_cast<uint8_t>(PrimitiveId::Plane):
+  case static_cast<uint8_t>(PrimitiveType::Plane):
     assetId = LoadMesh("Plane", Primitive::Plane());
     break;
-  case static_cast<uint8_t>(PrimitiveId::Frame):
+  case static_cast<uint8_t>(PrimitiveType::Frame):
     assetId = LoadMesh("Frame", Primitive::Frame());
     break;
-  case static_cast<uint8_t>(PrimitiveId::CubeInverted): {
+  case static_cast<uint8_t>(PrimitiveType::CubeInverted): {
     auto vertices = Primitive::Cube();
     Primitive::FlipWindingOrder(vertices);
     assetId = LoadMesh("CubeInverted", vertices);
@@ -233,41 +231,6 @@ TextureData AssetLoader::LoadTexture(const std::filesystem::path& path, TextureT
       spdlog::error("Failed to load texture: '{}'.", pathStr);
   }
   return data;
-}
-int AssetLoader::LoadCubeMap(const std::string& name, const std::array<std::filesystem::path, 6>& paths) {
-  CubeMapData data;
-  data.name = name;
-  for (auto i = 0; i < 6; ++i) {
-    auto& path = paths[i];
-    auto texture = LoadTexture(path);
-    if (texture.data)
-      data.data[i] = texture;
-    else {
-      for (auto j = 0; j < i; ++j)
-        stbi_image_free(data.data[j].data);
-      return -1;
-    }
-  }
-  return CreateCubeMapAsset(data);
-}
-void AssetLoader::LoadCubeMapAsync(const std::string& name, const std::array<std::filesystem::path, 6>& paths) {
-  std::thread([this, name, paths]() {
-    CubeMapData data;
-    data.name = name;
-    for (auto i = 0; i < 6; ++i) {
-      auto& path = paths[i];
-      auto texture = LoadTexture(path);
-      if (texture.data)
-        data.data[i] = texture;
-      else {
-        for (auto j = 0; j < i; ++j)
-          stbi_image_free(data.data[j].data);
-        return;
-      }
-    }
-    cubeMapLoadQueue.Push(std::move(data));
-    spdlog::info("Cube map is loaded: {}.", name);
-  }).detach();
 }
 int AssetLoader::LoadMesh(const std::string& name, const std::vector<Vertex>& vertices) {
   std::string nameMutable = name;

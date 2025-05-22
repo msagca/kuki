@@ -1,8 +1,8 @@
+#include <system/rendering.hpp>
 #include <application.hpp>
 #include <editor.hpp>
 #include <imgui.h>
 #include <string>
-#include <system/rendering.hpp>
 #include <system/scripting.hpp>
 #include <utility>
 #include <camera_controller.hpp>

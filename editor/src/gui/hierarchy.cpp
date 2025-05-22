@@ -19,6 +19,8 @@ void Editor::DisplayHierarchy() {
   ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_None, selection.Size, GetEntityCount());
   selection.ApplyRequests(ms_io);
   selectedEntity = -1;
+  // FIXME: selection does not update when entities are deleted
+  // FIXME: selection does not work correctly with tree nodes
   ForEachRootEntity([this, &entities](unsigned int id) {
     DisplayEntity(id, entities, selection);
   });

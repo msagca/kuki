@@ -17,38 +17,15 @@
 #include <string>
 #include <vector>
 namespace kuki {
-Shader::Shader(const std::string& name, const std::filesystem::path& vert, const std::filesystem::path& frag, MaterialType type)
-  : name(name), type(type) {
-  auto vertText = Read(vert);
-  auto fragText = Read(frag);
-  auto vertId = Compile(vertText.c_str(), GL_VERTEX_SHADER);
-  auto fragId = Compile(fragText.c_str(), GL_FRAGMENT_SHADER);
-  id = glCreateProgram();
-  glAttachShader(id, vertId);
-  glAttachShader(id, fragId);
-  glLinkProgram(id);
-  int success;
-  glGetProgramiv(id, GL_LINK_STATUS, &success);
-  if (!success)
-    spdlog::error("Failed to link shader: {}.", name);
-  else
-    CacheLocations();
-  glDeleteShader(vertId);
-  glDeleteShader(fragId);
-}
-unsigned int Shader::GetId() const {
+IShader::IShader(const std::string& name)
+  : name(name) {}
+unsigned int IShader::GetId() const {
   return id;
 }
-const std::string& Shader::GetName() const {
+const std::string& IShader::GetName() const {
   return name;
 }
-MaterialType Shader::GetType() const {
-  return type;
-}
-void Shader::Use() const {
-  glUseProgram(id);
-}
-std::string Shader::Read(const std::filesystem::path& path) {
+std::string IShader::Read(const std::filesystem::path& path) {
   std::ifstream fs(path);
   if (!fs) {
     spdlog::error("Failed to open shader file: '{}'.", path.string());
@@ -63,7 +40,7 @@ std::string Shader::Read(const std::filesystem::path& path) {
   fs.close();
   return ss.str();
 }
-unsigned int Shader::Compile(const char* text, unsigned int type) {
+unsigned int IShader::Compile(const char* text, int type) {
   auto id = glCreateShader(type);
   glShaderSource(id, 1, &text, nullptr);
   glCompileShader(id);
@@ -73,7 +50,7 @@ unsigned int Shader::Compile(const char* text, unsigned int type) {
     spdlog::error("Failed to compile shader: {}.", name);
   return id;
 }
-void Shader::CacheLocations() {
+void IShader::CacheLocations() {
   int params = 0;
   glGetProgramiv(id, GL_ACTIVE_UNIFORMS, &params);
   const int bufSize = 256;
@@ -86,41 +63,88 @@ void Shader::CacheLocations() {
     locations[name] = glGetUniformLocation(id, name);
   }
 }
-void Shader::SetUniform(const std::string& name, const glm::mat4& value) {
+void IShader::Use() const {
+  glUseProgram(id);
+}
+void IShader::SetUniform(const std::string& name, const glm::mat4& value) {
   glUniformMatrix4fv(locations[name], 1, GL_FALSE, glm::value_ptr(value));
 }
-void Shader::SetUniform(const std::string& name, const glm::vec3& value) {
+void IShader::SetUniform(const std::string& name, const glm::vec3& value) {
   glUniform3fv(locations[name], 1, glm::value_ptr(value));
 }
-void Shader::SetUniform(const std::string& name, const glm::vec4& value) {
+void IShader::SetUniform(const std::string& name, const glm::vec4& value) {
   glUniform4fv(locations[name], 1, glm::value_ptr(value));
 }
-void Shader::SetUniform(const std::string& name, float value) {
+void IShader::SetUniform(const std::string& name, float value) {
   glUniform1f(locations[name], value);
 }
-void Shader::SetUniform(const std::string& name, unsigned int value) {
+void IShader::SetUniform(const std::string& name, unsigned int value) {
   glUniform1i(locations[name], value);
 }
-void Shader::SetUniform(const std::string& name, int value) {
+void IShader::SetUniform(const std::string& name, int value) {
   glUniform1i(locations[name], value);
 }
-void Shader::SetUniform(int loc, const glm::mat4& value) {
+void IShader::SetUniform(int loc, const glm::mat4& value) {
   glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 }
-void Shader::SetUniform(int loc, const glm::vec3& value) {
+void IShader::SetUniform(int loc, const glm::vec3& value) {
   glUniform3fv(loc, 1, glm::value_ptr(value));
 }
-void Shader::SetUniform(int loc, const glm::vec4& value) {
+void IShader::SetUniform(int loc, const glm::vec4& value) {
   glUniform4fv(loc, 1, glm::value_ptr(value));
 }
-void Shader::SetUniform(int loc, float value) {
+void IShader::SetUniform(int loc, float value) {
   glUniform1f(loc, value);
 }
-void Shader::SetUniform(int loc, int value) {
+void IShader::SetUniform(int loc, int value) {
   glUniform1i(loc, value);
 }
-void Shader::SetUniform(int loc, unsigned int value) {
+void IShader::SetUniform(int loc, unsigned int value) {
   glUniform1i(loc, value);
+}
+ComputeShader::ComputeShader(const std::string& name, const std::filesystem::path& comp, ComputeType type)
+  : IShader(name), type(type) {
+  auto compText = Read(comp);
+  auto compId = Compile(compText.c_str(), GL_COMPUTE_SHADER);
+  id = glCreateProgram();
+  glAttachShader(id, compId);
+  glLinkProgram(id);
+  glDeleteShader(compId);
+  int success;
+  glGetProgramiv(id, GL_LINK_STATUS, &success);
+  if (!success)
+    spdlog::error("Failed to link shader: {}.", name);
+  else {
+    spdlog::info("Shader program is created: {}.", name);
+    CacheLocations();
+  }
+}
+ComputeType ComputeShader::GetType() const {
+  return type;
+}
+Shader::Shader(const std::string& name, const std::filesystem::path& vert, const std::filesystem::path& frag, MaterialType type)
+  : IShader(name), type(type) {
+  auto vertText = Read(vert);
+  auto fragText = Read(frag);
+  auto vertId = Compile(vertText.c_str(), GL_VERTEX_SHADER);
+  auto fragId = Compile(fragText.c_str(), GL_FRAGMENT_SHADER);
+  id = glCreateProgram();
+  glAttachShader(id, vertId);
+  glAttachShader(id, fragId);
+  glLinkProgram(id);
+  glDeleteShader(vertId);
+  glDeleteShader(fragId);
+  int success;
+  glGetProgramiv(id, GL_LINK_STATUS, &success);
+  if (!success)
+    spdlog::error("Failed to link shader: {}.", name);
+  else {
+    spdlog::info("Shader program is created: {}.", name);
+    CacheLocations();
+  }
+}
+MaterialType Shader::GetType() const {
+  return type;
 }
 void Shader::SetCamera(const Camera* camera) {
   SetUniform("view", camera->view);
@@ -191,7 +215,7 @@ void LitShader::SetLighting(const std::vector<const Light*>& lights) {
       pointIndex++;
     }
   SetUniform("pointCount", pointIndex);
-  SetUniform("dirExists", dirExists);
+  SetUniform("hasDirLight", dirExists);
 }
 void LitShader::SetMaterialFallback(const Mesh* mesh, LitFallbackData material, unsigned int buffer) {
   std::vector<LitFallbackData> materials{material};

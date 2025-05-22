@@ -12,7 +12,6 @@
 namespace kuki {
 class KUKI_ENGINE_API Application {
 private:
-  std::string name;
   AppConfig config;
   std::vector<System*> systems;
   static void WindowCloseCallback(GLFWwindow*);
@@ -33,7 +32,7 @@ protected:
   float deltaTime{};
   unsigned int activeSceneId{};
 public:
-  Application(const std::string&);
+  Application(const AppConfig&);
   virtual ~Application() = default;
   const std::string& GetName() const;
   void Configure(const AppConfig&);
@@ -147,11 +146,11 @@ public:
   void UnregisterInputCallback(int, int);
   Texture CreateCubeMapFromEquirect(Texture);
   Texture CreateIrradianceMapFromCubeMap(Texture);
+  Texture CreatePrefilterMapFromCubeMap(Texture);
+  Texture CreateBRDF_LUT();
   void LoadModelAsync(const std::filesystem::path&);
   void LoadTextureAsync(const std::filesystem::path&, TextureType = TextureType::Albedo);
-  int LoadPrimitive(PrimitiveId);
-  int LoadCubeMap(const std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
-  void LoadCubeMapAsync(const std::string&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&);
+  int LoadPrimitive(PrimitiveType);
   template <typename T, typename F>
   int RegisterEventCallback(F&&);
   template <typename T>

@@ -1,7 +1,6 @@
 #pragma once
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-#include <glm/ext/vector_uint3.hpp>
 #include <kuki_engine_export.h>
 #include <string>
 #include <variant>
@@ -35,18 +34,23 @@ enum class CameraType : uint8_t {
   Perspective,
   Orthographic
 };
+enum class ComputeType : uint8_t {
+  BRDF
+};
 enum class LightType : uint8_t {
   Directional,
   Point
 };
 /// @brief Each material type shall correspond to a shader
 enum class MaterialType : uint8_t {
-  Lit,
-  Unlit,
-  Skybox,
   CubeMapEquirect,
+  CubeMapIrradiance,
+  CubeMapPrefilter,
   EquirectCubeMap,
-  CubeMapIrradiance
+  Lit,
+  Postprocessing,
+  Skybox,
+  Unlit
 };
 enum class TextureType : uint8_t {
   Albedo,
@@ -56,7 +60,8 @@ enum class TextureType : uint8_t {
   Roughness,
   CubeMap,
   HDR,
-  EXR // same as HDR, but this requires flipping as TinyEXR uses a different coordinate system for textures
+  EXR, // same as HDR, but this requires flipping as TinyEXR uses a different coordinate system for textures
+  BRDF
 };
 enum class TextureMask : size_t {
   Albedo = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Albedo),
@@ -77,8 +82,15 @@ enum class PropertyType : uint8_t {
   Skybox, // image pair
   Texture // image
 };
+struct SkyboxData {
+  int skybox;
+  int irradiance;
+  int prefilter;
+  int brdf;
+  int preview;
+};
 struct KUKI_ENGINE_API Property {
-  using PropertyValue = std::variant<int, float, bool, glm::uvec3, glm::vec3, glm::vec4, CameraType, LightType, MaterialType, TextureType>;
+  using PropertyValue = std::variant<int, float, bool, glm::vec3, glm::vec4, CameraType, LightType, MaterialType, TextureType, SkyboxData>;
   std::string name{};
   PropertyValue value{};
   PropertyType type{PropertyType::Number};
@@ -94,6 +106,13 @@ template <typename T>
 struct EnumTraits {
   static_assert(sizeof(T) == 0, "EnumTraits must be specialized for this type.");
   static const std::vector<const char*>& GetNames();
+};
+template <>
+struct EnumTraits<ComputeType> {
+  static const std::vector<const char*>& GetNames() {
+    static const std::vector<const char*> names = {"BRDF"};
+    return names;
+  }
 };
 template <>
 struct EnumTraits<CameraType> {
@@ -112,14 +131,14 @@ struct EnumTraits<LightType> {
 template <>
 struct EnumTraits<MaterialType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Lit", "Unlit", "Skybox", "CubeMapEquirect", "EquirectCubeMap", "CubeMapIrradiance"};
+    static const std::vector<const char*> names = {"CubeMapEquirect", "CubeMapIrradiance", "CubeMapPrefilter", "EquirectCubeMap", "Lit", "Postprocessing", "Skybox", "Unlit"};
     return names;
   }
 };
 template <>
 struct EnumTraits<TextureType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "CubeMap", "HDR", "EXR"};
+    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "CubeMap", "HDR", "EXR", "BRDF"};
     return names;
   }
 };

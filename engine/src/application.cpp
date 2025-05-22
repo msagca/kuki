@@ -1,8 +1,7 @@
 #define STB_IMAGE_IMPLEMENTATION
-#include <glad/glad.h>
+#include <system/rendering.hpp>
 #include <app_config.hpp>
 #include <application.hpp>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <command.hpp>
@@ -22,17 +21,20 @@
 #include <primitive.hpp>
 #include <random>
 #include <scene.hpp>
-#include <system/rendering.hpp>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string>
 #include <system/system.hpp>
 #include <vector>
 namespace kuki {
-Application::Application(const std::string& name)
-  : name(name), assetManager(), assetLoader(this, assetManager), inputManager(), sceneManager(), commandManager() {}
+AppConfig::AppConfig(std::string name, std::filesystem::path logoPath, int screenWidth, int screenHeight)
+  : name(name), logoPath(logoPath), screenWidth(screenWidth), screenHeight(screenHeight) {}
+Application::Application(const AppConfig& config)
+  : config(config), assetManager(), assetLoader(this, assetManager), inputManager(), sceneManager(), commandManager() {
+  // TODO: check the config for illegal values
+}
 const std::string& Application::GetName() const {
-  return name;
+  return config.name;
 }
 void Application::Configure(const AppConfig& config) {
   this->config = config;
@@ -60,8 +62,6 @@ Camera* Application::GetActiveCamera() {
   return scene->GetCamera();
 }
 void Application::Init() {
-  static const auto WINDOW_WIDTH = 800.0f;
-  static const auto WINDOW_HEIGHT = 600.0f;
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
@@ -69,7 +69,7 @@ void Application::Init() {
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_SAMPLES, 4);
-  window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, name.c_str(), nullptr, nullptr);
+  window = glfwCreateWindow(config.screenWidth, config.screenHeight, config.name.c_str(), nullptr, nullptr);
   if (!window) {
     spdlog::error("Failed to create GLFW window.");
     glfwTerminate();
@@ -89,7 +89,7 @@ void Application::Init() {
     spdlog::error("OpenGL 4.6 or higher is required.");
     return;
   }
-  SetWindowIcon("image/logo.png"); // TODO: make this configurable
+  SetWindowIcon(config.logoPath);
   glfwSwapInterval(0);
   glfwSetWindowUserPointer(window, this);
   glfwSetCursorPosCallback(window, CursorPosCallback);
@@ -98,7 +98,7 @@ void Application::Init() {
   glfwSetKeyCallback(window, KeyCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetWindowCloseCallback(window, WindowCloseCallback);
-  glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+  glViewport(0, 0, config.screenWidth, config.screenHeight);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glCullFace(GL_BACK);
   glEnable(GL_BLEND);
@@ -107,6 +107,7 @@ void Application::Init() {
   glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_MULTISAMPLE);
+  glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
   glFrontFace(GL_CCW);
   glDebugMessageCallback(DebugMessageCallback, nullptr);
   glfwMaximizeWindow(window);
@@ -458,21 +459,25 @@ Texture Application::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
     return Texture{};
   return renderingSystem->CreateIrradianceMapFromCubeMap(cubeMap);
 }
+Texture Application::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
+  auto renderingSystem = GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return Texture{};
+  return renderingSystem->CreatePrefilterMapFromCubeMap(cubeMap);
+}
+Texture Application::CreateBRDF_LUT() {
+  auto renderingSystem = GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return Texture{};
+  return renderingSystem->CreateBRDF_LUT();
+}
 void Application::LoadModelAsync(const std::filesystem::path& path) {
   assetLoader.LoadModelAsync(path);
 }
 void Application::LoadTextureAsync(const std::filesystem::path& path, TextureType type) {
   assetLoader.LoadTextureAsync(path, type);
 }
-int Application::LoadPrimitive(PrimitiveId id) {
+int Application::LoadPrimitive(PrimitiveType id) {
   return assetLoader.LoadPrimitive(id);
-}
-int Application::LoadCubeMap(const std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {
-  std::array<std::filesystem::path, 6> paths{right, left, top, bottom, front, back};
-  return assetLoader.LoadCubeMap(name, paths);
-}
-void Application::LoadCubeMapAsync(const std::string& name, const std::filesystem::path& top, const std::filesystem::path& bottom, const std::filesystem::path& right, const std::filesystem::path& left, const std::filesystem::path& front, const std::filesystem::path& back) {
-  std::array<std::filesystem::path, 6> paths{right, left, top, bottom, front, back};
-  assetLoader.LoadCubeMapAsync(name, paths);
 }
 } // namespace kuki
