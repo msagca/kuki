@@ -6,6 +6,7 @@ uniform float roughness;
 uniform int mipLevels;
 uniform int mipWidth;
 const float PI = 3.14159265359;
+const float EPSILON = 1.0e-6;
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
     float a = roughness * roughness;
     float a2 = a * a;
@@ -58,9 +59,9 @@ void main() {
             float D = DistributionGGX(N, H, roughness);
             float NdotH = max(dot(N, H), 0.0);
             float HdotV = max(dot(H, V), 0.0);
-            float pdf = D * NdotH / (4.0 * HdotV) + 0.0001;
+            float pdf = D * NdotH / (4.0 * HdotV) + EPSILON;
             float saTexel = 4.0 * PI / (6.0 * mipWidth * mipWidth);
-            float saSample = 1.0 / (float(sampleCount) * pdf + 0.0001);
+            float saSample = 1.0 / (float(sampleCount) * pdf + EPSILON);
             float mipLevel = roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel);
             mipLevel = clamp(mipLevel, 0.0, mipLevels - 1.0);
             prefilteredColor += textureLod(cubeMap, L, mipLevel).rgb * NdotL;

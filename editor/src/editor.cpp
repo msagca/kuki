@@ -121,12 +121,12 @@ void Editor::LoadDefaultScene() {
   auto filter = AddEntityComponent<MeshFilter>(entityId);
   filter->mesh = *GetAssetComponent<Mesh>(GetAssetId("CubeInverted"));
   auto skybox = AddEntityComponent<Skybox>(entityId);
-  entityName = "MainCamera";
+  entityName = "SceneCamera";
   entityId = CreateEntity(entityName);
   AddEntityComponent<Camera>(entityId);
-  entityName = "MainLight";
+  /*entityName = "DirectionalLight";
   entityId = CreateEntity(entityName);
-  AddEntityComponent<Light>(entityId);
+  AddEntityComponent<Light>(entityId);*/
 }
 void Editor::LoadDefaultAssets() {
   LoadPrimitive(PrimitiveType::Cube);

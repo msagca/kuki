@@ -215,6 +215,7 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
   glActiveTexture(GL_TEXTURE0);
   shader->SetUniform("cubeMap", 0);
   shader->SetUniform("mipLevels", params.mipmaps);
+  shader->SetUniform("mipWidth", width);
   glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
   glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
   for (auto i = 0; i < params.mipmaps; ++i) {
@@ -223,7 +224,6 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
     glViewport(0, 0, mipWidth, mipHeight);
     auto roughness = static_cast<float>(i) / (params.mipmaps - 1);
     shader->SetUniform("roughness", roughness);
-    shader->SetUniform("mipWidth", mipWidth);
     for (auto j = 0; j < 6; ++j) {
       shader->SetUniform("view", viewMatrices[j]);
       glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + j, textureId, i);

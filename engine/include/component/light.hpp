@@ -6,7 +6,7 @@
 namespace kuki {
 struct KUKI_ENGINE_API Light final : IComponent {
   LightType type{LightType::Directional};
-  glm::vec3 vector{.2f, 1.0f, .3f};
+  glm::vec3 vector{1.0f, 3.0f, 2.0f};
   glm::vec3 ambient{.2f};
   glm::vec3 diffuse{.5f};
   glm::vec3 specular{1.0f};

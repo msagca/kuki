@@ -2,10 +2,10 @@
 in vec3 worldPos;
 out vec4 color;
 uniform sampler2D equirect;
-const vec2 invAtan = vec2(0.1591, 0.3183); // 1/(2*PI), 1/PI
+const vec2 INV_ATAN = vec2(0.1591, 0.3183); // 1/(2*PI), 1/PI
 vec2 SampleSphericalMap(vec3 v) {
     vec2 uv = vec2(atan(v.z, v.x), asin(v.y)); // [-PI, PI], [-PI/2, PI/2]
-    uv *= invAtan; // [-0.5, 0.5]
+    uv *= INV_ATAN; // [-0.5, 0.5]
     uv += 0.5; // [0, 1]
     return uv;
 }

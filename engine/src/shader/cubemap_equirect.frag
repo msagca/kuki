@@ -2,7 +2,7 @@
 in vec2 texCoord;
 out vec4 color;
 uniform samplerCube cubeMap;
-const float PI = 3.1415927;
+const float PI = 3.14159265359;
 void main() {
     vec2 uv = texCoord * 2.0 - vec2(1.0);
     float longitude = uv.x * PI;

@@ -43,6 +43,7 @@ uniform Material material;
 uniform DirLight dirLight;
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
 const float PI = 3.14159265359;
+const float EPSILON = 1.0e-6;
 const float MAX_REFLECTION_LOD = 4.0;
 vec3 GetNormalFromTexture() {
     vec3 tangentNormal = texture(material.normal, texCoord).xyz * 2.0 - 1.0;
@@ -90,7 +91,7 @@ vec3 DirLightContribution(DirLight light, vec3 F0, vec3 A, vec3 N, vec3 M, vec3 
     float G = GeometrySmith(N, V, L, R.r);
     vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
     vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + EPSILON;
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
     kD *= 1.0 - M;
@@ -106,7 +107,7 @@ vec3 PointLightContribution(PointLight light, vec3 F0, vec3 A, vec3 N, vec3 M, v
     float G = GeometrySmith(N, V, L, R.r);
     vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
     vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + EPSILON;
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
     kD *= 1.0 - M;
@@ -132,10 +133,6 @@ void main() {
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, A, M);
     vec3 Lo = vec3(0.0);
-    if (hasDirLight)
-        Lo += DirLightContribution(dirLight, F0, A, N, M, R, V);
-    for (int i = 0; i < min(pointCount, MAX_POINT_LIGHTS); ++i)
-        Lo += PointLightContribution(pointLights[i], F0, A, N, M, R, V, position);
     vec3 ambient;
     if (hasSkybox) {
         vec3 F = FresnelSchlickRoughness(max(dot(N, V), 0.0), F0, R.r);
@@ -148,9 +145,12 @@ void main() {
         vec2 brdf = texture(brdfLUT, vec2(max(dot(N, V), 0.0), R.r)).rg;
         vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
         ambient = (kD * diffuse + specular) * O;
-    } else if (hasDirLight)
+    } else if (hasDirLight) {
+        Lo += DirLightContribution(dirLight, F0, A, N, M, R, V);
         ambient = dirLight.ambient * A * O;
-    else
+    } else
         ambient = vec3(0.03) * A * O;
+    for (int i = 0; i < min(pointCount, MAX_POINT_LIGHTS); ++i)
+        Lo += PointLightContribution(pointLights[i], F0, A, N, M, R, V, position);
     color = vec4(ambient + Lo, 1.0);
 }
