@@ -5,9 +5,9 @@
 namespace kuki {
 struct KUKI_ENGINE_API BoundingBox {
   /// @brief Minimum local bounds of the mesh at scale 1
-  glm::vec3 min{};
+  glm::vec3 min{-1.0f};
   /// @brief Maximum local bounds of the mesh at scale 1
-  glm::vec3 max{};
+  glm::vec3 max{1.0f};
   BoundingBox();
   BoundingBox(glm::vec3, glm::vec3);
   /// @brief Get the world space bounds

@@ -3,6 +3,7 @@
 #include <application.hpp>
 #include <component/component.hpp>
 #include <component/shader.hpp>
+#include <component/transform.hpp>
 #include <spdlog/spdlog.h>
 #include <system/system.hpp>
 namespace kuki {
@@ -34,6 +35,9 @@ void RenderingSystem::Start() {
   shaders.insert({skyboxShader->GetType(), skyboxShader});
   shaders.insert({unlitShader->GetType(), unlitShader});
   assetCam.Update();
+}
+void RenderingSystem::Update(float deltaTime) {
+  UpdateTransforms();
 }
 void RenderingSystem::Shutdown() {
   glDeleteFramebuffers(1, &framebuffer);
@@ -116,4 +120,19 @@ ComputeShader* RenderingSystem::GetCompute(ComputeType type) {
     return nullptr;
   }
 }
+void RenderingSystem::UpdateTransforms() {
+  app.ForEachEntity<Transform>([this](unsigned int id, Transform* transform) {
+    if (!app.EntityHasParent(id) && transform->localDirty)
+      MarkChildrenDirty(id);
+  });
+}
+void RenderingSystem::MarkChildrenDirty(unsigned int id) {
+  app.ForEachChildEntity(id, [this](unsigned int childId) {
+    auto childTransform = app.GetEntityComponent<Transform>(childId);
+    if (childTransform) {
+      childTransform->worldDirty = true;
+      MarkChildrenDirty(childId);
+    }
+  });
+};
 } // namespace kuki

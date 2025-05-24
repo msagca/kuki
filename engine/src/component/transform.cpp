@@ -22,10 +22,12 @@ void Transform::SetProperty(Property property) {
       rotation = glm::quat(glm::radians(*value));
     else if (property.name == "Scale")
       scale = *value;
-    dirty = true; // TODO: propagate changes to children
+    localDirty = true;
+    worldDirty = true;
   } else if (auto value = std::get_if<int>(&property.value)) {
     if (property.name == "Parent")
       parent = *value;
+    worldDirty = true;
   }
 }
 } // namespace kuki

@@ -93,10 +93,12 @@ void RenderingSystem::DrawAsset(unsigned int id) {
 }
 void RenderingSystem::DrawAsset(const Transform* transform, const Mesh* mesh, const Material* material) {
   auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
-  auto& litMaterial = std::get<LitMaterial>(material->material);
+  auto litMaterial = std::get_if<LitMaterial>(&material->material);
+  if (!litMaterial)
+    return;
   auto model = GetAssetWorldTransform(transform);
   shader->SetMaterial(material);
-  shader->SetMaterialFallback(mesh, litMaterial.fallback, materialVBO);
+  shader->SetMaterialFallback(mesh, litMaterial->fallback, materialVBO);
   shader->SetTransform(mesh, model, transformVBO);
   shader->Draw(mesh);
 }
@@ -263,11 +265,11 @@ glm::mat4 RenderingSystem::GetAssetWorldTransform(const Transform* transform) {
   auto translation = glm::translate(glm::mat4(1.0f), transform->position);
   auto rotation = glm::toMat4(transform->rotation);
   auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
-  transform->model = translation * rotation * scale;
+  transform->local = translation * rotation * scale;
   if (transform->parent >= 0)
     if (auto parent = app.GetAssetComponent<Transform>(transform->parent))
-      transform->model = GetAssetWorldTransform(parent) * transform->model;
-  return transform->model;
+      transform->local = GetAssetWorldTransform(parent) * transform->local;
+  return transform->local;
 }
 glm::vec3 RenderingSystem::GetAssetWorldPosition(const Transform* transform) {
   auto model = GetAssetWorldTransform(transform);

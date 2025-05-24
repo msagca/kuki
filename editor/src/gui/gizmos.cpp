@@ -45,7 +45,8 @@ void Editor::DrawGizmos(float width, float height, unsigned int mask) {
   ImGuizmo::Manipulate(glm::value_ptr(camera->view), glm::value_ptr(camera->projection), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(matrix));
   ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), glm::value_ptr(transform.position), glm::value_ptr(rotation), glm::value_ptr(transform.scale));
   transform.rotation = glm::quat(glm::radians(rotation));
-  transform.dirty = true;
+  transform.localDirty = true;
+  transform.worldDirty = true;
   if (cameraComp)
     cameraComp->SetTransform(transform);
   else if (lightComp)

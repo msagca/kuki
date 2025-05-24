@@ -30,7 +30,7 @@ BoundingBox BoundingBox::GetWorldBounds(const Transform* transform) {
   worldBounds.min = glm::vec3(std::numeric_limits<float>::max());
   worldBounds.max = glm::vec3(std::numeric_limits<float>::lowest());
   for (const auto& corner : corners) {
-    auto transformedCorner = transform->model * glm::vec4(corner, 1.0f);
+    auto transformedCorner = transform->world * glm::vec4(corner, 1.0f);
     auto worldCorner = glm::vec3(transformedCorner) / transformedCorner.w;
     worldBounds.min = glm::min(worldBounds.min, worldCorner);
     worldBounds.max = glm::max(worldBounds.max, worldCorner);

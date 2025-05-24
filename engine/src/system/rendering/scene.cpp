@@ -193,16 +193,21 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<
   }
 }
 glm::mat4 RenderingSystem::GetEntityWorldTransform(const Transform* transform) {
-  //if (transform->dirty) {
-  auto translation = glm::translate(glm::mat4(1.0f), transform->position);
-  auto rotation = glm::toMat4(transform->rotation);
-  auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
-  transform->model = translation * rotation * scale;
-  //transform->dirty = false;
-  //}
-  if (transform->parent >= 0)
+  if (!transform->worldDirty)
+    return transform->world;
+  if (transform->localDirty) {
+    auto translation = glm::translate(glm::mat4(1.0f), transform->position);
+    auto rotation = glm::toMat4(transform->rotation);
+    auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
+    transform->local = translation * rotation * scale;
+    transform->localDirty = false;
+  }
+  if (transform->parent >= 0) {
     if (auto parent = app.GetEntityComponent<Transform>(transform->parent))
-      transform->model = GetEntityWorldTransform(parent) * transform->model;
-  return transform->model;
+      transform->world = GetEntityWorldTransform(parent) * transform->local;
+  } else
+    transform->world = transform->local;
+  transform->worldDirty = false;
+  return transform->world;
 }
 } // namespace kuki

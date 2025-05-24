@@ -60,9 +60,13 @@ private:
   BoundingBox GetAssetBounds(unsigned int);
   Shader* GetShader(MaterialType);
   ComputeShader* GetCompute(ComputeType);
+  // TODO: the following should be handled by a physics system
+  void UpdateTransforms();
+  void MarkChildrenDirty(unsigned int);
 public:
   RenderingSystem(Application&);
   void Start() override;
+  void Update(float) override;
   void Shutdown() override;
   int RenderSceneToTexture(Camera* = nullptr);
   int RenderAssetToTexture(unsigned int, int);
