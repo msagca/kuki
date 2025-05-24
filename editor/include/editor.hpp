@@ -18,17 +18,19 @@ private:
   std::string selectedComponentName{};
   kuki::Property selectedProperty;
   int assetMask{-1}; // for filtering assets by type
+  int gizmoMask{0};
   std::unique_ptr<CameraController> cameraController;
   void DisplayAssets();
   void DisplayConsole();
-  void DisplayEntity(unsigned int, std::vector<unsigned int>&, const ImGuiSelectionBasicStorage&);
+  void DisplayEntity(unsigned int);
   void DisplayHierarchy();
   void DisplayLogs();
   void DisplayProperties();
   void DisplayScene();
   void DrawGizmos(float, float, unsigned int);
-  void EntityCreatedCallback(const kuki::EntityCreatedEvent&);
-  void EntityDeletedCallback(const kuki::EntityDeletedEvent&);
+  void ToggleGizmos();
+  std::vector<unsigned int> GetSelectedEntityIds();
+  void RemoveDeletedEntitiesFromSelection();
   void InitImGui();
   void InitLayout();
   void LoadDefaultAssets();

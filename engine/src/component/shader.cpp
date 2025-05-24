@@ -227,7 +227,15 @@ void LitShader::SetMaterialFallback(const Mesh* mesh, const std::vector<LitFallb
   glNamedBufferData(buffer, materials.size() * sizeof(LitFallbackData), materials.data(), GL_DYNAMIC_DRAW);
   glVertexArrayVertexBuffer(mesh->vertexArray, bindingIndex, buffer, 0, sizeof(LitFallbackData));
   glVertexArrayBindingDivisor(mesh->vertexArray, bindingIndex, 1);
-  glVertexArrayAttribFormat(mesh->vertexArray, attribIndex, 3, GL_FLOAT, GL_FALSE, offsetof(LitFallbackData, albedo));
+  glVertexArrayAttribFormat(mesh->vertexArray, attribIndex, 4, GL_FLOAT, GL_FALSE, offsetof(LitFallbackData, albedo));
+  glVertexArrayAttribBinding(mesh->vertexArray, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
+  attribIndex++;
+  glVertexArrayAttribFormat(mesh->vertexArray, attribIndex, 4, GL_FLOAT, GL_FALSE, offsetof(LitFallbackData, specular));
+  glVertexArrayAttribBinding(mesh->vertexArray, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
+  attribIndex++;
+  glVertexArrayAttribFormat(mesh->vertexArray, attribIndex, 4, GL_FLOAT, GL_FALSE, offsetof(LitFallbackData, emissive));
   glVertexArrayAttribBinding(mesh->vertexArray, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh->vertexArray, attribIndex);
   attribIndex++;

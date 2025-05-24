@@ -48,6 +48,7 @@ public:
   void DeleteAll();
   void DeleteAll(const std::string&);
   bool Rename(unsigned int, std::string&);
+  bool IsEntity(unsigned int);
   const std::string& GetName(unsigned int) const;
   int GetId(const std::string&);
   /// @brief Create parent-child relationship between the given entities

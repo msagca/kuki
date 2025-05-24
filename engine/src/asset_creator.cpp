@@ -23,15 +23,16 @@
 #include <cmath>
 #include <string>
 namespace kuki {
-Texture AssetLoader::CreateTexture(const TextureData& data) {
+Texture AssetLoader::CreateTexture(const TextureData& textureData) {
   Texture texture{};
-  if (!data.data) {
+  if (!textureData.data) {
     spdlog::error("Failed to read texture data.");
     return texture;
   }
   GLenum internalFormat, format;
-  auto isHDR = data.type == TextureType::HDR || data.type == TextureType::EXR;
-  switch (data.channels) {
+  auto isHDR = textureData.type == TextureType::HDR || textureData.type == TextureType::EXR;
+  auto invalidChannels = false;
+  switch (textureData.channels) {
   case 1:
     internalFormat = GL_R8;
     format = GL_RED;
@@ -43,7 +44,7 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
   case 3:
     if (isHDR)
       internalFormat = GL_RGB16F;
-    else if (data.type == TextureType::Albedo)
+    else if (textureData.type == TextureType::Albedo)
       internalFormat = GL_SRGB8;
     else
       internalFormat = GL_RGB8;
@@ -52,31 +53,34 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
   case 4:
     if (isHDR)
       internalFormat = GL_RGBA16F;
-    else if (data.type == TextureType::Albedo)
+    else if (textureData.type == TextureType::Albedo)
       internalFormat = GL_SRGB8_ALPHA8;
     else
       internalFormat = GL_RGBA8;
     format = GL_RGBA;
     break;
   default:
-    spdlog::error("Unsupported number of texture channels: {}.", data.channels);
-    stbi_image_free(data.data);
-    return texture;
+    invalidChannels = true;
+    spdlog::error("Unsupported number of texture channels: {}.", textureData.channels);
+    break;
   }
   unsigned int textureId;
-  glCreateTextures(GL_TEXTURE_2D, 1, &textureId);
-  int levels = 1;
-  if (data.type == TextureType::Albedo)
-    levels = std::log2(std::max(data.width, data.height)) + 1;
-  glTextureStorage2D(textureId, levels, internalFormat, data.width, data.height);
-  glTextureSubImage2D(textureId, 0, 0, 0, data.width, data.height, format, isHDR ? GL_FLOAT : GL_UNSIGNED_BYTE, data.data);
-  stbi_image_free(data.data);
-  switch (data.type) {
+  if (!invalidChannels) {
+    glCreateTextures(GL_TEXTURE_2D, 1, &textureId);
+    int levels = 1;
+    if (textureData.type == TextureType::Albedo)
+      levels = std::log2(std::max(textureData.width, textureData.height)) + 1;
+    glTextureStorage2D(textureId, levels, internalFormat, textureData.width, textureData.height);
+    glTextureSubImage2D(textureId, 0, 0, 0, textureData.width, textureData.height, format, isHDR ? GL_FLOAT : GL_UNSIGNED_BYTE, textureData.data);
+  }
+  stbi_image_free(textureData.data);
+  if (invalidChannels)
+    return texture;
+  switch (textureData.type) {
   case TextureType::Albedo:
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glGenerateTextureMipmap(textureId);
     break;
   case TextureType::Normal:
@@ -86,7 +90,6 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     break;
   case TextureType::Roughness:
   case TextureType::Metalness:
@@ -94,38 +97,37 @@ Texture AssetLoader::CreateTexture(const TextureData& data) {
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    if (data.channels == 1) {
+    if (textureData.channels == 1) {
       glTextureParameteri(textureId, GL_TEXTURE_SWIZZLE_G, GL_RED);
       glTextureParameteri(textureId, GL_TEXTURE_SWIZZLE_B, GL_RED);
       glTextureParameteri(textureId, GL_TEXTURE_SWIZZLE_A, GL_ONE);
     }
     break;
   default:
-    spdlog::error("Unknown texture type: {}.", static_cast<int>(data.type));
+    spdlog::error("Unknown texture type: {}.", static_cast<int>(textureData.type));
     break;
   }
-  texture.type = data.type;
-  texture.width = data.width;
-  texture.height = data.height;
+  texture.type = textureData.type;
+  texture.width = textureData.width;
+  texture.height = textureData.height;
   texture.id = textureId;
   return texture;
 }
-int AssetLoader::CreateTextureAsset(const TextureData& data) {
-  auto isHDR = data.type == TextureType::HDR || data.type == TextureType::EXR;
+int AssetLoader::CreateTextureAsset(const TextureData& textureData) {
+  auto isHDR = textureData.type == TextureType::HDR || textureData.type == TextureType::EXR;
   if (isHDR)
-    return CreateSkyboxAsset(data);
-  auto texture = CreateTexture(data);
-  auto name = data.name;
+    return CreateSkyboxAsset(textureData);
+  auto texture = CreateTexture(textureData);
+  auto name = textureData.name;
   auto assetId = assetManager.Create(name);
   auto textureComp = assetManager.AddComponent<Texture>(assetId);
   *textureComp = texture;
   spdlog::info("Texture is created: {}.", name);
   return assetId;
 }
-int AssetLoader::CreateSkyboxAsset(const TextureData& data) {
-  auto texture = CreateTexture(data);
-  std::string name = data.name + "Skybox";
+int AssetLoader::CreateSkyboxAsset(const TextureData& textureData) {
+  auto texture = CreateTexture(textureData);
+  std::string name = textureData.name + "Skybox";
   auto assetId = app->CreateAsset(name);
   auto skybox = app->AddAssetComponent<Skybox>(assetId);
   auto cubeMap = app->CreateCubeMapFromEquirect(texture);
@@ -136,12 +138,20 @@ int AssetLoader::CreateSkyboxAsset(const TextureData& data) {
   spdlog::info("Skybox is created: {}.", name);
   return assetId;
 }
-Material AssetLoader::CreateMaterial(const MaterialData& data) {
+Material AssetLoader::CreateMaterial(const MaterialData& materialData) {
   Material material{};
   material.material = LitMaterial{};
   auto litMaterial = std::get_if<LitMaterial>(&material.material);
-  for (auto i = 0; i < data.data.size(); ++i) {
-    auto assetId = CreateTextureAsset(data.data[i]);
+  litMaterial->fallback.textureMask = materialData.textureMask;
+  litMaterial->fallback.albedo = materialData.albedo;
+  litMaterial->fallback.specular = materialData.specular;
+  litMaterial->fallback.metalness = materialData.metalness;
+  litMaterial->fallback.roughness = materialData.roughness;
+  litMaterial->fallback.occlusion = materialData.occlusion;
+  for (auto i = 0; i < materialData.textureData.size(); ++i) {
+    if (!materialData.textureData[i].data)
+      continue;
+    auto assetId = CreateTextureAsset(materialData.textureData[i]);
     auto texture = assetManager.GetComponent<Texture>(assetId);
     if (!texture || texture->id == 0)
       continue;
@@ -149,23 +159,24 @@ Material AssetLoader::CreateMaterial(const MaterialData& data) {
       switch (texture->type) {
       case TextureType::Albedo:
         litMaterial->data.albedo = texture->id;
-        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Albedo);
         break;
       case TextureType::Normal:
         litMaterial->data.normal = texture->id;
-        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Normal);
         break;
       case TextureType::Metalness:
         litMaterial->data.metalness = texture->id;
-        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Metalness);
         break;
       case TextureType::Occlusion:
         litMaterial->data.occlusion = texture->id;
-        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Occlusion);
         break;
       case TextureType::Roughness:
         litMaterial->data.roughness = texture->id;
-        litMaterial->fallback.textureMask |= static_cast<int>(TextureMask::Roughness);
+        break;
+      case TextureType::Specular:
+        litMaterial->data.specular = texture->id;
+        break;
+      case TextureType::Emissive:
+        litMaterial->data.emissive = texture->id;
         break;
       default:
         break;
@@ -174,11 +185,11 @@ Material AssetLoader::CreateMaterial(const MaterialData& data) {
   }
   return material;
 }
-int AssetLoader::CreateMaterialAsset(const MaterialData& data) {
-  auto name = data.name;
+int AssetLoader::CreateMaterialAsset(const MaterialData& materialData) {
+  auto name = materialData.name;
   auto assetId = assetManager.Create(name);
   auto material = assetManager.AddComponent<Material>(assetId);
-  *material = CreateMaterial(data);
+  *material = CreateMaterial(materialData);
   return assetId;
 }
 Mesh AssetLoader::CreateMesh(const aiMesh* aiMesh) {

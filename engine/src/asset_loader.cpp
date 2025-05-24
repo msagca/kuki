@@ -37,9 +37,9 @@ void AssetLoader::Update() {
   while (auto eventOpt = textureLoadQueue.Pop())
     CreateTextureAsset(*eventOpt);
   while (auto eventOpt = materialCreateQueue.Pop())
-    (*eventOpt)->materialPromise.set_value(CreateMaterial((*eventOpt)->data));
+    (*eventOpt)->materialPromise.set_value(CreateMaterial((*eventOpt)->materialData));
   while (auto eventOpt = meshCreateQueue.Pop())
-    (*eventOpt)->meshPromise.set_value(CreateMesh((*eventOpt)->source));
+    (*eventOpt)->meshPromise.set_value(CreateMesh((*eventOpt)->meshPtr));
 }
 int AssetLoader::LoadPrimitive(PrimitiveType id) {
   int assetId = -1;
@@ -144,93 +144,118 @@ int AssetLoader::LoadNode(const aiNode* aiNode, const aiScene* aiScene, const st
   return assetId;
 }
 MaterialData AssetLoader::LoadMaterial(const aiMaterial* aiMaterial, const std::filesystem::path& root) {
-  // TODO: the material does not always consist of textures, there could be color values as well
-  aiString path;
-  MaterialData data{};
-  data.name = aiMaterial->GetName().C_Str();
-  if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
-    aiMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &path);
+  MaterialData materialData{};
+  materialData.name = aiMaterial->GetName().C_Str();
+  aiColor4D color;
+  float value;
+  if (aiMaterial->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS)
+    materialData.albedo = {color.r, color.g, color.b, color.a};
+  if (aiMaterial->Get(AI_MATKEY_OPACITY, value) == AI_SUCCESS)
+    materialData.albedo.w = value;
+  if (aiMaterial->Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS)
+    materialData.specular = {color.r, color.g, color.b, color.a};
+  if (aiMaterial->Get(AI_MATKEY_COLOR_AMBIENT, value) == AI_SUCCESS)
+    materialData.occlusion = value;
+  if (aiMaterial->Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS)
+    materialData.emissive = {color.r, color.g, color.b, color.a};
+  if (aiMaterial->Get(AI_MATKEY_METALLIC_FACTOR, value) == AI_SUCCESS)
+    materialData.metalness = value;
+  else if (aiMaterial->Get(AI_MATKEY_REFLECTIVITY, value) == AI_SUCCESS)
+    materialData.metalness = value;
+  if (aiMaterial->Get(AI_MATKEY_ROUGHNESS_FACTOR, value) == AI_SUCCESS)
+    materialData.roughness = value;
+  else if (aiMaterial->Get(AI_MATKEY_SHININESS, value) == AI_SUCCESS)
+    materialData.roughness = std::sqrt(2.0f / (value + 2.0f));
+  LoadTextureIfExists(aiMaterial, aiTextureType_DIFFUSE, root, materialData, 0, TextureType::Albedo);
+  LoadTextureIfExists(aiMaterial, aiTextureType_NORMALS, root, materialData, 1, TextureType::Normal);
+  LoadTextureIfExists(aiMaterial, aiTextureType_METALNESS, root, materialData, 2, TextureType::Metalness);
+  LoadTextureIfExists(aiMaterial, aiTextureType_AMBIENT_OCCLUSION, root, materialData, 3, TextureType::Occlusion);
+  LoadTextureIfExists(aiMaterial, aiTextureType_DIFFUSE_ROUGHNESS, root, materialData, 4, TextureType::Roughness);
+  LoadTextureIfExists(aiMaterial, aiTextureType_SPECULAR, root, materialData, 5, TextureType::Specular);
+  LoadTextureIfExists(aiMaterial, aiTextureType_EMISSIVE, root, materialData, 6, TextureType::Emissive);
+  spdlog::info("Material loaded: {}.", materialData.name);
+  return materialData;
+}
+void AssetLoader::LoadTextureIfExists(const aiMaterial* aiMaterial, aiTextureType textureType, const std::filesystem::path& root, MaterialData& materialData, int textureIndex, TextureType type) {
+  if (aiMaterial->GetTextureCount(textureType) > 0) {
+    aiString path;
+    aiMaterial->GetTexture(textureType, 0, &path);
     auto fullPath = root / path.C_Str();
-    auto texture = LoadTexture(fullPath, TextureType::Albedo);
+    auto texture = LoadTexture(fullPath, type);
     if (texture.data)
-      data.data[0] = texture;
+      materialData.textureData[textureIndex] = texture;
   }
-  if (aiMaterial->GetTextureCount(aiTextureType_NORMALS) > 0) {
-    aiMaterial->GetTexture(aiTextureType_NORMALS, 0, &path);
-    auto fullPath = root / path.C_Str();
-    auto texture = LoadTexture(fullPath, TextureType::Normal);
-    if (texture.data)
-      data.data[1] = texture;
+  switch (textureType) {
+  case aiTextureType_DIFFUSE:
+    materialData.textureMask |= static_cast<int>(TextureMask::Albedo);
+    break;
+  case aiTextureType_NORMALS:
+    materialData.textureMask |= static_cast<int>(TextureMask::Normal);
+    break;
+  case aiTextureType_METALNESS:
+    materialData.textureMask |= static_cast<int>(TextureMask::Metalness);
+    break;
+  case aiTextureType_AMBIENT_OCCLUSION:
+    materialData.textureMask |= static_cast<int>(TextureMask::Occlusion);
+    break;
+  case aiTextureType_DIFFUSE_ROUGHNESS:
+    materialData.textureMask |= static_cast<int>(TextureMask::Roughness);
+    break;
+  case aiTextureType_SPECULAR:
+    materialData.textureMask |= static_cast<int>(TextureMask::Specular);
+    break;
+  case aiTextureType_EMISSIVE:
+    materialData.textureMask |= static_cast<int>(TextureMask::Emissive);
+    break;
+  default:
+    break;
   }
-  if (aiMaterial->GetTextureCount(aiTextureType_METALNESS) > 0) {
-    aiMaterial->GetTexture(aiTextureType_METALNESS, 0, &path);
-    auto fullPath = root / path.C_Str();
-    auto texture = LoadTexture(fullPath, TextureType::Metalness);
-    if (texture.data)
-      data.data[2] = texture;
-  }
-  if (aiMaterial->GetTextureCount(aiTextureType_AMBIENT_OCCLUSION) > 0) {
-    aiMaterial->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &path);
-    auto fullPath = root / path.C_Str();
-    auto texture = LoadTexture(fullPath, TextureType::Occlusion);
-    if (texture.data)
-      data.data[3] = texture;
-  }
-  if (aiMaterial->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0) {
-    aiMaterial->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &path);
-    auto fullPath = root / path.C_Str();
-    auto texture = LoadTexture(fullPath, TextureType::Roughness);
-    if (texture.data)
-      data.data[4] = texture;
-  }
-  spdlog::info("Material is loaded: {}.", data.name);
-  return data;
 }
 void AssetLoader::LoadTextureAsync(const std::filesystem::path& path, TextureType type) {
   std::thread([this, path, type]() {
-    auto data = LoadTexture(path, type);
-    if (data.data) {
-      textureLoadQueue.Push(std::move(data));
+    auto textureData = LoadTexture(path, type);
+    if (textureData.data) {
+      textureLoadQueue.Push(std::move(textureData));
       spdlog::info("Texture is loaded: '{}'.", path.string());
     }
   }).detach();
 }
 TextureData AssetLoader::LoadTexture(const std::filesystem::path& path, TextureType type) {
-  TextureData data{};
+  TextureData textureData{};
   if (!std::filesystem::exists(path)) {
     spdlog::error("File does not exist: '{}'.", path.string());
-    return data;
+    return textureData;
   }
-  data.name = path.stem().string();
-  data.type = type;
+  textureData.name = path.stem().string();
+  textureData.type = type;
   auto ext = path.extension().string();
   auto pathStr = path.string();
   const char* pathCStr = pathStr.c_str();
   if (ext == ".exr") {
-    data.type = TextureType::EXR;
-    data.channels = 4;
+    textureData.type = TextureType::EXR;
+    textureData.channels = 4;
     float* exrData = nullptr;
     const char* errMessage = nullptr;
-    auto result = LoadEXR(&exrData, &data.width, &data.height, pathCStr, &errMessage);
+    auto result = LoadEXR(&exrData, &textureData.width, &textureData.height, pathCStr, &errMessage);
     if (result != TINYEXR_SUCCESS) {
       if (errMessage) {
         spdlog::error("TinyEXR: ", errMessage);
         FreeEXRErrorMessage(errMessage);
       }
     } else
-      data.data = reinterpret_cast<void*>(exrData);
+      textureData.data = reinterpret_cast<void*>(exrData);
   } else {
     auto bytesPerChannel = (type == TextureType::HDR) ? 4 : 1;
     if (bytesPerChannel > 2)
-      data.data = stbi_loadf(pathCStr, &data.width, &data.height, &data.channels, 0);
+      textureData.data = stbi_loadf(pathCStr, &textureData.width, &textureData.height, &textureData.channels, 0);
     else if (bytesPerChannel > 1)
-      data.data = stbi_load_16(pathCStr, &data.width, &data.height, &data.channels, 0);
+      textureData.data = stbi_load_16(pathCStr, &textureData.width, &textureData.height, &textureData.channels, 0);
     else
-      data.data = stbi_load(pathCStr, &data.width, &data.height, &data.channels, 0);
-    if (!data.data)
+      textureData.data = stbi_load(pathCStr, &textureData.width, &textureData.height, &textureData.channels, 0);
+    if (!textureData.data)
       spdlog::error("Failed to load texture: '{}'.", pathStr);
   }
-  return data;
+  return textureData;
 }
 int AssetLoader::LoadMesh(const std::string& name, const std::vector<Vertex>& vertices) {
   std::string nameMutable = name;

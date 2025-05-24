@@ -53,3 +53,6 @@ void Editor::DrawGizmos(float width, float height, unsigned int mask) {
   else
     *transformComp = transform;
 }
+void Editor::ToggleGizmos() {
+  gizmoMask ^= static_cast<unsigned int>(GizmoMask::Manipulator);
+}

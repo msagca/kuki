@@ -55,12 +55,22 @@ void LitMaterial::Apply(Shader* shader) const {
     glBindTexture(GL_TEXTURE_2D, data.roughness);
     shader->SetUniform("material.roughness", 4);
   }
+  if (data.specular > 0) {
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, data.specular);
+    shader->SetUniform("material.specular", 5);
+  }
+  if (data.emissive > 0) {
+    glActiveTexture(GL_TEXTURE6);
+    glBindTexture(GL_TEXTURE_2D, data.emissive);
+    shader->SetUniform("material.emissive", 6);
+  }
 }
 const std::string LitMaterial::GetName() const {
   return "LitMaterial";
 }
 std::vector<Property> LitMaterial::GetProperties() const {
-  return {{"Type", type}, {"AlbedoTexture", data.albedo, PropertyType::Texture}, {"NormalTexture", data.normal, PropertyType::Texture}, {"MetalnessTexture", data.metalness, PropertyType::Texture}, {"OcclusionTexture", data.occlusion, PropertyType::Texture}, {"RoughnessTexture", data.roughness, PropertyType::Texture}, {"AlbedoColor", fallback.albedo, PropertyType::Color}, {"Metalness", fallback.metalness, PropertyType::NumberRange}, {"Occlusion", fallback.occlusion, PropertyType::NumberRange}, {"Roughness", fallback.roughness, PropertyType::NumberRange}, {"TextureMask", fallback.textureMask}};
+  return {{"Type", type}, {"AlbedoTexture", data.albedo, PropertyType::Texture}, {"NormalTexture", data.normal, PropertyType::Texture}, {"MetalnessTexture", data.metalness, PropertyType::Texture}, {"OcclusionTexture", data.occlusion, PropertyType::Texture}, {"RoughnessTexture", data.roughness, PropertyType::Texture}, {"SpecularTexture", data.specular, PropertyType::Texture}, {"EmissiveTexture", data.emissive, PropertyType::Texture}, {"AlbedoColor", fallback.albedo, PropertyType::Color}, {"SpecularColor", fallback.specular, PropertyType::Color}, {"EmissiveColor", fallback.emissive, PropertyType::Color}, {"Metalness", fallback.metalness, PropertyType::NumberRange}, {"Occlusion", fallback.occlusion, PropertyType::NumberRange}, {"Roughness", fallback.roughness, PropertyType::NumberRange}, {"TextureMask", fallback.textureMask}};
 }
 void LitMaterial::SetProperty(Property property) {
   if (auto value = std::get_if<int>(&property.value)) {
@@ -74,11 +84,19 @@ void LitMaterial::SetProperty(Property property) {
       data.occlusion = *value;
     else if (property.name == "RoughnessTexture")
       data.roughness = *value;
+    else if (property.name == "SpecularTexture")
+      data.specular = *value;
+    else if (property.name == "EmissiveTexture")
+      data.emissive = *value;
     else if (property.name == "TextureMask")
       fallback.textureMask = *value;
-  } else if (auto value = std::get_if<glm::vec3>(&property.value)) {
+  } else if (auto value = std::get_if<glm::vec4>(&property.value)) {
     if (property.name == "AlbedoColor")
       fallback.albedo = *value;
+    else if (property.name == "SpecularColor")
+      fallback.specular = *value;
+    else if (property.name == "EmissiveColor")
+      fallback.emissive = *value;
   } else if (auto value = std::get_if<float>(&property.value)) {
     if (property.name == "Metalness")
       fallback.metalness = *value;

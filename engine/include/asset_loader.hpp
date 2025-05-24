@@ -25,14 +25,21 @@ struct TextureData {
 };
 struct MaterialData {
   std::string name{};
-  std::array<TextureData, 5> data{};
+  std::array<TextureData, 7> textureData{};
+  glm::vec4 albedo{1.0f};
+  glm::vec4 specular{.0f};
+  glm::vec4 emissive{.0f};
+  float metalness{.5f};
+  float occlusion{1.0f};
+  float roughness{.5f};
+  int textureMask{0};
 };
 struct PendingMaterial {
-  MaterialData data;
+  MaterialData materialData;
   std::promise<Material> materialPromise;
 };
 struct PendingMesh {
-  aiMesh* source;
+  aiMesh* meshPtr;
   std::promise<Mesh> meshPromise;
 };
 class Application;
@@ -50,6 +57,7 @@ private:
   int LoadNode(const aiNode*, const aiScene*, const std::filesystem::path&, const std::vector<Material>&, const std::vector<Mesh>&, int = -1);
   Material CreateMaterial(const MaterialData&);
   MaterialData LoadMaterial(const aiMaterial*, const std::filesystem::path&);
+  void LoadTextureIfExists(const aiMaterial*, aiTextureType, const std::filesystem::path&, MaterialData&, int, TextureType);
   Mesh CreateMesh(const aiMesh*);
   Mesh CreateMesh(const std::vector<Vertex>&);
   Mesh CreateMesh(const std::vector<Vertex>&, const std::vector<unsigned int>&);

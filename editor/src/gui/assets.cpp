@@ -7,7 +7,6 @@
 #include <editor.hpp>
 #include <imgui.h>
 #include <string>
-#include <utility>
 #include <vector>
 using namespace kuki;
 enum class FileType : uint8_t {
@@ -21,14 +20,17 @@ void Editor::DisplayAssets() {
   static const auto THUMBNAIL_SIZE = 128.0f;
   static const ImVec2 TILE_SIZE(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
   static const auto TILE_PADDING = 2.0f;
-  static const auto TILE_TOTAL_SIZE = THUMBNAIL_SIZE + TILE_PADDING;
+  static const auto TEXT_PADDING = 2.0f;
+  static const auto TEXT_HEIGHT = ImGui::GetTextLineHeight();
+  static const auto TILE_TOTAL_WIDTH = THUMBNAIL_SIZE + TILE_PADDING;
+  static const auto TILE_TOTAL_HEIGHT = THUMBNAIL_SIZE + TEXT_PADDING + TEXT_HEIGHT + TILE_PADDING;
   static auto fileType = FileType::None;
   auto renderSystem = GetSystem<RenderingSystem>();
   if (!renderSystem)
     return;
   ImGui::Begin("Assets");
   const auto contentRegion = ImGui::GetContentRegionAvail();
-  const auto tilesPerRow = std::max(1, static_cast<int>(contentRegion.x / TILE_TOTAL_SIZE));
+  const auto tilesPerRow = std::max(1, static_cast<int>(contentRegion.x / TILE_TOTAL_WIDTH));
   const auto scrollY = ImGui::GetScrollY();
   const auto visibleHeight = ImGui::GetWindowHeight();
   auto cursorStartPos = ImGui::GetCursorPos();
@@ -57,9 +59,9 @@ void Editor::DisplayAssets() {
     ForEachAsset<Skybox>([&assetIds](unsigned int assetId, Skybox* _) { assetIds.push_back(assetId); });
   }
   for (const auto id : assetIds) {
-    ImVec2 tilePos(cursorStartPos.x + (tileCount % tilesPerRow) * TILE_TOTAL_SIZE, cursorStartPos.y + (tileCount / tilesPerRow) * TILE_TOTAL_SIZE);
+    ImVec2 tilePos(cursorStartPos.x + (tileCount % tilesPerRow) * TILE_TOTAL_WIDTH, cursorStartPos.y + (tileCount / tilesPerRow) * TILE_TOTAL_HEIGHT);
     auto tileTop = tilePos.y;
-    auto tileBottom = tilePos.y + THUMBNAIL_SIZE;
+    auto tileBottom = tilePos.y + TILE_TOTAL_HEIGHT;
     if (tileBottom >= scrollY && tileTop <= scrollY + visibleHeight) {
       ImGui::SetCursorPos(tilePos);
       ImGui::PushID(id);
@@ -88,7 +90,7 @@ void Editor::DisplayAssets() {
       ImGui::PopStyleVar();
       auto textWidth = ImGui::CalcTextSize(assetName.c_str()).x;
       auto textX = tilePos.x + (THUMBNAIL_SIZE - textWidth) * .5f;
-      ImGui::SetCursorPos(ImVec2(textX, tilePos.y + THUMBNAIL_SIZE + 2.0f));
+      ImGui::SetCursorPos(ImVec2(textX, tilePos.y + THUMBNAIL_SIZE + TEXT_PADDING));
       ImGui::Text("%s", assetName.c_str());
       ImGui::PopID();
     }

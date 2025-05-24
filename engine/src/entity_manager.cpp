@@ -98,6 +98,11 @@ bool EntityManager::Rename(unsigned int id, std::string& name) {
   nameToId[name] = id;
   return true;
 }
+bool EntityManager::IsEntity(unsigned int id) {
+  if (ids.find(id) != ids.end())
+    return true;
+  return false;
+}
 const std::string& EntityManager::GetName(unsigned int id) const {
   static const std::string emptyString = "";
   auto it = idToName.find(id);

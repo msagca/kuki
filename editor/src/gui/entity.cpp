@@ -2,8 +2,7 @@
 #include <editor.hpp>
 #include <imgui.h>
 #include <string>
-#include <vector>
-void Editor::DisplayEntity(unsigned int id, std::vector<unsigned int>& entities, const ImGuiSelectionBasicStorage& selection) {
+void Editor::DisplayEntity(unsigned int id) {
   static const auto INPUT_TEXT_FLAGS = ImGuiTreeNodeFlags(ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
   static auto renameMode = false;
   static auto entityBeingRenamed = -1;
@@ -11,7 +10,6 @@ void Editor::DisplayEntity(unsigned int id, std::vector<unsigned int>& entities,
   auto nodeFlags = ImGuiTreeNodeFlags(ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick);
   if (!EntityHasChildren(id))
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
-  entities.push_back(id);
   if (selection.Contains(id)) {
     nodeFlags |= ImGuiTreeNodeFlags_Selected;
     selectedEntity = id;
@@ -45,7 +43,7 @@ void Editor::DisplayEntity(unsigned int id, std::vector<unsigned int>& entities,
   }
   if (nodeOpen) {
     ForEachChildEntity(id, [&](unsigned int childId) {
-      DisplayEntity(childId, entities, selection);
+      DisplayEntity(childId);
     });
     ImGui::TreePop();
   }

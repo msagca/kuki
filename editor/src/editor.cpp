@@ -42,9 +42,8 @@ void Editor::Init() {
   Application::Init();
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor");
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor");
+  RegisterInputCallback(GLFW_KEY_G, GLFW_PRESS, [this]() { ToggleGizmos(); }, "Toggle gizmos");
   RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderingSystem::ToggleWireframeMode, "Toggle wireframe mode");
-  RegisterEventCallback<EntityCreatedEvent>([this](const EntityCreatedEvent& event) { EntityCreatedCallback(event); });
-  RegisterEventCallback<EntityDeletedEvent>([this](const EntityDeletedEvent& event) { EntityDeletedCallback(event); });
   InitImGui();
   auto& editorApp = static_cast<Application&>(*this);
   CreateSystem<RenderingSystem>(editorApp);

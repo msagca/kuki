@@ -7,33 +7,27 @@
 #include <vector>
 using namespace kuki;
 void Editor::DisplayHierarchy() {
-  std::vector<unsigned int> entities;
-  selection.UserData = reinterpret_cast<void*>(&entities);
-  selection.AdapterIndexToStorageId = [](ImGuiSelectionBasicStorage* self, int index) {
-    auto* entityIDs = reinterpret_cast<std::vector<unsigned int>*>(self->UserData);
-    if (index < 0 || index >= entityIDs->size())
-      return static_cast<unsigned int>(-1);
-    return (*entityIDs)[index];
-  };
   ImGui::Begin("Hierarchy");
   ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_None, selection.Size, GetEntityCount());
   selection.ApplyRequests(ms_io);
   selectedEntity = -1;
-  // FIXME: selection does not update when entities are deleted
-  // FIXME: selection does not work correctly with tree nodes
-  ForEachRootEntity([this, &entities](unsigned int id) {
-    DisplayEntity(id, entities, selection);
+  RemoveDeletedEntitiesFromSelection();
+  ForEachRootEntity([this](unsigned int id) {
+    DisplayEntity(id);
   });
   ms_io = ImGui::EndMultiSelect();
   selection.ApplyRequests(ms_io);
   auto deleteSelection = GetKeyDown(GLFW_KEY_DELETE);
   if (deleteSelection && selection.Size > 0) {
-    std::vector<unsigned int> entitiesToDelete;
-    for (const auto& id : entities)
-      if (selection.Contains(id))
-        entitiesToDelete.push_back(id);
-    for (const auto& id : entitiesToDelete)
-      DeleteEntity(id);
+    std::vector<unsigned int> toDelete;
+    void* it = nullptr;
+    ImGuiID id;
+    while (selection.GetNextSelectedItem(&it, &id))
+      toDelete.push_back(static_cast<unsigned int>(id));
+    for (const auto& entityId : toDelete) {
+      selection.SetItemSelected(entityId, false);
+      DeleteEntity(entityId);
+    }
   }
   if (GetButtonDown(GLFW_MOUSE_BUTTON_LEFT) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered()) {
     selection.Clear();
@@ -67,9 +61,23 @@ void Editor::DisplayHierarchy() {
   ImGui::End();
   DisplayProperties();
 }
-void Editor::EntityCreatedCallback(const EntityCreatedEvent& event) {
-  selection.Clear();
+void Editor::RemoveDeletedEntitiesFromSelection() {
+  std::vector<unsigned int> toRemove;
+  void* it = nullptr;
+  ImGuiID id;
+  while (selection.GetNextSelectedItem(&it, &id)) {
+    auto entityId = static_cast<unsigned int>(id);
+    if (!IsEntity(entityId))
+      toRemove.push_back(entityId);
+  }
+  for (auto entityId : toRemove)
+    selection.SetItemSelected(entityId, false);
 }
-void Editor::EntityDeletedCallback(const EntityDeletedEvent& event) {
-  selection.Clear();
+std::vector<unsigned int> Editor::GetSelectedEntityIds() {
+  std::vector<unsigned int> selectedIds;
+  void* it = nullptr;
+  ImGuiID id;
+  while (selection.GetNextSelectedItem(&it, &id))
+    selectedIds.push_back(static_cast<unsigned int>(id));
+  return selectedIds;
 }

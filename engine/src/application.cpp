@@ -303,6 +303,12 @@ std::string Application::GetEntityName(unsigned int id) {
 std::string Application::GetAssetName(unsigned int id) {
   return assetManager.GetName(id);
 }
+bool Application::IsEntity(unsigned int id) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return -1;
+  return scene->GetEntityManager().IsEntity(id);
+}
 int Application::GetEntityId(const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)

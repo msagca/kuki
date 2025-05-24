@@ -208,7 +208,7 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
   shader->SetUniform("model", model);
   glm::mat4 viewMatrices[] = {glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(1.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(-1.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, 1.0f, .0f), glm::vec3(.0f, .0f, 1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f), glm::vec3(.0f, .0f, -1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, 1.0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, -1.0f), glm::vec3(.0f, -1.0f, .0f))};
   TextureParams params{width, height, GL_TEXTURE_CUBE_MAP};
-  params.mipmaps = std::log2(width);
+  params.mipmaps = std::log2(width) + 1;
   auto textureId = texturePool.Request(params);
   UpdateAttachments(framebuffer, renderbuffer, textureId, params);
   texture.id = textureId;

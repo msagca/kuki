@@ -74,6 +74,7 @@ public:
   size_t GetEntityCount();
   std::string GetEntityName(unsigned int);
   std::string GetAssetName(unsigned int);
+  bool IsEntity(unsigned int);
   int GetEntityId(const std::string&);
   int GetAssetId(const std::string&);
   void RenameEntity(unsigned int, std::string&);

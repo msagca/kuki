@@ -4,7 +4,6 @@
 #include <imgui.h>
 #include <string>
 #include <system/scripting.hpp>
-#include <utility>
 #include <camera_controller.hpp>
 #include <component/camera.hpp>
 #include <component/script.hpp>
@@ -12,25 +11,8 @@ using namespace kuki;
 void Editor::DisplayScene() {
   static const ImVec2 uv0(.0f, 1.0f);
   static const ImVec2 uv1(1.0f, .0f);
-  static auto gizmoMask = static_cast<unsigned int>(GizmoMask::Manipulator);
   static auto flying = false;
   ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse /*| ImGuiWindowFlags_MenuBar*/);
-  /*if (ImGui::BeginMenuBar()) {
-    if (ImGui::BeginMenu("Gizmos")) {
-      auto manipulatorEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
-      // TODO: manipulator gizmo is currently implemented by the editor, this won't have any impact on the render system
-      if (ImGui::MenuItem("Manipulator", nullptr, manipulatorEnabled))
-        gizmoMask ^= static_cast<unsigned int>(GizmoMask::Manipulator);
-      auto viewFrustumEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::ViewFrustum)) != 0;
-      if (ImGui::MenuItem("View Frustum", nullptr, viewFrustumEnabled))
-        gizmoMask ^= static_cast<unsigned int>(GizmoMask::ViewFrustum);
-      auto frustumCullingEnabled = (gizmoMask & static_cast<unsigned int>(GizmoMask::FrustumCulling)) != 0;
-      if (ImGui::MenuItem("Frustum Culling", nullptr, frustumCullingEnabled))
-        gizmoMask ^= static_cast<unsigned int>(GizmoMask::FrustumCulling);
-      ImGui::EndMenu();
-    }
-    ImGui::EndMenuBar();
-  }*/
   if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !flying) {
     flying = true;
     ImGui::SetWindowFocus();

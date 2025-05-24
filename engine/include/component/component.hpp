@@ -58,6 +58,8 @@ enum class TextureType : uint8_t {
   Metalness,
   Occlusion,
   Roughness,
+  Specular,
+  Emissive,
   CubeMap,
   HDR,
   EXR, // same as HDR, but this requires flipping as TinyEXR uses a different coordinate system for textures
@@ -69,6 +71,8 @@ enum class TextureMask : size_t {
   Metalness = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Metalness),
   Occlusion = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Occlusion),
   Roughness = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Roughness),
+  Specular = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Specular),
+  Emissive = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Emissive),
   CubeMap = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::CubeMap),
   HDR = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::HDR),
   EXR = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::EXR)
@@ -138,7 +142,7 @@ struct EnumTraits<MaterialType> {
 template <>
 struct EnumTraits<TextureType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "CubeMap", "HDR", "EXR", "BRDF"};
+    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "Specular", "Emissive", "CubeMap", "HDR", "EXR", "BRDF"};
     return names;
   }
 };
