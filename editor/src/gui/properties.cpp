@@ -51,16 +51,21 @@ void Editor::DisplayProperties() {
             component->SetProperty(Property(prop.name, valueVec3));
         } else if (prop.type == PropertyType::Scale) {
           if (uniformScale) {
-            if (ImGui::InputFloat("Scale", &valueVec3.x)) {
-              valueVec3 = glm::vec3(valueVec3.x);
+            if (ImGui::InputFloat("Scale", &valueVec3.x))
+              if (ImGui::IsItemDeactivatedAfterEdit()) {
+                valueVec3 = glm::vec3(valueVec3.x);
+                component->SetProperty(Property(prop.name, valueVec3));
+              }
+          } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3))) {
+            if (ImGui::IsItemDeactivatedAfterEdit())
               component->SetProperty(Property(prop.name, valueVec3));
-            }
-          } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3)))
-            component->SetProperty(Property(prop.name, valueVec3));
+          }
           ImGui::SameLine();
           ImGui::Checkbox("Uniform", &uniformScale);
-        } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3)))
-          component->SetProperty(Property(prop.name, valueVec3));
+        } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3))) {
+          if (ImGui::IsItemDeactivatedAfterEdit())
+            component->SetProperty(Property(prop.name, valueVec3));
+        }
       } else if (std::holds_alternative<glm::vec4>(value)) {
         auto valueVec4 = std::get<glm::vec4>(value);
         if (prop.type == PropertyType::Color) {

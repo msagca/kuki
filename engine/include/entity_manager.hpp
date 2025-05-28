@@ -89,6 +89,7 @@ public:
   T* GetFirstComponent();
   std::vector<IComponent*> GetAllComponents(unsigned int);
   std::vector<std::string> GetMissingComponents(unsigned int);
+  void UpdateWorldTransform(unsigned int);
   /// @brief Execute a function on the first entity with specified components
   template <typename... T, typename F>
   void ForFirst(F);
@@ -125,8 +126,6 @@ T* EntityManager::AddComponent(unsigned int id) {
 }
 template <typename... T>
 std::tuple<T*...> EntityManager::AddComponents(unsigned int id) {
-  if (ids.find(id) == ids.end())
-    return std::tuple<T*...>{};
   return std::tie(AddComponent<T>(id)...);
 }
 template <typename T>
@@ -135,8 +134,6 @@ void EntityManager::RemoveComponent(unsigned int id) {
 }
 template <typename... T>
 void EntityManager::RemoveComponents(unsigned int id) {
-  if (ids.find(id) == ids.end())
-    return;
   (RemoveComponent<T>(id), ...);
 }
 template <typename T>
@@ -145,8 +142,6 @@ bool EntityManager::HasComponent(unsigned int id) {
 }
 template <typename... T>
 bool EntityManager::HasComponents(unsigned int id) {
-  if (ids.find(id) == ids.end())
-    return false;
   return (HasComponent<T>(id) && ...);
 }
 template <typename T>

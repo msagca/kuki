@@ -37,6 +37,16 @@ void RenderingSystem::Start() {
   assetCam.Update();
 }
 void RenderingSystem::Update(float deltaTime) {
+  static auto frameCount = 0;
+  static auto accumulatedTime = .0f;
+  frameCount++;
+  accumulatedTime += deltaTime;
+  if (accumulatedTime >= 1.0f) {
+    auto avgDeltaTime = accumulatedTime / frameCount;
+    fps = 1.0f / avgDeltaTime;
+    frameCount--;
+    accumulatedTime -= avgDeltaTime;
+  }
   UpdateTransforms();
 }
 void RenderingSystem::Shutdown() {
@@ -53,6 +63,9 @@ void RenderingSystem::Shutdown() {
   computes.clear();
   shaders.clear();
   texturePool.Clear();
+}
+int RenderingSystem::GetFPS() const {
+  return fps;
 }
 bool RenderingSystem::UpdateAttachments(unsigned int framebuffer, unsigned int renderbuffer, unsigned int texture, const TextureParams& params) {
   if (framebuffer == 0) {
@@ -121,18 +134,28 @@ ComputeShader* RenderingSystem::GetCompute(ComputeType type) {
   }
 }
 void RenderingSystem::UpdateTransforms() {
-  app.ForEachEntity<Transform>([this](unsigned int id, Transform* transform) {
-    if (!app.EntityHasParent(id) && transform->localDirty)
-      MarkChildrenDirty(id);
-  });
-}
-void RenderingSystem::MarkChildrenDirty(unsigned int id) {
-  app.ForEachChildEntity(id, [this](unsigned int childId) {
-    auto childTransform = app.GetEntityComponent<Transform>(childId);
-    if (childTransform) {
-      childTransform->worldDirty = true;
-      MarkChildrenDirty(childId);
+  auto updateNeeded = false;
+  // propagate dirty flags
+  app.ForEachRootEntity([this, &updateNeeded](unsigned int id) {
+    auto transform = app.GetEntityComponent<Transform>(id);
+    if (transform && transform->localDirty) {
+      updateNeeded = true;
+      UpdateChildFlags(id);
     }
   });
-};
+  if (!updateNeeded)
+    return;
+  // re-calculate transform matrices
+  app.ForEachEntity<Transform>([this](unsigned int id, Transform* _) {
+    app.UpdateEntityWorldTransform(id);
+  });
+}
+void RenderingSystem::UpdateChildFlags(unsigned int id) {
+  app.ForEachChildEntity(id, [this](unsigned int childId) {
+    auto childTransform = app.GetEntityComponent<Transform>(childId);
+    if (childTransform)
+      childTransform->worldDirty = true;
+    UpdateChildFlags(childId);
+  });
+}
 } // namespace kuki

@@ -30,6 +30,7 @@
 #include <tinyexr.h>
 #include <future>
 #include <vector>
+#include <assimp/color4.h>
 namespace kuki {
 AssetLoader::AssetLoader(Application* app, EntityManager& assetManager)
   : app(app), assetManager(assetManager) {}
@@ -112,7 +113,7 @@ void AssetLoader::LoadModelAsync(const std::filesystem::path& path) {
     std::vector<Mesh> meshes;
     for (auto i = 0; i < meshFutures.size(); i++)
       meshes.push_back(meshFutures[i].get());
-    LoadNode(scene->mRootNode, scene, path.parent_path(), materials, meshes, -1);
+    LoadNode(scene->mRootNode, scene, path.parent_path(), materials, meshes);
   }).detach();
 }
 int AssetLoader::LoadNode(const aiNode* aiNode, const aiScene* aiScene, const std::filesystem::path& path, const std::vector<Material>& materials, const std::vector<Mesh>& meshes, int parentId) {
@@ -121,10 +122,8 @@ int AssetLoader::LoadNode(const aiNode* aiNode, const aiScene* aiScene, const st
   // FIXME: perform entity creation and component addition in the main thread
   auto assetId = assetManager.Create(name);
   auto transform = assetManager.AddComponent<Transform>(assetId);
-  if (parentId >= 0) {
-    transform->parent = parentId;
-    assetManager.AddChild(parentId, assetId);
-  }
+  transform->parent = parentId;
+  assetManager.AddChild(parentId, assetId);
   glm::vec3 skew;
   glm::vec4 perspective;
   glm::decompose(model, transform->scale, transform->rotation, transform->position, skew, perspective);

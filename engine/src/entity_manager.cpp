@@ -1,11 +1,15 @@
+#define GLM_ENABLE_EXPERIMENTAL
 #include <component/component.hpp>
 #include <component/mesh_filter.hpp>
+#include <component/transform.hpp>
 #include <component_manager.hpp>
 #include <entity_manager.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <string>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
+#include <glm/ext/matrix_float4x4.hpp>
 namespace kuki {
 EntityManager::~EntityManager() {
   for (const auto& [type, manager] : typeToManager)
@@ -214,6 +218,30 @@ std::vector<std::string> EntityManager::GetMissingComponents(unsigned int id) {
       if (!HasComponent(id, type))
         components.emplace_back(name);
   return components;
+}
+void EntityManager::UpdateWorldTransform(unsigned int id) {
+  auto manager = GetManager<Transform>();
+  if (!manager)
+    return;
+  auto transform = manager->Get(id);
+  if (!transform || (!transform->localDirty && !transform->worldDirty))
+    return;
+  if (transform->localDirty) {
+    transform->localDirty = false;
+    auto translation = glm::translate(glm::mat4(1.0f), transform->position);
+    auto rotation = glm::toMat4(transform->rotation);
+    auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
+    transform->local = translation * rotation * scale;
+  }
+  if (transform->parent >= 0) {
+    auto parent = manager->Get(transform->parent);
+    if (transform->worldDirty) {
+      transform->worldDirty = false;
+      UpdateWorldTransform(transform->parent);
+    }
+    transform->world = parent->world * transform->local;
+  } else
+    transform->world = transform->local;
 }
 void EntityManager::UpdateOctree() {
   ForEach<MeshFilter>([this](unsigned int id, MeshFilter* filter) {

@@ -46,5 +46,12 @@ void Editor::DisplayScene() {
     }
     ImGui::EndDragDropTarget();
   }
+  if (displayFPS) {
+    ImGui::SetCursorPos(ImVec2(ImGui::GetTextLineHeight(), ImGui::GetFrameHeight() + ImGui::GetTextLineHeight()));
+    ImGui::Text("%d", GetFPS());
+  }
   ImGui::End();
+}
+void Editor::ToggleFPS() {
+  displayFPS = !displayFPS;
 }

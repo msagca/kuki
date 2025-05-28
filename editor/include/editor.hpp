@@ -19,6 +19,7 @@ private:
   kuki::Property selectedProperty;
   int assetMask{-1}; // for filtering assets by type
   int gizmoMask{0};
+  bool displayFPS{true};
   std::unique_ptr<CameraController> cameraController;
   void DisplayAssets();
   void DisplayConsole();
@@ -28,6 +29,7 @@ private:
   void DisplayProperties();
   void DisplayScene();
   void DrawGizmos(float, float, unsigned int);
+  void ToggleFPS();
   void ToggleGizmos();
   std::vector<unsigned int> GetSelectedEntityIds();
   void RemoveDeletedEntitiesFromSelection();

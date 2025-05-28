@@ -1,17 +1,18 @@
 #pragma once
 #include "component.hpp"
 #include <kuki_engine_export.h>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <vector>
 namespace kuki {
 struct KUKI_ENGINE_API BoundingBox {
   /// @brief Minimum local bounds of the mesh at scale 1
-  glm::vec3 min{-1.0f};
+  glm::vec3 min{glm::vec3(std::numeric_limits<float>::max())};
   /// @brief Maximum local bounds of the mesh at scale 1
-  glm::vec3 max{1.0f};
+  glm::vec3 max{glm::vec3(std::numeric_limits<float>::lowest())};
   BoundingBox();
   BoundingBox(glm::vec3, glm::vec3);
   /// @brief Get the world space bounds
-  BoundingBox GetWorldBounds(const Transform*);
+  BoundingBox GetWorldBounds(glm::mat4);
 };
 struct KUKI_ENGINE_API Mesh final : IComponent {
   int vertexArray{};

@@ -130,6 +130,7 @@ public:
   bool AssetHasComponent(unsigned int);
   int Spawn(std::string&, int = -1, bool = false, float = 10.0f);
   void SpawnMulti(const std::string&, int, float);
+  int GetFPS();
   bool GetKeyDown(int) const;
   bool GetButtonDown(int) const;
   bool GetKeyUp(int) const;
@@ -145,6 +146,8 @@ public:
   void DisableAllKeys();
   void RegisterInputCallback(int, int, std::function<void()>, std::string = "");
   void UnregisterInputCallback(int, int);
+  void UpdateEntityWorldTransform(unsigned int);
+  void UpdateAssetWorldTransform(unsigned int);
   Texture CreateCubeMapFromEquirect(Texture);
   Texture CreateIrradianceMapFromCubeMap(Texture);
   Texture CreatePrefilterMapFromCubeMap(Texture);

@@ -23,7 +23,6 @@ void Transform::SetProperty(Property property) {
     else if (property.name == "Scale")
       scale = *value;
     localDirty = true;
-    worldDirty = true;
   } else if (auto value = std::get_if<int>(&property.value)) {
     if (property.name == "Parent")
       parent = *value;

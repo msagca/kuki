@@ -28,6 +28,7 @@ private:
   Camera* targetCamera{};
   TexturePool texturePool;
   std::unordered_map<unsigned int, unsigned int> assetToTexture;
+  int fps;
   unsigned int framebuffer{0};
   unsigned int framebufferMulti{0};
   unsigned int renderbuffer{0};
@@ -43,8 +44,8 @@ private:
   /// @param params Texture parameters
   /// @return true if the framebuffer is complete, false otherwise
   bool UpdateAttachments(unsigned int, unsigned int, unsigned int, const TextureParams&);
-  void DrawAsset(const Transform*, const Mesh*, const Material*);
   void DrawAsset(unsigned int);
+  void DrawAssetHierarchy(unsigned int);
   void DrawEntitiesInstanced(const Mesh*, const std::vector<unsigned int>&);
   void DrawFrustumCulling();
   void DrawGizmos();
@@ -54,20 +55,18 @@ private:
   void DrawSkyboxAsset(unsigned int);
   void DrawViewFrustum();
   void ApplyPostProc(unsigned int, unsigned int, const TextureParams&);
-  glm::mat4 GetEntityWorldTransform(const Transform*);
-  glm::mat4 GetAssetWorldTransform(const Transform*);
-  glm::vec3 GetAssetWorldPosition(const Transform*);
   BoundingBox GetAssetBounds(unsigned int);
   Shader* GetShader(MaterialType);
   ComputeShader* GetCompute(ComputeType);
   // TODO: the following should be handled by a physics system
   void UpdateTransforms();
-  void MarkChildrenDirty(unsigned int);
+  void UpdateChildFlags(unsigned int);
 public:
   RenderingSystem(Application&);
   void Start() override;
   void Update(float) override;
   void Shutdown() override;
+  int GetFPS() const;
   int RenderSceneToTexture(Camera* = nullptr);
   int RenderAssetToTexture(unsigned int, int);
   Texture CreateCubeMapFromEquirect(Texture);

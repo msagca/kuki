@@ -1,4 +1,6 @@
 project(KukiTests)
+enable_testing()
+include(GoogleTest)
 file(GLOB_RECURSE C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
 file(GLOB_RECURSE CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 add_executable("${PROJECT_NAME}" "${C_SOURCES}" "${CPP_SOURCES}")
@@ -7,6 +9,7 @@ target_include_directories(
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 target_link_libraries("${PROJECT_NAME}" PRIVATE kuki_engine gtest)
+gtest_discover_tests(${PROJECT_NAME})
 install(TARGETS "${PROJECT_NAME}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
 if(UNIX AND NOT APPLE)
   set_target_properties(

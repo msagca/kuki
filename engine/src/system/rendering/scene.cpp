@@ -18,7 +18,6 @@
 #include <glm/gtx/quaternion.hpp>
 #include <spdlog/spdlog.h>
 #include <unordered_map>
-#include <variant>
 #include <vector>
 namespace kuki {
 int RenderingSystem::RenderSceneToTexture(Camera* camera) {
@@ -86,8 +85,8 @@ void RenderingSystem::DrawScene() {
   std::unordered_map<unsigned int, Mesh> vaoToMesh;
   // FIXME: app.ForEachVisibleEntity does not work as expected
   // TODO: repeat this query only after entity addition/deletion or component updates (set flags in entity manager and check them each frame)
-  app.ForEachEntity<MeshFilter, MeshRenderer>([this, &vaoToMesh, &vaoToEntities](unsigned int id, MeshFilter* filter, MeshRenderer* renderer) {
-    if (!filter || !renderer)
+  app.ForEachEntity<MeshFilter>([this, &vaoToMesh, &vaoToEntities](unsigned int id, MeshFilter* filter) {
+    if (!filter)
       return;
     auto vao = filter->mesh.vertexArray;
     vaoToMesh[vao] = filter->mesh;
@@ -135,19 +134,17 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<
   Material materialUnlit;
   // TODO: a separate draw call shall be invoked per unique material configuration (e.g. different albedo textures)
   for (const auto id : entities) {
-    auto [renderer, transform] = app.GetEntityComponents<MeshRenderer, Transform>(id);
-    if (!renderer || !transform)
+    auto [transform, renderer] = app.GetEntityComponents<Transform, MeshRenderer>(id);
+    if (!renderer)
       continue;
-    if (renderer->material.GetType() == MaterialType::Lit) {
+    if (auto litMaterial = std::get_if<LitMaterial>(&materialLit.material)) {
       materialLit = renderer->material;
-      auto& litMaterial = std::get<LitMaterial>(materialLit.material);
-      litMaterials.push_back(litMaterial.fallback);
-      litTransforms.push_back(GetEntityWorldTransform(transform));
-    } else if (renderer->material.GetType() == MaterialType::Unlit) {
+      litMaterials.push_back(litMaterial->fallback);
+      litTransforms.push_back(transform->world);
+    } else if (auto unlitMaterial = std::get_if<UnlitMaterial>(&materialUnlit.material)) {
       materialUnlit = renderer->material;
-      auto& unlitMaterial = std::get<UnlitMaterial>(materialUnlit.material);
-      unlitMaterials.push_back(unlitMaterial.fallback);
-      unlitTransforms.push_back(GetEntityWorldTransform(transform));
+      unlitMaterials.push_back(unlitMaterial->fallback);
+      unlitTransforms.push_back(transform->world);
     } // else ...
   }
   if (litMaterials.size() > 0) {
@@ -191,23 +188,5 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<
     shader->SetTransform(mesh, unlitTransforms, transformVBO);
     shader->DrawInstanced(mesh, unlitTransforms.size());
   }
-}
-glm::mat4 RenderingSystem::GetEntityWorldTransform(const Transform* transform) {
-  if (!transform->worldDirty)
-    return transform->world;
-  if (transform->localDirty) {
-    auto translation = glm::translate(glm::mat4(1.0f), transform->position);
-    auto rotation = glm::toMat4(transform->rotation);
-    auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
-    transform->local = translation * rotation * scale;
-    transform->localDirty = false;
-  }
-  if (transform->parent >= 0) {
-    if (auto parent = app.GetEntityComponent<Transform>(transform->parent))
-      transform->world = GetEntityWorldTransform(parent) * transform->local;
-  } else
-    transform->world = transform->local;
-  transform->worldDirty = false;
-  return transform->world;
 }
 } // namespace kuki

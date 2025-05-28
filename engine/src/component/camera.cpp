@@ -100,7 +100,7 @@ void Camera::UpdateProjection() {
   else {
     auto left = orthoSize * aspectRatio;
     auto bottom = orthoSize;
-    projection = glm::ortho(left, -left, bottom, -bottom, nearPlane, farPlane);
+    projection = glm::ortho(-orthoSize * aspectRatio, orthoSize * aspectRatio, -orthoSize, orthoSize, nearPlane, farPlane);
   }
 }
 void Camera::UpdateFrustum() {
@@ -115,7 +115,7 @@ void Camera::UpdateFrustum() {
   frustum.bottom = {position, glm::normalize(glm::cross(farPos + up * vHalf, right))};
 }
 void Camera::Frame(const BoundingBox& bounds) {
-  glm::vec3 center = (bounds.min + bounds.max) * .5f;
+  auto center = (bounds.min + bounds.max) * .5f;
   auto dimensions = bounds.max - bounds.min;
   auto radius = glm::length(dimensions) * .5f;
   float fovVertical = glm::radians(fov);
@@ -124,7 +124,9 @@ void Camera::Frame(const BoundingBox& bounds) {
   auto distanceFactor = 1.2f;
   float distance = (radius / tan(fovMin * .5f)) * distanceFactor;
   position = center - front * distance;
+  farPlane = glm::max(farPlane, distance + radius);
   UpdateView();
+  UpdateProjection();
 }
 bool Camera::OverlapsFrustum(const BoundingBox& bounds) const {
   return frustum.OverlapsFrustum(bounds);

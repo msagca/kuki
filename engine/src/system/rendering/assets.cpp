@@ -1,4 +1,3 @@
-#define GLM_ENABLE_EXPERIMENTAL
 #include <system/rendering.hpp>
 #include <application.hpp>
 #include <component/component.hpp>
@@ -12,12 +11,12 @@
 #include <functional>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <glm/gtx/quaternion.hpp>
 #include <spdlog/spdlog.h>
 #include <vector>
 #include <cstdint>
 #include <utility/pool.hpp>
 #include <cmath>
+#include <variant>
 namespace kuki {
 int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   static const auto MIN_SIZE = 16;
@@ -48,7 +47,7 @@ int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
     if (isCubeMap || skybox)
       DrawSkyboxAsset(assetId);
     else
-      DrawAsset(assetId);
+      DrawAssetHierarchy(assetId);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     ApplyPostProc(textureIdPre, textureIdPost, params);
     texturePool.Release(params, textureIdPre);
@@ -74,7 +73,7 @@ void RenderingSystem::DrawSkyboxAsset(unsigned int id) {
   shader->SetMaterial(&material);
   shader->Draw(mesh);
 }
-void RenderingSystem::DrawAsset(unsigned int id) {
+void RenderingSystem::DrawAssetHierarchy(unsigned int id) {
   static const Light dirLight;
   static const std::vector<const Light*> lights{&dirLight};
   auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
@@ -83,20 +82,22 @@ void RenderingSystem::DrawAsset(unsigned int id) {
   shader->Use();
   shader->SetCamera(&assetCam);
   shader->SetLighting(lights);
-  auto [transform, mesh, material] = app.GetAssetComponents<Transform, Mesh, Material>(id);
-  if (transform && mesh && material)
-    DrawAsset(transform, mesh, material);
+  DrawAsset(id);
   // TODO: these recursive calls cause a lot of overhead, flatten the asset hierarchy
   app.ForEachChildAsset(id, [this](unsigned int childId) {
     DrawAsset(childId);
   });
 }
-void RenderingSystem::DrawAsset(const Transform* transform, const Mesh* mesh, const Material* material) {
-  auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
+void RenderingSystem::DrawAsset(unsigned int id) {
+  auto [transform, mesh, material] = app.GetAssetComponents<Transform, Mesh, Material>(id);
+  if (!transform || !mesh || !material)
+    return;
   auto litMaterial = std::get_if<LitMaterial>(&material->material);
   if (!litMaterial)
     return;
-  auto model = GetAssetWorldTransform(transform);
+  app.UpdateAssetWorldTransform(id);
+  auto model = transform->world;
+  auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
   shader->SetMaterial(material);
   shader->SetMaterialFallback(mesh, litMaterial->fallback, materialVBO);
   shader->SetTransform(mesh, model, transformVBO);
@@ -261,34 +262,18 @@ Texture RenderingSystem::CreateBRDF_LUT() {
   glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
   return texture;
 }
-glm::mat4 RenderingSystem::GetAssetWorldTransform(const Transform* transform) {
-  auto translation = glm::translate(glm::mat4(1.0f), transform->position);
-  auto rotation = glm::toMat4(transform->rotation);
-  auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
-  transform->local = translation * rotation * scale;
-  if (transform->parent >= 0)
-    if (auto parent = app.GetAssetComponent<Transform>(transform->parent))
-      transform->local = GetAssetWorldTransform(parent) * transform->local;
-  return transform->local;
-}
-glm::vec3 RenderingSystem::GetAssetWorldPosition(const Transform* transform) {
-  auto model = GetAssetWorldTransform(transform);
-  return model[3];
-}
 BoundingBox RenderingSystem::GetAssetBounds(unsigned int id) {
   BoundingBox bounds;
-  std::function<void(unsigned int)> calculateBounds = [&](unsigned int assetId) {
-    auto [mesh, transform] = app.GetAssetComponents<Mesh, Transform>(assetId);
-    if (mesh && transform) {
-      auto childBounds = mesh->bounds.GetWorldBounds(transform);
-      bounds.min = glm::min(bounds.min, childBounds.min);
-      bounds.max = glm::max(bounds.max, childBounds.max);
-    }
-    app.ForEachChildAsset(assetId, [&](unsigned int childId) {
-      calculateBounds(childId);
-    });
-  };
-  calculateBounds(id);
+  auto [mesh, transform] = app.GetAssetComponents<Mesh, Transform>(id);
+  if (transform && mesh) {
+    app.UpdateAssetWorldTransform(id);
+    bounds = mesh->bounds.GetWorldBounds(transform->world);
+  }
+  app.ForEachChildAsset(id, [&](unsigned int childId) {
+    auto childBounds = GetAssetBounds(childId);
+    bounds.min = glm::min(bounds.min, childBounds.min);
+    bounds.max = glm::max(bounds.max, childBounds.max);
+  });
   return bounds;
 }
 } // namespace kuki

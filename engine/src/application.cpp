@@ -26,6 +26,7 @@
 #include <string>
 #include <system/system.hpp>
 #include <vector>
+#include <glm/ext/matrix_float4x4.hpp>
 namespace kuki {
 AppConfig::AppConfig(std::string name, std::filesystem::path logoPath, int screenWidth, int screenHeight)
   : name(name), logoPath(logoPath), screenWidth(screenWidth), screenHeight(screenHeight) {}
@@ -306,7 +307,7 @@ std::string Application::GetAssetName(unsigned int id) {
 bool Application::IsEntity(unsigned int id) {
   auto scene = GetActiveScene();
   if (!scene)
-    return -1;
+    return false;
   return scene->GetEntityManager().IsEntity(id);
 }
 int Application::GetEntityId(const std::string& name) {
@@ -392,25 +393,26 @@ int Application::Spawn(std::string& name, int parentId, bool randomPos, float sp
   if (assetId < 0)
     return -1;
   auto entityId = CreateEntity(name);
-  auto components = assetManager.GetAllComponents(assetId);
-  for (auto c : components)
-    if (auto t = dynamic_cast<Transform*>(c)) {
-      auto transform = AddEntityComponent<Transform>(entityId);
-      *transform = *t;
-      transform->parent = parentId;
-      if (randomPos)
-        transform->position = GetRandomPosition(spawnRadius);
-    } else if (auto m = dynamic_cast<Mesh*>(c)) {
-      auto filter = AddEntityComponent<MeshFilter>(entityId);
-      filter->mesh = *m;
-    } else if (auto m = dynamic_cast<Material*>(c)) {
-      auto renderer = AddEntityComponent<MeshRenderer>(entityId);
-      renderer->material = *m;
-    }
-  assetManager.ForEachChild(assetId, [this, &entityId](unsigned int id) {
-    auto name = assetManager.GetName(id);
-    auto childId = Spawn(name, entityId);
-    AddChildEntity(entityId, childId);
+  auto [assetTransform, mesh, material] = assetManager.GetComponents<Transform, Mesh, Material>(assetId);
+  if (assetTransform) {
+    auto entityTransform = AddEntityComponent<Transform>(entityId);
+    *entityTransform = *assetTransform;
+    entityTransform->parent = parentId;
+    if (randomPos)
+      entityTransform->position = GetRandomPosition(spawnRadius);
+  }
+  if (mesh) {
+    auto filter = AddEntityComponent<MeshFilter>(entityId);
+    filter->mesh = *mesh;
+  }
+  if (material) {
+    auto renderer = AddEntityComponent<MeshRenderer>(entityId);
+    renderer->material = *material;
+  }
+  ForEachChildAsset(assetId, [this, &entityId](unsigned int childAssetId) {
+    auto name = assetManager.GetName(childAssetId);
+    auto childEntityId = Spawn(name, entityId, false);
+    AddChildEntity(entityId, childEntityId);
   });
   return entityId;
 }
@@ -419,6 +421,12 @@ void Application::SpawnMulti(const std::string& name, int count, float radius) {
     auto nameTemp = name;
     Spawn(nameTemp, -1, true, radius);
   }
+}
+int Application::GetFPS() {
+  auto renderingSystem = GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return 0;
+  return renderingSystem->GetFPS();
 }
 bool Application::GetKeyDown(int key) const {
   return inputManager.GetKeyDown(key);
@@ -452,6 +460,15 @@ void Application::RegisterInputCallback(int key, int action, std::function<void(
 }
 void Application::UnregisterInputCallback(int key, int action) {
   inputManager.UnregisterCallback(key, action);
+}
+void Application::UpdateEntityWorldTransform(unsigned int id) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().UpdateWorldTransform(id);
+}
+void Application::UpdateAssetWorldTransform(unsigned int id) {
+  assetManager.UpdateWorldTransform(id);
 }
 Texture Application::CreateCubeMapFromEquirect(Texture equirect) {
   auto renderingSystem = GetSystem<RenderingSystem>();

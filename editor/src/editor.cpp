@@ -42,6 +42,7 @@ void Editor::Init() {
   Application::Init();
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor");
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor");
+  RegisterInputCallback(GLFW_KEY_F, GLFW_PRESS, [this]() { ToggleFPS(); }, "Toggle FPS");
   RegisterInputCallback(GLFW_KEY_G, GLFW_PRESS, [this]() { ToggleGizmos(); }, "Toggle gizmos");
   RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderingSystem::ToggleWireframeMode, "Toggle wireframe mode");
   InitImGui();
@@ -84,6 +85,7 @@ void Editor::UpdateView() {
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 void Editor::InitLayout() {
+  // TODO: if an imgui.ini file exists, restore the layout from it
   static bool firstRun = true;
   if (!firstRun)
     return;
