@@ -98,9 +98,9 @@ void Camera::UpdateProjection() {
   if (type == CameraType::Perspective)
     projection = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
   else {
-    auto left = orthoSize * aspectRatio;
-    auto bottom = orthoSize;
-    projection = glm::ortho(-orthoSize * aspectRatio, orthoSize * aspectRatio, -orthoSize, orthoSize, nearPlane, farPlane);
+    auto left = -orthoSize * aspectRatio;
+    auto bottom = -orthoSize;
+    projection = glm::ortho(left, -left, bottom, -bottom, nearPlane, farPlane);
   }
 }
 void Camera::UpdateFrustum() {
@@ -121,10 +121,10 @@ void Camera::Frame(const BoundingBox& bounds) {
   float fovVertical = glm::radians(fov);
   float fovHorizontal = 2.0f * atan(tan(fovVertical * .5f) * aspectRatio);
   auto fovMin = glm::min(fovVertical, fovHorizontal);
-  auto distanceFactor = 1.2f;
+  auto distanceFactor = 1.1f;
   float distance = (radius / tan(fovMin * .5f)) * distanceFactor;
   position = center - front * distance;
-  farPlane = glm::max(farPlane, distance + radius);
+  farPlane = distance + radius;
   UpdateView();
   UpdateProjection();
 }

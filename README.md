@@ -2,13 +2,15 @@
 
 I'm teaching myself graphics programming, game engine architecture and C++ through this hobby project.
 
+![Editor UI](editor/src/image/editor_ui.jpg)
+
 ## How to Build
 
 ### Requirements
 
-- `git`, `cmake`
+- [Git](https://git-scm.com/downloads), [CMake](https://cmake.org)
 - **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community) (install **Desktop development with C++** workload)
-- **Linux:** `ninja` (or `make`), `gcc`, `g++`
+- **Linux:** [Ninja](https://ninja-build.org), [GCC](https://gcc.gnu.org)
 
 ### Instructions
 
@@ -22,13 +24,11 @@ git clone --recursive https://github.com/msagca/kuki
 cd kuki
 ```
 
-- Run the configure command
+- Run CMake configure and build commands
 
 ```bash
 cmake -B build
 ```
-
-- Run the build command
 
 ```bash
 cmake --build build

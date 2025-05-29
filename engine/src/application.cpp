@@ -397,6 +397,7 @@ int Application::Spawn(std::string& name, int parentId, bool randomPos, float sp
   if (assetTransform) {
     auto entityTransform = AddEntityComponent<Transform>(entityId);
     *entityTransform = *assetTransform;
+    entityTransform->localDirty = true;
     entityTransform->parent = parentId;
     if (randomPos)
       entityTransform->position = GetRandomPosition(spawnRadius);

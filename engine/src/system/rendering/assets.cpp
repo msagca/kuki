@@ -44,6 +44,7 @@ int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
     glViewport(0, 0, textureSize, textureSize);
     glClearColor(.0f, .0f, .0f, .0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    // FIXME: if a skybox preview if created firt, the following model previews are not displayed correctly (it works the other way around)
     if (isCubeMap || skybox)
       DrawSkyboxAsset(assetId);
     else
@@ -74,7 +75,7 @@ void RenderingSystem::DrawSkyboxAsset(unsigned int id) {
   shader->Draw(mesh);
 }
 void RenderingSystem::DrawAssetHierarchy(unsigned int id) {
-  static const Light dirLight;
+  static const Light dirLight{};
   static const std::vector<const Light*> lights{&dirLight};
   auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
   auto bounds = GetAssetBounds(id);
@@ -83,25 +84,22 @@ void RenderingSystem::DrawAssetHierarchy(unsigned int id) {
   shader->SetCamera(&assetCam);
   shader->SetLighting(lights);
   DrawAsset(id);
-  // TODO: these recursive calls cause a lot of overhead, flatten the asset hierarchy
-  app.ForEachChildAsset(id, [this](unsigned int childId) {
-    DrawAsset(childId);
-  });
 }
 void RenderingSystem::DrawAsset(unsigned int id) {
   auto [transform, mesh, material] = app.GetAssetComponents<Transform, Mesh, Material>(id);
-  if (!transform || !mesh || !material)
-    return;
-  auto litMaterial = std::get_if<LitMaterial>(&material->material);
-  if (!litMaterial)
-    return;
-  app.UpdateAssetWorldTransform(id);
-  auto model = transform->world;
-  auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
-  shader->SetMaterial(material);
-  shader->SetMaterialFallback(mesh, litMaterial->fallback, materialVBO);
-  shader->SetTransform(mesh, model, transformVBO);
-  shader->Draw(mesh);
+  if (transform && mesh && material) {
+    auto model = transform->world;
+    auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
+    shader->SetMaterial(material);
+    if (auto litMaterial = std::get_if<LitMaterial>(&material->material))
+      // TODO: support other materials
+      shader->SetMaterialFallback(mesh, litMaterial->fallback, materialVBO);
+    shader->SetTransform(mesh, model, transformVBO);
+    shader->Draw(mesh);
+  }
+  app.ForEachChildAsset(id, [this](unsigned int childId) {
+    DrawAsset(childId);
+  });
 }
 Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect) {
   Texture texture{};
@@ -263,11 +261,12 @@ Texture RenderingSystem::CreateBRDF_LUT() {
   return texture;
 }
 BoundingBox RenderingSystem::GetAssetBounds(unsigned int id) {
-  BoundingBox bounds;
+  BoundingBox bounds{};
   auto [mesh, transform] = app.GetAssetComponents<Mesh, Transform>(id);
-  if (transform && mesh) {
+  if (transform) {
     app.UpdateAssetWorldTransform(id);
-    bounds = mesh->bounds.GetWorldBounds(transform->world);
+    if (mesh)
+      bounds = mesh->bounds.GetWorldBounds(transform->world);
   }
   app.ForEachChildAsset(id, [&](unsigned int childId) {
     auto childBounds = GetAssetBounds(childId);

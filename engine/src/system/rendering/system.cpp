@@ -37,16 +37,16 @@ void RenderingSystem::Start() {
   assetCam.Update();
 }
 void RenderingSystem::Update(float deltaTime) {
-  static auto frameCount = 0;
+  static std::deque<float> times;
   static auto accumulatedTime = .0f;
-  frameCount++;
+  times.push_back(deltaTime);
   accumulatedTime += deltaTime;
-  if (accumulatedTime >= 1.0f) {
-    auto avgDeltaTime = accumulatedTime / frameCount;
-    fps = 1.0f / avgDeltaTime;
-    frameCount--;
-    accumulatedTime -= avgDeltaTime;
+  while (accumulatedTime > 1.0f && !times.empty()) {
+    auto lastTime = times.front();
+    accumulatedTime -= lastTime;
+    times.pop_front();
   }
+  fps = times.size();
   UpdateTransforms();
 }
 void RenderingSystem::Shutdown() {

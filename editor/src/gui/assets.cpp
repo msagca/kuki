@@ -50,7 +50,6 @@ void Editor::DisplayAssets() {
     }
     ImGui::EndPopup();
   }
-  auto tileCount = 0;
   std::vector<unsigned int> assetIds;
   if (assetMask == -1)
     ForEachRootAsset([&assetIds](unsigned int assetId) { assetIds.push_back(assetId); });
@@ -58,8 +57,15 @@ void Editor::DisplayAssets() {
     ForEachAsset<Texture>([&assetIds](unsigned int assetId, Texture* _) { assetIds.push_back(assetId); });
     ForEachAsset<Skybox>([&assetIds](unsigned int assetId, Skybox* _) { assetIds.push_back(assetId); });
   }
-  for (const auto id : assetIds) {
-    ImVec2 tilePos(cursorStartPos.x + (tileCount % tilesPerRow) * TILE_TOTAL_WIDTH, cursorStartPos.y + (tileCount / tilesPerRow) * TILE_TOTAL_HEIGHT);
+  const auto totalRows = (assetIds.size() + tilesPerRow - 1) / tilesPerRow;
+  const auto totalContentHeight = totalRows * TILE_TOTAL_HEIGHT;
+  ImGui::Dummy(ImVec2(0, totalContentHeight));
+  ImGui::SetCursorPos(cursorStartPos);
+  for (auto i = 0; i < assetIds.size(); ++i) {
+    const auto id = assetIds[i];
+    const auto row = i / tilesPerRow;
+    const auto col = i % tilesPerRow;
+    ImVec2 tilePos(cursorStartPos.x + col * TILE_TOTAL_WIDTH, cursorStartPos.y + row * TILE_TOTAL_HEIGHT);
     auto tileTop = tilePos.y;
     auto tileBottom = tilePos.y + TILE_TOTAL_HEIGHT;
     if (tileBottom >= scrollY && tileTop <= scrollY + visibleHeight) {
@@ -89,12 +95,17 @@ void Editor::DisplayAssets() {
       }
       ImGui::PopStyleVar();
       auto textWidth = ImGui::CalcTextSize(assetName.c_str()).x;
-      auto textX = tilePos.x + (THUMBNAIL_SIZE - textWidth) * .5f;
+      auto maxTextWidth = THUMBNAIL_SIZE;
+      auto textX = tilePos.x + (THUMBNAIL_SIZE - std::min(textWidth, maxTextWidth)) * 0.5f;
       ImGui::SetCursorPos(ImVec2(textX, tilePos.y + THUMBNAIL_SIZE + TEXT_PADDING));
-      ImGui::Text("%s", assetName.c_str());
+      if (textWidth > maxTextWidth) {
+        ImGui::PushTextWrapPos(tilePos.x + THUMBNAIL_SIZE);
+        ImGui::TextWrapped("%s", assetName.c_str());
+        ImGui::PopTextWrapPos();
+      } else
+        ImGui::Text("%s", assetName.c_str());
       ImGui::PopID();
     }
-    tileCount++;
   }
   ImGui::End();
   fileBrowser.Display();
