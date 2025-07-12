@@ -52,6 +52,7 @@ void TexturePool::Reallocate(const TextureParams& params, GLuint& texture) {
     if (params.mipmaps > 1)
       glGenerateMipmap(params.target);
   }
+  glBindTexture(params.target, 0);
 }
 GLenum TexturePool::GetBaseFormat(GLenum internalFormat) {
   switch (internalFormat) {

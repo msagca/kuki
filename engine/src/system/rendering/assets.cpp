@@ -8,7 +8,6 @@
 #include <component/texture.hpp>
 #include <component/skybox.hpp>
 #include <component/transform.hpp>
-#include <functional>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <spdlog/spdlog.h>
@@ -39,7 +38,9 @@ int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   if (!isPresent && !texture) {
     params.target = isCubeMap ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
     auto textureIdPre = texturePool.Request(params);
-    UpdateAttachments(framebuffer, renderbuffer, textureIdPre, params);
+    auto framebuffer = framebufferPool.Request(params);
+    auto renderbuffer = renderbufferPool.Request(params);
+    UpdateAttachments(params, framebuffer, renderbuffer, textureIdPre);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glViewport(0, 0, textureSize, textureSize);
     glClearColor(.0f, .0f, .0f, .0f);
@@ -50,6 +51,8 @@ int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
     else
       DrawAssetHierarchy(assetId);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    framebufferPool.Release(params, framebuffer);
+    renderbufferPool.Release(params, renderbuffer);
     ApplyPostProc(textureIdPre, textureIdPost, params);
     texturePool.Release(params, textureIdPre);
   }
@@ -125,8 +128,10 @@ Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect) {
   auto isEXR = equirect.type == TextureType::EXR;
   glm::mat4 viewMatrices[] = {glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(1.0f, .0f, .0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(-1.0f, .0f, .0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, isEXR ? -1.0f : 1.0f, .0f), glm::vec3(.0f, .0f, isEXR ? -1.0f : 1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f), glm::vec3(.0f, .0f, isEXR ? 1.0f : -1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, isEXR ? -1.0f : 1.0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, isEXR ? 1.0f : -1.0f), glm::vec3(.0f, isEXR ? 1.0f : -1.0f, .0f))};
   TextureParams params{width, height, GL_TEXTURE_CUBE_MAP};
+  auto framebuffer = framebufferPool.Request(params);
+  auto renderbuffer = renderbufferPool.Request(params);
   auto textureId = texturePool.Request(params);
-  UpdateAttachments(framebuffer, renderbuffer, textureId, params);
+  UpdateAttachments(params, framebuffer, renderbuffer, textureId);
   texture.id = textureId;
   glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
   glActiveTexture(GL_TEXTURE0);
@@ -140,6 +145,8 @@ Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect) {
     shader->Draw(mesh);
   }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  framebufferPool.Release(params, framebuffer);
+  renderbufferPool.Release(params, renderbuffer);
   return texture;
 }
 Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
@@ -167,8 +174,10 @@ Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
   shader->SetUniform("model", model);
   glm::mat4 viewMatrices[] = {glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(1.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(-1.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, 1.0f, .0f), glm::vec3(.0f, .0f, 1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f), glm::vec3(.0f, .0f, -1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, 1.0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, -1.0f), glm::vec3(.0f, -1.0f, .0f))};
   TextureParams params{width, height, GL_TEXTURE_CUBE_MAP};
+  auto framebuffer = framebufferPool.Request(params);
+  auto renderbuffer = renderbufferPool.Request(params);
   auto textureId = texturePool.Request(params);
-  UpdateAttachments(framebuffer, renderbuffer, textureId, params);
+  UpdateAttachments(params, framebuffer, renderbuffer, textureId);
   texture.id = textureId;
   glActiveTexture(GL_TEXTURE0);
   shader->SetUniform("cubeMap", 0);
@@ -182,6 +191,8 @@ Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
     shader->Draw(mesh);
   }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  framebufferPool.Release(params, framebuffer);
+  renderbufferPool.Release(params, renderbuffer);
   return texture;
 }
 Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
@@ -209,9 +220,11 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
   shader->SetUniform("model", model);
   glm::mat4 viewMatrices[] = {glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(1.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(-1.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, 1.0f, .0f), glm::vec3(.0f, .0f, 1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, -1.0f, .0f), glm::vec3(.0f, .0f, -1.0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, 1.0f), glm::vec3(.0f, -1.0f, .0f)), glm::lookAt(glm::vec3(.0f, .0f, .0f), glm::vec3(.0f, .0f, -1.0f), glm::vec3(.0f, -1.0f, .0f))};
   TextureParams params{width, height, GL_TEXTURE_CUBE_MAP};
+  auto framebuffer = framebufferPool.Request(params);
+  auto renderbuffer = renderbufferPool.Request(params);
   params.mipmaps = std::log2(width) + 1;
   auto textureId = texturePool.Request(params);
-  UpdateAttachments(framebuffer, renderbuffer, textureId, params);
+  UpdateAttachments(params, framebuffer, renderbuffer, textureId);
   texture.id = textureId;
   glActiveTexture(GL_TEXTURE0);
   shader->SetUniform("cubeMap", 0);
@@ -233,6 +246,8 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
     }
   }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  framebufferPool.Release(params, framebuffer);
+  renderbufferPool.Release(params, renderbuffer);
   return texture;
 }
 Texture RenderingSystem::CreateBRDF_LUT() {

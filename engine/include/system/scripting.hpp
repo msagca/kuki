@@ -11,6 +11,7 @@ public:
   ScriptingSystem(Application&);
   ~ScriptingSystem();
   void Update(float) override;
+  void Shutdown() override;
   template <typename T>
   requires std::is_base_of_v<IScript, T>
   void Register(unsigned int);

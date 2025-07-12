@@ -145,9 +145,5 @@ void Editor::InitImGui() {
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init();
   ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
-  auto builder = ImGuiFreeType::GetBuilderForFreeType();
-  io.Fonts->Clear();
-  io.Fonts->AddFontDefault();
-  builder->FontBuilder_Build(io.Fonts);
   fileBrowser.SetTitle("Browse Files");
 }

@@ -31,10 +31,14 @@ int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   targetCamera->SetProperty({"AspectRatio", static_cast<float>(width) / height});
   const TextureParams singleParams{width, height, GL_TEXTURE_2D, GL_RGB16F, 1, 1};
   const TextureParams multiParams{width, height, GL_TEXTURE_2D_MULTISAMPLE, GL_RGB16F, 4, 1};
-  auto textureSingle = texturePool.Request(singleParams);
+  auto framebufferMulti = framebufferPool.Request(multiParams);
+  auto framebufferSingle = framebufferPool.Request(singleParams);
+  auto renderbufferMulti = renderbufferPool.Request(multiParams);
+  auto renderbufferSingle = renderbufferPool.Request(singleParams);
   auto textureMulti = texturePool.Request(multiParams);
-  UpdateAttachments(framebufferMulti, renderbufferMulti, textureMulti, multiParams);
-  UpdateAttachments(framebuffer, renderbuffer, textureSingle, singleParams);
+  auto textureSingle = texturePool.Request(singleParams);
+  UpdateAttachments(multiParams, framebufferMulti, renderbufferMulti, textureMulti);
+  UpdateAttachments(singleParams, framebufferSingle, renderbufferSingle, textureSingle);
   glBindFramebuffer(GL_FRAMEBUFFER, framebufferMulti);
   glViewport(0, 0, width, height);
   glClearColor(.0f, .0f, .0f, .0f);
@@ -42,20 +46,34 @@ int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   DrawScene();
   DrawGizmos();
   glBindFramebuffer(GL_READ_FRAMEBUFFER, framebufferMulti);
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebufferSingle);
   glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   auto texturePost = texturePool.Request(singleParams);
   ApplyPostProc(textureSingle, texturePost, singleParams);
-  texturePool.Release(singleParams, textureSingle);
-  texturePool.Release(singleParams, texturePost);
+  framebufferPool.Release(multiParams, framebufferMulti);
+  framebufferPool.Release(singleParams, framebufferSingle);
+  renderbufferPool.Release(multiParams, renderbufferMulti);
+  renderbufferPool.Release(singleParams, renderbufferSingle);
   texturePool.Release(multiParams, textureMulti);
+  texturePool.Release(singleParams, texturePost);
+  texturePool.Release(singleParams, textureSingle);
   return texturePost;
 }
 void RenderingSystem::ApplyPostProc(unsigned int textureIn, unsigned int textureOut, const TextureParams& params) {
-  auto shader = GetShader(MaterialType::Postprocessing);
-  if (!shader) {
-    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::Postprocessing)));
+  auto bloomShader = GetShader(MaterialType::Bloom);
+  if (!bloomShader) {
+    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::Bloom)));
+    return;
+  }
+  auto brightShader = GetShader(MaterialType::Bright);
+  if (!brightShader) {
+    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::Bright)));
+    return;
+  }
+  auto blurShader = GetShader(MaterialType::Blur);
+  if (!blurShader) {
+    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::Blur)));
     return;
   }
   auto frameId = app.GetAssetId("Frame");
@@ -64,21 +82,66 @@ void RenderingSystem::ApplyPostProc(unsigned int textureIn, unsigned int texture
     spdlog::warn("Frame mesh not found.");
     return;
   }
-  UpdateAttachments(framebuffer, renderbuffer, textureOut, params);
-  shader->Use();
-  // TODO: make these configurable via UI (create a postproc component)
-  shader->SetUniform("exposure", 1.0f);
-  shader->SetUniform("gamma", 2.2f);
-  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+  auto framebufferPing = framebufferPool.Request(params);
+  auto framebufferPong = framebufferPool.Request(params);
+  auto renderbufferPing = renderbufferPool.Request(params);
+  auto renderbufferPong = renderbufferPool.Request(params);
+  auto texturePing = texturePool.Request(params);
+  auto texturePong = texturePool.Request(params);
+  auto textureNormal = texturePool.Request(params);
+  UpdateAttachments(params, framebufferPong, renderbufferPong, textureNormal, texturePong);
+  glBindFramebuffer(GL_FRAMEBUFFER, framebufferPong);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, textureIn);
-  shader->SetUniform("hdrTexture", 0);
+  brightShader->Use();
+  brightShader->SetUniform("image", 0);
   glViewport(0, 0, params.width, params.height);
   glClearColor(.0f, .0f, .0f, .0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  shader->SetUniform("model", glm::mat4(1.0f));
-  shader->Draw(mesh);
+  brightShader->SetUniform("model", glm::mat4(1.0f));
+  GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+  glDrawBuffers(2, attachments);
+  brightShader->Draw(mesh);
+  const auto blurPasses = 8;
+  blurShader->Use();
+  blurShader->SetUniform("model", glm::mat4(1.0f));
+  blurShader->SetUniform("image", 0);
+  for (auto i = 0; i < blurPasses; ++i) {
+    auto pingPong = i % 2 == 0;
+    auto framebuffer = pingPong ? framebufferPing : framebufferPong;
+    auto renderbuffer = pingPong ? renderbufferPing : renderbufferPong;
+    auto textureTarget = pingPong ? texturePing : texturePong;
+    auto textureSource = pingPong ? texturePong : texturePing;
+    UpdateAttachments(params, framebuffer, renderbuffer, textureTarget);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glBindTexture(GL_TEXTURE_2D, textureSource);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    blurShader->SetUniform("horizontal", pingPong);
+    blurShader->Draw(mesh);
+  }
+  glDrawBuffer(GL_COLOR_ATTACHMENT0);
+  UpdateAttachments(params, framebufferPing, renderbufferPing, textureOut);
+  glBindFramebuffer(GL_FRAMEBUFFER, framebufferPing);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, textureNormal);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, texturePong);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  bloomShader->Use();
+  bloomShader->SetUniform("hdrImage", 0);
+  bloomShader->SetUniform("bloomImage", 1);
+  bloomShader->SetUniform("exposure", 1.0f);
+  bloomShader->SetUniform("gamma", 2.2f);
+  bloomShader->SetUniform("model", glm::mat4(1.0f));
+  bloomShader->Draw(mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  framebufferPool.Release(params, framebufferPing);
+  framebufferPool.Release(params, framebufferPong);
+  renderbufferPool.Release(params, renderbufferPing);
+  renderbufferPool.Release(params, renderbufferPong);
+  texturePool.Release(params, texturePing);
+  texturePool.Release(params, texturePong);
+  texturePool.Release(params, textureNormal);
 }
 void RenderingSystem::DrawScene() {
   std::unordered_map<unsigned int, std::vector<unsigned int>> vaoToEntities;
@@ -86,12 +149,8 @@ void RenderingSystem::DrawScene() {
   // FIXME: app.ForEachVisibleEntity does not work as expected
   // TODO: repeat this query only after entity addition/deletion or component updates (set flags in entity manager and check them each frame)
   app.ForEachEntity<MeshFilter>([this, &vaoToMesh, &vaoToEntities](unsigned int id, MeshFilter* filter) {
-    if (!filter)
-      return;
     auto vao = filter->mesh.vertexArray;
     vaoToMesh[vao] = filter->mesh;
-    if (vaoToEntities.find(vao) == vaoToEntities.end())
-      vaoToEntities[vao] = {};
     vaoToEntities[vao].push_back(id);
   });
   if (wireframeMode)

@@ -53,7 +53,7 @@ vec3 GetNormalFromTexture() {
     vec3 tangentNormal = texture(material.normal, texCoord).xyz * 2.0 - 1.0;
     vec3 N = normalize(normal);
     vec3 T = normalize(tangent);
-    vec3 B = -normalize(cross(N, T));
+    vec3 B = normalize(cross(N, T));
     mat3 TBN = mat3(T, B, N);
     return normalize(TBN * tangentNormal);
 }

@@ -6,32 +6,36 @@
 #include <component/transform.hpp>
 #include <spdlog/spdlog.h>
 #include <system/system.hpp>
+#include <deque>
 namespace kuki {
 RenderingSystem::RenderingSystem(Application& app)
   : System(app) {}
+RenderingSystem::~RenderingSystem() {
+  Shutdown();
+}
 void RenderingSystem::Start() {
   glCreateBuffers(1, &materialVBO);
   glCreateBuffers(1, &transformVBO);
-  glGenFramebuffers(1, &framebuffer);
-  glGenFramebuffers(1, &framebufferMulti);
-  glGenRenderbuffers(1, &renderbuffer);
-  glGenRenderbuffers(1, &renderbufferMulti);
+  auto bloomShader = new Shader("Postprocessing", "shader/standard_m.vert", "shader/bloom.frag", MaterialType::Bloom);
+  auto blurShader = new Shader("Blur", "shader/standard_m.vert", "shader/blur.frag", MaterialType::Blur);
   auto brdfCompute = new ComputeShader("BRDF", "shader/brdf.comp", ComputeType::BRDF);
-  computes.insert({brdfCompute->GetType(), brdfCompute});
+  auto brightShader = new Shader("Blur", "shader/standard_m.vert", "shader/bright.frag", MaterialType::Bright);
   auto cubeMapEquirectShader = new Shader("CubeMapEquirect", "shader/standard_m.vert", "shader/cubemap_equirect.frag", MaterialType::CubeMapEquirect);
   auto cubeMapIrradianceShader = new Shader("CubeMapIrradiance", "shader/standard_mvp.vert", "shader/cubemap_irradiance.frag", MaterialType::CubeMapIrradiance);
   auto cubeMapPrefilterShader = new Shader("CubeMapPrefilter", "shader/standard_mvp.vert", "shader/cubemap_prefilter.frag", MaterialType::CubeMapPrefilter);
   auto equirectCubeMapShader = new Shader("EquirectCubeMap", "shader/standard_mvp.vert", "shader/equirect_cubemap.frag", MaterialType::EquirectCubeMap);
   auto litShader = new LitShader("Lit", "shader/lit.vert", "shader/lit.frag");
-  auto postprocShader = new Shader("Postprocessing", "shader/standard_m.vert", "shader/postprocessing.frag", MaterialType::Postprocessing);
   auto skyboxShader = new Shader("Skybox", "shader/skybox.vert", "shader/skybox.frag", MaterialType::Skybox);
   auto unlitShader = new UnlitShader("Unlit", "shader/unlit.vert", "shader/unlit.frag");
+  computes.insert({brdfCompute->GetType(), brdfCompute});
+  shaders.insert({bloomShader->GetType(), bloomShader});
+  shaders.insert({blurShader->GetType(), blurShader});
+  shaders.insert({brightShader->GetType(), brightShader});
   shaders.insert({cubeMapEquirectShader->GetType(), cubeMapEquirectShader});
   shaders.insert({cubeMapIrradianceShader->GetType(), cubeMapIrradianceShader});
   shaders.insert({cubeMapPrefilterShader->GetType(), cubeMapPrefilterShader});
   shaders.insert({equirectCubeMapShader->GetType(), equirectCubeMapShader});
   shaders.insert({litShader->GetType(), litShader});
-  shaders.insert({postprocShader->GetType(), postprocShader});
   shaders.insert({skyboxShader->GetType(), skyboxShader});
   shaders.insert({unlitShader->GetType(), unlitShader});
   assetCam.Update();
@@ -50,10 +54,6 @@ void RenderingSystem::Update(float deltaTime) {
   UpdateTransforms();
 }
 void RenderingSystem::Shutdown() {
-  glDeleteFramebuffers(1, &framebuffer);
-  glDeleteFramebuffers(1, &framebufferMulti);
-  glDeleteRenderbuffers(1, &renderbuffer);
-  glDeleteRenderbuffers(1, &renderbufferMulti);
   glDeleteVertexArrays(1, &materialVBO);
   glDeleteVertexArrays(1, &transformVBO);
   for (const auto& [_, compute] : computes)
@@ -62,42 +62,12 @@ void RenderingSystem::Shutdown() {
     delete shader;
   computes.clear();
   shaders.clear();
+  framebufferPool.Clear();
+  renderbufferPool.Clear();
   texturePool.Clear();
 }
 int RenderingSystem::GetFPS() const {
   return fps;
-}
-bool RenderingSystem::UpdateAttachments(unsigned int framebuffer, unsigned int renderbuffer, unsigned int texture, const TextureParams& params) {
-  if (framebuffer == 0) {
-    spdlog::error("Framebuffer is not initialized.");
-    return false;
-  }
-  if (renderbuffer == 0) {
-    spdlog::error("Renderbuffer attachment is not initialized.");
-    return false;
-  }
-  if (texture == 0) {
-    spdlog::error("Texture attachment is not initialized.");
-    return false;
-  }
-  const auto multiSample = params.samples > 1;
-  const auto cubeMap = params.target == GL_TEXTURE_CUBE_MAP;
-  glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
-  if (multiSample)
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, params.samples, GL_DEPTH24_STENCIL8, params.width, params.height);
-  else
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, params.width, params.height);
-  glBindRenderbuffer(GL_RENDERBUFFER, 0);
-  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, cubeMap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X : params.target, texture, 0);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderbuffer);
-  auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  if (status != GL_FRAMEBUFFER_COMPLETE) {
-    spdlog::error("Framebuffer is incomplete ({0:x}).", status);
-    return false;
-  }
-  return true;
 }
 bool RenderingSystem::wireframeMode = false;
 void RenderingSystem::ToggleWireframeMode() {
@@ -119,8 +89,12 @@ Shader* RenderingSystem::GetShader(MaterialType type) {
     return shaders[MaterialType::CubeMapIrradiance];
   case MaterialType::CubeMapPrefilter:
     return shaders[MaterialType::CubeMapPrefilter];
-  case MaterialType::Postprocessing:
-    return shaders[MaterialType::Postprocessing];
+  case MaterialType::Bloom:
+    return shaders[MaterialType::Bloom];
+  case MaterialType::Bright:
+    return shaders[MaterialType::Bright];
+  case MaterialType::Blur:
+    return shaders[MaterialType::Blur];
   default:
     return nullptr;
   }

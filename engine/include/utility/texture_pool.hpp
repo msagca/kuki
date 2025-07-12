@@ -16,7 +16,7 @@ struct KUKI_ENGINE_API TextureParams {
     size_t operator()(const TextureParams&) const;
   };
 };
-class KUKI_ENGINE_API TexturePool : public Pool<TextureParams, GLuint> {
+class KUKI_ENGINE_API TexturePool final : public Pool<TextureParams, GLuint> {
 private:
   GLenum GetBaseFormat(GLenum);
 protected:

@@ -28,6 +28,7 @@ private:
   void DisplayLogs();
   void DisplayProperties();
   void DisplayScene();
+  void DisplayGraphEditor();
   void DrawGizmos(float, float, unsigned int);
   void ToggleFPS();
   void ToggleGizmos();

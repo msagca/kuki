@@ -7,9 +7,7 @@ namespace kuki {
 ScriptingSystem::ScriptingSystem(Application& app)
   : System(app) {}
 ScriptingSystem::~ScriptingSystem() {
-  for (const auto& [id, script] : scripts)
-    delete script;
-  scripts.clear();
+  Shutdown();
 }
 void ScriptingSystem::Update(float deltaTime) {
   app.ForEachEntity<Script>([this, deltaTime](unsigned int id, Script* _) {
@@ -19,6 +17,11 @@ void ScriptingSystem::Update(float deltaTime) {
     auto& instance = it->second;
     instance->Update(deltaTime);
   });
+}
+void ScriptingSystem::Shutdown() {
+  for (const auto& [id, script] : scripts)
+    delete script;
+  scripts.clear();
 }
 void ScriptingSystem::Unregister(unsigned int id) {
   auto it = scripts.find(id);

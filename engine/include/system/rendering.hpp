@@ -1,6 +1,7 @@
 #pragma once
 #include <glad/glad.h>
 #include "system.hpp"
+#include <spdlog/spdlog.h>
 #include <component/texture.hpp>
 #include <entity_manager.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -8,6 +9,8 @@
 #include <unordered_map>
 #include <utility/octree.hpp>
 #include <utility/texture_pool.hpp>
+#include <utility/renderbuffer_pool.hpp>
+#include <utility/framebuffer_pool.hpp>
 namespace kuki {
 enum class GizmoType : uint8_t {
   Manipulator,
@@ -26,24 +29,24 @@ private:
   std::unordered_map<ComputeType, ComputeShader*> computes;
   Camera assetCam{};
   Camera* targetCamera{};
+  FramebufferPool framebufferPool;
+  RenderbufferPool renderbufferPool;
   TexturePool texturePool;
   std::unordered_map<unsigned int, unsigned int> assetToTexture;
-  int fps;
-  unsigned int framebuffer{0};
-  unsigned int framebufferMulti{0};
-  unsigned int renderbuffer{0};
-  unsigned int renderbufferMulti{0};
+  int fps{};
   unsigned int materialVBO{0};
   unsigned int transformVBO{0};
   unsigned int gizmoMask{0};
   static bool wireframeMode;
   /// @brief Update framebuffer attachments
-  /// @param framebuffer OpenGL ID of the framebuffer
-  /// @param renderbuffer OpenGL ID of the renderbuffer that is the depth and stencil attachment of the framebuffer
-  /// @param texture OpenGL ID of the texture that is the color attachment of the framebuffer
   /// @param params Texture parameters
+  /// @param framebuffer OpenGL ID of the framebuffer
+  /// @param renderbuffer OpenGL ID of the renderbuffer that is the depth and stencil attachment
+  /// @param textures OpenGL IDs of the textures that are the color attachments
   /// @return true if the framebuffer is complete, false otherwise
-  bool UpdateAttachments(unsigned int, unsigned int, unsigned int, const TextureParams&);
+  template <typename... T>
+  requires(std::same_as<T, unsigned int> && ...)
+  bool UpdateAttachments(const TextureParams&, unsigned int, unsigned int, T...);
   void DrawAsset(unsigned int);
   void DrawAssetHierarchy(unsigned int);
   void DrawEntitiesInstanced(const Mesh*, const std::vector<unsigned int>&);
@@ -63,6 +66,7 @@ private:
   void UpdateChildFlags(unsigned int);
 public:
   RenderingSystem(Application&);
+  ~RenderingSystem();
   void Start() override;
   void Update(float) override;
   void Shutdown() override;
@@ -77,4 +81,42 @@ public:
   void SetGizmoMask(unsigned int);
   static void ToggleWireframeMode();
 };
+template <typename... T>
+requires(std::same_as<T, unsigned int> && ...)
+bool RenderingSystem::UpdateAttachments(const TextureParams& params, unsigned int framebuffer, unsigned int renderbuffer, T... textures) {
+  if (framebuffer == 0) {
+    spdlog::error("Framebuffer is not initialized.");
+    return false;
+  }
+  if (renderbuffer == 0) {
+    spdlog::error("Renderbuffer attachment is not initialized.");
+    return false;
+  }
+  auto checkTexture = [](auto texture) {
+    if (texture == 0) {
+      spdlog::error("Texture attachment is not initialized.");
+      return false;
+    }
+    return true;
+  };
+  if (!(checkTexture(textures) && ...))
+    return false;
+  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+  auto attachment = GL_COLOR_ATTACHMENT0;
+  const auto cubeMap = params.target == GL_TEXTURE_CUBE_MAP;
+  auto target = cubeMap ? GL_TEXTURE_CUBE_MAP_POSITIVE_X : params.target;
+  auto bindTexture = [target, &attachment](auto texture) mutable {
+    glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, target, texture, 0);
+    ++attachment;
+  };
+  (bindTexture(textures), ...);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderbuffer);
+  auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  if (status != GL_FRAMEBUFFER_COMPLETE) {
+    spdlog::error("Framebuffer is incomplete ({0:x}).", status);
+    return false;
+  }
+  return true;
+}
 } // namespace kuki

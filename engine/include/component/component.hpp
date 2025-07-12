@@ -43,12 +43,14 @@ enum class LightType : uint8_t {
 };
 /// @brief Each material type shall correspond to a shader
 enum class MaterialType : uint8_t {
+  Bloom,
+  Blur,
+  Bright,
   CubeMapEquirect,
   CubeMapIrradiance,
   CubeMapPrefilter,
   EquirectCubeMap,
   Lit,
-  Postprocessing,
   Skybox,
   Unlit
 };
@@ -135,7 +137,7 @@ struct EnumTraits<LightType> {
 template <>
 struct EnumTraits<MaterialType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"CubeMapEquirect", "CubeMapIrradiance", "CubeMapPrefilter", "EquirectCubeMap", "Lit", "Postprocessing", "Skybox", "Unlit"};
+    static const std::vector<const char*> names = {"Bloom", "Blur", "Bright", "CubeMapEquirect", "CubeMapIrradiance", "CubeMapPrefilter", "EquirectCubeMap", "Lit", "Skybox", "Unlit"};
     return names;
   }
 };
