@@ -30,8 +30,6 @@
 #include <spdlog/spdlog.h>
 #include <string>
 #include <system/scripting.hpp>
-#include <type_traits>
-#include <variant>
 // NOTE: this comment is to prevent the following from being placed before imgui.h during includes sorting
 #include <imfilebrowser.h>
 #include <ImGuizmo.h>

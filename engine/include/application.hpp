@@ -88,6 +88,7 @@ public:
   IComponent* AddEntityComponent(unsigned int, const std::string&);
   template <typename T>
   void RemoveEntityComponent(unsigned int);
+  void RemoveEntityComponent(unsigned int, ComponentType);
   void RemoveEntityComponent(unsigned int, const std::string&);
   template <typename T>
   T* GetEntityComponent(unsigned int);
@@ -97,6 +98,7 @@ public:
   std::tuple<T*...> GetEntityComponents(unsigned int);
   template <typename... T>
   std::tuple<T*...> GetAssetComponents(unsigned int);
+  IComponent* GetEntityComponent(unsigned int, ComponentType);
   IComponent* GetEntityComponent(unsigned int, const std::string&);
   std::vector<IComponent*> GetAllEntityComponents(unsigned int);
   std::vector<std::string> GetMissingEntityComponents(unsigned int);

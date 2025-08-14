@@ -1,10 +1,12 @@
 #pragma once
 #include "component.hpp"
+#include "transform.hpp"
 #include <glm/ext/vector_float3.hpp>
 #include <kuki_engine_export.h>
-#include <vector>
 namespace kuki {
-struct KUKI_ENGINE_API Light final : IComponent {
+struct KUKI_ENGINE_API Light final : public IComponent {
+  Light()
+    : IComponent(std::in_place_type<Light>) {}
   LightType type{LightType::Directional};
   glm::vec3 vector{3.0f};
   glm::vec3 ambient{.2f};
@@ -14,9 +16,6 @@ struct KUKI_ENGINE_API Light final : IComponent {
   float constant{1.0f};
   float linear{.09f};
   float quadratic{.032f};
-  const std::string GetName() const override;
-  std::vector<Property> GetProperties() const override;
-  void SetProperty(Property) override;
   Transform GetTransform() const;
   void SetTransform(const Transform&);
 };

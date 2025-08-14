@@ -12,7 +12,7 @@ void Editor::DisplayEntity(unsigned int id) {
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
   if (selection.Contains(id)) {
     nodeFlags |= ImGuiTreeNodeFlags_Selected;
-    selectedEntity = id;
+    context.selectedEntity = id;
   }
   ImGui::SetNextItemSelectionUserData(id);
   if (renameMode && entityBeingRenamed == id) {

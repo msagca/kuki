@@ -30,8 +30,8 @@ IComponentManager* EntityManager::GetManager(const std::string& name) {
     return nullptr;
   return GetManager(it->second);
 }
-IComponentManager* EntityManager::GetManager(ComponentType id) {
-  auto it = idToType.find(id);
+IComponentManager* EntityManager::GetManager(ComponentType type) {
+  auto it = idToType.find(type);
   if (it == idToType.end())
     return nullptr;
   return GetManager(it->second);
@@ -196,6 +196,12 @@ bool EntityManager::HasComponent(unsigned int id, std::type_index type) {
   if (it == typeToManager.end())
     return false;
   return it->second->Has(id);
+}
+IComponent* EntityManager::GetComponent(unsigned int id, ComponentType type) {
+  auto manager = GetManager(type);
+  if (!manager)
+    return nullptr;
+  return manager->GetBase(id);
 }
 IComponent* EntityManager::GetComponent(unsigned int id, const std::string& name) {
   auto manager = GetManager(name);

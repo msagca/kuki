@@ -1,6 +1,5 @@
 #pragma once
-#include <component/camera.hpp>
-#include <component/component.hpp>
+#include <component/component_traits.hpp>
 #include <component_manager.hpp>
 #include <event_dispatcher.hpp>
 #include <kuki_engine_export.h>
@@ -8,10 +7,8 @@
 #include <string>
 #include <tuple>
 #include <typeindex>
-#include <unordered_map>
 #include <utility/octree.hpp>
 #include <utility/trie.hpp>
-#include <vector>
 namespace kuki {
 /// @brief Manages entities and their components in a scene
 class KUKI_ENGINE_API EntityManager {
@@ -80,6 +77,7 @@ public:
   bool HasComponents(unsigned int);
   template <typename T>
   T* GetComponent(unsigned int);
+  IComponent* GetComponent(unsigned int, ComponentType);
   IComponent* GetComponent(unsigned int, const std::string&);
   template <typename... T>
   std::tuple<T*...> GetComponents(unsigned int);
@@ -200,7 +198,7 @@ ComponentManager<T>* EntityManager::GetManager() {
   if (it == typeToManager.end()) {
     typeToManager.emplace(type, new ComponentManager<T>());
     nameToType.emplace(ComponentTraits<T>::GetName(), type);
-    idToType.emplace(ComponentTraits<T>::GetId(), type);
+    idToType.emplace(ComponentTraits<T>::GetType(), type);
     typeToMask.emplace(type, ComponentTraits<T>::GetMask());
   }
   return static_cast<ComponentManager<T>*>(typeToManager[type]);

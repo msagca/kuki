@@ -1,157 +1,26 @@
-#include <application.hpp>
-#include <component/component.hpp>
-#include <editor.hpp>
-#include <GLFW/glfw3.h>
-#include <glm/ext/vector_float3.hpp>
-#include <glm/ext/vector_float4.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <imgui.h>
-#include <string>
-#include <variant>
+#include "display_traits.hpp"
 using namespace kuki;
-void Editor::DisplayProperties() {
-  static const auto TEXTURE_SIZE = ImVec2(64, 64);
-  if (selectedEntity < 0)
+void Editor::DisplayProperties(IComponent* component) {
+  if (!component)
     return;
-  ImGui::Begin("Properties");
-  if (GetButtonDown(GLFW_MOUSE_BUTTON_LEFT) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered())
-    assetMask = -1;
-  static IComponent* selectedComponent = nullptr;
-  auto components = GetAllEntityComponents(selectedEntity);
-  for (auto i = 0; i < components.size(); ++i) {
-    const auto& component = components[i];
-    auto isSelected = (selectedComponent == component);
-    ImGui::PushID(static_cast<int>(i));
-    auto name = component->GetName();
-    if (ImGui::Selectable(name.c_str(), isSelected)) {
-      if (isSelected)
-        selectedComponent = nullptr;
-      else
-        selectedComponent = GetEntityComponent(selectedEntity, name);
-    }
-    if (ImGui::BeginPopupContextItem()) {
-      if (ImGui::MenuItem("Remove")) {
-        RemoveEntityComponent(selectedEntity, name);
-        if (selectedComponent == component)
-          selectedComponent = nullptr;
-      }
-      ImGui::EndPopup();
-    }
-    PropertyType prevPropType{};
-    auto properties = component->GetProperties();
-    for (auto j = 0; j < properties.size(); ++j) {
-      auto& prop = properties[j];
-      auto value = prop.value;
-      ImGui::PushID(static_cast<int>(j));
-      if (std::holds_alternative<glm::vec3>(value)) {
-        static auto uniformScale = false;
-        auto valueVec3 = std::get<glm::vec3>(value);
-        if (prop.type == PropertyType::Color) {
-          if (ImGui::ColorEdit3(prop.name.c_str(), glm::value_ptr(valueVec3)))
-            component->SetProperty(Property(prop.name, valueVec3));
-        } else if (prop.type == PropertyType::Scale) {
-          if (uniformScale) {
-            if (ImGui::InputFloat("Scale", &valueVec3.x))
-              if (ImGui::IsItemDeactivatedAfterEdit()) {
-                valueVec3 = glm::vec3(valueVec3.x);
-                component->SetProperty(Property(prop.name, valueVec3));
-              }
-          } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3))) {
-            if (ImGui::IsItemDeactivatedAfterEdit())
-              component->SetProperty(Property(prop.name, valueVec3));
-          }
-          ImGui::SameLine();
-          ImGui::Checkbox("Uniform", &uniformScale);
-        } else if (ImGui::InputFloat3(prop.name.c_str(), glm::value_ptr(valueVec3))) {
-          if (ImGui::IsItemDeactivatedAfterEdit())
-            component->SetProperty(Property(prop.name, valueVec3));
-        }
-      } else if (std::holds_alternative<glm::vec4>(value)) {
-        auto valueVec4 = std::get<glm::vec4>(value);
-        if (prop.type == PropertyType::Color) {
-          if (ImGui::ColorEdit4(prop.name.c_str(), glm::value_ptr(valueVec4)))
-            component->SetProperty(Property(prop.name, valueVec4));
-        } else if (ImGui::InputFloat4(prop.name.c_str(), glm::value_ptr(valueVec4)))
-          component->SetProperty(Property(prop.name, valueVec4));
-      } else if (std::holds_alternative<SkyboxData>(value)) {
-        auto valueSkybox = std::get<SkyboxData>(value);
-        auto nameCStr = prop.name.c_str();
-        ImGui::Text("%s", nameCStr);
-        if (ImGui::ImageButton(nameCStr, valueSkybox.preview, TEXTURE_SIZE)) {
-          assetMask = 0;
-          assetMask |= static_cast<int>(ComponentMask::Skybox);
-          selectedComponentName = name;
-          selectedProperty = prop;
-        }
-      } else if (std::holds_alternative<int>(value)) {
-        auto valueInt = std::get<int>(value);
-        auto nameCStr = prop.name.c_str();
-        if (prop.type == PropertyType::Texture) {
-          if (prevPropType == PropertyType::Texture)
-            ImGui::SameLine();
-          ImGui::BeginGroup();
-          ImGui::Text("%s", nameCStr);
-          if (ImGui::ImageButton(nameCStr, valueInt, TEXTURE_SIZE)) {
-            assetMask = 0;
-            assetMask |= static_cast<int>(ComponentMask::Texture);
-            selectedComponentName = name;
-            selectedProperty = prop;
-          }
-          ImGui::EndGroup();
-        } else if (ImGui::InputInt(nameCStr, &valueInt))
-          component->SetProperty(Property(prop.name, valueInt));
-      } else if (std::holds_alternative<float>(value)) {
-        auto valueFloat = std::get<float>(value);
-        if (prop.type == PropertyType::NumberRange) {
-          if (ImGui::SliderFloat(prop.name.c_str(), &valueFloat, .0f, 1.0f)) // TODO: add range to Property, and use those values instead of the hardcoded .0f-1.0f range
-            component->SetProperty(Property(prop.name, valueFloat));
-        } else if (ImGui::InputFloat(prop.name.c_str(), &valueFloat))
-          component->SetProperty(Property(prop.name, valueFloat));
-      } else if (std::holds_alternative<bool>(value)) {
-        auto valueBool = std::get<bool>(value);
-        if (ImGui::Checkbox(prop.name.c_str(), &valueBool))
-          component->SetProperty(Property(prop.name, valueBool));
-      } else if (std::holds_alternative<CameraType>(value)) {
-        static auto& items = EnumTraits<CameraType>::GetNames();
-        auto valueEnum = std::get<CameraType>(value);
-        auto currentItem = static_cast<int>(valueEnum);
-        if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
-          valueEnum = static_cast<CameraType>(currentItem);
-          component->SetProperty(Property(prop.name, valueEnum));
-        }
-      } else if (std::holds_alternative<LightType>(value)) {
-        static auto& items = EnumTraits<LightType>::GetNames();
-        auto valueEnum = std::get<LightType>(value);
-        auto currentItem = static_cast<int>(valueEnum);
-        if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
-          valueEnum = static_cast<LightType>(currentItem);
-          component->SetProperty(Property(prop.name, valueEnum));
-        }
-      } else if (std::holds_alternative<MaterialType>(value)) {
-        static auto& items = EnumTraits<MaterialType>::GetNames();
-        auto valueEnum = std::get<MaterialType>(value);
-        auto currentItem = static_cast<int>(valueEnum);
-        if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
-          valueEnum = static_cast<MaterialType>(currentItem);
-          component->SetProperty(Property(prop.name, valueEnum));
-        }
-      } else if (std::holds_alternative<TextureType>(value)) {
-        static auto& items = EnumTraits<TextureType>::GetNames();
-        auto valueEnum = std::get<TextureType>(value);
-        auto currentItem = static_cast<int>(valueEnum);
-        if (ImGui::Combo(prop.name.c_str(), &currentItem, items.data(), items.size())) {
-          valueEnum = static_cast<TextureType>(currentItem);
-          component->SetProperty(Property(prop.name, valueEnum));
-        }
-      }
-      prevPropType = prop.type;
-      ImGui::PopID();
-    }
-    ImGui::PopID();
-  }
-  auto availableComponents = GetMissingEntityComponents(selectedEntity);
-  for (const auto& comp : availableComponents)
-    if (ImGui::Selectable(comp.c_str()))
-      AddEntityComponent(selectedEntity, comp);
-  ImGui::End();
+  if (auto camera = component->As<Camera>())
+    DisplayTraits<Camera>::DisplayProperties(camera, context);
+  else if (auto light = component->As<Light>())
+    DisplayTraits<Light>::DisplayProperties(light, context);
+  else if (auto material = component->As<Material>())
+    DisplayTraits<Material>::DisplayProperties(material, context);
+  else if (auto mesh = component->As<Mesh>())
+    DisplayTraits<Mesh>::DisplayProperties(mesh, context);
+  else if (auto filter = component->As<MeshFilter>())
+    DisplayTraits<MeshFilter>::DisplayProperties(filter, context);
+  else if (auto renderer = component->As<MeshRenderer>())
+    DisplayTraits<MeshRenderer>::DisplayProperties(renderer, context);
+  else if (auto script = component->As<Script>())
+    DisplayTraits<Script>::DisplayProperties(script, context);
+  else if (auto skybox = component->As<Skybox>())
+    DisplayTraits<Skybox>::DisplayProperties(skybox, context);
+  else if (auto texture = component->As<Texture>())
+    DisplayTraits<Texture>::DisplayProperties(texture, context);
+  else if (auto transform = component->As<Transform>())
+    DisplayTraits<Transform>::DisplayProperties(transform, context);
 }

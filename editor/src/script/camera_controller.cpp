@@ -6,10 +6,6 @@
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/trigonometric.hpp>
-#include <string>
-#include <utility>
-#include <variant>
-#include <vector>
 #include <application.hpp>
 #include <component/script.hpp>
 using namespace kuki;
@@ -81,21 +77,6 @@ void CameraController::ToggleMovement(bool value) {
 }
 void CameraController::ToggleRotation(bool value) {
   rotationEnabled = value;
-}
-const std::string CameraController::GetName() const {
-  return "CameraController";
-}
-std::vector<Property> CameraController::GetProperties() const {
-  return {{"MoveSpeed", moveSpeed}, {"MouseSensitivity", mouseSensitivity}};
-}
-void CameraController::SetProperty(Property property) {
-  if (std::holds_alternative<float>(property.value)) {
-    auto& value = std::get<float>(property.value);
-    if (property.name == "MoveSpeed")
-      moveSpeed = value;
-    else if (property.name == "MouseSensitivity")
-      mouseSensitivity = value;
-  }
 }
 Camera* CameraController::GetCamera() {
   return &camera;

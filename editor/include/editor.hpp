@@ -1,43 +1,52 @@
 #pragma once
+#include "component/component_traits.hpp"
 #include <application.hpp>
-#include <component/component.hpp>
 #include <camera_controller.hpp>
+#include <component/component.hpp>
 #include <imgui.h>
 #include <imgui_sink.hpp>
 #include <mutex>
 #include <spdlog/spdlog.h>
 /**/
 #include <imfilebrowser.h>
-class Editor final : public kuki::Application {
-private:
-  ImGui::FileBrowser fileBrowser;
-  std::shared_ptr<ImGuiSink<std::mutex>> imguiSink;
-  std::shared_ptr<spdlog::logger> logger;
-  ImGuiSelectionBasicStorage selection{};
-  int selectedEntity{-1};
-  std::string selectedComponentName{};
-  kuki::Property selectedProperty;
-  int assetMask{-1}; // for filtering assets by type
-  int gizmoMask{0};
+using namespace kuki;
+/// @brief A container for the editor state
+struct EditorContext {
   bool displayFPS{true};
-  std::unique_ptr<CameraController> cameraController;
+  int assetMask{-1};
+  int gizmoMask{0};
+  int selectedEntity{-1};
+  int selectedComponent{-1};
+  int selectedProperty{-1};
+};
+class Editor final : public Application {
+private:
+  EditorContext context{};
+  ImGui::FileBrowser fileBrowser{};
+  std::shared_ptr<ImGuiSink<std::mutex>> imguiSink{};
+  std::shared_ptr<spdlog::logger> logger{};
+  ImGuiSelectionBasicStorage selection{};
+  std::unique_ptr<CameraController> cameraController{};
+  ComponentType GetComponentType(IComponent*);
+  std::string GetComponentName(IComponent*);
+  std::vector<unsigned int> GetSelectedEntityIds();
   void DisplayAssets();
+  void DisplayComponents();
   void DisplayConsole();
   void DisplayEntity(unsigned int);
+  void DisplayGraphEditor();
   void DisplayHierarchy();
   void DisplayLogs();
-  void DisplayProperties();
+  void DisplayProperties(IComponent*);
   void DisplayScene();
-  void DisplayGraphEditor();
   void DrawGizmos(float, float, unsigned int);
-  void ToggleFPS();
-  void ToggleGizmos();
-  std::vector<unsigned int> GetSelectedEntityIds();
-  void RemoveDeletedEntitiesFromSelection();
   void InitImGui();
   void InitLayout();
   void LoadDefaultAssets();
   void LoadDefaultScene();
+  void RemoveDeletedEntitiesFromSelection();
+  void ToggleFPS();
+  void ToggleGizmos();
   void Init() override;
   void Start() override;
   void Update() override;

@@ -1,16 +1,17 @@
 #pragma once
 #include <glad/glad.h>
 #include "system.hpp"
-#include <spdlog/spdlog.h>
+#include <component/shader.hpp>
 #include <component/texture.hpp>
 #include <entity_manager.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <kuki_engine_export.h>
+#include <spdlog/spdlog.h>
 #include <unordered_map>
-#include <utility/octree.hpp>
-#include <utility/texture_pool.hpp>
-#include <utility/renderbuffer_pool.hpp>
 #include <utility/framebuffer_pool.hpp>
+#include <utility/octree.hpp>
+#include <utility/renderbuffer_pool.hpp>
+#include <utility/texture_pool.hpp>
 namespace kuki {
 enum class GizmoType : uint8_t {
   Manipulator,

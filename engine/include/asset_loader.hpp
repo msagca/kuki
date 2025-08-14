@@ -2,9 +2,6 @@
 #include <array>
 #include <assimp/material.h>
 #include <assimp/scene.h>
-#include <component/component.hpp>
-#include <component/material.hpp>
-#include <component/mesh.hpp>
 #include <entity_manager.hpp>
 #include <event_queue.hpp>
 #include <filesystem>

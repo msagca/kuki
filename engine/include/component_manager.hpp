@@ -1,7 +1,5 @@
 #pragma once
-#include <component/mesh.hpp>
-#include <component/shader.hpp>
-#include <component/texture.hpp>
+#include <component/component.hpp>
 #include <unordered_map>
 #include <utility>
 #include <vector>

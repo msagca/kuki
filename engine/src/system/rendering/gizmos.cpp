@@ -59,7 +59,7 @@ void RenderingSystem::DrawFrustumCulling() {
   shader->DrawInstanced(mesh, transforms.size());
 }
 void RenderingSystem::DrawViewFrustum() {
-  static UnlitMaterial material;
+  static Material material;
   auto camera = app.GetActiveCamera();
   if (!camera)
     return;
@@ -67,14 +67,16 @@ void RenderingSystem::DrawViewFrustum() {
   auto mesh = app.GetAssetComponent<Mesh>(assetId);
   if (!mesh)
     return;
-  material.fallback.base = glm::vec4(.5f, .5f, .0f, .2f);
+  material.material = UnlitMaterial();
+  auto unlitMaterial = std::get<UnlitMaterial>(material.material);
+  unlitMaterial.fallback.base = glm::vec4(.5f, .5f, .0f, .2f);
   auto model = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)); // scale up local coordinates (-.5f, .5f) to NDC (-1.0f, 1.0f)
   model = glm::inverse(camera->projection * camera->view) * model;
   auto shader = static_cast<UnlitShader*>(GetShader(MaterialType::Unlit));
   shader->Use();
   shader->SetCamera(targetCamera);
   shader->SetMaterial(&material);
-  shader->SetMaterialFallback(mesh, material.fallback, materialVBO);
+  shader->SetMaterialFallback(mesh, unlitMaterial.fallback, materialVBO);
   shader->SetTransform(mesh, model, transformVBO);
   glDisable(GL_CULL_FACE);
   shader->DrawInstanced(mesh, 1);

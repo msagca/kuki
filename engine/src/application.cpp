@@ -1,3 +1,4 @@
+#include "component/component_traits.hpp"
 #define STB_IMAGE_IMPLEMENTATION
 #include <system/rendering.hpp>
 #include <app_config.hpp>
@@ -331,11 +332,23 @@ IComponent* Application::AddEntityComponent(unsigned int id, const std::string& 
     return nullptr;
   return scene->GetEntityManager().AddComponent(id, name);
 }
+void Application::RemoveEntityComponent(unsigned int id, ComponentType type) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->GetEntityManager().RemoveComponent(id, type);
+}
 void Application::RemoveEntityComponent(unsigned int id, const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
   scene->GetEntityManager().RemoveComponent(id, name);
+}
+IComponent* Application::GetEntityComponent(unsigned int id, ComponentType type) {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return nullptr;
+  return scene->GetEntityManager().GetComponent(id, type);
 }
 IComponent* Application::GetEntityComponent(unsigned int id, const std::string& name) {
   auto scene = GetActiveScene();
@@ -396,7 +409,7 @@ int Application::Spawn(std::string& name, int parentId, bool randomPos, float sp
   auto [assetTransform, mesh, material] = assetManager.GetComponents<Transform, Mesh, Material>(assetId);
   if (assetTransform) {
     auto entityTransform = AddEntityComponent<Transform>(entityId);
-    *entityTransform = *assetTransform;
+    assetTransform->CopyTo(*entityTransform);
     entityTransform->localDirty = true;
     entityTransform->parent = parentId;
     if (randomPos)
@@ -404,11 +417,11 @@ int Application::Spawn(std::string& name, int parentId, bool randomPos, float sp
   }
   if (mesh) {
     auto filter = AddEntityComponent<MeshFilter>(entityId);
-    filter->mesh = *mesh;
+    mesh->CopyTo(filter->mesh);
   }
   if (material) {
     auto renderer = AddEntityComponent<MeshRenderer>(entityId);
-    renderer->material = *material;
+    material->CopyTo(renderer->material);
   }
   ForEachChildAsset(assetId, [this, &entityId](unsigned int childAssetId) {
     auto name = assetManager.GetName(childAssetId);

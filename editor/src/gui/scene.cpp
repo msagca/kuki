@@ -25,7 +25,7 @@ void Editor::DisplayScene() {
   cameraController->ToggleRotation(flying);
   auto renderSystem = GetSystem<RenderingSystem>();
   if (renderSystem) {
-    renderSystem->SetGizmoMask(gizmoMask); // NOTE: sets the render system specific gizmo flags
+    renderSystem->SetGizmoMask(context.gizmoMask); // NOTE: sets the render system specific gizmo flags
     auto texture = renderSystem->RenderSceneToTexture(cameraController->GetCamera());
     if (texture > 0) {
       auto& config = GetConfig();
@@ -36,7 +36,7 @@ void Editor::DisplayScene() {
       auto drawWidth = width * scaleFactor;
       auto drawHeight = height * scaleFactor;
       ImGui::Image(texture, ImVec2(drawWidth, drawHeight), uv0, uv1);
-      DrawGizmos(drawWidth, drawHeight, gizmoMask); // NOTE: these gizmos are external to the render system, they draw on top of the rendered scene
+      DrawGizmos(drawWidth, drawHeight, context.gizmoMask); // NOTE: these gizmos are external to the render system, they draw on top of the rendered scene
     }
   }
   if (ImGui::BeginDragDropTarget()) {
@@ -46,12 +46,12 @@ void Editor::DisplayScene() {
     }
     ImGui::EndDragDropTarget();
   }
-  if (displayFPS) {
+  if (context.displayFPS) {
     ImGui::SetCursorPos(ImVec2(ImGui::GetTextLineHeight(), ImGui::GetFrameHeight() + ImGui::GetTextLineHeight()));
     ImGui::Text("%d", GetFPS());
   }
   ImGui::End();
 }
 void Editor::ToggleFPS() {
-  displayFPS = !displayFPS;
+  context.displayFPS = !context.displayFPS;
 }

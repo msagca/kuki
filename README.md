@@ -14,11 +14,15 @@ I'm teaching myself graphics programming, game engine architecture and C++ throu
 
 ### Instructions
 
-- Clone this repository including its submodules
+- Clone this repository and its submodules
 
 ```bash
 git clone --recursive https://github.com/msagca/kuki
 ```
+
+> To update the submodules, run `git submodule update --init --recursive`
+
+- Change the path to project root
 
 ```bash
 cd kuki

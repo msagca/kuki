@@ -1,11 +1,11 @@
 #pragma once
 #include "component.hpp"
-#include "component/mesh.hpp"
+#include "mesh.hpp"
+#include "transform.hpp"
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/trigonometric.hpp>
 #include <kuki_engine_export.h>
-#include <vector>
 namespace kuki {
 struct KUKI_ENGINE_API Plane {
   glm::vec3 point{};
@@ -22,7 +22,9 @@ struct KUKI_ENGINE_API Frustum {
   Plane near{};
   bool OverlapsFrustum(const BoundingBox&) const;
 };
-struct KUKI_ENGINE_API Camera final : IComponent {
+struct KUKI_ENGINE_API Camera final : public IComponent {
+  Camera()
+    : IComponent(std::in_place_type<Camera>) {}
   CameraType type{CameraType::Perspective};
   glm::mat4 view{};
   glm::mat4 projection{};
@@ -38,9 +40,6 @@ struct KUKI_ENGINE_API Camera final : IComponent {
   float nearPlane{.1f};
   float farPlane{100.0f};
   float orthoSize{2.0f};
-  const std::string GetName() const override;
-  std::vector<Property> GetProperties() const override;
-  void SetProperty(Property) override;
   Transform GetTransform() const;
   void SetTransform(const Transform&);
   void Update();

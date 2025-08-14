@@ -121,7 +121,7 @@ int AssetLoader::CreateTextureAsset(const TextureData& textureData) {
   auto name = textureData.name;
   auto assetId = assetManager.Create(name);
   auto textureComp = assetManager.AddComponent<Texture>(assetId);
-  *textureComp = texture;
+  texture.CopyTo(*textureComp);
   spdlog::info("Texture is created: {}.", name);
   return assetId;
 }
@@ -131,10 +131,10 @@ int AssetLoader::CreateSkyboxAsset(const TextureData& textureData) {
   auto assetId = app->CreateAsset(name);
   auto skybox = app->AddAssetComponent<Skybox>(assetId);
   auto cubeMap = app->CreateCubeMapFromEquirect(texture);
-  skybox->data.skybox = cubeMap.id;
-  skybox->data.irradiance = app->CreateIrradianceMapFromCubeMap(cubeMap).id;
-  skybox->data.prefilter = app->CreatePrefilterMapFromCubeMap(cubeMap).id;
-  skybox->data.brdf = app->CreateBRDF_LUT().id;
+  skybox->skybox = cubeMap.id;
+  skybox->irradiance = app->CreateIrradianceMapFromCubeMap(cubeMap).id;
+  skybox->prefilter = app->CreatePrefilterMapFromCubeMap(cubeMap).id;
+  skybox->brdf = app->CreateBRDF_LUT().id;
   spdlog::info("Skybox is created: {}.", name);
   return assetId;
 }
@@ -189,7 +189,8 @@ int AssetLoader::CreateMaterialAsset(const MaterialData& materialData) {
   auto name = materialData.name;
   auto assetId = assetManager.Create(name);
   auto material = assetManager.AddComponent<Material>(assetId);
-  *material = CreateMaterial(materialData);
+  auto newMaterial = CreateMaterial(materialData);
+  newMaterial.CopyTo(*material);
   return assetId;
 }
 Mesh AssetLoader::CreateMesh(const aiMesh* aiMesh) {

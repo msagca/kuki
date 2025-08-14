@@ -11,7 +11,7 @@
 #include <ImGuizmo.h>
 using namespace kuki;
 void Editor::DrawGizmos(float width, float height, unsigned int mask) {
-  if (selectedEntity < 0)
+  if (context.selectedEntity < 0)
     return;
   // TODO: for a multi-select, position the gizmo at the center of the selection, and apply manipulations to all entities
   auto manipulatorEnabled = (mask & static_cast<unsigned int>(GizmoMask::Manipulator)) != 0;
@@ -19,15 +19,15 @@ void Editor::DrawGizmos(float width, float height, unsigned int mask) {
     return;
   auto camera = cameraController->GetCamera();
   Transform transform;
-  Transform* transformComp = GetEntityComponent<Transform>(selectedEntity);
+  auto transformComp = GetEntityComponent<Transform>(context.selectedEntity);
   Camera* cameraComp = nullptr;
   Light* lightComp = nullptr;
   if (!transformComp) {
-    cameraComp = GetEntityComponent<Camera>(selectedEntity);
+    cameraComp = GetEntityComponent<Camera>(context.selectedEntity);
     if (cameraComp)
       transform = cameraComp->GetTransform();
     else {
-      lightComp = GetEntityComponent<Light>(selectedEntity);
+      lightComp = GetEntityComponent<Light>(context.selectedEntity);
       if (lightComp)
         transform = lightComp->GetTransform();
       else
@@ -55,5 +55,5 @@ void Editor::DrawGizmos(float width, float height, unsigned int mask) {
     *transformComp = transform;
 }
 void Editor::ToggleGizmos() {
-  gizmoMask ^= static_cast<unsigned int>(GizmoMask::Manipulator);
+  context.gizmoMask ^= static_cast<unsigned int>(GizmoMask::Manipulator);
 }

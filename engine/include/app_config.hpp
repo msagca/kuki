@@ -3,7 +3,7 @@
 #include <kuki_engine_export.h>
 namespace kuki {
 struct KUKI_ENGINE_API AppConfig {
-  std::string name{"KukiGame"};
+  std::string name{"Kuki Game"};
   std::filesystem::path logoPath;
   int screenWidth{1920};
   int screenHeight{1080};

@@ -1,15 +1,14 @@
 #pragma once
-#include <application.hpp>
 #include "component.hpp"
 #include <kuki_engine_export.h>
 namespace kuki {
-struct KUKI_ENGINE_API Script : IComponent {
+class Application;
+struct KUKI_ENGINE_API Script final : public IComponent {
+  Script()
+    : IComponent(std::in_place_type<Script>) {}
   int id{};
-  const std::string GetName() const override;
-  std::vector<kuki::Property> GetProperties() const override;
-  void SetProperty(kuki::Property) override;
 };
-class KUKI_ENGINE_API IScript : IComponent {
+class KUKI_ENGINE_API IScript {
 protected:
   Application& app;
   unsigned int entityId;

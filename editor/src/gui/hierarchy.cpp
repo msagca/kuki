@@ -10,7 +10,7 @@ void Editor::DisplayHierarchy() {
   ImGui::Begin("Hierarchy");
   ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_None, selection.Size, GetEntityCount());
   selection.ApplyRequests(ms_io);
-  selectedEntity = -1;
+  context.selectedEntity = -1;
   RemoveDeletedEntitiesFromSelection();
   ForEachRootEntity([this](unsigned int id) {
     DisplayEntity(id);
@@ -31,7 +31,7 @@ void Editor::DisplayHierarchy() {
   }
   if (GetButtonDown(GLFW_MOUSE_BUTTON_LEFT) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered()) {
     selection.Clear();
-    assetMask = -1;
+    context.assetMask = -1;
   }
   if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && GetButtonDown(GLFW_MOUSE_BUTTON_RIGHT))
     ImGui::OpenPopup("CreateMenu");
@@ -59,7 +59,7 @@ void Editor::DisplayHierarchy() {
     ImGui::EndPopup();
   }
   ImGui::End();
-  DisplayProperties();
+  DisplayComponents();
 }
 void Editor::RemoveDeletedEntitiesFromSelection() {
   std::vector<unsigned int> toRemove;

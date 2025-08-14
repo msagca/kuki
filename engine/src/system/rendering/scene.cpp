@@ -28,7 +28,7 @@ int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   auto& config = app.GetConfig();
   auto width = config.screenWidth;
   auto height = config.screenHeight;
-  targetCamera->SetProperty({"AspectRatio", static_cast<float>(width) / height});
+  targetCamera->aspectRatio = static_cast<float>(width) / height;
   const TextureParams singleParams{width, height, GL_TEXTURE_2D, GL_RGB16F, 1, 1};
   const TextureParams multiParams{width, height, GL_TEXTURE_2D_MULTISAMPLE, GL_RGB16F, 4, 1};
   auto framebufferMulti = framebufferPool.Request(multiParams);
@@ -163,7 +163,7 @@ void RenderingSystem::DrawScene() {
   });
 }
 void RenderingSystem::DrawSkybox(const Skybox* skybox) {
-  if (!skybox || skybox->data.skybox == 0)
+  if (!skybox || skybox->skybox == 0)
     return;
   auto cubeAsset = app.GetAssetId("CubeInverted");
   auto mesh = app.GetAssetComponent<Mesh>(cubeAsset);
@@ -177,7 +177,7 @@ void RenderingSystem::DrawSkybox(const Skybox* skybox) {
   shader->SetUniform("view", view);
   shader->SetUniform("projection", targetCamera->projection);
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->data.skybox);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->skybox);
   shader->SetUniform("skybox", 0);
   glDepthFunc(GL_LEQUAL);
   shader->Draw(mesh);
@@ -219,14 +219,14 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<
     shader->Use();
     shader->SetCamera(targetCamera);
     shader->SetLighting(lights);
-    if (skybox && skybox->data.skybox != 0) {
+    if (skybox && skybox->skybox != 0) {
       // TODO: let the shader handle which texture unit to use
       glActiveTexture(GL_TEXTURE5); // units 0-4 are used by other textures such as albedo map
-      glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->data.irradiance);
+      glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->irradiance);
       glActiveTexture(GL_TEXTURE6);
-      glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->data.prefilter);
+      glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->prefilter);
       glActiveTexture(GL_TEXTURE7);
-      glBindTexture(GL_TEXTURE_2D, skybox->data.brdf);
+      glBindTexture(GL_TEXTURE_2D, skybox->brdf);
       shader->SetUniform("irradianceMap", 5);
       shader->SetUniform("prefilterMap", 6);
       shader->SetUniform("brdfLUT", 7);

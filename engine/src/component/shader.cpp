@@ -1,5 +1,5 @@
-#include <component/component.hpp>
 #include <component/camera.hpp>
+#include <component/component.hpp>
 #include <component/light.hpp>
 #include <component/material.hpp>
 #include <component/mesh.hpp>
@@ -150,7 +150,7 @@ void Shader::SetCamera(const Camera* camera) {
   SetUniform("view", camera->view);
   SetUniform("projection", camera->projection);
 }
-void Shader::SetMaterial(const IMaterial* material) {
+void Shader::SetMaterial(const Material* material) {
   material->Apply(this);
 }
 void Shader::SetTransform(const Mesh* mesh, glm::mat4 transform, unsigned int buffer) {

@@ -1,7 +1,9 @@
 #pragma once
+#include "camera.hpp"
 #include "component.hpp"
 #include "light.hpp"
 #include "material.hpp"
+#include "mesh.hpp"
 #include <filesystem>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <kuki_engine_export.h>
@@ -49,7 +51,8 @@ public:
   Shader(const std::string&, const std::filesystem::path&, const std::filesystem::path&, MaterialType = MaterialType::Unlit);
   MaterialType GetType() const;
   virtual void SetCamera(const Camera*);
-  void SetMaterial(const IMaterial*);
+  /// @brief Set material textures and enable texture units
+  void SetMaterial(const Material*);
   /// @brief Set transform attributes for a single instance
   void SetTransform(const Mesh*, glm::mat4, unsigned int);
   /// @brief Set per instance transform attributes

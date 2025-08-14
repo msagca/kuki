@@ -1,3 +1,4 @@
+#include "component/material.hpp"
 #include <system/rendering.hpp>
 #include <application.hpp>
 #include <component/component.hpp>
@@ -7,6 +8,7 @@
 #include <editor.hpp>
 #include <imgui.h>
 #include <string>
+#include <variant>
 #include <vector>
 using namespace kuki;
 enum class FileType : uint8_t {
@@ -51,9 +53,9 @@ void Editor::DisplayAssets() {
     ImGui::EndPopup();
   }
   std::vector<unsigned int> assetIds;
-  if (assetMask == -1)
+  if (context.assetMask == -1)
     ForEachRootAsset([&assetIds](unsigned int assetId) { assetIds.push_back(assetId); });
-  else if ((assetMask & (static_cast<int>(ComponentMask::Texture) | static_cast<int>(ComponentMask::Skybox))) != 0) {
+  else if ((context.assetMask & (static_cast<int>(ComponentMask::Texture) | static_cast<int>(ComponentMask::Skybox))) != 0) {
     ForEachAsset<Texture>([&assetIds](unsigned int assetId, Texture* _) { assetIds.push_back(assetId); });
     ForEachAsset<Skybox>([&assetIds](unsigned int assetId, Skybox* _) { assetIds.push_back(assetId); });
   }
@@ -75,19 +77,27 @@ void Editor::DisplayAssets() {
       auto assetName = GetAssetName(id);
       ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(.0f, .0f));
       if (ImGui::ImageButton(std::to_string(textureId).c_str(), textureId, TILE_SIZE, uv0, uv1)) {
-        if (selectedEntity >= 0) {
-          auto component = GetEntityComponent(selectedEntity, selectedComponentName);
+        // HACK: the following needs to be handled by a dedicated method
+        if (context.selectedEntity >= 0 && context.selectedComponent >= 0) {
+          auto component = GetEntityComponent(context.selectedEntity, static_cast<ComponentType>(context.selectedComponent));
           if (component) {
-            auto [textureComp, skyboxComp] = GetAssetComponents<Texture, Skybox>(id);
-            if (skyboxComp)
-              selectedProperty.value = SkyboxData{skyboxComp->data};
-            else if (textureComp)
-              selectedProperty.value = int{textureComp->id};
-            if (skyboxComp || textureComp)
-              component->SetProperty(selectedProperty);
+            auto [assetTexture, assetSkybox] = GetAssetComponents<Texture, Skybox>(id);
+            if (auto entityMaterial = component->As<Material>()) {
+              if (auto entityLitMaterial = std::get_if<LitMaterial>(&entityMaterial->material)) {
+                if (assetTexture)
+                  switch (context.selectedProperty) {
+                  case static_cast<int>(MaterialProperty::AlbedoTexture):
+                    entityLitMaterial->data.albedo = assetTexture->id;
+                    break;
+                  }
+              }
+            } else if (auto entitySkybox = component->As<Skybox>())
+              if (assetSkybox)
+                assetSkybox->CopyTo(*entitySkybox);
           }
         }
-        selectedComponentName = "";
+        context.selectedComponent = -1;
+        context.selectedProperty = -1;
       }
       if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
         ImGui::SetDragDropPayload("SPAWN_ASSET", assetName.c_str(), (assetName.size() + 1) * sizeof(char));

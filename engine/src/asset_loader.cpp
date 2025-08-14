@@ -3,8 +3,9 @@
 #include <application.hpp>
 #include <array>
 #include <asset_loader.hpp>
-#include <assimp/config.h>
 #include <assimp/Importer.hpp>
+#include <assimp/color4.h>
+#include <assimp/config.h>
 #include <assimp/material.h>
 #include <assimp/matrix4x4.h>
 #include <assimp/mesh.h>
@@ -18,6 +19,7 @@
 #include <cstdint>
 #include <entity_manager.hpp>
 #include <filesystem>
+#include <future>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
@@ -28,9 +30,7 @@
 #include <string>
 #include <thread>
 #include <tinyexr.h>
-#include <future>
 #include <vector>
-#include <assimp/color4.h>
 namespace kuki {
 AssetLoader::AssetLoader(Application* app, EntityManager& assetManager)
   : app(app), assetManager(assetManager) {}

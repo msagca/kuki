@@ -1,31 +1,34 @@
+#include <glad/glad.h>
 #include <component/component.hpp>
 #include <component/material.hpp>
 #include <component/shader.hpp>
-#include <glad/glad.h>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <string>
 #include <typeindex>
 #include <variant>
-#include <vector>
 namespace kuki {
 void Material::Apply(Shader* shader) const {
-  std::visit([&shader](const auto& material) { material.Apply(shader); }, material);
+  std::visit([shader](const auto& material) { material.Apply(shader); }, material);
+}
+struct CopyMatching {
+  void operator()(const LitMaterial& source, LitMaterial& destination) const {
+    source.CopyTo(destination);
+  }
+  void operator()(const UnlitMaterial& source, UnlitMaterial& destination) const {
+    source.CopyTo(destination);
+  }
+  template <typename S, typename D>
+  void operator()(const S&, D&) const {}
+};
+void Material::CopyTo(Material& other) const {
+  std::visit(CopyMatching{}, material, other.material);
 }
 std::type_index Material::GetTypeIndex() const {
   return std::visit([](const auto& material) -> std::type_index { return typeid(material); }, material);
 }
 MaterialType Material::GetType() const {
   return std::visit([](const auto& material) -> MaterialType { return material.type; }, material);
-}
-const std::string Material::GetName() const {
-  return ComponentTraits<Material>::GetName();
-}
-std::vector<Property> Material::GetProperties() const {
-  return std::visit([](const auto& material) { return material.GetProperties(); }, material);
-}
-void Material::SetProperty(Property property) {
-  std::visit([&property](auto& material) { material.SetProperty(property); }, material);
 }
 void LitMaterial::Apply(Shader* shader) const {
   if (type != shader->GetType())
@@ -66,48 +69,10 @@ void LitMaterial::Apply(Shader* shader) const {
     shader->SetUniform("material.emissive", 6);
   }
 }
-const std::string LitMaterial::GetName() const {
-  return "LitMaterial";
-}
-std::vector<Property> LitMaterial::GetProperties() const {
-  return {{"Type", type}, {"AlbedoTexture", data.albedo, PropertyType::Texture}, {"NormalTexture", data.normal, PropertyType::Texture}, {"MetalnessTexture", data.metalness, PropertyType::Texture}, {"OcclusionTexture", data.occlusion, PropertyType::Texture}, {"RoughnessTexture", data.roughness, PropertyType::Texture}, {"SpecularTexture", data.specular, PropertyType::Texture}, {"EmissiveTexture", data.emissive, PropertyType::Texture}, {"AlbedoColor", fallback.albedo, PropertyType::Color}, {"SpecularColor", fallback.specular, PropertyType::Color}, {"EmissiveColor", fallback.emissive, PropertyType::Color}, {"Metalness", fallback.metalness, PropertyType::NumberRange}, {"Occlusion", fallback.occlusion, PropertyType::NumberRange}, {"Roughness", fallback.roughness, PropertyType::NumberRange}, {"TextureMask", fallback.textureMask}};
-}
-void LitMaterial::SetProperty(Property property) {
-  if (auto value = std::get_if<int>(&property.value)) {
-    if (property.name == "AlbedoTexture")
-      data.albedo = *value;
-    else if (property.name == "NormalTexture")
-      data.normal = *value;
-    else if (property.name == "MetalnessTexture")
-      data.metalness = *value;
-    else if (property.name == "OcclusionTexture")
-      data.occlusion = *value;
-    else if (property.name == "RoughnessTexture")
-      data.roughness = *value;
-    else if (property.name == "SpecularTexture")
-      data.specular = *value;
-    else if (property.name == "EmissiveTexture")
-      data.emissive = *value;
-    else if (property.name == "TextureMask")
-      fallback.textureMask = *value;
-  } else if (auto value = std::get_if<glm::vec4>(&property.value)) {
-    if (property.name == "AlbedoColor")
-      fallback.albedo = *value;
-    else if (property.name == "SpecularColor")
-      fallback.specular = *value;
-    else if (property.name == "EmissiveColor")
-      fallback.emissive = *value;
-  } else if (auto value = std::get_if<float>(&property.value)) {
-    if (property.name == "Metalness")
-      fallback.metalness = *value;
-    else if (property.name == "Occlusion")
-      fallback.occlusion = *value;
-    else if (property.name == "Roughness")
-      fallback.roughness = *value;
-  } else if (auto value = std::get_if<MaterialType>(&property.value)) {
-    if (property.name == "Type")
-      type = *value;
-  }
+void LitMaterial::CopyTo(LitMaterial& other) const {
+  other.data = data;
+  other.fallback = fallback;
+  other.type = type;
 }
 void UnlitMaterial::Apply(Shader* shader) const {
   if (type != shader->GetType())
@@ -129,24 +94,9 @@ void UnlitMaterial::Apply(Shader* shader) const {
     }
   }
 }
-const std::string UnlitMaterial::GetName() const {
-  return "UnlitMaterial";
-}
-std::vector<Property> UnlitMaterial::GetProperties() const {
-  return {{"Type", type}, {"BaseTexture", data.base, PropertyType::Texture}, {"BaseColor", fallback.base, PropertyType::Color}, {"TextureMask", fallback.textureMask}};
-}
-void UnlitMaterial::SetProperty(Property property) {
-  if (auto value = std::get_if<glm::vec4>(&property.value)) {
-    if (property.name == "BaseColor")
-      fallback.base = *value;
-  } else if (auto value = std::get_if<int>(&property.value)) {
-    if (property.name == "BaseTexture")
-      data.base = *value;
-    else if (property.name == "TextureMask")
-      fallback.textureMask = *value;
-  } else if (auto value = std::get_if<MaterialType>(&property.value)) {
-    if (property.name == "Type")
-      type = *value;
-  }
+void UnlitMaterial::CopyTo(UnlitMaterial& other) const {
+  other.data = data;
+  other.fallback = fallback;
+  other.type = type;
 }
 } // namespace kuki

@@ -1,21 +1,21 @@
 #include <system/rendering.hpp>
 #include <application.hpp>
+#include <cmath>
 #include <component/component.hpp>
 #include <component/light.hpp>
 #include <component/material.hpp>
 #include <component/mesh.hpp>
 #include <component/shader.hpp>
-#include <component/texture.hpp>
 #include <component/skybox.hpp>
+#include <component/texture.hpp>
 #include <component/transform.hpp>
+#include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <spdlog/spdlog.h>
-#include <vector>
-#include <cstdint>
 #include <utility/pool.hpp>
-#include <cmath>
 #include <variant>
+#include <vector>
 namespace kuki {
 int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
   static const auto MIN_SIZE = 16;
@@ -57,20 +57,22 @@ int RenderingSystem::RenderAssetToTexture(unsigned int assetId, int size) {
     texturePool.Release(params, textureIdPre);
   }
   if (skybox)
-    skybox->data.preview = textureIdPost;
+    skybox->preview = textureIdPost;
   return textureIdPost;
 }
 void RenderingSystem::DrawSkyboxAsset(unsigned int id) {
   auto skybox = app.GetAssetComponent<Skybox>(id);
-  if (!skybox || skybox->data.skybox == 0)
+  if (!skybox || skybox->skybox == 0)
     return;
   auto frameId = app.GetAssetId("Frame");
   auto mesh = app.GetAssetComponent<Mesh>(frameId);
   if (!mesh)
     return;
-  static UnlitMaterial material;
-  material.data.base = skybox->data.skybox;
-  material.type = MaterialType::CubeMapEquirect;
+  static Material material;
+  material.material = UnlitMaterial();
+  auto unlitMaterial = std::get<UnlitMaterial>(material.material);
+  unlitMaterial.data.base = skybox->skybox;
+  unlitMaterial.type = MaterialType::CubeMapEquirect;
   auto shader = GetShader(MaterialType::CubeMapEquirect);
   shader->Use();
   shader->SetUniform("model", glm::mat4(1.0));
@@ -209,7 +211,7 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
     spdlog::warn("Cube mesh not found.");
     return texture;
   }
-  const auto width = 1024;
+  const auto width = 128;
   const auto height = width;
   texture.width = width;
   texture.height = height;
@@ -265,7 +267,7 @@ Texture RenderingSystem::CreateBRDF_LUT() {
   TextureParams params{width, height, GL_TEXTURE_2D, GL_RG16F};
   auto textureId = texturePool.Request(params);
   texture.id = textureId;
-  glBindImageTexture(0, textureId, 0, GL_FALSE, 0, GL_WRITE_ONLY, params.format);
+  glBindImageTexture(0, texture.id, 0, GL_FALSE, 0, GL_WRITE_ONLY, params.format);
   shader->Use();
   const auto workGroupSizeX = 16;
   const auto workGroupSizeY = 16;

@@ -3,9 +3,10 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <kuki_engine_export.h>
-#include <vector>
 namespace kuki {
-struct KUKI_ENGINE_API Transform final : IComponent {
+struct KUKI_ENGINE_API Transform final : public IComponent {
+  Transform()
+    : IComponent(std::in_place_type<Transform>) {}
   glm::vec3 position{};
   glm::quat rotation{1.0f, .0f, .0f, .0f};
   glm::vec3 scale{1.0f};
@@ -14,8 +15,6 @@ struct KUKI_ENGINE_API Transform final : IComponent {
   glm::mat4 world{1.0f};
   bool localDirty{true};
   bool worldDirty{true};
-  const std::string GetName() const override;
-  std::vector<Property> GetProperties() const override;
-  void SetProperty(Property) override;
+  void CopyTo(Transform&) const;
 };
 } // namespace kuki

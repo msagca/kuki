@@ -1,15 +1,21 @@
 #include <component/component.hpp>
 #include <component/mesh.hpp>
 #include <component/transform.hpp>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-#include <stdexcept>
-#include <string>
-#include <variant>
-#include <vector>
 #include <limits>
-#include <glm/ext/matrix_float4x4.hpp>
+#include <stdexcept>
+#include <vector>
 namespace kuki {
+void Mesh::CopyTo(Mesh& other) const {
+  other.vertexArray = vertexArray;
+  other.vertexBuffer = vertexBuffer;
+  other.indexBuffer = indexBuffer;
+  other.vertexCount = vertexCount;
+  other.indexCount = indexCount;
+  other.bounds = bounds;
+}
 BoundingBox::BoundingBox()
   : min(glm::vec3(std::numeric_limits<float>::max())), max(glm::vec3(std::numeric_limits<float>::lowest())) {}
 BoundingBox::BoundingBox(glm::vec3 min, glm::vec3 max) {
@@ -38,30 +44,5 @@ BoundingBox BoundingBox::GetWorldBounds(glm::mat4 transform) {
     worldBounds.max = glm::max(worldBounds.max, worldCorner);
   }
   return worldBounds;
-}
-const std::string Mesh::GetName() const {
-  return ComponentTraits<Mesh>::GetName();
-}
-std::vector<Property> Mesh::GetProperties() const {
-  return {{"VertexArray", vertexArray}, {"VertexBuffer", vertexBuffer}, {"IndexBuffer", indexBuffer}, {"VertexCount", vertexCount}, {"IndexCount", indexCount}, {"MinBound", bounds.min}, {"MaxBound", bounds.max}};
-}
-void Mesh::SetProperty(Property property) {
-  if (auto value = std::get_if<int>(&property.value)) {
-    if (property.name == "VertexArray")
-      vertexArray = *value;
-    else if (property.name == "VertexBuffer")
-      vertexBuffer = *value;
-    else if (property.name == "IndexBuffer")
-      indexBuffer = *value;
-    else if (property.name == "VertexCount")
-      vertexCount = *value;
-    else if (property.name == "IndexCount")
-      indexCount = *value;
-  } else if (auto value = std::get_if<glm::vec3>(&property.value)) {
-    if (property.name == "MinBound")
-      bounds.min = *value;
-    else if (property.name == "MaxBound")
-      bounds.max = *value;
-  }
 }
 } // namespace kuki

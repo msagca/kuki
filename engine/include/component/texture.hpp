@@ -1,15 +1,14 @@
 #pragma once
 #include "component.hpp"
 #include <kuki_engine_export.h>
-#include <vector>
 namespace kuki {
-struct KUKI_ENGINE_API Texture final : IComponent {
+struct KUKI_ENGINE_API Texture final : public IComponent {
+  Texture()
+    : IComponent(std::in_place_type<Texture>) {}
   TextureType type{};
   int width{};
   int height{};
   int id{};
-  const std::string GetName() const override;
-  std::vector<Property> GetProperties() const override;
-  void SetProperty(Property) override;
+  void CopyTo(Texture&) const;
 };
 } // namespace kuki

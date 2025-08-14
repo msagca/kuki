@@ -2,6 +2,7 @@
 #include "component.hpp"
 #include <kuki_engine_export.h>
 #include <typeindex>
+#include <variant>
 namespace kuki {
 class Shader;
 struct LitData {
@@ -29,36 +30,36 @@ struct UnlitFallbackData {
   glm::vec4 base{1.0f};
   int textureMask{0};
 };
-struct IMaterial : IComponent {
-  virtual ~IMaterial() = default;
-  /// @brief Apply this material to the given shader (set shader properties)
-  virtual void Apply(Shader*) const = 0;
-};
-struct KUKI_ENGINE_API LitMaterial final : IMaterial {
+struct KUKI_ENGINE_API LitMaterial {
   MaterialType type{MaterialType::Lit};
   LitData data{};
   LitFallbackData fallback{};
-  void Apply(Shader*) const override;
-  const std::string GetName() const override;
-  std::vector<Property> GetProperties() const override;
-  void SetProperty(Property property) override;
+  void Apply(Shader*) const;
+  void CopyTo(LitMaterial&) const;
 };
-struct KUKI_ENGINE_API UnlitMaterial final : IMaterial {
+struct KUKI_ENGINE_API UnlitMaterial {
   MaterialType type{MaterialType::Unlit};
   UnlitData data{};
   UnlitFallbackData fallback{};
-  void Apply(Shader*) const override;
-  const std::string GetName() const override;
-  std::vector<Property> GetProperties() const override;
-  void SetProperty(Property property) override;
+  void Apply(Shader*) const;
+  void CopyTo(UnlitMaterial&) const;
 };
-struct KUKI_ENGINE_API Material : IMaterial {
+struct KUKI_ENGINE_API Material final : public IComponent {
+  Material()
+    : IComponent(std::in_place_type<Material>) {}
   std::variant<LitMaterial, UnlitMaterial> material;
   std::type_index GetTypeIndex() const;
   MaterialType GetType() const;
-  void Apply(Shader*) const override;
-  const std::string GetName() const override;
-  std::vector<Property> GetProperties() const override;
-  void SetProperty(Property) override;
+  void Apply(Shader*) const;
+  void CopyTo(Material&) const;
+};
+enum class MaterialProperty {
+  AlbedoTexture,
+  NormalTexture,
+  MetalnessTexture,
+  OcclusionTexture,
+  RoughnessTexture,
+  SpecularTexture,
+  EmissiveTexture
 };
 } // namespace kuki
