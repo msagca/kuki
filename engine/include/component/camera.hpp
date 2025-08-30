@@ -29,7 +29,7 @@ struct KUKI_ENGINE_API Camera final : public IComponent {
   glm::mat4 view{};
   glm::mat4 projection{};
   glm::vec3 position{-3.0f, 1.5f, 3.0f};
-  glm::vec3 front{.0f, .0f, -1.0f};
+  glm::vec3 forward{.0f, .0f, -1.0f};
   glm::vec3 up{.0f, 1.0f, .0f};
   glm::vec3 right{1.0f, .0f, .0f};
   Frustum frustum{};
@@ -49,6 +49,6 @@ struct KUKI_ENGINE_API Camera final : public IComponent {
   void UpdateFrustum();
   /// @brief Position the camera to fully capture the target within the given bounds
   void Frame(const BoundingBox&);
-  bool OverlapsFrustum(const BoundingBox&) const;
+  bool IntersectsFrustum(const BoundingBox&) const;
 };
 } // namespace kuki

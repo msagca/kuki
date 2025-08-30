@@ -35,3 +35,6 @@
 [submodule "external/tinyexr"]
 	path = external/tinyexr
 	url = https://github.com/syoyo/tinyexr
+[submodule "external/openxr"]
+	path = external/openxr
+	url = https://github.com/KhronosGroup/OpenXR-SDK.git

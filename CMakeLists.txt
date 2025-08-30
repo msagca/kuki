@@ -12,7 +12,8 @@ else()
 endif()
 option(BUILD_TESTS "Build engine tests" OFF)
 option(BUILD_GAMES "Build game samples" OFF)
-# Assimp
+# third party libraries
+## assimp
 set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
 set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF)
 set(ASSIMP_BUILD_ASSIMP_VIEW OFF)
@@ -22,11 +23,11 @@ set(ASSIMP_INJECT_DEBUG_POSTFIX OFF)
 set(ASSIMP_INSTALL_PDB OFF)
 set(ASSIMP_WARNINGS_AS_ERRORS OFF)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/assimp")
-# freetype
+## freetype
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/freetype")
-# OpenGL
+## opengl
 find_package(OpenGL REQUIRED)
-# Glad
+## glad
 add_library(glad STATIC "${CMAKE_CURRENT_SOURCE_DIR}/external/glad/src/glad.c")
 target_include_directories(
   glad
@@ -40,14 +41,14 @@ set_target_properties(
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/glad"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/glad"
 )
-# GLFW
+## glfw
 set(GLFW_BUILD_DOCS OFF)
 set(GLFW_BUILD_EXAMPLES OFF)
 set(GLFW_BUILD_TESTS OFF)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glfw")
-# GLM
+## glm
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glm")
-# ImGui
+## imgui
 set(
   IMGUI_CPP_SOURCES
   "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui.cpp"
@@ -75,13 +76,13 @@ set_target_properties(
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imgui"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imgui"
 )
-# ImGui file browser
+## imgui-filebrowser
 add_library(imgui_filebrowser INTERFACE)
 target_include_directories(
   imgui_filebrowser
   INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui-filebrowser"
 )
-# ImGuizmo
+## imguizmo
 add_library(
   imguizmo
   STATIC
@@ -100,17 +101,19 @@ set_target_properties(
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imguizmo"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imguizmo"
 )
-# JSON
+## json
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/json")
-# spdlog
+## openxr
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/openxr")
+## spdlog
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog")
-# stb
+## stb
 add_library(stb INTERFACE)
 target_include_directories(
   stb
   INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/stb"
 )
-# tinyexr
+## tinyexr
 add_library(
   tinyexr
   STATIC

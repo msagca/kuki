@@ -11,14 +11,12 @@ private:
   Camera camera;
   float moveSpeed{5.0f};
   float mouseSensitivity{.001f};
-  bool movementEnabled{true};
   bool rotationEnabled{true};
-  void UpdatePosition(float);
-  void UpdateRotation(glm::vec2);
+  bool UpdatePosition(float);
+  bool UpdateRotation(glm::vec2);
 public:
   using IScript::IScript;
   void Update(float) override;
-  void ToggleMovement(bool);
   void ToggleRotation(bool);
   Camera* GetCamera();
 };

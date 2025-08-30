@@ -16,7 +16,7 @@ private:
   unsigned int nextId{};
   std::set<unsigned int> ids;
   Trie names;
-  Octree<unsigned int> octree;
+  Octree octree;
   std::unordered_map<ComponentType, std::type_index> idToType; // NOTE: this is component type Id, not entity Id
   std::unordered_map<std::string, std::type_index> nameToType;
   std::unordered_map<std::string, unsigned int> nameToId;
@@ -36,7 +36,6 @@ private:
   template <typename T>
   size_t GetComponentMask() const;
   void DeleteRecords(unsigned int);
-  void UpdateOctree();
 public:
   ~EntityManager();
   unsigned int Create(std::string&);
@@ -221,7 +220,6 @@ EventDispatcher<T>* EntityManager::GetEventDispatcher() {
 }
 template <typename F>
 void EntityManager::ForEachVisibleEntity(const Camera& camera, F func) {
-  UpdateOctree();
   octree.ForEachInFrustum(camera, [&](unsigned int id) {
     func(id);
   });

@@ -40,9 +40,11 @@ void Editor::Init() {
   Application::Init();
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor");
   RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor");
-  RegisterInputCallback(GLFW_KEY_F, GLFW_PRESS, [this]() { ToggleFPS(); }, "Toggle FPS");
-  RegisterInputCallback(GLFW_KEY_G, GLFW_PRESS, [this]() { ToggleGizmos(); }, "Toggle gizmos");
-  RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, RenderingSystem::ToggleWireframeMode, "Toggle wireframe mode");
+  RegisterInputCallback(GLFW_KEY_F, GLFW_PRESS, [this]() { ToggleFPS(); }, "Toggle FPS counter");
+  RegisterInputCallback(GLFW_KEY_M, GLFW_PRESS, [this]() { ToggleGizmo(GizmoType::Manipulator); }, "Toggle manipulator gizmo");
+  RegisterInputCallback(GLFW_KEY_C, GLFW_PRESS, [this]() { ToggleGizmo(GizmoType::FrustumCulling); }, "Toggle frustum culling gizmo");
+  RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, [this]() { ToggleGizmo(GizmoType::ViewFrustum); }, "Toggle view frustum gizmo");
+  RegisterInputCallback(GLFW_KEY_L, GLFW_PRESS, RenderingSystem::ToggleWireframeMode, "Toggle wireframe mode");
   InitImGui();
   auto& editorApp = static_cast<Application&>(*this);
   CreateSystem<RenderingSystem>(editorApp);

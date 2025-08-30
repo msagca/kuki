@@ -17,13 +17,17 @@ float Plane::SignedDistance(const glm::vec3& point) const {
 }
 bool Frustum::OverlapsFrustum(const BoundingBox& bounds) const {
   auto center = (bounds.min + bounds.max) * .5f;
-  glm::vec3 extents{bounds.max.x - center.x, bounds.max.y - center.y, bounds.max.z - center.z};
-  return near.OnPlane(center, extents) && far.OnPlane(center, extents) && right.OnPlane(center, extents) && left.OnPlane(center, extents) && top.OnPlane(center, extents) && bottom.OnPlane(center, extents);
+  auto extents = bounds.max - center;
+  const Plane planes[6] = {near, far, right, left, top, bottom};
+  for (const auto& plane : planes)
+    if (!plane.OnPlane(center, extents))
+      return false;
+  return true;
 }
 Transform Camera::GetTransform() const {
   Transform transform;
   transform.position = position;
-  glm::mat3 rotation(right, up, front);
+  glm::mat3 rotation(right, up, forward);
   transform.rotation = glm::quat_cast(rotation);
   return transform;
 }
@@ -32,12 +36,11 @@ void Camera::SetTransform(const Transform& transform) {
   auto rotation = glm::mat3_cast(transform.rotation);
   right = rotation[0];
   up = rotation[1];
-  front = rotation[2];
+  forward = rotation[2];
   auto euler = glm::eulerAngles(transform.rotation);
   pitch = euler.x;
   yaw = euler.y;
-  UpdateView();
-  UpdateFrustum();
+  // FIXME: if a CameraController is present in the scene, calling Update() here will cause issues
 }
 void Camera::Update() {
   UpdateDirection();
@@ -46,16 +49,18 @@ void Camera::Update() {
   UpdateFrustum();
 }
 void Camera::UpdateDirection() {
-  static const auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);
-  front.x = cos(yaw) * cos(pitch);
-  front.y = sin(pitch);
-  front.z = sin(yaw) * cos(pitch);
-  front = glm::normalize(front);
-  right = glm::normalize(glm::cross(front, WORLD_UP));
-  up = glm::normalize(glm::cross(right, front));
+  static constexpr auto PITCH_LIMIT = 89.0f;
+  static constexpr auto WORLD_UP = glm::vec3(.0f, 1.0f, .0f);
+  pitch = glm::clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT);
+  forward.x = cos(yaw) * cos(pitch);
+  forward.y = sin(pitch);
+  forward.z = sin(yaw) * cos(pitch);
+  forward = glm::normalize(forward);
+  right = glm::normalize(glm::cross(forward, WORLD_UP));
+  up = glm::normalize(glm::cross(right, forward));
 }
 void Camera::UpdateView() {
-  view = glm::lookAt(position, position + front, up);
+  view = glm::lookAt(position, position + forward, up);
 }
 void Camera::UpdateProjection() {
   if (type == CameraType::Perspective)
@@ -69,29 +74,28 @@ void Camera::UpdateProjection() {
 void Camera::UpdateFrustum() {
   const auto vHalf = farPlane * tanf(glm::radians(fov) * .5f);
   const auto hHalf = vHalf * aspectRatio;
-  const auto farPos = farPlane * front;
-  frustum.near = {position + nearPlane * front, front};
-  frustum.far = {position + farPos, -front};
+  const auto farPos = farPlane * forward;
+  frustum.near = {position + nearPlane * forward, forward};
+  frustum.far = {position + farPos, -forward};
   frustum.right = {position, glm::normalize(glm::cross(farPos - right * hHalf, up))};
   frustum.left = {position, glm::normalize(glm::cross(up, farPos + right * hHalf))};
   frustum.top = {position, glm::normalize(glm::cross(right, farPos - up * vHalf))};
   frustum.bottom = {position, glm::normalize(glm::cross(farPos + up * vHalf, right))};
 }
 void Camera::Frame(const BoundingBox& bounds) {
-  auto center = (bounds.min + bounds.max) * .5f;
-  auto dimensions = bounds.max - bounds.min;
-  auto radius = glm::length(dimensions) * .5f;
-  float fovVertical = glm::radians(fov);
-  float fovHorizontal = 2.0f * atan(tan(fovVertical * .5f) * aspectRatio);
-  auto fovMin = glm::min(fovVertical, fovHorizontal);
-  auto distanceFactor = 1.1f;
-  float distance = (radius / tan(fovMin * .5f)) * distanceFactor;
-  position = center - front * distance;
+  static constexpr auto DISTANCE_FACTOR = 1.1f;
+  const auto center = (bounds.min + bounds.max) * .5f;
+  const auto dimensions = bounds.max - bounds.min;
+  const auto radius = glm::length(dimensions) * .5f;
+  const auto fovVertical = glm::radians(fov);
+  const float fovHorizontal = 2.0f * atan(tan(fovVertical * .5f) * aspectRatio);
+  const auto fovMin = glm::min(fovVertical, fovHorizontal);
+  const float distance = (radius / tan(fovMin * .5f)) * DISTANCE_FACTOR;
+  position = center - forward * distance;
   farPlane = distance + radius;
-  UpdateView();
-  UpdateProjection();
+  Update();
 }
-bool Camera::OverlapsFrustum(const BoundingBox& bounds) const {
+bool Camera::IntersectsFrustum(const BoundingBox& bounds) const {
   return frustum.OverlapsFrustum(bounds);
 }
 } // namespace kuki

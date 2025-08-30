@@ -29,7 +29,6 @@ private:
   std::unordered_map<MaterialType, Shader*> shaders;
   std::unordered_map<ComputeType, ComputeShader*> computes;
   Camera assetCam{};
-  Camera* targetCamera{};
   FramebufferPool framebufferPool;
   RenderbufferPool renderbufferPool;
   TexturePool texturePool;
@@ -50,14 +49,14 @@ private:
   bool UpdateAttachments(const TextureParams&, unsigned int, unsigned int, T...);
   void DrawAsset(unsigned int);
   void DrawAssetHierarchy(unsigned int);
-  void DrawEntitiesInstanced(const Mesh*, const std::vector<unsigned int>&);
-  void DrawFrustumCulling();
-  void DrawGizmos();
-  void DrawScene();
-  void DrawSkybox(const Skybox* skybox);
+  void DrawEntitiesInstanced(const Camera*, const Mesh*, const std::vector<unsigned int>&);
+  void DrawFrustumCulling(const Camera*, const Camera*);
+  void DrawGizmos(const Camera*, const Camera* = nullptr);
+  void DrawScene(const Camera*, const Camera* = nullptr);
+  void DrawSkybox(const Camera*, const Skybox*);
   /// @brief Draws a skybox asset by applying equirectangular projection to it
   void DrawSkyboxAsset(unsigned int);
-  void DrawViewFrustum();
+  void DrawViewFrustum(const Camera*, const Camera*);
   void ApplyPostProc(unsigned int, unsigned int, const TextureParams&);
   BoundingBox GetAssetBounds(unsigned int);
   Shader* GetShader(MaterialType);

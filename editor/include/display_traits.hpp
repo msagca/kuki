@@ -38,24 +38,31 @@ struct DisplayTraits<Camera> {
       dirty = true;
     }
     auto pitch = glm::degrees(camera->pitch);
-    if (ImGui::SliderFloat("Pitch", &pitch, -90.0f, 90.0f)) {
+    if (ImGui::SliderFloat("Pitch", &pitch, -89.0f, 89.0f)) {
+      // TODO: make this DragFloat
       camera->pitch = glm::radians(pitch);
       dirty = true;
     }
     auto yaw = glm::degrees(camera->yaw);
-    if (ImGui::SliderFloat("Yaw", &yaw, -180.0f, 180.0f)) {
+    if (ImGui::DragFloat("Yaw", &yaw)) {
+      while (yaw > 180.0f)
+        yaw -= 360.0f;
+      while (yaw < -180.0f)
+        yaw += 360.0f;
       camera->yaw = glm::radians(yaw);
       dirty = true;
     }
-    auto fov = camera->fov;
-    if (ImGui::SliderFloat("FOV", &fov, .0f, 180.0f)) {
-      camera->fov = fov;
-      dirty = true;
-    }
-    auto aspectRatio = camera->aspectRatio;
-    if (ImGui::SliderFloat("Aspect Ratio", &aspectRatio, .1f, 10.0f)) {
-      camera->aspectRatio = aspectRatio;
-      dirty = true;
+    if (camera->type == CameraType::Perspective) {
+      auto fov = camera->fov;
+      if (ImGui::SliderFloat("FOV", &fov, .0f, 180.0f)) {
+        camera->fov = fov;
+        dirty = true;
+      }
+      auto aspectRatio = camera->aspectRatio;
+      if (ImGui::SliderFloat("Aspect Ratio", &aspectRatio, .1f, 10.0f)) {
+        camera->aspectRatio = aspectRatio;
+        dirty = true;
+      }
     }
     auto nearPlane = camera->nearPlane;
     if (ImGui::DragFloat("Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT)) {
@@ -79,12 +86,8 @@ struct DisplayTraits<Camera> {
       camera->position = position;
       dirty = true;
     }
-    if (dirty) {
-      camera->UpdateDirection();
-      camera->UpdateView();
-      camera->UpdateProjection();
-      camera->UpdateFrustum();
-    }
+    if (dirty)
+      camera->Update();
   }
 };
 template <>

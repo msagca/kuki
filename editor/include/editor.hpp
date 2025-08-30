@@ -1,5 +1,6 @@
 #pragma once
 #include "component/component_traits.hpp"
+#include "system/rendering.hpp"
 #include <application.hpp>
 #include <camera_controller.hpp>
 #include <component/component.hpp>
@@ -46,7 +47,7 @@ private:
   void LoadDefaultScene();
   void RemoveDeletedEntitiesFromSelection();
   void ToggleFPS();
-  void ToggleGizmos();
+  void ToggleGizmo(GizmoType);
   void Init() override;
   void Start() override;
   void Update() override;

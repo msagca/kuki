@@ -5,16 +5,16 @@ template <typename TKey, typename TVal>
 class Pool {
 protected:
   template <typename T>
-  static constexpr bool has_std_hash = requires(T key) {
+  static constexpr bool hasStdHash = requires(T key) {
     { std::hash<T>{}(key) } -> std::convertible_to<size_t>;
   };
   template <typename T>
-  static constexpr bool has_member_hash = requires {
+  static constexpr bool hasMemberHash = requires {
     typename T::Hash;
     requires std::invocable<typename T::Hash, const T&> && std::convertible_to<std::invoke_result_t<typename T::Hash, const T&>, size_t>;
   };
-  static_assert(has_std_hash<TKey> || has_member_hash<TKey>, "TKey must either be hashable by std::hash or provide a Hash member type.");
-  using HashType = std::conditional_t<has_std_hash<TKey>,
+  static_assert(hasStdHash<TKey> || hasMemberHash<TKey>, "TKey must either be hashable by std::hash or provide a Hash member type.");
+  using HashType = std::conditional_t<hasStdHash<TKey>,
     std::hash<TKey>,
     typename TKey::Hash>;
   std::unordered_map<TKey, std::vector<TVal>, HashType> pool;

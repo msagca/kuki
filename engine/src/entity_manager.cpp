@@ -248,10 +248,9 @@ void EntityManager::UpdateWorldTransform(unsigned int id) {
     transform->world = parent->world * transform->local;
   } else
     transform->world = transform->local;
-}
-void EntityManager::UpdateOctree() {
-  ForEach<MeshFilter>([this](unsigned int id, MeshFilter* filter) {
-    octree.Insert(id, filter->mesh.bounds);
-  });
+  auto filter = GetComponent<MeshFilter>(id);
+  if (!filter)
+    return;
+  octree.Insert(id, filter->mesh.bounds.GetWorldBounds(transform->world));
 }
 } // namespace kuki

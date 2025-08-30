@@ -21,14 +21,13 @@
 #include <vector>
 namespace kuki {
 int RenderingSystem::RenderSceneToTexture(Camera* camera) {
-  auto sceneCamera = app.GetActiveCamera();
-  targetCamera = camera ? camera : sceneCamera;
-  if (!targetCamera)
+  if (!camera)
     return -1;
   auto& config = app.GetConfig();
   auto width = config.screenWidth;
   auto height = config.screenHeight;
-  targetCamera->aspectRatio = static_cast<float>(width) / height;
+  // FIXME: this prevents users from experimenting with different aspect ratios in the editor
+  camera->aspectRatio = static_cast<float>(width) / height;
   const TextureParams singleParams{width, height, GL_TEXTURE_2D, GL_RGB16F, 1, 1};
   const TextureParams multiParams{width, height, GL_TEXTURE_2D_MULTISAMPLE, GL_RGB16F, 4, 1};
   auto framebufferMulti = framebufferPool.Request(multiParams);
@@ -43,8 +42,12 @@ int RenderingSystem::RenderSceneToTexture(Camera* camera) {
   glViewport(0, 0, width, height);
   glClearColor(.0f, .0f, .0f, .0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-  DrawScene();
-  DrawGizmos();
+  auto sceneCamId = app.GetEntityId("SceneCamera");
+  auto sceneCam = app.GetEntityComponent<Camera>(sceneCamId);
+  // HACK: we can't get the scene camera by calling GetActiveCamera() because editor camera is also in the scene
+  // TODO: hide editor camera from scene hierarchy
+  DrawScene(sceneCam ? sceneCam : camera, camera);
+  DrawGizmos(sceneCam ? sceneCam : camera, camera);
   glBindFramebuffer(GL_READ_FRAMEBUFFER, framebufferMulti);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebufferSingle);
   glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
@@ -143,27 +146,30 @@ void RenderingSystem::ApplyPostProc(unsigned int textureIn, unsigned int texture
   texturePool.Release(params, texturePong);
   texturePool.Release(params, textureNormal);
 }
-void RenderingSystem::DrawScene() {
+void RenderingSystem::DrawScene(const Camera* camera, const Camera* observer) {
+  if (!camera)
+    return;
   std::unordered_map<unsigned int, std::vector<unsigned int>> vaoToEntities;
   std::unordered_map<unsigned int, Mesh> vaoToMesh;
   // FIXME: app.ForEachVisibleEntity does not work as expected
-  // TODO: repeat this query only after entity addition/deletion or component updates (set flags in entity manager and check them each frame)
-  app.ForEachEntity<MeshFilter>([this, &vaoToMesh, &vaoToEntities](unsigned int id, MeshFilter* filter) {
+  app.ForEachVisibleEntity(*camera, [this, &vaoToMesh, &vaoToEntities](unsigned int id) {
+    auto filter = app.GetEntityComponent<MeshFilter>(id);
     auto vao = filter->mesh.vertexArray;
     vaoToMesh[vao] = filter->mesh;
     vaoToEntities[vao].push_back(id);
   });
   if (wireframeMode)
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+  auto targetCam = observer ? observer : camera;
   for (const auto& [vao, entities] : vaoToEntities)
-    DrawEntitiesInstanced(&vaoToMesh[vao], entities);
+    DrawEntitiesInstanced(targetCam, &vaoToMesh[vao], entities);
   glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-  app.ForFirstEntity<Skybox>([this](unsigned int id, Skybox* skybox) {
-    DrawSkybox(skybox);
+  app.ForFirstEntity<Skybox>([this, &targetCam](unsigned int id, Skybox* skybox) {
+    DrawSkybox(targetCam, skybox);
   });
 }
-void RenderingSystem::DrawSkybox(const Skybox* skybox) {
-  if (!skybox || skybox->skybox == 0)
+void RenderingSystem::DrawSkybox(const Camera* camera, const Skybox* skybox) {
+  if (!camera || !skybox || skybox->skybox == 0)
     return;
   auto cubeAsset = app.GetAssetId("CubeInverted");
   auto mesh = app.GetAssetComponent<Mesh>(cubeAsset);
@@ -173,9 +179,9 @@ void RenderingSystem::DrawSkybox(const Skybox* skybox) {
   shader->Use();
   auto model = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f));
   shader->SetUniform("model", model);
-  auto view = glm::mat4(glm::mat3(targetCamera->view));
+  auto view = glm::mat4(glm::mat3(camera->view));
   shader->SetUniform("view", view);
-  shader->SetUniform("projection", targetCamera->projection);
+  shader->SetUniform("projection", camera->projection);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->skybox);
   shader->SetUniform("skybox", 0);
@@ -183,7 +189,9 @@ void RenderingSystem::DrawSkybox(const Skybox* skybox) {
   shader->Draw(mesh);
   glDepthFunc(GL_LESS);
 }
-void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<unsigned int>& entities) {
+void RenderingSystem::DrawEntitiesInstanced(const Camera* camera, const Mesh* mesh, const std::vector<unsigned int>& entities) {
+  if (!camera || !mesh)
+    return;
   std::vector<LitFallbackData> litMaterials;
   std::vector<UnlitFallbackData> unlitMaterials;
   std::vector<glm::mat4> litTransforms;
@@ -217,7 +225,7 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<
       lights.push_back(light);
     });
     shader->Use();
-    shader->SetCamera(targetCamera);
+    shader->SetCamera(camera);
     shader->SetLighting(lights);
     if (skybox && skybox->skybox != 0) {
       // TODO: let the shader handle which texture unit to use
@@ -241,7 +249,7 @@ void RenderingSystem::DrawEntitiesInstanced(const Mesh* mesh, const std::vector<
   if (unlitMaterials.size() > 0) {
     auto shader = static_cast<UnlitShader*>(GetShader(MaterialType::Unlit));
     shader->Use();
-    shader->SetCamera(targetCamera);
+    shader->SetCamera(camera);
     shader->SetMaterial(&materialUnlit);
     shader->SetMaterialFallback(mesh, unlitMaterials, materialVBO);
     shader->SetTransform(mesh, unlitTransforms, transformVBO);

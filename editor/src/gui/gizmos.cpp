@@ -47,13 +47,19 @@ void Editor::DrawGizmos(float width, float height, unsigned int mask) {
   transform.rotation = glm::quat(glm::radians(rotation));
   transform.localDirty = true;
   transform.worldDirty = true;
-  if (cameraComp)
-    cameraComp->SetTransform(transform);
-  else if (lightComp)
+  if (cameraComp) {
+    // FIXME: calling this while there is a CameraController causes issues
+    //cameraComp->SetTransform(transform);
+  } else if (lightComp)
     lightComp->SetTransform(transform);
   else
     *transformComp = transform;
 }
-void Editor::ToggleGizmos() {
-  context.gizmoMask ^= static_cast<unsigned int>(GizmoMask::Manipulator);
+void Editor::ToggleGizmo(GizmoType type) {
+  if (type == GizmoType::Manipulator)
+    context.gizmoMask ^= static_cast<unsigned int>(GizmoMask::Manipulator);
+  if (type == GizmoType::ViewFrustum)
+    context.gizmoMask ^= static_cast<unsigned int>(GizmoMask::ViewFrustum);
+  if (type == GizmoType::FrustumCulling)
+    context.gizmoMask ^= static_cast<unsigned int>(GizmoMask::FrustumCulling);
 }

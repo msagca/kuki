@@ -32,7 +32,7 @@ TEST(TrieTest, TestInsertDuplicate) {
   trie.Clear();
 }
 TEST(OctreeTest, OctreeInsert) {
-  Octree<unsigned int> octree(glm::vec3(.0f), glm::vec3(10.0f), 3, 2, 4);
+  Octree octree(glm::vec3(.0f), glm::vec3(10.0f), 3, 2, 4);
   auto result = octree.Insert(0, BoundingBox(glm::vec3(-5.5f), glm::vec3(8.5f)));
   EXPECT_EQ(result, true);
   result = octree.Insert(1, BoundingBox(glm::vec3(-10.0f), glm::vec3(10.0f)));
