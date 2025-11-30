@@ -1,15 +1,15 @@
 #version 460 core
+const vec2 INV_ATAN = vec2(0.1591, 0.3183); // 1/(2*PI), 1/PI
 in vec3 worldPos;
 out vec4 color;
 uniform sampler2D equirect;
-const vec2 INV_ATAN = vec2(0.1591, 0.3183); // 1/(2*PI), 1/PI
 vec2 SampleSphericalMap(vec3 v) {
-    vec2 uv = vec2(atan(v.z, v.x), asin(v.y)); // [-PI, PI], [-PI/2, PI/2]
-    uv *= INV_ATAN; // [-0.5, 0.5]
-    uv += 0.5; // [0, 1]
-    return uv;
+        vec2 uv = vec2(atan(v.z, v.x), asin(v.y)); // [-PI, PI], [-PI/2, PI/2]
+        uv *= INV_ATAN; // [-0.5, 0.5]
+        uv += 0.5; // [0, 1]
+        return uv;
 }
 void main() {
-    vec2 uv = SampleSphericalMap(normalize(worldPos));
-    color = vec4(texture(equirect, uv).rgb, 1.0);
+        vec2 uv = SampleSphericalMap(normalize(worldPos));
+        color = vec4(texture(equirect, uv).rgb, 1.0);
 }

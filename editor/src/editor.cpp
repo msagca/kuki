@@ -1,57 +1,57 @@
-#define IMGUI_ENABLE_FREETYPE
-#include <system/rendering.hpp>
-#include <application.hpp>
 #include <app_config.hpp>
+#include <application.hpp>
+#include <camera.hpp>
 #include <camera_controller.hpp>
-#include <command.hpp>
-#include <component/camera.hpp>
-#include <component/component.hpp>
-#include <component/light.hpp>
-#include <component/material.hpp>
-#include <component/mesh.hpp>
-#include <component/mesh_filter.hpp>
-#include <component/mesh_renderer.hpp>
-#include <component/script.hpp>
-#include <component/skybox.hpp>
-#include <component/texture.hpp>
 #include <editor.hpp>
-#include <event_dispatcher.hpp>
-#include <GLFW/glfw3.h>
+#include <glfw_constants.hpp>
 #include <imgui.h>
-#include <imgui_freetype.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
 #include <imgui_sink.hpp>
+#include <light.hpp>
 #include <memory>
+#include <mesh.hpp>
+#include <mesh_filter.hpp>
+#include <mesh_renderer.hpp>
 #include <mutex>
 #include <primitive.hpp>
+#include <rendering_system.hpp>
+#include <skybox.hpp>
 #include <spdlog/logger.h>
-#include <spdlog/spdlog.h>
 #include <string>
-#include <system/scripting.hpp>
-// NOTE: this comment is to prevent the following from being placed before imgui.h during includes sorting
-#include <imfilebrowser.h>
+#include <transform.hpp>
+//
+#include <GLFW/glfw3.h>
 #include <ImGuizmo.h>
+#include <imfilebrowser.h>
 using namespace kuki;
 Editor::Editor()
   : Application(AppConfig{"Kuki Editor", "image/logo.png"}), imguiSink(std::make_shared<ImGuiSink<std::mutex>>()), logger(std::make_shared<spdlog::logger>("Logger", imguiSink)) {}
+Editor::~Editor() {
+  Application::Shutdown();
+}
 void Editor::Init() {
   Application::Init();
-  RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_PRESS, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); }, "Disable cursor");
-  RegisterInputCallback(GLFW_MOUSE_BUTTON_2, GLFW_RELEASE, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); }, "Enable cursor");
-  RegisterInputCallback(GLFW_KEY_F, GLFW_PRESS, [this]() { ToggleFPS(); }, "Toggle FPS counter");
-  RegisterInputCallback(GLFW_KEY_M, GLFW_PRESS, [this]() { ToggleGizmo(GizmoType::Manipulator); }, "Toggle manipulator gizmo");
-  RegisterInputCallback(GLFW_KEY_C, GLFW_PRESS, [this]() { ToggleGizmo(GizmoType::FrustumCulling); }, "Toggle frustum culling gizmo");
-  RegisterInputCallback(GLFW_KEY_V, GLFW_PRESS, [this]() { ToggleGizmo(GizmoType::ViewFrustum); }, "Toggle view frustum gizmo");
-  RegisterInputCallback(GLFW_KEY_L, GLFW_PRESS, RenderingSystem::ToggleWireframeMode, "Toggle wireframe mode");
+  RegisterInputAction("gc", [this]() { ToggleGizmo(GizmoType::FrustumCulling); });
+  RegisterInputAction("gf", [this]() { ToggleGizmo(GizmoType::ViewFrustum); });
+  RegisterInputAction("gm", [this]() { ToggleGizmo(GizmoType::Manipulator); });
+  RegisterInputAction(GLFWConst::KEY_V, RenderingSystem::ToggleWireframeMode);
+  RegisterInputAction(GLFWConst::MOUSE_BUTTON_RIGHT, [this]() {
+    cameraController->SetMouselook(true);
+    glfwSetInputMode(window, GLFWConst::CURSOR, GLFWConst::CURSOR_DISABLED);
+    auto& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NoMouse; });
+  RegisterInputAction(GLFWConst::MOUSE_BUTTON_RIGHT, [this]() {
+    cameraController->SetMouselook(false);
+    glfwSetInputMode(window, GLFWConst::CURSOR, GLFWConst::CURSOR_NORMAL);
+    auto& io = ImGui::GetIO();
+    io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
   InitImGui();
-  auto& editorApp = static_cast<Application&>(*this);
-  CreateSystem<RenderingSystem>(editorApp);
-  //CreateSystem<ScriptingSystem>(editorApp);
-  RegisterCommand(new SpawnCommand(editorApp));
-  RegisterCommand(new DeleteCommand(editorApp));
-  spdlog::register_logger(logger);
+  CreateSystem<RenderingSystem>(*this);
+  RegisterCommand(new SpawnCommand(*this));
+  RegisterCommand(new DeleteCommand(*this));
+  // spdlog::register_logger(logger);
 }
 void Editor::Start() {
   Application::Start();
@@ -59,9 +59,12 @@ void Editor::Start() {
   LoadDefaultScene();
 }
 void Editor::Update() {
-  cameraController->Update(deltaTime);
-  UpdateView();
   Application::Update();
+  cameraController->Update(deltaTime);
+}
+void Editor::LateUpdate() {
+  Application::LateUpdate();
+  UpdateView();
 }
 void Editor::Shutdown() {
   ImGui_ImplOpenGL3_Shutdown();
@@ -76,10 +79,9 @@ void Editor::UpdateView() {
   ImGuizmo::BeginFrame();
   ImGui::DockSpaceOverViewport(ImGui::GetID("DockSpace"));
   InitLayout();
-  DisplayAssets();
   DisplayHierarchy();
+  DisplayAssets();
   DisplayScene();
-  DisplayConsole();
   // DisplayLogs();
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -109,25 +111,25 @@ void Editor::InitLayout() {
 }
 void Editor::LoadDefaultScene() {
   auto scene = CreateScene("Main");
-  std::string entityName = "EditorCamera";
+  std::string entityName = "Camera";
   auto entityId = CreateEntity(entityName);
-  AddEntityComponent<Camera>(entityId);
+  auto camera = AddEntityComponent<Camera>(entityId);
   cameraController = std::make_unique<CameraController>(*this, entityId);
-  /*auto script = AddEntityComponent<Script>(entityId);
-  script->id = entityId;
-  auto scriptingSystem = GetSystem<ScriptingSystem>();
-  scriptingSystem->Register<CameraController>(entityId);*/
-  entityName = "Skybox";
+  entityName = "Cube";
   entityId = CreateEntity(entityName);
   auto filter = AddEntityComponent<MeshFilter>(entityId);
+  filter->mesh = *GetAssetComponent<Mesh>(GetAssetId("Cube"));
+  AddEntityComponent<MeshRenderer>(entityId);
+  AddEntityComponent<Transform>(entityId);
+  camera->Frame(filter->mesh.bounds, 2.f);
+  entityName = "Skybox";
+  entityId = CreateEntity(entityName);
+  filter = AddEntityComponent<MeshFilter>(entityId);
   filter->mesh = *GetAssetComponent<Mesh>(GetAssetId("CubeInverted"));
-  auto skybox = AddEntityComponent<Skybox>(entityId);
-  entityName = "SceneCamera";
+  AddEntityComponent<Skybox>(entityId);
+  entityName = "Light";
   entityId = CreateEntity(entityName);
-  AddEntityComponent<Camera>(entityId);
-  /*entityName = "DirectionalLight";
-  entityId = CreateEntity(entityName);
-  AddEntityComponent<Light>(entityId);*/
+  AddEntityComponent<Light>(entityId);
 }
 void Editor::LoadDefaultAssets() {
   LoadPrimitive(PrimitiveType::Cube);

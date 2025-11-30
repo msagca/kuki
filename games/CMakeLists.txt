@@ -1,6 +1,14 @@
 project(KukiGames)
-file(GLOB_RECURSE C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
-file(GLOB_RECURSE CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+file(
+  GLOB_RECURSE C_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+)
+file(
+  GLOB_RECURSE CPP_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
 add_executable("${PROJECT_NAME}" "${C_SOURCES}" "${CPP_SOURCES}")
 target_include_directories(
   "${PROJECT_NAME}"

@@ -1,13 +1,12 @@
 #include <command.hpp>
 #include <command_manager.hpp>
-#include <iosfwd>
 #include <span>
 #include <sstream>
 #include <string>
 #include <vector>
 namespace kuki {
-ICommand::ICommand(const std::string name, Application& app)
-  : name(name), app(app) {}
+ICommand::ICommand(const std::string& name)
+  : name(name) {}
 const std::string& ICommand::GetName() const {
   return name;
 }
@@ -43,7 +42,7 @@ void CommandManager::Register(ICommand* command) {
 void CommandManager::Unregister(const std::string& name) {
   commands.erase(name);
 }
-int CommandManager::Dispatch(Application* app, const std::string& input, std::string& message) {
+int CommandManager::Dispatch(const std::string& input, std::string& message) {
   auto tokens = Tokenize(input);
   if (tokens.empty()) {
     message = "No command provided.";

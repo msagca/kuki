@@ -7,8 +7,8 @@ layout(location = 2) in vec2 i_texCoord;
 layout(location = 3) in vec3 i_tangent;
 uniform mat4 model;
 void main() {
-    vec4 worldPos4 = model * vec4(i_position, 1.0);
-    worldPos = vec3(worldPos4);
-    texCoord = i_texCoord;
-    gl_Position = worldPos4;
+        vec4 worldPos4 = model * vec4(i_position, 1.0);
+        worldPos = vec3(worldPos4);
+        texCoord = i_texCoord;
+        gl_Position = worldPos4;
 }

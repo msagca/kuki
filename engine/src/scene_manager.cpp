@@ -7,14 +7,14 @@ SceneManager::~SceneManager() {
     delete scene;
   idToScene.clear();
 }
-unsigned int SceneManager::Create(const std::string& name) {
+size_t SceneManager::Create(const std::string& name) {
   auto id = nextId++;
   auto scene = new Scene(name, id);
   idToScene[id] = scene;
   nameToId[name] = id;
   return id;
 }
-void SceneManager::Delete(unsigned int id) {
+void SceneManager::Delete(size_t id) {
   auto it = idToScene.find(id);
   if (it == idToScene.end())
     return;
@@ -28,7 +28,7 @@ void SceneManager::Delete(const std::string& name) {
     return;
   Delete(it->second);
 }
-Scene* SceneManager::Get(unsigned int id) {
+Scene* SceneManager::Get(size_t id) {
   auto it = idToScene.find(id);
   if (it == idToScene.end())
     return nullptr;
@@ -40,7 +40,7 @@ Scene* SceneManager::Get(const std::string& name) {
     return nullptr;
   return Get(it->second);
 }
-bool SceneManager::Has(unsigned int id) {
+bool SceneManager::Has(size_t id) {
   return idToScene.find(id) != idToScene.end();
 }
 bool SceneManager::Has(const std::string& name) {

@@ -1,21 +1,18 @@
-#define GLM_ENABLE_EXPERIMENTAL
-#include <component/component.hpp>
-#include <component/mesh_filter.hpp>
-#include <component/transform.hpp>
+#include <component.hpp>
 #include <component_manager.hpp>
+#include <component_traits.hpp>
 #include <entity_manager.hpp>
-#include <glm/gtx/quaternion.hpp>
+#include <id.hpp>
+#include <list>
 #include <string>
+#include <transform.hpp>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
-#include <glm/ext/matrix_float4x4.hpp>
 namespace kuki {
 EntityManager::~EntityManager() {
   for (const auto& [type, manager] : typeToManager)
     delete manager;
-  for (const auto& [type, dispatcher] : typeToDispatcher)
-    delete dispatcher;
   names.Clear();
 }
 IComponentManager* EntityManager::GetManager(std::type_index type) {
@@ -36,36 +33,30 @@ IComponentManager* EntityManager::GetManager(ComponentType type) {
     return nullptr;
   return GetManager(it->second);
 }
-unsigned int EntityManager::Create(std::string& name) {
+ID EntityManager::Create(std::string& name) {
   names.Insert(name);
-  idToName[nextId] = name;
-  ids.insert(nextId);
-  nameToId[idToName[nextId]] = nextId;
-  EntityCreatedEvent event{nextId};
-  auto dispatcher = GetEventDispatcher<EntityCreatedEvent>();
-  dispatcher->Emit(event);
-  return nextId++;
+  auto id = ID::Generate();
+  idToName[id] = name;
+  ids.insert(id);
+  nameToId[idToName[id]] = id;
+  return id;
 }
-void EntityManager::DeleteRecords(unsigned int id) {
+void EntityManager::DeleteRecords(const ID id) {
   auto it = idToName.find(id);
   if (it == idToName.end())
     return;
-  names.Delete(it->second);
+  names.Remove(it->second);
   nameToId.erase(it->second);
   ids.erase(id);
   idToName.erase(id);
   idToChildren.erase(id);
   idToParent.erase(id);
-  octree.Delete(id);
 }
-void EntityManager::Delete(unsigned int id) {
+void EntityManager::Delete(const ID id) {
   if (ids.find(id) == ids.end())
     return;
   RemoveAllComponents(id);
-  EntityDeletedEvent event{id};
-  auto dispatcher = GetEventDispatcher<EntityDeletedEvent>();
-  dispatcher->Emit(event);
-  ForEachChild(id, [this](unsigned int childId) {
+  ForEachChild(id, [this](const ID childId) {
     Delete(childId);
   });
   DeleteRecords(id);
@@ -91,73 +82,90 @@ void EntityManager::DeleteAll(const std::string& prefix) {
     Delete(name);
   });
 }
-bool EntityManager::Rename(unsigned int id, std::string& name) {
+bool EntityManager::Rename(const ID id, std::string& name) {
   auto it = idToName.find(id);
   if (it == idToName.end())
     return false;
-  names.Delete(it->second);
+  names.Remove(it->second);
   nameToId.erase(it->second);
   names.Insert(name);
   idToName[id] = name;
   nameToId[name] = id;
   return true;
 }
-bool EntityManager::IsEntity(unsigned int id) {
+bool EntityManager::IsEntity(const ID id) {
   if (ids.find(id) != ids.end())
     return true;
   return false;
 }
-const std::string& EntityManager::GetName(unsigned int id) const {
+const std::string& EntityManager::GetName(const ID id) const {
   static const std::string emptyString = "";
-  auto it = idToName.find(id);
-  if (it == idToName.end())
-    return emptyString;
-  return it->second;
+  if (auto it = idToName.find(id); it != idToName.end())
+    return it->second;
+  return emptyString;
 }
-int EntityManager::GetId(const std::string& name) {
-  auto it = nameToId.find(name);
-  if (it == nameToId.end())
-    return -1;
-  return it->second;
+ID EntityManager::GetId(const std::string& name) {
+  if (auto it = nameToId.find(name); it != nameToId.end())
+    return it->second;
+  return ID::Invalid();
 }
-bool EntityManager::AddChild(unsigned int parent, unsigned int child) {
+bool EntityManager::AddChild(const ID parent, const ID child, bool keepWorld) {
+  if (!parent.IsValid())
+    return false;
   if (ids.find(parent) == ids.end() || ids.find(child) == ids.end())
     return false;
   if (idToChildren.find(parent) == idToChildren.end())
     idToChildren[parent] = {};
+  auto transformManager = GetManager<Transform>();
+  auto childTransform = transformManager->Get(child);
+  if (!childTransform)
+    childTransform = &transformManager->Add(child);
+  auto parentTransform = transformManager->Get(parent);
+  if (!parentTransform)
+    parentTransform = &transformManager->Add(parent);
+  childTransform->parent = parent;
+  childTransform->Reparent(parentTransform, keepWorld);
   idToChildren[parent].insert(child);
   idToParent[child] = parent;
+  transformManager->Sort(); // TODO: replace this with a partial sort function
   return true;
 }
-void EntityManager::RemoveChild(unsigned int parent, unsigned int child) {
+void EntityManager::RemoveChild(const ID parent, const ID child) {
   auto it = idToChildren.find(parent);
   if (it == idToChildren.end())
     return;
   it->second.erase(child);
   if (it->second.empty())
     idToChildren.erase(it->first);
+  auto transformManager = GetManager<Transform>();
+  auto childTransform = transformManager->Get(child);
+  if (childTransform) {
+    childTransform->parent = ID::Invalid();
+    childTransform->Reparent(nullptr);
+  }
   idToParent.erase(child);
+  transformManager->Sort();
 }
-bool EntityManager::HasChildren(unsigned int id) const {
+bool EntityManager::HasChildren(const ID id) const {
   auto it = idToChildren.find(id);
   if (it == idToChildren.end())
     return false;
   return it->second.size() > 0;
 }
-bool EntityManager::HasParent(unsigned int id) const {
+bool EntityManager::HasParent(const ID id) const {
   auto it = idToParent.find(id);
   return it != idToParent.end();
 }
-int EntityManager::GetParent(unsigned int id) const {
+ID EntityManager::GetParent(const ID id) const {
   auto it = idToParent.find(id);
   if (it == idToParent.end())
-    return -1;
+    return ID::Invalid();
   return it->second;
 }
 size_t EntityManager::GetCount() const {
   return ids.size();
 }
-IComponent* EntityManager::AddComponent(unsigned int id, ComponentType componentId) {
+IComponent* EntityManager::AddComponent(const ID id, ComponentType componentId) {
   if (ids.find(id) == ids.end())
     return nullptr;
   auto manager = GetManager(componentId);
@@ -165,7 +173,7 @@ IComponent* EntityManager::AddComponent(unsigned int id, ComponentType component
     return nullptr;
   return &manager->AddBase(id);
 }
-IComponent* EntityManager::AddComponent(unsigned int id, const std::string& name) {
+IComponent* EntityManager::AddComponent(const ID id, const std::string& name) {
   if (ids.find(id) == ids.end())
     return nullptr;
   auto manager = GetManager(name);
@@ -173,43 +181,43 @@ IComponent* EntityManager::AddComponent(unsigned int id, const std::string& name
     return nullptr;
   return &manager->AddBase(id);
 }
-void EntityManager::RemoveComponent(unsigned int id, ComponentType componentId) {
+void EntityManager::RemoveComponent(const ID id, ComponentType componentId) {
   auto manager = GetManager(componentId);
   if (!manager)
     return;
   manager->Remove(id);
 }
-void EntityManager::RemoveComponent(unsigned int id, const std::string& name) {
+void EntityManager::RemoveComponent(const ID id, const std::string& name) {
   auto manager = GetManager(name);
   if (!manager)
     return;
   manager->Remove(id);
 }
-void EntityManager::RemoveAllComponents(unsigned int id) {
+void EntityManager::RemoveAllComponents(const ID id) {
   if (ids.find(id) == ids.end())
     return;
   for (const auto& [type, manager] : typeToManager)
     manager->Remove(id);
 }
-bool EntityManager::HasComponent(unsigned int id, std::type_index type) {
+bool EntityManager::HasComponent(const ID id, std::type_index type) {
   auto it = typeToManager.find(type);
   if (it == typeToManager.end())
     return false;
   return it->second->Has(id);
 }
-IComponent* EntityManager::GetComponent(unsigned int id, ComponentType type) {
+IComponent* EntityManager::GetComponent(const ID id, ComponentType type) {
   auto manager = GetManager(type);
   if (!manager)
     return nullptr;
   return manager->GetBase(id);
 }
-IComponent* EntityManager::GetComponent(unsigned int id, const std::string& name) {
+IComponent* EntityManager::GetComponent(const ID id, const std::string& name) {
   auto manager = GetManager(name);
   if (!manager)
     return nullptr;
   return manager->GetBase(id);
 }
-std::vector<IComponent*> EntityManager::GetAllComponents(unsigned int id) {
+std::vector<IComponent*> EntityManager::GetAllComponents(const ID id) {
   std::vector<IComponent*> components;
   if (ids.find(id) != ids.end())
     for (const auto& [type, manager] : typeToManager)
@@ -217,7 +225,7 @@ std::vector<IComponent*> EntityManager::GetAllComponents(unsigned int id) {
         components.emplace_back(manager->GetBase(id));
   return components;
 }
-std::vector<std::string> EntityManager::GetMissingComponents(unsigned int id) {
+std::vector<std::string> EntityManager::GetMissingComponents(const ID id) {
   std::vector<std::string> components;
   if (ids.find(id) != ids.end())
     for (const auto& [name, type] : nameToType)
@@ -225,32 +233,8 @@ std::vector<std::string> EntityManager::GetMissingComponents(unsigned int id) {
         components.emplace_back(name);
   return components;
 }
-void EntityManager::UpdateWorldTransform(unsigned int id) {
-  auto manager = GetManager<Transform>();
-  if (!manager)
-    return;
-  auto transform = manager->Get(id);
-  if (!transform || (!transform->localDirty && !transform->worldDirty))
-    return;
-  if (transform->localDirty) {
-    transform->localDirty = false;
-    auto translation = glm::translate(glm::mat4(1.0f), transform->position);
-    auto rotation = glm::toMat4(transform->rotation);
-    auto scale = glm::scale(glm::mat4(1.0f), transform->scale);
-    transform->local = translation * rotation * scale;
-  }
-  if (transform->parent >= 0) {
-    auto parent = manager->Get(transform->parent);
-    if (transform->worldDirty) {
-      transform->worldDirty = false;
-      UpdateWorldTransform(transform->parent);
-    }
-    transform->world = parent->world * transform->local;
-  } else
-    transform->world = transform->local;
-  auto filter = GetComponent<MeshFilter>(id);
-  if (!filter)
-    return;
-  octree.Insert(id, filter->mesh.bounds.GetWorldBounds(transform->world));
+void EntityManager::Update() {
+  for (auto& [_, manager] : typeToManager)
+    manager->Update();
 }
 } // namespace kuki

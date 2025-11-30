@@ -1,39 +1,73 @@
 # Kuki
 
-I'm teaching myself graphics programming, game engine architecture and C++ through this hobby project.
+A hobby game engine project that I'm working on to learn about game engine architecture and graphics programming.
 
-![Editor UI](editor/src/image/editor_ui.jpg)
+## Installation
 
-## How to Build
+### Prerequisites
 
-### Requirements
+- [CMake](https://cmake.org)
+- [Git](https://git-scm.com)
 
-- [Git](https://git-scm.com/downloads), [CMake](https://cmake.org)
-- **Windows:** [Visual Studio](https://visualstudio.microsoft.com/vs/community) (install **Desktop development with C++** workload)
-- **Linux:** [Ninja](https://ninja-build.org), [GCC](https://gcc.gnu.org)
+#### Windows
 
-### Instructions
+- [Visual Studio](https://visualstudio.microsoft.com/vs/community) (with C++ workload)
 
-- Clone this repository and its submodules
+#### Linux
+
+- [GCC](https://gcc.gnu.org) or [Clang](https://llvm.org)
+- [Mesa 3D](https://mesa3d.org)
+- [Ninja](https://ninja-build.org)
+- [X.Org](https://www.x.org)
+
+On Debian-based systems (e.g., [Ubuntu](https://ubuntu.com)), you can install the prerequisites using the following commands:
+
+```bash
+sudo apt update
+```
+
+```bash
+sudo apt install -y build-essential cmake git libgl1-mesa-dev ninja-build xorg-dev
+```
+
+### Build Instructions
+
+- Clone the repository with submodules
 
 ```bash
 git clone --recursive https://github.com/msagca/kuki
 ```
 
-> To update the submodules, run `git submodule update --init --recursive`
+> If you have already cloned the repository without `--recursive`, run `git submodule update --init --recursive` to fetch the submodules.
 
-- Change the path to project root
+- Navigate to the project directory
 
 ```bash
 cd kuki
 ```
 
-- Run CMake configure and build commands
+- Configure the project with CMake
 
 ```bash
-cmake -B build
+cmake -B build --preset Release
 ```
 
+> If this step fails due to missing dependencies, refer to the error messages to install the required packages.
+
+- Build the project
+
 ```bash
-cmake --build build
+cmake --build build --preset Release
 ```
+
+- Install the binaries (optional)
+
+```bash
+cmake --install build
+```
+
+> Install command may require administrative privileges to write to system directories.
+
+- Run the editor application
+
+> Refer to the build/install output for the exact path of the executable.

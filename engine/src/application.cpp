@@ -1,39 +1,33 @@
-#include "component/component_traits.hpp"
 #define STB_IMAGE_IMPLEMENTATION
-#include <system/rendering.hpp>
 #include <app_config.hpp>
 #include <application.hpp>
+#include <camera.hpp>
 #include <chrono>
-#include <cmath>
 #include <command.hpp>
-#include <component/camera.hpp>
-#include <component/component.hpp>
-#include <component/material.hpp>
-#include <component/mesh.hpp>
-#include <component/mesh_filter.hpp>
-#include <component/mesh_renderer.hpp>
-#include <component/texture.hpp>
-#include <component/transform.hpp>
+#include <component.hpp>
+#include <component_traits.hpp>
 #include <entity_manager.hpp>
 #include <filesystem>
-#include <functional>
-#include <GLFW/glfw3.h>
-#include <glm/ext/vector_float3.hpp>
+#include <glad/glad.h>
+#include <id.hpp>
 #include <primitive.hpp>
-#include <random>
+#include <rendering_system.hpp>
 #include <scene.hpp>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string>
-#include <system/system.hpp>
+#include <system.hpp>
+#include <texture.hpp>
+#include <transform.hpp>
 #include <vector>
-#include <glm/ext/matrix_float4x4.hpp>
+//
+#include <GLFW/glfw3.h>
 namespace kuki {
 AppConfig::AppConfig(std::string name, std::filesystem::path logoPath, int screenWidth, int screenHeight)
   : name(name), logoPath(logoPath), screenWidth(screenWidth), screenHeight(screenHeight) {}
 Application::Application(const AppConfig& config)
   : config(config), assetManager(), assetLoader(this, assetManager), inputManager(), sceneManager(), commandManager() {
-  // TODO: check the config for illegal values
+  // TODO: validate the config, use defaults if necessary
 }
 const std::string& Application::GetName() const {
   return config.name;
@@ -44,16 +38,16 @@ void Application::Configure(const AppConfig& config) {
 const AppConfig& Application::GetConfig() const {
   return config;
 }
-unsigned int Application::CreateScene(const std::string& name) {
+size_t Application::CreateScene(const std::string& name) {
   return sceneManager.Create(name);
 }
-void Application::DeleteScene(unsigned int id) {
+void Application::DeleteScene(size_t id) {
   sceneManager.Delete(id);
 }
 Scene* Application::GetActiveScene() {
   return sceneManager.Get(activeSceneId);
 }
-void Application::SetActiveScene(unsigned int id) {
+void Application::SetActiveScene(size_t id) {
   if (sceneManager.Has(id))
     activeSceneId = id;
 }
@@ -98,6 +92,7 @@ void Application::Init() {
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   glfwSetKeyCallback(window, KeyCallback);
+  glfwSetCharCallback(window, CharCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetWindowCloseCallback(window, WindowCloseCallback);
   glViewport(0, 0, config.screenWidth, config.screenHeight);
@@ -127,11 +122,16 @@ void Application::Update() {
   deltaTime = std::chrono::duration<float>(timeNow - timeLast).count();
   timeLast = timeNow;
   assetLoader.Update();
+  assetManager.UpdateComponents<Transform>();
   for (auto system : systems)
     system->Update(deltaTime);
+};
+void Application::LateUpdate() {
+  for (auto system : systems)
+    system->LateUpdate(deltaTime);
   glfwSwapBuffers(window);
   glfwPollEvents();
-};
+}
 void Application::Shutdown() {
   for (const auto system : systems)
     system->Shutdown();
@@ -142,8 +142,10 @@ void Application::Shutdown() {
 void Application::Run() {
   Init();
   Start();
-  while (Status())
+  while (Status()) {
     Update();
+    LateUpdate();
+  }
   Shutdown();
 }
 void Application::RegisterCommand(ICommand* command) {
@@ -153,7 +155,7 @@ void Application::UnregisterCommand(const std::string& name) {
   commandManager.Unregister(name);
 }
 int Application::DispatchCommand(const std::string& input, std::string& message) {
-  return commandManager.Dispatch(this, input, message);
+  return commandManager.Dispatch(input, message);
 }
 void Application::WindowCloseCallback(GLFWwindow* window) {
   glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -231,6 +233,11 @@ void Application::KeyCallback(GLFWwindow* window, int key, int scancode, int act
   if (instance)
     instance->inputManager.KeyCallback(window, key, scancode, action, mods);
 }
+void Application::CharCallback(GLFWwindow* window, unsigned int codepoint) {
+  auto instance = static_cast<Application*>(glfwGetWindowUserPointer(window));
+  if (instance)
+    instance->inputManager.CharCallback(window, codepoint);
+}
 void Application::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
   auto instance = static_cast<Application*>(glfwGetWindowUserPointer(window));
   if (instance)
@@ -254,205 +261,173 @@ void Application::SetWindowIcon(const std::filesystem::path& path) {
   } else
     spdlog::error("Failed to load app icon: '{}'.", path.string());
 }
-int Application::CreateEntity(std::string& name) {
+ID Application::CreateEntity(std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
-    return -1;
-  return scene->GetEntityManager().Create(name);
+    return ID::Invalid();
+  return scene->CreateEntity(name);
 }
-void Application::DeleteEntity(unsigned int id) {
+void Application::DeleteEntity(const ID id) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
-  scene->GetEntityManager().Delete(id);
+  scene->DeleteEntity(id);
 }
-int Application::CreateAsset(std::string& name) {
+ID Application::CreateAsset(std::string& name) {
   return assetManager.Create(name);
 }
-void Application::DeleteAsset(unsigned int id) {
+void Application::DeleteAsset(ID id) {
   assetManager.Delete(id);
 }
 void Application::DeleteEntity(const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
-  scene->GetEntityManager().Delete(name);
+  scene->DeleteEntity(name);
 }
 void Application::DeleteAllEntities() {
   auto scene = GetActiveScene();
   if (!scene)
     return;
-  scene->GetEntityManager().DeleteAll();
+  scene->DeleteAllEntities();
 }
 void Application::DeleteAllEntities(const std::string& prefix) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
-  scene->GetEntityManager().DeleteAll(prefix);
+  scene->DeleteAllEntities(prefix);
 }
 size_t Application::GetEntityCount() {
   auto scene = GetActiveScene();
   if (!scene)
     return 0;
-  return scene->GetEntityManager().GetCount();
+  return scene->entityManager.GetCount();
 }
-std::string Application::GetEntityName(unsigned int id) {
+std::string Application::GetEntityName(const ID id) {
   auto scene = GetActiveScene();
   if (!scene)
     return "";
-  return scene->GetEntityManager().GetName(id);
+  return scene->entityManager.GetName(id);
 }
-std::string Application::GetAssetName(unsigned int id) {
+std::string Application::GetAssetName(const ID id) {
   return assetManager.GetName(id);
 }
-bool Application::IsEntity(unsigned int id) {
+bool Application::IsEntity(const ID id) {
   auto scene = GetActiveScene();
   if (!scene)
     return false;
-  return scene->GetEntityManager().IsEntity(id);
+  return scene->entityManager.IsEntity(id);
 }
-int Application::GetEntityId(const std::string& name) {
+ID Application::GetEntityId(const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
-    return -1;
-  return scene->GetEntityManager().GetId(name);
+    return ID::Invalid();
+  return scene->entityManager.GetId(name);
 }
-int Application::GetAssetId(const std::string& name) {
+ID Application::GetAssetId(const std::string& name) {
   return assetManager.GetId(name);
 }
-void Application::RenameEntity(unsigned int id, std::string& name) {
+void Application::RenameEntity(const ID id, std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
-  scene->GetEntityManager().Rename(id, name);
+  scene->entityManager.Rename(id, name);
 }
-IComponent* Application::AddEntityComponent(unsigned int id, const std::string& name) {
+IComponent* Application::AddEntityComponent(const ID id, const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return nullptr;
-  return scene->GetEntityManager().AddComponent(id, name);
+  return scene->entityManager.AddComponent(id, name);
 }
-void Application::RemoveEntityComponent(unsigned int id, ComponentType type) {
+void Application::RemoveEntityComponent(const ID id, ComponentType type) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
-  scene->GetEntityManager().RemoveComponent(id, type);
+  scene->entityManager.RemoveComponent(id, type);
 }
-void Application::RemoveEntityComponent(unsigned int id, const std::string& name) {
+void Application::RemoveEntityComponent(const ID id, const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return;
-  scene->GetEntityManager().RemoveComponent(id, name);
+  scene->entityManager.RemoveComponent(id, name);
 }
-IComponent* Application::GetEntityComponent(unsigned int id, ComponentType type) {
+IComponent* Application::GetEntityComponent(const ID id, ComponentType type) {
   auto scene = GetActiveScene();
   if (!scene)
     return nullptr;
-  return scene->GetEntityManager().GetComponent(id, type);
+  return scene->entityManager.GetComponent(id, type);
 }
-IComponent* Application::GetEntityComponent(unsigned int id, const std::string& name) {
+IComponent* Application::GetEntityComponent(const ID id, const std::string& name) {
   auto scene = GetActiveScene();
   if (!scene)
     return nullptr;
-  return scene->GetEntityManager().GetComponent(id, name);
+  return scene->entityManager.GetComponent(id, name);
 }
-std::vector<IComponent*> Application::GetAllEntityComponents(unsigned int id) {
+std::vector<IComponent*> Application::GetAllEntityComponents(const ID id) {
   auto scene = GetActiveScene();
   if (!scene)
     return std::vector<IComponent*>{};
-  return scene->GetEntityManager().GetAllComponents(id);
+  return scene->entityManager.GetAllComponents(id);
 }
-std::vector<std::string> Application::GetMissingEntityComponents(unsigned int id) {
+std::vector<std::string> Application::GetMissingEntityComponents(const ID id) {
   auto scene = GetActiveScene();
   if (!scene)
     return std::vector<std::string>{};
-  return scene->GetEntityManager().GetMissingComponents(id);
+  return scene->entityManager.GetMissingComponents(id);
 }
-bool Application::AddChildEntity(unsigned int parent, unsigned int child) {
+void Application::SortEntityTransforms() {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->SortTransforms();
+}
+void Application::UpdateEntityTransforms() {
+  auto scene = GetActiveScene();
+  if (!scene)
+    return;
+  scene->UpdateTransforms();
+}
+bool Application::AddChildEntity(const ID parent, const ID child) {
   auto scene = GetActiveScene();
   if (!scene)
     return false;
-  return scene->GetEntityManager().AddChild(parent, child);
+  return scene->entityManager.AddChild(parent, child);
 }
-bool Application::EntityHasParent(unsigned int id) {
+bool Application::EntityHasParent(const ID id) {
   auto scene = GetActiveScene();
   if (!scene)
     return false;
-  return scene->GetEntityManager().HasParent(id);
+  return scene->entityManager.HasParent(id);
 }
-bool Application::EntityHasChildren(unsigned int id) {
+bool Application::EntityHasChildren(const ID id) {
   auto scene = GetActiveScene();
   if (!scene)
     return false;
-  return scene->GetEntityManager().HasChildren(id);
+  return scene->entityManager.HasChildren(id);
 }
-glm::vec3 Application::GetRandomPosition(float r) {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> dist(.0f, 1.0f);
-  auto theta = dist(gen) * 2.0f * glm::pi<float>();
-  auto phi = acos(2.0f * dist(gen) - 1.0f);
-  auto u = dist(gen);
-  auto x = sin(phi) * cos(theta);
-  auto y = sin(phi) * sin(theta);
-  auto z = cos(phi);
-  glm::vec3 direction(x, y, z);
-  auto radius = r * std::cbrt(u);
-  return direction * radius;
-}
-int Application::Spawn(std::string& name, int parentId, bool randomPos, float spawnRadius) {
-  // TODO: this shouldn't be a part of the Application class
-  auto assetId = assetManager.GetId(name);
-  if (assetId < 0)
-    return -1;
-  auto entityId = CreateEntity(name);
-  auto [assetTransform, mesh, material] = assetManager.GetComponents<Transform, Mesh, Material>(assetId);
-  if (assetTransform) {
-    auto entityTransform = AddEntityComponent<Transform>(entityId);
-    assetTransform->CopyTo(*entityTransform);
-    entityTransform->localDirty = true;
-    entityTransform->parent = parentId;
-    if (randomPos)
-      entityTransform->position = GetRandomPosition(spawnRadius);
-  }
-  if (mesh) {
-    auto filter = AddEntityComponent<MeshFilter>(entityId);
-    mesh->CopyTo(filter->mesh);
-  }
-  if (material) {
-    auto renderer = AddEntityComponent<MeshRenderer>(entityId);
-    material->CopyTo(renderer->material);
-  }
-  ForEachChildAsset(assetId, [this, &entityId](unsigned int childAssetId) {
-    auto name = assetManager.GetName(childAssetId);
-    auto childEntityId = Spawn(name, entityId, false);
-    AddChildEntity(entityId, childEntityId);
-  });
-  return entityId;
-}
-void Application::SpawnMulti(const std::string& name, int count, float radius) {
-  for (auto i = 0; i < count; ++i) {
-    auto nameTemp = name;
-    Spawn(nameTemp, -1, true, radius);
-  }
-}
-int Application::GetFPS() {
+size_t Application::GetFPS() {
   auto renderingSystem = GetSystem<RenderingSystem>();
   if (!renderingSystem)
     return 0;
   return renderingSystem->GetFPS();
 }
-bool Application::GetKeyDown(int key) const {
-  return inputManager.GetKeyDown(key);
+bool Application::GetKey(int key) const {
+  return inputManager.GetState(key);
 }
-bool Application::GetButtonDown(int button) const {
-  return inputManager.GetButtonDown(button);
+bool Application::GetKeyDown(int key) const {
+  return inputManager.IsPressed(key);
 }
 bool Application::GetKeyUp(int key) const {
-  return inputManager.GetKeyUp(key);
+  return inputManager.IsReleased(key);
+}
+bool Application::GetButton(int button) const {
+  return inputManager.GetState(button);
+}
+bool Application::GetButtonDown(int button) const {
+  return inputManager.IsPressed(button);
 }
 bool Application::GetButtonUp(int button) const {
-  return inputManager.GetButtonUp(button);
+  return inputManager.IsReleased(button);
 }
 glm::vec2 Application::GetMousePos() const {
   return inputManager.GetMousePos();
@@ -463,26 +438,35 @@ glm::vec2 Application::GetWASDKeys() const {
 glm::vec2 Application::GetArrowKeys() const {
   return inputManager.GetArrow();
 };
-void Application::EnableAllKeys() {
-  inputManager.EnableAllKeys();
+void Application::EnableKeys() {
+  inputManager.EnableKeys();
 }
-void Application::DisableAllKeys() {
-  inputManager.DisableAllKeys();
+void Application::DisableKeys() {
+  inputManager.DisableKeys();
 }
-void Application::RegisterInputCallback(int key, int action, std::function<void()> callback, std::string description) {
-  inputManager.RegisterCallback(key, action, callback, description);
+void Application::EnableButtons() {
+  inputManager.EnableButtons();
 }
-void Application::UnregisterInputCallback(int key, int action) {
-  inputManager.UnregisterCallback(key, action);
+void Application::DisableButtons() {
+  inputManager.DisableButtons();
 }
-void Application::UpdateEntityWorldTransform(unsigned int id) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->GetEntityManager().UpdateWorldTransform(id);
+void Application::EnableInputs() {
+  inputManager.EnableAll();
 }
-void Application::UpdateAssetWorldTransform(unsigned int id) {
-  assetManager.UpdateWorldTransform(id);
+void Application::DisableInputs() {
+  inputManager.DisableAll();
+}
+void Application::RegisterInputAction(int trigger, InputAction action, bool press) {
+  inputManager.RegisterAction(trigger, action, press);
+}
+void Application::RegisterInputAction(const std::string& trigger, InputAction action) {
+  inputManager.RegisterAction(trigger, action);
+}
+void Application::UnregisterInputAction(int trigger, bool press) {
+  inputManager.UnregisterAction(trigger, press);
+}
+void Application::UnregisterInputAction(const std::string& trigger) {
+  inputManager.UnregisterAction(trigger);
 }
 Texture Application::CreateCubeMapFromEquirect(Texture equirect) {
   auto renderingSystem = GetSystem<RenderingSystem>();
@@ -514,7 +498,7 @@ void Application::LoadModelAsync(const std::filesystem::path& path) {
 void Application::LoadTextureAsync(const std::filesystem::path& path, TextureType type) {
   assetLoader.LoadTextureAsync(path, type);
 }
-int Application::LoadPrimitive(PrimitiveType id) {
+ID Application::LoadPrimitive(PrimitiveType id) {
   return assetLoader.LoadPrimitive(id);
 }
 } // namespace kuki

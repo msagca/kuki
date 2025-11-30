@@ -1,18 +1,22 @@
 #pragma once
-#include "component/component_traits.hpp"
-#include "editor.hpp"
-#include <component/camera.hpp>
-#include <component/component.hpp>
-#include <component/light.hpp>
-#include <component/material.hpp>
-#include <component/mesh_filter.hpp>
-#include <component/mesh_renderer.hpp>
-#include <component/script.hpp>
-#include <component/skybox.hpp>
-#include <component/texture.hpp>
+#ifndef GLM_ENABLE_EXPERIMENTAL
+#define GLM_ENABLE_EXPERIMENTAL
+#endif
+#include <camera.hpp>
+#include <component.hpp>
+#include <component_traits.hpp>
+#include <editor.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/euler_angles.hpp>
+#include <glm/trigonometric.hpp>
 #include <imgui.h>
+#include <light.hpp>
+#include <material.hpp>
+#include <mesh_filter.hpp>
+#include <mesh_renderer.hpp>
+#include <skybox.hpp>
 #include <string>
+#include <texture.hpp>
 #include <variant>
 using namespace kuki;
 template <typename T>
@@ -20,6 +24,23 @@ struct DisplayTraits {
   static_assert(sizeof(T) == 0, "DisplayTraits must be specialized for this type.");
   static const std::string GetName();
   static void DisplayProperties(T*, EditorContext&, int&);
+};
+template <>
+struct DisplayTraits<BoneData> {
+  static const std::string GetName() {
+    return "BoneData";
+  }
+  static void DisplayProperties(BoneData* boneData, EditorContext& context) {
+    constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
+    if (!boneData)
+      return;
+    auto ssbo = boneData->boneSSBO;
+    if (ImGui::InputInt("SSBO", &ssbo))
+      boneData->boneSSBO = ssbo;
+    auto count = boneData->boneCount;
+    if (ImGui::InputInt("Bone Count", &count))
+      boneData->boneCount = count;
+  }
 };
 template <>
 struct DisplayTraits<Camera> {
@@ -30,64 +51,67 @@ struct DisplayTraits<Camera> {
     constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
     if (!camera)
       return;
-    auto dirty = false;
+    auto settingsDirty = false;
     static auto& types = EnumTraits<CameraType>::GetNames();
     auto type = static_cast<int>(camera->type);
     if (ImGui::Combo("Type", &type, types.data(), types.size())) {
       camera->type = static_cast<CameraType>(type);
-      dirty = true;
+      settingsDirty = true;
     }
-    auto pitch = glm::degrees(camera->pitch);
-    if (ImGui::SliderFloat("Pitch", &pitch, -89.0f, 89.0f)) {
-      // TODO: make this DragFloat
-      camera->pitch = glm::radians(pitch);
-      dirty = true;
-    }
-    auto yaw = glm::degrees(camera->yaw);
-    if (ImGui::DragFloat("Yaw", &yaw)) {
-      while (yaw > 180.0f)
-        yaw -= 360.0f;
-      while (yaw < -180.0f)
-        yaw += 360.0f;
-      camera->yaw = glm::radians(yaw);
-      dirty = true;
+    auto rotationDirty = false;
+    auto rotationQuat = camera->rotation;
+    auto rotationDegrees = glm::degrees(glm::eulerAngles(rotationQuat));
+    if (ImGui::DragFloat3("Rotation", glm::value_ptr(rotationDegrees), .1f)) {
+      for (auto i = 0; i < 3; ++i) {
+        auto& angle = rotationDegrees[i];
+        while (angle > 180.0f)
+          angle -= 360.0f;
+        while (angle < -180.0f)
+          angle += 360.0f;
+      }
+      auto rotationRadians = glm::radians(rotationDegrees);
+      camera->rotation = glm::quat(rotationRadians);
+      rotationDirty = true;
     }
     if (camera->type == CameraType::Perspective) {
       auto fov = camera->fov;
       if (ImGui::SliderFloat("FOV", &fov, .0f, 180.0f)) {
         camera->fov = fov;
-        dirty = true;
+        settingsDirty = true;
       }
       auto aspectRatio = camera->aspectRatio;
       if (ImGui::SliderFloat("Aspect Ratio", &aspectRatio, .1f, 10.0f)) {
         camera->aspectRatio = aspectRatio;
-        dirty = true;
+        settingsDirty = true;
       }
     }
     auto nearPlane = camera->nearPlane;
     if (ImGui::DragFloat("Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT)) {
       camera->nearPlane = nearPlane;
-      dirty = true;
+      settingsDirty = true;
     }
     auto farPlane = camera->farPlane;
     if (ImGui::DragFloat("Far Plane", &farPlane, .1f, .0f, MAX_FLOAT)) {
       camera->farPlane = farPlane;
-      dirty = true;
+      settingsDirty = true;
     }
     if (camera->type == CameraType::Orthographic) {
       auto orthoSize = camera->orthoSize;
       if (ImGui::DragFloat("Size", &orthoSize, .1f, .0f, MAX_FLOAT)) {
         camera->orthoSize = orthoSize;
-        dirty = true;
+        settingsDirty = true;
       }
     }
+    auto positionDirty = false;
     auto position = camera->position;
     if (ImGui::DragFloat3("Position", glm::value_ptr(position), .1f)) {
       camera->position = position;
-      dirty = true;
+      positionDirty = true;
     }
-    if (dirty)
-      camera->Update();
+    camera->positionDirty |= positionDirty;
+    camera->rotationDirty |= rotationDirty;
+    camera->settingsDirty |= settingsDirty;
+    camera->uboDirty |= positionDirty || rotationDirty || settingsDirty;
   }
 };
 template <>
@@ -115,6 +139,7 @@ struct DisplayTraits<Light> {
     if (ImGui::ColorEdit3("Specular Color", glm::value_ptr(specular)))
       light->specular = specular;
     if (light->type == LightType::Point) {
+      // TODO: expose these in a more user-friendly fashion
       auto constant = light->constant;
       if (ImGui::SliderFloat("Constant Term", &constant, .0f, 1.0f))
         light->constant = constant;
@@ -267,15 +292,12 @@ struct DisplayTraits<Mesh> {
   static void DisplayProperties(Mesh* mesh, EditorContext& context) {
     if (!mesh)
       return;
-    auto vertexArray = mesh->vertexArray;
-    if (ImGui::InputInt("Vertex Array Object", &vertexArray))
-      mesh->vertexArray = vertexArray;
-    auto vertexBuffer = mesh->vertexBuffer;
-    if (ImGui::InputInt("Vertex Buffer Object", &vertexBuffer))
-      mesh->vertexBuffer = vertexBuffer;
-    auto indexBuffer = mesh->indexBuffer;
-    if (ImGui::InputInt("Element Buffer Object", &indexBuffer))
-      mesh->indexBuffer = indexBuffer;
+    auto vao = mesh->vao;
+    if (ImGui::InputInt("Vertex Array Object", &vao))
+      mesh->vao = vao;
+    auto ebo = mesh->ebo;
+    if (ImGui::InputInt("Element Buffer Object", &ebo))
+      mesh->ebo = ebo;
     auto vertexCount = mesh->vertexCount;
     if (ImGui::InputInt("Vertex Count", &vertexCount))
       mesh->vertexCount = vertexCount;
@@ -310,19 +332,6 @@ struct DisplayTraits<MeshRenderer> {
     if (!renderer)
       return;
     DisplayTraits<Material>::DisplayProperties(&renderer->material, context);
-  }
-};
-template <>
-struct DisplayTraits<Script> {
-  static const std::string GetName() {
-    return "Script";
-  }
-  static void DisplayProperties(Script* script, EditorContext& context) {
-    if (!script)
-      return;
-    auto scriptId = script->id;
-    if (ImGui::InputInt("Script ID", &scriptId))
-      script->id = scriptId;
   }
 };
 template <>
@@ -422,10 +431,11 @@ struct DisplayTraits<Transform> {
     constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
     if (!transform)
       return;
+    auto dirty = false;
     auto position = transform->position;
     if (ImGui::DragFloat3("Position", glm::value_ptr(position), .1f)) {
       transform->position = position;
-      transform->localDirty = true;
+      dirty = true;
     }
     auto rotationQuat = transform->rotation;
     auto rotationDegrees = glm::degrees(glm::eulerAngles(rotationQuat));
@@ -439,7 +449,7 @@ struct DisplayTraits<Transform> {
       }
       auto rotationRadians = glm::radians(rotationDegrees);
       transform->rotation = glm::quat(rotationRadians);
-      transform->localDirty = true;
+      dirty = true;
     }
     auto scale = transform->scale;
     static auto uniformMode = false;
@@ -447,22 +457,18 @@ struct DisplayTraits<Transform> {
       auto uniformScale = scale.x;
       if (ImGui::DragFloat("Scale", &uniformScale, .1f, .0f, MAX_FLOAT)) {
         transform->scale = glm::vec3(uniformScale);
-        transform->localDirty = true;
+        dirty = true;
       }
       ImGui::SameLine();
       ImGui::Checkbox("Uniform", &uniformMode);
     } else {
       if (ImGui::DragFloat3("Scale", glm::value_ptr(scale), .1f, .0f, MAX_FLOAT)) {
         transform->scale = scale;
-        transform->localDirty = true;
+        dirty = true;
       }
       ImGui::SameLine();
       ImGui::Checkbox("Uniform", &uniformMode);
     }
-    auto parent = transform->parent;
-    if (ImGui::InputInt("Parent ID", &parent)) {
-      transform->parent = parent;
-      transform->worldDirty = true;
-    }
+    transform->dirty |= dirty;
   }
 };

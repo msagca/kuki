@@ -1,9 +1,17 @@
 project(KukiEditor)
-file(GLOB_RECURSE C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
-file(GLOB_RECURSE CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+file(
+  GLOB_RECURSE C_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+)
+file(
+  GLOB_RECURSE CPP_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
 set(IMAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/image")
-file(GLOB_RECURSE JPG_SOURCES "${IMAGE_SOURCE_DIR}/*.jpg")
-file(GLOB_RECURSE PNG_SOURCES "${IMAGE_SOURCE_DIR}/*.png")
+file(GLOB_RECURSE JPG_SOURCES CONFIGURE_DEPENDS "${IMAGE_SOURCE_DIR}/*.jpg")
+file(GLOB_RECURSE PNG_SOURCES CONFIGURE_DEPENDS "${IMAGE_SOURCE_DIR}/*.png")
 set(IMAGE_SOURCES "${JPG_SOURCES}" "${PNG_SOURCES}")
 add_executable("${PROJECT_NAME}" "${C_SOURCES}" "${CPP_SOURCES}")
 target_include_directories(
@@ -12,18 +20,14 @@ target_include_directories(
 )
 target_link_libraries(
   "${PROJECT_NAME}"
-  PRIVATE kuki_engine imgui imgui_filebrowser imguizmo freetype
+  PRIVATE kuki_engine imgui imgui_filebrowser imguizmo
 )
 target_sources("${PROJECT_NAME}" PRIVATE "${IMAGE_SOURCES}")
 install(DIRECTORY "${IMAGE_SOURCE_DIR}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(TARGETS "${PROJECT_NAME}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
-message(
-  STATUS
-  "Build complete. Binaries will be installed to '${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}'."
-)
 install(
   CODE
-    "message(STATUS \"Installation complete. Binaries are located in '${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}'.\")"
+    "message(STATUS \"Installation complete. Binaries can be found at: ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")"
 )
 if(UNIX AND NOT APPLE)
   set_target_properties(
@@ -40,4 +44,7 @@ add_custom_command(
   COMMAND
     "${CMAKE_COMMAND}" -E copy_directory $<TARGET_FILE_DIR:kuki_engine>/shader
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
+  COMMAND
+    "${CMAKE_COMMAND}" -E cmake_echo_color
+    "Build successful. Binaries can be found at: $<TARGET_FILE:${PROJECT_NAME}>"
 )

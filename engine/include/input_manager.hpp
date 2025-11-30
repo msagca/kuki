@@ -1,72 +1,65 @@
 #pragma once
-#include <functional>
-#include <GLFW/glfw3.h>
+#include <bitset>
 #include <glm/ext/vector_float2.hpp>
 #include <kuki_engine_export.h>
 #include <string>
+#include <trie.hpp>
 #include <unordered_map>
-#include <unordered_set>
+struct GLFWwindow;
 namespace kuki {
 class KUKI_ENGINE_API InputManager {
 private:
-  bool keysEnabled{true};
-  bool updateBindings{false};
   double lastInputTime{};
   glm::vec2 mousePos{};
-  std::unordered_map<int, int> keyStates;
-  std::unordered_map<int, int> buttonStates;
-  std::unordered_map<int, std::function<void()>> pressCallbacks;
-  std::unordered_map<int, std::function<void()>> releaseCallbacks;
-  std::unordered_set<int> disabledKeys;
-  std::unordered_map<int, std::string> keyDescriptions;
-  std::unordered_map<std::string, std::string> keyBindings;
-  void SetKeyState(int, int);
-  void SetButtonState(int, int);
-  void SetMousePos(double, double);
-  std::string GLFWKeyToString(int);
-  void DisableKey(int);
-  void EnableKey(int);
+  std::bitset<256> inputState{0};
+  std::bitset<256> pressState{0};
+  std::bitset<256> releaseState{0};
+  std::unordered_map<unsigned char, InputAction> pressActions;
+  std::unordered_map<unsigned char, InputAction> releaseActions;
+  std::vector<unsigned char> keyseq;
+  Trie<ActionNode> keymap;
+  bool keysEnabled{true};
+  bool buttonsEnabled{true};
+  bool SequenceInProgress() const;
+  void FireAction(unsigned char);
+  /// @returns An index for the given GLFW key or button
+  static unsigned char GLFWInputToIndex(int);
+  /// @returns A string representation for the given GLFW key or button
+  static std::string GLFWKeyToString(int);
 public:
-  /// @return true if the key is pressed or repeated, false otherwise
-  bool GetKey(int) const;
-  /// @return true if the button is pressed or repeated, false otherwise
-  bool GetButton(int) const;
-  /// @return true if the key is pressed, false otherwise
-  bool GetKeyDown(int) const;
-  /// @return true if the button is pressed, false otherwise
-  bool GetButtonDown(int) const;
-  /// @return true if the key is released, false otherwise
-  bool GetKeyUp(int) const;
-  /// @return true if the button is released, false otherwise
-  bool GetButtonUp(int) const;
+  /// @return true if the key/button is pressed or repeated, false otherwise
+  bool GetState(int) const;
+  /// @return true if the key/button is pressed, false otherwise
+  bool IsPressed(int) const;
+  /// @return true if the key/button is released, false otherwise
+  bool IsReleased(int) const;
   /// @brief Get the vertical (W-S) and horizontal (A-D) input respectively as a 2D vector
-  /// @return A float for each axis with a value of either 0, 1 (up/right) or -1 (down/left)
   glm::vec2 GetWASD() const;
+  /// @brief Get the vertical (Up-Down) and horizontal (Left-Right) input respectively as a 2D vector
   glm::vec2 GetArrow() const;
   glm::vec2 GetMousePos() const;
   /// @return Time passed since last user input
   double GetInactivityTime() const;
-  /// @brief Register a function to be called when the specified key-action combination is observed
-  void RegisterCallback(int, int, std::function<void()>, std::string = "");
-  /// @brief Unregister the callback function for the given key-action combination
-  void UnregisterCallback(int, int);
-  const std::unordered_map<std::string, std::string>& GetKeyBindings();
-  template <typename... T>
-  void DisableKeys(T...);
-  template <typename... T>
-  void EnableKeys(T...);
-  void DisableAllKeys();
-  void EnableAllKeys();
+  /// @brief Register an action that is triggered by the given character sequence
+  /// @returns true if both the trigger and action are valid and there is no collision, false otherwise
+  bool RegisterAction(const std::string&, InputAction);
+  /// @brief Register an action that is triggered by the given key/button, overwrite any existing action
+  void RegisterAction(int, InputAction, bool = true);
+  /// @brief Unregister the action associated with the given character sequence
+  /// @returns true if a mapping was found and removed, false otherwise
+  bool UnregisterAction(const std::string&);
+  /// @brief Unregister the action associated with the given key/button
+  /// @returns true if a mapping was found and removed, false otherwise
+  bool UnregisterAction(int, bool = true);
+  void EnableKeys();
+  void DisableKeys();
+  void EnableButtons();
+  void DisableButtons();
+  void EnableAll();
+  void DisableAll();
+  void CharCallback(GLFWwindow*, unsigned int);
   void KeyCallback(GLFWwindow*, int, int, int, int);
   void MouseButtonCallback(GLFWwindow*, int, int, int);
   void CursorPosCallback(GLFWwindow*, double, double);
 };
-template <typename... T>
-void InputManager::DisableKeys(T... args) {
-  (DisableKey(args), ...);
-}
-template <typename... T>
-void InputManager::EnableKeys(T... args) {
-  (EnableKey(args), ...);
-}
 } // namespace kuki

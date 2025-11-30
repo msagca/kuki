@@ -1,10 +1,13 @@
 #include <game.hpp>
-using namespace kuki;
 Game::Game()
-  : Application(AppConfig{"Game"}) {}
+  : Application(AppConfig{}) {}
+Game::~Game() {
+  Shutdown();
+}
 void Game::Start() {}
 bool Game::Status() {
   return true;
 }
 void Game::Update() {}
+void Game::LateUpdate() {}
 void Game::Shutdown() {}

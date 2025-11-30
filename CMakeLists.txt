@@ -1,17 +1,20 @@
 cmake_minimum_required(VERSION 3.21)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Export compile commands")
-set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard")
+set(CMAKE_CXX_STANDARD 20 CACHE STRING "Set C++ standard to 20")
 set(CMAKE_CXX_STANDARD_REQUIRED ON CACHE BOOL "Require C++ standard")
 set(CMAKE_CXX_EXTENSIONS OFF CACHE BOOL "Disable compiler extensions")
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Disable shared libraries")
-project(Kuki)
-if(MSVC)
-  set(CMAKE_CXX_FLAGS_RELEASE "/O2")
-else()
-  set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+if(BUILD_SHARED_LIBS)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
+project(Kuki)
+include(GNUInstallDirs)
 option(BUILD_TESTS "Build engine tests" OFF)
 option(BUILD_GAMES "Build game samples" OFF)
+add_compile_options(
+  $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:MSVC>>:/O2>
+  $<$<AND:$<CONFIG:Release>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-O2>
+)
 # third party libraries
 ## assimp
 set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
@@ -23,28 +26,20 @@ set(ASSIMP_INJECT_DEBUG_POSTFIX OFF)
 set(ASSIMP_INSTALL_PDB OFF)
 set(ASSIMP_WARNINGS_AS_ERRORS OFF)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/assimp")
-## freetype
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/freetype")
 ## opengl
 find_package(OpenGL REQUIRED)
 ## glad
-add_library(glad STATIC "${CMAKE_CURRENT_SOURCE_DIR}/external/glad/src/glad.c")
+add_library(glad "${CMAKE_CURRENT_SOURCE_DIR}/external/glad/src/glad.c")
 target_include_directories(
   glad
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/glad/include"
 )
 target_link_libraries(glad PUBLIC OpenGL::GL)
-set_target_properties(
-  glad
-  PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/glad"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/glad"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/glad"
-)
 ## glfw
 set(GLFW_BUILD_DOCS OFF)
 set(GLFW_BUILD_EXAMPLES OFF)
 set(GLFW_BUILD_TESTS OFF)
+set(GLFW_BUILD_WAYLAND OFF)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glfw")
 ## glm
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glm")
@@ -58,24 +53,15 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_widgets.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_opengl3.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/misc/freetype/imgui_freetype.cpp"
 )
-add_library(imgui STATIC "${IMGUI_CPP_SOURCES}")
+add_library(imgui "${IMGUI_CPP_SOURCES}")
 target_include_directories(
   imgui
   PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends"
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/misc/freetype"
 )
-target_link_libraries(imgui PUBLIC OpenGL::GL glfw freetype)
-set_target_properties(
-  imgui
-  PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imgui"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imgui"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imgui"
-)
+target_link_libraries(imgui PUBLIC OpenGL::GL glfw)
 ## imgui-filebrowser
 add_library(imgui_filebrowser INTERFACE)
 target_include_directories(
@@ -85,7 +71,6 @@ target_include_directories(
 ## imguizmo
 add_library(
   imguizmo
-  STATIC
   "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/ImGuizmo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/GraphEditor.cpp"
 )
@@ -94,17 +79,8 @@ target_include_directories(
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo"
 )
 target_link_libraries(imguizmo PUBLIC imgui)
-set_target_properties(
-  imguizmo
-  PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imguizmo"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imguizmo"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/imguizmo"
-)
 ## json
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/json")
-## openxr
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/openxr")
 ## spdlog
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog")
 ## stb
@@ -116,7 +92,6 @@ target_include_directories(
 ## tinyexr
 add_library(
   tinyexr
-  STATIC
   "${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr/deps/miniz/miniz.c"
 )
 target_include_directories(
@@ -124,13 +99,6 @@ target_include_directories(
   PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr/deps/miniz"
-)
-set_target_properties(
-  tinyexr
-  PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/tinyexr"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/tinyexr"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/external/tinyexr"
 )
 # targets to build
 add_subdirectory(engine)

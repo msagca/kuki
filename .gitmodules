@@ -1,40 +1,34 @@
+[submodule "external/assimp"]
+	path = external/assimp
+	url = https://github.com/assimp/assimp
 [submodule "external/glfw"]
 	path = external/glfw
 	url = https://github.com/glfw/glfw
 [submodule "external/glm"]
 	path = external/glm
 	url = https://github.com/g-truc/glm
-[submodule "external/assimp"]
-	path = external/assimp
-	url = https://github.com/assimp/assimp
-[submodule "external/json"]
-	path = external/json
-	url = https://github.com/nlohmann/json
+[submodule "external/googletest"]
+	path = external/googletest
+	url = https://github.com/google/googletest
 [submodule "external/imgui"]
 	path = external/imgui
 	url = https://github.com/ocornut/imgui
 	branch = docking
-[submodule "external/ImGuizmo"]
-	path = external/ImGuizmo
-	url = https://github.com/CedricGuillemet/ImGuizmo
-[submodule "external/stb"]
-	path = external/stb
-	url = https://github.com/nothings/stb
 [submodule "external/imgui-filebrowser"]
 	path = external/imgui-filebrowser
 	url = https://github.com/AirGuanZ/imgui-filebrowser
-[submodule "external/googletest"]
-	path = external/googletest
-	url = https://github.com/google/googletest
+[submodule "external/ImGuizmo"]
+	path = external/ImGuizmo
+	url = https://github.com/CedricGuillemet/ImGuizmo
+[submodule "external/json"]
+	path = external/json
+	url = https://github.com/nlohmann/json
 [submodule "external/spdlog"]
 	path = external/spdlog
 	url = https://github.com/gabime/spdlog
-[submodule "external/freetype"]
-	path = external/freetype
-	url = https://github.com/freetype/freetype
+[submodule "external/stb"]
+	path = external/stb
+	url = https://github.com/nothings/stb
 [submodule "external/tinyexr"]
 	path = external/tinyexr
 	url = https://github.com/syoyo/tinyexr
-[submodule "external/openxr"]
-	path = external/openxr
-	url = https://github.com/KhronosGroup/OpenXR-SDK.git

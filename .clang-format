@@ -7,7 +7,6 @@ AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: Empty
 AllowShortFunctionsOnASingleLine: Empty
-AllowShortLambdasOnASingleLine: true
 AlwaysBreakBeforeMultilineStrings: true
 BinPackArguments: false
 BinPackParameters: false
@@ -27,5 +26,4 @@ PackConstructorInitializers: NextLineOnly
 PointerAlignment: Left
 ReflowComments: false
 RequiresClausePosition: WithPreceding
-SortIncludes: Never
 SpacesInContainerLiterals: false

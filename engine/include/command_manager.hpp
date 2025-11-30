@@ -4,7 +4,6 @@
 #include <unordered_map>
 #include <vector>
 namespace kuki {
-class Application;
 class KUKI_ENGINE_API CommandManager {
 private:
   std::unordered_map<std::string, ICommand*> commands;
@@ -14,6 +13,6 @@ public:
   ~CommandManager();
   void Register(ICommand*);
   void Unregister(const std::string&);
-  int Dispatch(Application*, const std::string&, std::string&);
+  int Dispatch(const std::string&, std::string&);
 };
 } // namespace kuki

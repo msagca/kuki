@@ -12,12 +12,14 @@ layout(location = 6) in vec4 i_model2;
 layout(location = 7) in vec4 i_model3;
 layout(location = 8) in vec4 i_baseColor;
 layout(location = 9) in int i_textureMask;
-uniform mat4 view;
-uniform mat4 projection;
+layout(std140, binding = 0) uniform i_cameraTransform {
+        mat4 view;
+        mat4 projection;
+};
 void main() {
-    mat4 model = mat4(i_model0, i_model1, i_model2, i_model3);
-    baseColor = i_baseColor;
-    texCoord = i_texCoord;
-    textureMask = i_textureMask;
-    gl_Position = projection * view * model * vec4(i_position, 1.0);
+        mat4 model = mat4(i_model0, i_model1, i_model2, i_model3);
+        baseColor = i_baseColor;
+        texCoord = i_texCoord;
+        textureMask = i_textureMask;
+        gl_Position = projection * view * model * vec4(i_position, 1.0);
 }
