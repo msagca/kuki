@@ -31,10 +31,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt update
-          sudo apt install -y build-essential cmake libgl1-mesa-dev ninja-build xorg-dev
+          sudo apt install -y build-essential cmake libgl1-mesa-dev libxkbcommon-dev ninja-build xorg-dev
       - uses: ilammy/msvc-dev-cmd@v1
-        if: runner.os == 'Windows'
-      - uses: Cyberboss/install-winget@v1
         if: runner.os == 'Windows'
       - name: Install Ninja for Windows
         if: runner.os == 'Windows'
