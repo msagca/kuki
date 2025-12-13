@@ -209,6 +209,7 @@ Mesh AssetLoader::CreateMesh(const aiMesh* aiMesh) {
     Vertex vertex{};
     vertex.position = glm::vec3(aiMesh->mVertices[i].x, aiMesh->mVertices[i].y, aiMesh->mVertices[i].z);
     vertex.normal = glm::vec3(aiMesh->mNormals[i].x, aiMesh->mNormals[i].y, aiMesh->mNormals[i].z);
+    // FIXME: some models do not have tangents, and the following access results in an exception
     vertex.tangent = glm::vec3(aiMesh->mTangents[i].x, aiMesh->mTangents[i].y, aiMesh->mTangents[i].z);
     vertex.boneIds = glm::ivec4(-1); // NOTE: -1 indicates that this hasn't been assigned yet, will be used later
     if (aiMesh->mTextureCoords[0]) {

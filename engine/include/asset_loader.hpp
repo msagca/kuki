@@ -101,6 +101,7 @@ public:
   ID LoadMesh(std::string&, const std::vector<Vertex>&, const std::vector<unsigned int>&);
   ID LoadMesh(std::string&, const std::vector<Vertex>&);
   ID LoadPrimitive(PrimitiveType);
+  /// @brief Load a model (or rather a scene)
   void LoadModelAsync(std::filesystem::path);
   void LoadTextureAsync(std::filesystem::path, TextureType = TextureType::Albedo);
 };

@@ -1,4 +1,5 @@
 #define GLM_ENABLE_EXPERIMENTAL
+#include <bounding_box.hpp>
 #include <camera.hpp>
 #include <cmath>
 #include <component.hpp>
@@ -10,37 +11,9 @@
 #include <glm/geometric.hpp>
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/quaternion.hpp>
-#include <mesh.hpp>
 #include <transform.hpp>
 #include <utility>
 namespace kuki {
-Plane::Plane()
-  : point(.0f), normal({.0f, 1.0f, .0f}) {}
-Plane::Plane(const glm::vec3& point, const glm::vec3& normal)
-  : point(point), normal(glm::normalize(normal)) {}
-Plane::Plane(const glm::vec4& plane) {
-  auto len = glm::length(glm::vec3(plane));
-  auto p = plane / len;
-  normal = glm::vec3(p);
-  point = -p.w * normal;
-}
-bool Plane::OnPositiveSide(const BoundingBox& bounds) const {
-  glm::vec3 positiveCorner{};
-  positiveCorner.x = (normal.x >= 0) ? bounds.max.x : bounds.min.x;
-  positiveCorner.y = (normal.y >= 0) ? bounds.max.y : bounds.min.y;
-  positiveCorner.z = (normal.z >= 0) ? bounds.max.z : bounds.min.z;
-  return SignedDistance(positiveCorner) >= 0;
-}
-float Plane::SignedDistance(const glm::vec3& point) const {
-  return glm::dot(normal, point - this->point);
-}
-bool Frustum::InFrustum(const BoundingBox& bounds) const {
-  const Plane planes[6] = {near, far, right, left, top, bottom};
-  for (const auto& plane : planes)
-    if (!plane.OnPositiveSide(bounds))
-      return false;
-  return true;
-}
 Camera::Camera()
   : IComponent(std::in_place_type<Camera>) {}
 Transform Camera::GetTransform() const {

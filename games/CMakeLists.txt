@@ -9,23 +9,23 @@ file(
   CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
-add_executable("${PROJECT_NAME}" "${C_SOURCES}" "${CPP_SOURCES}")
+add_executable(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
 target_include_directories(
-  "${PROJECT_NAME}"
+  ${PROJECT_NAME}
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
-target_link_libraries("${PROJECT_NAME}" PRIVATE kuki_engine)
-install(TARGETS "${PROJECT_NAME}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+target_link_libraries(${PROJECT_NAME} PRIVATE kuki_engine)
+install(TARGETS ${PROJECT_NAME} DESTINATION "${CMAKE_INSTALL_BINDIR}")
 if(UNIX AND NOT APPLE)
   set_target_properties(
-    "${PROJECT_NAME}"
+    ${PROJECT_NAME}
     PROPERTIES INSTALL_RPATH "$ORIGIN" BUILD_WITH_INSTALL_RPATH TRUE
   )
 endif()
 add_custom_command(
-  TARGET "${PROJECT_NAME}"
+  TARGET ${PROJECT_NAME}
   POST_BUILD
   COMMAND
-    "${CMAKE_COMMAND}" -E copy_directory $<TARGET_FILE_DIR:kuki_engine>/shader
+    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:kuki_engine>/shader
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
 )

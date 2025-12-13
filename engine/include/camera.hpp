@@ -1,32 +1,14 @@
 #pragma once
+#include <bounding_box.hpp>
 #include <component.hpp>
+#include <frustum.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <glm/trigonometric.hpp>
 #include <kuki_engine_export.h>
 #include <mesh.hpp>
+#include <plane.hpp>
 #include <transform.hpp>
 namespace kuki {
-struct KUKI_ENGINE_API Plane {
-  glm::vec3 point{};
-  glm::vec3 normal{.0f, 1.0f, .0f};
-  Plane();
-  Plane(const glm::vec3&, const glm::vec3&);
-  /// @brief Construct a plane from a given equation `ax + by + cz + d = 0`
-  Plane(const glm::vec4&);
-  /// @brief Determines whether the given bounding box is on the positive side of the plane
-  bool OnPositiveSide(const BoundingBox&) const;
-  float SignedDistance(const glm::vec3&) const;
-};
-struct KUKI_ENGINE_API Frustum {
-  Plane top{};
-  Plane bottom{};
-  Plane right{};
-  Plane left{};
-  Plane far{};
-  Plane near{};
-  bool InFrustum(const BoundingBox&) const;
-};
 struct KUKI_ENGINE_API CameraTransform {
   glm::mat4 view{};
   glm::mat4 projection{};

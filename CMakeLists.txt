@@ -1,9 +1,19 @@
 cmake_minimum_required(VERSION 3.21)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Export compile commands")
-set(CMAKE_CXX_STANDARD 20 CACHE STRING "Set C++ standard to 20")
-set(CMAKE_CXX_STANDARD_REQUIRED ON CACHE BOOL "Require C++ standard")
-set(CMAKE_CXX_EXTENSIONS OFF CACHE BOOL "Disable compiler extensions")
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "Disable shared libraries")
+set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard version to use")
+set(
+  CMAKE_CXX_STANDARD_REQUIRED
+  ON
+  CACHE BOOL
+  "Require the specified C++ standard"
+)
+set(
+  CMAKE_CXX_EXTENSIONS
+  OFF
+  CACHE BOOL
+  "Allow compiler-specific C++ extensions"
+)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries")
 if(BUILD_SHARED_LIBS)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
@@ -110,7 +120,9 @@ endif()
 if(BUILD_GAMES)
   add_subdirectory(games)
 endif()
-set_property(
-  DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-  PROPERTY VS_STARTUP_PROJECT "KukiEditor"
-)
+if(WIN32)
+  set_property(
+    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    PROPERTY VS_STARTUP_PROJECT "KukiEditor"
+  )
+endif()

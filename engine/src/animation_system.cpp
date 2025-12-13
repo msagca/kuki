@@ -11,6 +11,8 @@ void AnimationSystem::Start() {
 }
 void AnimationSystem::Update(float deltaTime) {
 }
+void AnimationSystem::LateUpdate(float deltaTime) {
+}
 void AnimationSystem::Shutdown() {
 }
 } // namespace kuki

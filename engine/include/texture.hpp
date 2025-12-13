@@ -4,12 +4,9 @@
 namespace kuki {
 struct KUKI_ENGINE_API Texture final : public IComponent {
   Texture();
-  Texture(const Texture&);
-  Texture& operator=(const Texture&);
   TextureType type{};
   int width{};
   int height{};
   int id{};
-  void CopyTo(Texture&) const;
 };
 } // namespace kuki

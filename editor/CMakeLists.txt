@@ -12,39 +12,45 @@ file(
 set(IMAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/image")
 file(GLOB_RECURSE JPG_SOURCES CONFIGURE_DEPENDS "${IMAGE_SOURCE_DIR}/*.jpg")
 file(GLOB_RECURSE PNG_SOURCES CONFIGURE_DEPENDS "${IMAGE_SOURCE_DIR}/*.png")
-set(IMAGE_SOURCES "${JPG_SOURCES}" "${PNG_SOURCES}")
-add_executable("${PROJECT_NAME}" "${C_SOURCES}" "${CPP_SOURCES}")
+set(IMAGE_SOURCES ${JPG_SOURCES} ${PNG_SOURCES})
+add_executable(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
 target_include_directories(
-  "${PROJECT_NAME}"
+  ${PROJECT_NAME}
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 target_link_libraries(
-  "${PROJECT_NAME}"
+  ${PROJECT_NAME}
   PRIVATE kuki_engine imgui imgui_filebrowser imguizmo
 )
-target_sources("${PROJECT_NAME}" PRIVATE "${IMAGE_SOURCES}")
+target_sources(${PROJECT_NAME} PRIVATE ${IMAGE_SOURCES})
 install(DIRECTORY "${IMAGE_SOURCE_DIR}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
-install(TARGETS "${PROJECT_NAME}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(TARGETS ${PROJECT_NAME} DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(
   CODE
     "message(STATUS \"Installation complete. Binaries can be found at: ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")"
 )
 if(UNIX AND NOT APPLE)
   set_target_properties(
-    "${PROJECT_NAME}"
+    ${PROJECT_NAME}
     PROPERTIES INSTALL_RPATH "$ORIGIN" BUILD_WITH_INSTALL_RPATH TRUE
   )
 endif()
+if(WIN32)
+  set_target_properties(
+    ${PROJECT_NAME}
+    PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FILE_DIR:${PROJECT_NAME}>
+  )
+endif()
 add_custom_command(
-  TARGET "${PROJECT_NAME}"
+  TARGET ${PROJECT_NAME}
   POST_BUILD
   COMMAND
-    "${CMAKE_COMMAND}" -E copy_directory "${IMAGE_SOURCE_DIR}"
+    ${CMAKE_COMMAND} -E copy_directory "${IMAGE_SOURCE_DIR}"
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/image
   COMMAND
-    "${CMAKE_COMMAND}" -E copy_directory $<TARGET_FILE_DIR:kuki_engine>/shader
+    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:kuki_engine>/shader
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
   COMMAND
-    "${CMAKE_COMMAND}" -E cmake_echo_color
+    ${CMAKE_COMMAND} -E cmake_echo_color
     "Build successful. Binaries can be found at: $<TARGET_FILE:${PROJECT_NAME}>"
 )
