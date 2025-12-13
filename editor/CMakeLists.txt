@@ -20,8 +20,12 @@ target_include_directories(
 )
 target_link_libraries(
   ${PROJECT_NAME}
-  PRIVATE kuki_engine glfw imgui imgui_filebrowser imguizmo
+  PRIVATE kuki_engine imgui imgui_filebrowser imguizmo
 )
+if(UNIX AND NOT APPLE)
+  find_package(X11 REQUIRED)
+  target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
+endif()
 target_sources(${PROJECT_NAME} PRIVATE ${IMAGE_SOURCES})
 install(DIRECTORY "${IMAGE_SOURCE_DIR}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(TARGETS ${PROJECT_NAME} DESTINATION "${CMAKE_INSTALL_BINDIR}")
