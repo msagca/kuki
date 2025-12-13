@@ -49,15 +49,16 @@ void CameraController::Update(float deltaTime) {
   camera.Update(); // NOTE: local camera needs to be updated manually
 }
 bool CameraController::UpdatePosition(float deltaTime) {
-  static constexpr auto THRESHOLD = 1e-6f;
+  static constexpr auto MOVE_SPEED = 5.0f;
+  static constexpr auto MOVE_THRESHOLD = 1e-6f;
   static constexpr auto BOOST_FACTOR_MAX = 10.0f;
   static constexpr auto BOOST_RAMP_UP_TIME = 3.0f;
   static constexpr auto BOOST_RAMP_DOWN_TIME = 1.0f;
   auto input = app.GetWASDKeys();
   // FIXME: prevent movement if there is a key sequence in progress
-  if (glm::length2(input) < THRESHOLD)
+  if (glm::length2(input) < MOVE_THRESHOLD)
     input = app.GetArrowKeys();
-  if (glm::length2(input) < THRESHOLD)
+  if (glm::length2(input) < MOVE_THRESHOLD)
     return false;
   static auto boostFactor = 1.0f;
   static auto boostTime = .0f;
@@ -67,25 +68,16 @@ bool CameraController::UpdatePosition(float deltaTime) {
   else
     boostTime = std::max(.0f, boostTime - deltaTime * (BOOST_RAMP_UP_TIME / BOOST_RAMP_DOWN_TIME));
   boostFactor = 1.0f + (BOOST_FACTOR_MAX - 1.0f) * (boostTime / BOOST_RAMP_UP_TIME);
-  auto velocity = moveSpeed * boostFactor * deltaTime;
+  auto velocity = MOVE_SPEED * boostFactor * deltaTime;
   camera.position += (camera.forward * input.y + camera.right * input.x) * velocity;
   return true;
 }
 bool CameraController::UpdateRotation(glm::vec2 mouseDiff) {
-  static constexpr auto THRESHOLD = 1e-6f;
-  if (glm::length2(mouseDiff) < THRESHOLD)
+  static constexpr auto MOVE_THRESHOLD = 1e-6f;
+  if (glm::length2(mouseDiff) < MOVE_THRESHOLD)
     return false;
   auto yaw = glm::angleAxis(-mouseDiff.x, glm::vec3(.0f, 1.f, .0f));
   auto pitch = glm::angleAxis(mouseDiff.y, glm::vec3(1.f, .0f, .0f));
   camera.rotation = yaw * camera.rotation * pitch;
   return true;
-}
-void CameraController::SetMouselook(bool value) {
-  mouselook = value;
-}
-bool CameraController::GetMouselook() const {
-  return mouselook;
-}
-Camera* CameraController::GetCamera() {
-  return &camera;
 }

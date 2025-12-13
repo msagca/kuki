@@ -18,8 +18,7 @@ void Editor::DrawManipulator(float width, float height) {
     return;
   auto windowPos = ImGui::GetWindowPos();
   ImGuizmo::SetRect(windowPos.x, windowPos.y, width, height);
-  auto camera = cameraController->GetCamera();
-  ImGuizmo::SetOrthographic(camera->type == CameraType::Orthographic);
+  ImGuizmo::SetOrthographic(cameraController->camera.type == CameraType::Orthographic);
   // TODO: for a multi-select, position the gizmo at the center of the selection, and apply manipulations to all entities
   Transform transform;
   auto transformComp = GetEntityComponent<Transform>(context.selectedEntity);
@@ -39,7 +38,7 @@ void Editor::DrawManipulator(float width, float height) {
   } else
     transform = *transformComp;
   ImGuizmo::SetDrawlist();
-  if (!ImGuizmo::Manipulate(glm::value_ptr(camera->transform.view), glm::value_ptr(camera->transform.projection), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(transform.local)))
+  if (!ImGuizmo::Manipulate(glm::value_ptr(cameraController->camera.transform.view), glm::value_ptr(cameraController->camera.transform.projection), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(transform.local)))
     return;
   glm::vec3 rotation;
   ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform.local), glm::value_ptr(transform.position), glm::value_ptr(rotation), glm::value_ptr(transform.scale));

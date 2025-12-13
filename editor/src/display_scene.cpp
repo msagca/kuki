@@ -27,7 +27,7 @@ void Editor::DisplayScene() {
   auto renderSystem = GetSystem<RenderingSystem>();
   if (renderSystem) {
     renderSystem->SetGizmoMask(context.gizmoMask);
-    auto texture = renderSystem->RenderSceneToTexture(cameraController->GetCamera());
+    auto texture = renderSystem->RenderSceneToTexture(&cameraController->camera);
     if (texture > 0) {
       auto& config = GetConfig();
       auto width = config.screenWidth;

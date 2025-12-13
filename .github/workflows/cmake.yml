@@ -65,4 +65,5 @@ jobs:
           path: build/tests
       - name: CMake test
         run: |
+          chmod +x build/tests/KukiTests
           ctest --test-dir build/tests --output-on-failure

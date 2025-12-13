@@ -38,12 +38,12 @@ void Editor::Init() {
   RegisterInputAction("gm", [this]() { ToggleGizmo(GizmoType::Manipulator); });
   RegisterInputAction(GLFWConst::KEY_V, RenderingSystem::ToggleWireframeMode);
   RegisterInputAction(GLFWConst::MOUSE_BUTTON_RIGHT, [this]() {
-    cameraController->SetMouselook(true);
+    cameraController->mouselook = true;
     glfwSetInputMode(window, GLFWConst::CURSOR, GLFWConst::CURSOR_DISABLED);
     auto& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NoMouse; });
   RegisterInputAction(GLFWConst::MOUSE_BUTTON_RIGHT, [this]() {
-    cameraController->SetMouselook(false);
+    cameraController->mouselook = false;
     glfwSetInputMode(window, GLFWConst::CURSOR, GLFWConst::CURSOR_NORMAL);
     auto& io = ImGui::GetIO();
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);

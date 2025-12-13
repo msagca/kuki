@@ -13,16 +13,12 @@ class CameraController {
 private:
   Application& app;
   ID entityId{};
-  Camera camera{};
-  float moveSpeed{5.0f};
-  float mouseSensitivity{.001f};
-  bool mouselook{true};
   bool UpdatePosition(float);
   bool UpdateRotation(glm::vec2);
 public:
   CameraController(Application&, ID);
+  Camera camera{};
+  float mouseSensitivity{.001f};
+  bool mouselook{true};
   void Update(float);
-  void SetMouselook(bool);
-  bool GetMouselook() const;
-  Camera* GetCamera();
 };

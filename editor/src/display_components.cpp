@@ -74,8 +74,7 @@ void Editor::DisplayComponents() {
   for (auto i = 0; i < components.size(); ++i) {
     const auto& component = components[i];
     const auto componentType = static_cast<int>(GetComponentType(component));
-    const auto isSelected = (context.selectedComponent == componentType);
-    // ImGui::PushID(componentType);
+    const auto isSelected = context.selectedComponent == componentType;
     ImGui::PushID(static_cast<int>(i));
     const auto name = GetComponentName(component);
     if (ImGui::Selectable(name.c_str(), isSelected))
@@ -93,16 +92,17 @@ void Editor::DisplayComponents() {
     if (!removed)
       DisplayProperties(component);
     ImGui::PopID();
-    // ImGui::PopID();
     if (removed) {
       ImGui::End();
       return;
     }
   }
-  auto availableComponents = GetMissingEntityComponents(context.selectedEntity);
-  for (const auto& comp : availableComponents) {
-    if (ImGui::Selectable(comp.c_str()))
-      AddEntityComponent(context.selectedEntity, comp);
+  if (ImGui::BeginPopupContextWindow("Add", ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight)) {
+    auto availableComponents = GetMissingEntityComponents(context.selectedEntity);
+    for (const auto& comp : availableComponents)
+      if (ImGui::MenuItem(comp.c_str()))
+        AddEntityComponent(context.selectedEntity, comp);
+    ImGui::EndPopup();
   }
   ImGui::End();
 }

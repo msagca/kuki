@@ -1,4 +1,3 @@
-#include <cstring>
 #include <editor.hpp>
 #include <glfw_constants.hpp>
 #include <id.hpp>
@@ -6,9 +5,10 @@
 #include <string>
 void Editor::DisplayEntity(ID id) {
   static constexpr auto INPUT_TEXT_FLAGS = ImGuiTreeNodeFlags(ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+  static constexpr auto NAME_LENGTH = 256;
   static auto renameMode = false;
   static auto entityBeingRenamed = ID::Invalid();
-  static char newName[256] = "";
+  static char newName[NAME_LENGTH] = "";
   auto nodeFlags = ImGuiTreeNodeFlags(ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_NavLeftJumpsToParent);
   if (!EntityHasChildren(id))
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
@@ -18,13 +18,13 @@ void Editor::DisplayEntity(ID id) {
     ImGui::AlignTextToFramePadding();
     ImGui::PushItemWidth(-1);
     ImGui::SetKeyboardFocusHere();
-    auto renameConfirmed = ImGui::InputText("##Rename", newName, IM_ARRAYSIZE(newName), INPUT_TEXT_FLAGS);
-    if (renameConfirmed) {
+    auto renamed = ImGui::InputText("##Rename", newName, NAME_LENGTH, INPUT_TEXT_FLAGS);
+    if (renamed) {
       std::string nameStr = newName;
       if (!nameStr.empty())
         RenameEntity(id, nameStr);
     }
-    if (renameConfirmed || ImGui::IsItemDeactivated()) {
+    if (renamed || ImGui::IsItemDeactivated()) {
       renameMode = false;
       entityBeingRenamed = ID::Invalid();
     }
@@ -73,7 +73,8 @@ void Editor::DisplayEntity(ID id) {
     context.selectedEntity = id;
   }
   if (hovered && doubleClicked) {
-    strcpy(newName, name);
+    strncpy(newName, name, NAME_LENGTH);
+    newName[NAME_LENGTH - 1] = '\0';
     renameMode = true;
     entityBeingRenamed = id;
   }
