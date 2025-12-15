@@ -28,7 +28,7 @@ struct KUKI_ENGINE_API Camera final : public IComponent {
   mutable bool positionDirty{true};
   mutable bool rotationDirty{true};
   mutable bool settingsDirty{true};
-  /// @brief Indicates if uniform buffer data needs to be resend
+  /// @brief Indicates if uniform buffer data needs to be resent
   mutable bool uboDirty{true};
   Frustum frustum{};
   float fov{45.0f};

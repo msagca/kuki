@@ -3,7 +3,6 @@
 #include <camera.hpp>
 #include <component.hpp>
 #include <filesystem>
-#include <gl_constants.hpp>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <kuki_engine_export.h>
 #include <light.hpp>
@@ -18,7 +17,7 @@ private:
   const std::string name;
 protected:
   RenderingSystem& renderer;
-  GLConst::UINT id{0};
+  unsigned int id{0};
   std::string Read(const std::filesystem::path&);
   unsigned int Compile(const char*, int);
   void CacheLocations();

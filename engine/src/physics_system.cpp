@@ -3,12 +3,12 @@
 #include <system.hpp>
 namespace kuki {
 PhysicsSystem::PhysicsSystem(Application& app)
-  : System(app), simulationTimestep(1.0f / 100) {}
+  : System(app), simulationTimestep(1.f / 100) {}
 PhysicsSystem::~PhysicsSystem() {
   Shutdown();
 }
 void PhysicsSystem::Start() {
-  timeAccumulated = .0f;
+  timeAccumulated = 0.f;
 }
 void PhysicsSystem::Update(float deltaTime) {
   timeAccumulated += deltaTime;

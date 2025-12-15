@@ -1,8 +1,7 @@
-#include <gl_constants.hpp>
 #include <glad/glad.h>
 template <typename... T>
-requires(std::same_as<T, GLConst::UINT> && ...)
-bool RenderingSystem::UpdateAttachments(const TextureParams& params, GLConst::UINT framebuffer, GLConst::UINT renderbuffer, T... textures) {
+requires(std::same_as<T, unsigned int> && ...)
+bool RenderingSystem::UpdateAttachments(const TextureParams& params, unsigned int framebuffer, unsigned int renderbuffer, T... textures) {
   if (framebuffer == 0) {
     spdlog::error("Framebuffer is not initialized.");
     return false;

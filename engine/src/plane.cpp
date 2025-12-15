@@ -6,7 +6,7 @@
 #include <plane.hpp>
 namespace kuki {
 Plane::Plane()
-  : point(.0f), normal({.0f, 1.0f, .0f}) {}
+  : point(0.f), normal({0.f, 1.f, 0.f}) {}
 Plane::Plane(const glm::vec3& point, const glm::vec3& normal)
   : point(point), normal(glm::normalize(normal)) {}
 Plane::Plane(const glm::vec4& plane) {

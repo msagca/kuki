@@ -1,15 +1,14 @@
 #pragma once
-#include <gl_constants.hpp>
 #include <kuki_engine_export.h>
 #include <pool.hpp>
 #include <texture_params.hpp>
 namespace kuki {
-class KUKI_ENGINE_API TexturePool final : public Pool<TextureParams, GLConst::UINT> {
+class KUKI_ENGINE_API TexturePool final : public Pool<TextureParams, unsigned int> {
 private:
-  GLConst::ENUM GetBaseFormat(GLConst::ENUM);
+  unsigned int GetBaseFormat(unsigned int);
 protected:
-  GLConst::UINT Allocate(const TextureParams&) override;
-  void Reallocate(const TextureParams&, GLConst::UINT&) override;
+  unsigned int Allocate(const TextureParams&) override;
+  void Reallocate(const TextureParams&, unsigned int&) override;
 public:
   ~TexturePool() override;
   void Clear() override;

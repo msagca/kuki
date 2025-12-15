@@ -35,20 +35,20 @@ TEST(TrieTest, TestInsertDuplicate) {
   trie.Clear();
 }
 TEST(OctreeTest, OctreeInsert) {
-  Octree<ID> octree(glm::vec3(.0f), glm::vec3(10.0f), 3, 2, 4);
+  Octree<ID> octree(glm::vec3(.0f), glm::vec3(10.f), 3, 2, 4);
   auto result = octree.Insert(ID::Generate(), BoundingBox(glm::vec3(-5.5f), glm::vec3(8.5f)));
   EXPECT_EQ(result, true);
-  result = octree.Insert(ID::Generate(), BoundingBox(glm::vec3(-10.0f), glm::vec3(10.0f)));
+  result = octree.Insert(ID::Generate(), BoundingBox(glm::vec3(-10.f), glm::vec3(10.f)));
   EXPECT_EQ(result, true);
-  result = octree.Insert(ID::Generate(), BoundingBox(glm::vec3(8.0f), glm::vec3(12.0f)));
+  result = octree.Insert(ID::Generate(), BoundingBox(glm::vec3(8.f), glm::vec3(12.f)));
   EXPECT_EQ(result, false);
-  result = octree.Insert(ID::Generate(), BoundingBox(glm::vec3(-10.0f), glm::vec3(-7.0f)));
+  result = octree.Insert(ID::Generate(), BoundingBox(glm::vec3(-10.f), glm::vec3(-7.f)));
   EXPECT_EQ(result, true);
   octree.Insert(ID::Generate(), BoundingBox(glm::vec3(-5.5f), glm::vec3(-2.3f)));
   octree.Insert(ID::Generate(), BoundingBox(glm::vec3(7.4f), glm::vec3(7.5f)));
   octree.Insert(ID::Generate(), BoundingBox(glm::vec3(-4.2f), glm::vec3(-3.3f)));
-  octree.Insert(ID::Generate(), BoundingBox(glm::vec3(1.1f), glm::vec3(3.0f)));
-  octree.Insert(ID::Generate(), BoundingBox(glm::vec3(2.0f), glm::vec3(2.5f)));
+  octree.Insert(ID::Generate(), BoundingBox(glm::vec3(1.1f), glm::vec3(3.f)));
+  octree.Insert(ID::Generate(), BoundingBox(glm::vec3(2.f), glm::vec3(2.5f)));
   octree.Insert(ID::Generate(), BoundingBox(glm::vec3(.7f), glm::vec3(1.7f)));
   result = octree.Insert(ID::Generate(), BoundingBox(glm::vec3(3.9f), glm::vec3(5.4f)));
   EXPECT_EQ(result, true);

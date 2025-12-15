@@ -6,8 +6,6 @@
 namespace kuki {
 struct KUKI_ENGINE_API Light final : public IComponent {
   Light();
-  Light(const Light&);
-  Light& operator=(const Light&);
   LightType type{LightType::Directional};
   glm::vec3 vector{3.0f};
   glm::vec3 ambient{.2f};

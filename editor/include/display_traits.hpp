@@ -161,10 +161,6 @@ struct DisplayTraits<LitMaterial> {
     constexpr ImVec2 TEXTURE_SIZE(64, 64);
     if (!material)
       return;
-    auto types = EnumTraits<MaterialType>::GetNames();
-    auto type = static_cast<int>(material->type);
-    if (ImGui::Combo("Type", &type, types.data(), static_cast<int>(types.size())))
-      material->type = static_cast<MaterialType>(type);
     const auto& style = ImGui::GetStyle();
     auto GetTileWidth = [&](const char* label) -> float {
       const auto textWidth = ImGui::CalcTextSize(label).x;
@@ -261,7 +257,7 @@ struct DisplayTraits<UnlitMaterial> {
     if (!material)
       return;
     auto base = material->data.base;
-    if (ImGui::ImageButton("Base Texture", base, TEXTURE_SIZE)) {}
+    // if (ImGui::ImageButton("Base Texture", base, TEXTURE_SIZE)) {}
     auto mask = material->fallback.textureMask;
     if (ImGui::InputInt("Texture Mask", &mask))
       material->fallback.textureMask = mask;
@@ -278,9 +274,13 @@ struct DisplayTraits<Material> {
   static void DisplayProperties(Material* material, EditorContext& context) {
     if (!material)
       return;
-    if (auto litMaterial = std::get_if<LitMaterial>(&material->material))
+    auto types = EnumTraits<MaterialType>::GetNames();
+    auto type = static_cast<int>(material->GetType());
+    if (ImGui::Combo("Type", &type, types.data(), static_cast<int>(types.size())))
+      material->SetType(static_cast<MaterialType>(type));
+    if (auto litMaterial = std::get_if<LitMaterial>(&material->current))
       DisplayTraits<LitMaterial>::DisplayProperties(litMaterial, context);
-    else if (auto unlitMaterial = std::get_if<UnlitMaterial>(&material->material))
+    else if (auto unlitMaterial = std::get_if<UnlitMaterial>(&material->current))
       DisplayTraits<UnlitMaterial>::DisplayProperties(unlitMaterial, context);
   }
 };
@@ -374,9 +374,9 @@ struct DisplayTraits<Skybox> {
       {"Skybox##Texture", static_cast<ImTextureID>(skybox->skybox), "Skybox", [&context] {
 	context.selectedComponent = static_cast<int>(ComponentType::Skybox);
         context.assetMask = static_cast<int>(ComponentMask::Skybox); }},
-      {"Irradiance", static_cast<ImTextureID>(skybox->irradiance), "Irradiance", [] {}},
-      {"Prefilter", static_cast<ImTextureID>(skybox->prefilter), "Prefilter", [] {}},
-      {"BRDF", static_cast<ImTextureID>(skybox->brdf), "BRDF", [] {}},
+      // {"Irradiance", static_cast<ImTextureID>(skybox->irradiance), "Irradiance", [] {}},
+      // {"Prefilter", static_cast<ImTextureID>(skybox->prefilter), "Prefilter", [] {}},
+      // {"BRDF", static_cast<ImTextureID>(skybox->brdf), "BRDF", [] {}},
       {"Preview", static_cast<ImTextureID>(skybox->preview), "Preview", [] {}}};
     auto firstOnLine = true;
     auto remaining = .0f;

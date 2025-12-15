@@ -1,11 +1,10 @@
 #pragma once
-#include <gl_constants.hpp>
 #include <kuki_engine_export.h>
 #include <pool.hpp>
 namespace kuki {
 struct KUKI_ENGINE_API BufferParams {
-  GLConst::SIZEIPTR size;
-  BufferParams(GLConst::SIZEIPTR);
+  unsigned long long size;
+  BufferParams(unsigned long long);
   bool operator==(const BufferParams&) const;
 };
 } // namespace kuki

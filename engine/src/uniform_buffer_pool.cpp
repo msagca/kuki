@@ -1,10 +1,9 @@
 #include <buffer_params.hpp>
-#include <gl_constants.hpp>
 #include <glad/glad.h>
 #include <pool.hpp>
 #include <uniform_buffer_pool.hpp>
 namespace kuki {
-BufferParams::BufferParams(GLConst::SIZEIPTR size)
+BufferParams::BufferParams(unsigned long long size)
   : size(size) {}
 bool BufferParams::operator==(const BufferParams& other) const {
   return size == other.size;

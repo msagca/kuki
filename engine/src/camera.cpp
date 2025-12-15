@@ -49,7 +49,7 @@ void Camera::UpdateBasis() {
   forward = -glm::vec3(R[2]);
 }
 void Camera::UpdateTransform() {
-  auto T = glm::translate(glm::mat4(1.0f), position);
+  auto T = glm::translate(glm::mat4(1.f), position);
   auto R = glm::toMat4(rotation);
   local = T * R;
   transform.view = glm::lookAt(position, position + forward, up);
@@ -75,13 +75,13 @@ void Camera::Frame(const BoundingBox& bounds, float distanceFactor) {
   const auto dimensions = bounds.max - bounds.min;
   const auto radius = glm::length(dimensions) * .5f;
   const auto fovVertical = glm::radians(fov);
-  const float fovHorizontal = 2.0f * atan(tan(fovVertical * .5f) * aspectRatio);
+  const float fovHorizontal = 2.f * atan(tan(fovVertical * .5f) * aspectRatio);
   const auto fovMin = glm::min(fovVertical, fovHorizontal);
   const float distance = (radius / tan(fovMin * .5f)) * distanceFactor;
   auto pitch = glm::radians(-15.f);
   auto yaw = glm::radians(30.f);
   // capture the scene from an angle
-  rotation = glm::yawPitchRoll(yaw, pitch, .0f);
+  rotation = glm::yawPitchRoll(yaw, pitch, 0.f);
   UpdateBasis();
   position = center - forward * distance;
   if (distance + radius > farPlane)

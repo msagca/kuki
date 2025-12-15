@@ -11,60 +11,60 @@ namespace kuki {
 const static auto PI = glm::pi<float>();
 std::vector<Vertex> Primitive::Frame() {
   return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
-    {{-1.0f, 1.0f, .0f}, {.0f, .0f, -1.0f}, {.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-1.0f, -1.0f, .0f}, {.0f, .0f, -1.0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{1.0f, 1.0f, .0f}, {.0f, .0f, -1.0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{1.0f, 1.0f, .0f}, {.0f, .0f, -1.0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-1.0f, -1.0f, .0f}, {.0f, .0f, -1.0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{1.0f, -1.0f, .0f}, {.0f, .0f, -1.0f}, {1.0f, .0f}, {1.0f, .0f, .0f}}};
+    {{-1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}}};
 }
 std::vector<Vertex> Primitive::Plane() {
   return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
-    {{-1.0f, .0f, 1.0f}, {.0f, 1.0f, .0f}, {.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{1.0f, .0f, 1.0f}, {.0f, 1.0f, .0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-1.0f, .0f, -1.0f}, {.0f, 1.0f, .0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{-1.0f, .0f, -1.0f}, {.0f, 1.0f, .0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{1.0f, .0f, 1.0f}, {.0f, 1.0f, .0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{1.0f, .0f, -1.0f}, {.0f, 1.0f, .0f}, {1.0f, .0f}, {1.0f, .0f, .0f}}};
+    {{-1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{-1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}}};
 }
 std::vector<Vertex> Primitive::Cube() {
   return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
-    {{.5f, -.5f, -.5f}, {.0f, .0f, -1.0f}, {1.0f, .0f}, {1.0f, .0f, .0f}},
-    {{-.5f, -.5f, -.5f}, {.0f, .0f, -1.0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{.5f, .5f, -.5f}, {.0f, .0f, -1.0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-.5f, .5f, -.5f}, {.0f, .0f, -1.0f}, {.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{.5f, .5f, -.5f}, {.0f, .0f, -1.0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-.5f, -.5f, -.5f}, {.0f, .0f, -1.0f}, {0.0f, .0f}, {1.0f, .0f, .0f}},
-    {{-.5f, -.5f, .5f}, {.0f, .0f, 1.0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{.5f, -.5f, .5f}, {.0f, .0f, 1.0f}, {1.0f, .0f}, {1.0f, .0f, .0f}},
-    {{.5f, .5f, .5f}, {.0f, .0f, 1.0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{.5f, .5f, .5f}, {.0f, .0f, 1.0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-.5f, .5f, .5f}, {.0f, .0f, 1.0f}, {.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-.5f, -.5f, .5f}, {.0f, .0f, 1.0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{-.5f, -.5f, -.5f}, {-1.0f, .0f, .0f}, {.0f, .0f}, {.0f, 1.0f, .0f}},
-    {{-.5f, -.5f, .5f}, {-1.0f, .0f, .0f}, {.0f, 1.0f}, {.0f, 1.0f, .0f}},
-    {{-.5f, .5f, .5f}, {-1.0f, .0f, .0f}, {1.0f, 1.0f}, {.0f, 1.0f, .0f}},
-    {{-.5f, .5f, .5f}, {-1.0f, .0f, .0f}, {1.0f, 1.0f}, {.0f, 1.0f, .0f}},
-    {{-.5f, .5f, -.5f}, {-1.0f, .0f, .0f}, {1.0f, .0f}, {.0f, 1.0f, .0f}},
-    {{-.5f, -.5f, -.5f}, {-1.0f, .0f, .0f}, {.0f, .0f}, {.0f, 1.0f, .0f}},
-    {{.5f, -.5f, .5f}, {1.0f, .0f, .0f}, {.0f, 1.0f}, {.0f, 1.0f, .0f}},
-    {{.5f, -.5f, -.5f}, {1.0f, .0f, .0f}, {.0f, .0f}, {.0f, 1.0f, .0f}},
-    {{.5f, .5f, .5f}, {1.0f, .0f, .0f}, {1.0f, 1.0f}, {.0f, 1.0f, .0f}},
-    {{.5f, .5f, -.5f}, {1.0f, .0f, .0f}, {1.0f, .0f}, {.0f, 1.0f, .0f}},
-    {{.5f, .5f, .5f}, {1.0f, .0f, .0f}, {1.0f, 1.0f}, {.0f, 1.0f, .0f}},
-    {{.5f, -.5f, -.5f}, {1.0f, .0f, .0f}, {.0f, .0f}, {.0f, 1.0f, .0f}},
-    {{-.5f, -.5f, -.5f}, {.0f, -1.0f, .0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{.5f, -.5f, -.5f}, {.0f, -1.0f, .0f}, {1.0f, .0f}, {1.0f, .0f, .0f}},
-    {{.5f, -.5f, .5f}, {.0f, -1.0f, .0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{.5f, -.5f, .5f}, {.0f, -1.0f, .0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-.5f, -.5f, .5f}, {.0f, -1.0f, .0f}, {.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-.5f, -.5f, -.5f}, {.0f, -1.0f, .0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{.5f, .5f, -.5f}, {.0f, 1.0f, .0f}, {1.0f, .0f}, {1.0f, .0f, .0f}},
-    {{-.5f, .5f, -.5f}, {.0f, 1.0f, .0f}, {.0f, .0f}, {1.0f, .0f, .0f}},
-    {{.5f, .5f, .5f}, {.0f, 1.0f, .0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-.5f, .5f, .5f}, {.0f, 1.0f, .0f}, {.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{.5f, .5f, .5f}, {.0f, 1.0f, .0f}, {1.0f, 1.0f}, {1.0f, .0f, .0f}},
-    {{-.5f, .5f, -.5f}, {.0f, 1.0f, .0f}, {.0f, .0f}, {1.0f, .0f, .0f}}};
+    {{.5f, -.5f, -.5f}, {0.f, 0.f, -1.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, -.5f, -.5f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{.5f, .5f, -.5f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, .5f, -.5f}, {0.f, 0.f, -1.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{.5f, .5f, -.5f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, -.5f, -.5f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, -.5f, .5f}, {0.f, 0.f, 1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{.5f, -.5f, .5f}, {0.f, 0.f, 1.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{.5f, .5f, .5f}, {0.f, 0.f, 1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{.5f, .5f, .5f}, {0.f, 0.f, 1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, .5f, .5f}, {0.f, 0.f, 1.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, -.5f, .5f}, {0.f, 0.f, 1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, -.5f, -.5f}, {-1.f, 0.f, 0.f}, {0.f, 0.f}, {0.f, 1.f, 0.f}},
+    {{-.5f, -.5f, .5f}, {-1.f, 0.f, 0.f}, {0.f, 1.f}, {0.f, 1.f, 0.f}},
+    {{-.5f, .5f, .5f}, {-1.f, 0.f, 0.f}, {1.f, 1.f}, {0.f, 1.f, 0.f}},
+    {{-.5f, .5f, .5f}, {-1.f, 0.f, 0.f}, {1.f, 1.f}, {0.f, 1.f, 0.f}},
+    {{-.5f, .5f, -.5f}, {-1.f, 0.f, 0.f}, {1.f, 0.f}, {0.f, 1.f, 0.f}},
+    {{-.5f, -.5f, -.5f}, {-1.f, 0.f, 0.f}, {0.f, 0.f}, {0.f, 1.f, 0.f}},
+    {{.5f, -.5f, .5f}, {1.f, 0.f, 0.f}, {0.f, 1.f}, {0.f, 1.f, 0.f}},
+    {{.5f, -.5f, -.5f}, {1.f, 0.f, 0.f}, {0.f, 0.f}, {0.f, 1.f, 0.f}},
+    {{.5f, .5f, .5f}, {1.f, 0.f, 0.f}, {1.f, 1.f}, {0.f, 1.f, 0.f}},
+    {{.5f, .5f, -.5f}, {1.f, 0.f, 0.f}, {1.f, 0.f}, {0.f, 1.f, 0.f}},
+    {{.5f, .5f, .5f}, {1.f, 0.f, 0.f}, {1.f, 1.f}, {0.f, 1.f, 0.f}},
+    {{.5f, -.5f, -.5f}, {1.f, 0.f, 0.f}, {0.f, 0.f}, {0.f, 1.f, 0.f}},
+    {{-.5f, -.5f, -.5f}, {0.f, -1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{.5f, -.5f, -.5f}, {0.f, -1.f, 0.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{.5f, -.5f, .5f}, {0.f, -1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{.5f, -.5f, .5f}, {0.f, -1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, -.5f, .5f}, {0.f, -1.f, 0.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, -.5f, -.5f}, {0.f, -1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{.5f, .5f, -.5f}, {0.f, 1.f, 0.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, .5f, -.5f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{.5f, .5f, .5f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, .5f, .5f}, {0.f, 1.f, 0.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{.5f, .5f, .5f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-.5f, .5f, -.5f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}}};
 }
 std::vector<Vertex> Primitive::Sphere(int level) {
   std::vector<Triangle> triangles = CreateIcosahedron();
@@ -79,10 +79,10 @@ std::vector<Vertex> Primitive::Sphere(int level) {
       vertex.normal = glm::normalize(v);
       auto theta = atan2(v.z, v.x);
       auto phi = acos(v.y / glm::length(v));
-      vertex.texture = glm::vec2((theta + PI) / (2.0f * PI), phi / PI);
-      glm::vec3 tangent(-sin(theta), .0f, cos(theta));
+      vertex.texture = glm::vec2((theta + PI) / (2.f * PI), phi / PI);
+      glm::vec3 tangent(-sin(theta), 0.f, cos(theta));
       if (abs(v.y) > .999f)
-        tangent = glm::vec3(1.0f, .0f, .0f);
+        tangent = glm::vec3(1.f, 0.f, 0.f);
       tangent = glm::normalize(tangent - vertex.normal * glm::dot(tangent, vertex.normal));
       vertex.tangent = tangent;
       vertices.emplace_back(vertex);
@@ -99,7 +99,7 @@ std::vector<Vertex> Primitive::Cylinder(int segments) {
     auto angle = circ * i;
     auto x = cos(angle) * .5f;
     auto z = sin(angle) * .5f;
-    glm::vec3 normal = glm::normalize(glm::vec3(x, .0f, z));
+    glm::vec3 normal = glm::normalize(glm::vec3(x, 0.f, z));
     segmentData[i * 4] = x;
     segmentData[i * 4 + 1] = z;
     segmentData[i * 4 + 2] = normal.x;
@@ -117,14 +117,14 @@ std::vector<Vertex> Primitive::Cylinder(int segments) {
     auto nzNext = segmentData[iNext * 4 + 3];
     float u = static_cast<float>(i) / segments;
     float uNext = static_cast<float>(iNext) / segments;
-    glm::vec3 tangent(-nz, .0f, nx);
-    glm::vec3 tangentNext(-nzNext, .0f, nxNext);
-    vertices.push_back({{x, -.5f, z}, {nx, .0f, nz}, {u, .0f}, tangent});
-    vertices.push_back({{x, .5f, z}, {nx, .0f, nz}, {u, 1.0f}, tangent});
-    vertices.push_back({{xNext, .5f, zNext}, {nxNext, .0f, nzNext}, {uNext, 1.0f}, tangentNext});
-    vertices.push_back({{x, -.5f, z}, {nx, .0f, nz}, {u, .0f}, tangent});
-    vertices.push_back({{xNext, .5f, zNext}, {nxNext, .0f, nzNext}, {uNext, 1.0f}, tangentNext});
-    vertices.push_back({{xNext, -.5f, zNext}, {nxNext, .0f, nzNext}, {uNext, .0f}, tangentNext});
+    glm::vec3 tangent(-nz, 0.f, nx);
+    glm::vec3 tangentNext(-nzNext, 0.f, nxNext);
+    vertices.push_back({{x, -.5f, z}, {nx, 0.f, nz}, {u, 0.f}, tangent});
+    vertices.push_back({{x, .5f, z}, {nx, 0.f, nz}, {u, 1.f}, tangent});
+    vertices.push_back({{xNext, .5f, zNext}, {nxNext, 0.f, nzNext}, {uNext, 1.f}, tangentNext});
+    vertices.push_back({{x, -.5f, z}, {nx, 0.f, nz}, {u, 0.f}, tangent});
+    vertices.push_back({{xNext, .5f, zNext}, {nxNext, 0.f, nzNext}, {uNext, 1.f}, tangentNext});
+    vertices.push_back({{xNext, -.5f, zNext}, {nxNext, 0.f, nzNext}, {uNext, 0.f}, tangentNext});
   }
   for (auto i = 0; i < segments; ++i) { // top cap
     auto iNext = (i + 1) % segments;
@@ -132,11 +132,11 @@ std::vector<Vertex> Primitive::Cylinder(int segments) {
     float uNext = static_cast<float>(iNext) / segments;
     auto angle = circ * i;
     auto angleNext = circ * iNext;
-    glm::vec3 tangent(-sin(angle), .0f, cos(angle));
-    glm::vec3 tangentNext(-sin(angleNext), .0f, cos(angleNext));
-    vertices.push_back({{segmentData[i * 4], .5f, segmentData[i * 4 + 1]}, {.0f, 1.0f, .0f}, {u, .0f}, tangent});
-    vertices.push_back({{.0f, .5f, .0f}, {.0f, 1.0f, .0f}, {.5f, 1.0f}, {1.0f, .0f, .0f}});
-    vertices.push_back({{segmentData[iNext * 4], .5f, segmentData[iNext * 4 + 1]}, {.0f, 1.0f, .0f}, {uNext, .0f}, tangentNext});
+    glm::vec3 tangent(-sin(angle), 0.f, cos(angle));
+    glm::vec3 tangentNext(-sin(angleNext), 0.f, cos(angleNext));
+    vertices.push_back({{segmentData[i * 4], .5f, segmentData[i * 4 + 1]}, {0.f, 1.f, 0.f}, {u, 0.f}, tangent});
+    vertices.push_back({{0.f, .5f, 0.f}, {0.f, 1.f, 0.f}, {.5f, 1.f}, {1.f, 0.f, 0.f}});
+    vertices.push_back({{segmentData[iNext * 4], .5f, segmentData[iNext * 4 + 1]}, {0.f, 1.f, 0.f}, {uNext, 0.f}, tangentNext});
   }
   for (auto i = 0; i < segments; ++i) { // bottom cap
     auto iNext = (i + 1) % segments;
@@ -144,22 +144,22 @@ std::vector<Vertex> Primitive::Cylinder(int segments) {
     float uNext = static_cast<float>(iNext) / segments;
     auto angle = circ * i;
     auto angleNext = circ * iNext;
-    glm::vec3 tangent(sin(angle), .0f, -cos(angle));
-    glm::vec3 tangentNext(sin(angleNext), .0f, -cos(angleNext));
-    vertices.push_back({{.0f, -.5f, .0f}, {.0f, -1.0f, .0f}, {.5f, .0f}, {1.0f, .0f, .0f}});
-    vertices.push_back({{segmentData[i * 4], -.5f, segmentData[i * 4 + 1]}, {.0f, -1.0f, .0f}, {u, 1.0f}, tangent});
-    vertices.push_back({{segmentData[iNext * 4], -.5f, segmentData[iNext * 4 + 1]}, {.0f, -1.0f, .0f}, {uNext, 1.0f}, tangentNext});
+    glm::vec3 tangent(sin(angle), 0.f, -cos(angle));
+    glm::vec3 tangentNext(sin(angleNext), 0.f, -cos(angleNext));
+    vertices.push_back({{0.f, -.5f, 0.f}, {0.f, -1.f, 0.f}, {.5f, 0.f}, {1.f, 0.f, 0.f}});
+    vertices.push_back({{segmentData[i * 4], -.5f, segmentData[i * 4 + 1]}, {0.f, -1.f, 0.f}, {u, 1.f}, tangent});
+    vertices.push_back({{segmentData[iNext * 4], -.5f, segmentData[iNext * 4 + 1]}, {0.f, -1.f, 0.f}, {uNext, 1.f}, tangentNext});
   }
   return vertices;
 }
 std::vector<Triangle> Primitive::CreateOctahedron() {
-  std::vector<glm::vec3> vertices = {{1.0f, .0f, .0f}, {-1.0f, .0f, .0f}, {.0f, 1.0f, .0f}, {.0f, -1.0f, .0f}, {.0f, .0f, 1.0f}, {.0f, .0f, -1.0f}};
+  std::vector<glm::vec3> vertices = {{1.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, -1.f, 0.f}, {0.f, 0.f, 1.f}, {0.f, 0.f, -1.f}};
   return {{vertices[0], vertices[2], vertices[4]}, {vertices[0], vertices[4], vertices[3]}, {vertices[0], vertices[3], vertices[5]}, {vertices[0], vertices[5], vertices[2]}, {vertices[1], vertices[2], vertices[5]}, {vertices[1], vertices[5], vertices[3]}, {vertices[1], vertices[3], vertices[4]}, {vertices[1], vertices[4], vertices[2]}};
 }
 std::vector<Triangle> Primitive::CreateIcosahedron() {
-  const auto t = (1 + std::sqrt(5.0f)) / 2;
+  const auto t = (1 + std::sqrt(5.f)) / 2;
   const auto r = 1 / std::sqrt(1 + t * t);
-  std::vector<glm::vec3> vertices = {{-1.0f, t, .0f}, {1.0f, t, .0f}, {-1.0f, -t, .0f}, {1.0f, -t, .0f}, {.0f, -1.0f, t}, {.0f, 1.0f, t}, {.0f, -1.0f, -t}, {.0f, 1.0f, -t}, {t, .0f, -1.0f}, {t, .0f, 1.0f}, {-t, .0f, -1.0f}, {-t, .0f, 1.0f}};
+  std::vector<glm::vec3> vertices = {{-1.f, t, 0.f}, {1.f, t, 0.f}, {-1.f, -t, 0.f}, {1.f, -t, 0.f}, {0.f, -1.f, t}, {0.f, 1.f, t}, {0.f, -1.f, -t}, {0.f, 1.f, -t}, {t, 0.f, -1.f}, {t, 0.f, 1.f}, {-t, 0.f, -1.f}, {-t, 0.f, 1.f}};
   for (auto& v : vertices)
     v = glm::normalize(v * r);
   return {{vertices[0], vertices[11], vertices[5]}, {vertices[0], vertices[5], vertices[1]}, {vertices[0], vertices[1], vertices[7]}, {vertices[0], vertices[7], vertices[10]}, {vertices[0], vertices[10], vertices[11]}, {vertices[1], vertices[5], vertices[9]}, {vertices[5], vertices[11], vertices[4]}, {vertices[11], vertices[10], vertices[2]}, {vertices[10], vertices[7], vertices[6]}, {vertices[7], vertices[1], vertices[8]}, {vertices[3], vertices[9], vertices[4]}, {vertices[3], vertices[4], vertices[2]}, {vertices[3], vertices[2], vertices[6]}, {vertices[3], vertices[6], vertices[8]}, {vertices[3], vertices[8], vertices[9]}, {vertices[4], vertices[9], vertices[5]}, {vertices[2], vertices[4], vertices[11]}, {vertices[6], vertices[2], vertices[10]}, {vertices[8], vertices[6], vertices[7]}, {vertices[9], vertices[8], vertices[1]}};

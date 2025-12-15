@@ -1,13 +1,12 @@
 #pragma once
 #include <buffer_params.hpp>
-#include <gl_constants.hpp>
 #include <kuki_engine_export.h>
 #include <pool.hpp>
 namespace kuki {
-class KUKI_ENGINE_API UniformBufferPool final : public Pool<BufferParams, GLConst::UINT> {
+class KUKI_ENGINE_API UniformBufferPool final : public Pool<BufferParams, unsigned int> {
 protected:
-  GLConst::UINT Allocate(const BufferParams&) override;
-  void Reallocate(const BufferParams&, GLConst::UINT&) override;
+  unsigned int Allocate(const BufferParams&) override;
+  void Reallocate(const BufferParams&, unsigned int&) override;
 public:
   ~UniformBufferPool() override;
   void Clear() override;

@@ -17,7 +17,7 @@ BoundingBox BoundingBox::GetWorldBounds(const glm::mat4& transform) {
   glm::vec3 corners[8] = {{min.x, min.y, min.z}, {max.x, min.y, min.z}, {min.x, max.y, min.z}, {max.x, max.y, min.z}, {min.x, min.y, max.z}, {max.x, min.y, max.z}, {min.x, max.y, max.z}, {max.x, max.y, max.z}};
   BoundingBox bounds{};
   for (const auto& v : corners) {
-    auto v4 = transform * glm::vec4(v, 1.0f);
+    auto v4 = transform * glm::vec4(v, 1.f);
     auto v3 = glm::vec3(v4);
     bounds.min = glm::min(bounds.min, v3);
     bounds.max = glm::max(bounds.max, v3);

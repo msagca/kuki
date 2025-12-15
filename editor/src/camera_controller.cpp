@@ -49,25 +49,25 @@ void CameraController::Update(float deltaTime) {
   camera.Update(); // NOTE: local camera needs to be updated manually
 }
 bool CameraController::UpdatePosition(float deltaTime) {
-  static constexpr auto MOVE_SPEED = 5.0f;
+  static constexpr auto MOVE_SPEED = 5.f;
   static constexpr auto MOVE_THRESHOLD = 1e-6f;
-  static constexpr auto BOOST_FACTOR_MAX = 10.0f;
-  static constexpr auto BOOST_RAMP_UP_TIME = 3.0f;
-  static constexpr auto BOOST_RAMP_DOWN_TIME = 1.0f;
+  static constexpr auto BOOST_FACTOR_MAX = 10.f;
+  static constexpr auto BOOST_RAMP_UP_TIME = 3.f;
+  static constexpr auto BOOST_RAMP_DOWN_TIME = 1.f;
   auto input = app.GetWASDKeys();
   // FIXME: prevent movement if there is a key sequence in progress
   if (glm::length2(input) < MOVE_THRESHOLD)
     input = app.GetArrowKeys();
   if (glm::length2(input) < MOVE_THRESHOLD)
     return false;
-  static auto boostFactor = 1.0f;
-  static auto boostTime = .0f;
+  static auto boostFactor = 1.f;
+  static auto boostTime = 0.f;
   auto shift = app.GetKey(GLFWConst::KEY_LEFT_SHIFT);
   if (shift)
     boostTime = std::min(boostTime + deltaTime, BOOST_RAMP_UP_TIME);
   else
-    boostTime = std::max(.0f, boostTime - deltaTime * (BOOST_RAMP_UP_TIME / BOOST_RAMP_DOWN_TIME));
-  boostFactor = 1.0f + (BOOST_FACTOR_MAX - 1.0f) * (boostTime / BOOST_RAMP_UP_TIME);
+    boostTime = std::max(0.f, boostTime - deltaTime * (BOOST_RAMP_UP_TIME / BOOST_RAMP_DOWN_TIME));
+  boostFactor = 1.f + (BOOST_FACTOR_MAX - 1.f) * (boostTime / BOOST_RAMP_UP_TIME);
   auto velocity = MOVE_SPEED * boostFactor * deltaTime;
   camera.position += (camera.forward * input.y + camera.right * input.x) * velocity;
   return true;
@@ -76,8 +76,8 @@ bool CameraController::UpdateRotation(glm::vec2 mouseDiff) {
   static constexpr auto MOVE_THRESHOLD = 1e-6f;
   if (glm::length2(mouseDiff) < MOVE_THRESHOLD)
     return false;
-  auto yaw = glm::angleAxis(-mouseDiff.x, glm::vec3(.0f, 1.f, .0f));
-  auto pitch = glm::angleAxis(mouseDiff.y, glm::vec3(1.f, .0f, .0f));
+  auto yaw = glm::angleAxis(-mouseDiff.x, glm::vec3(0.f, 1.f, 0.f));
+  auto pitch = glm::angleAxis(mouseDiff.y, glm::vec3(1.f, 0.f, 0.f));
   camera.rotation = yaw * camera.rotation * pitch;
   return true;
 }

@@ -46,9 +46,10 @@ struct KUKI_ENGINE_API Material final : public IComponent {
   Material();
   Material(const Material&);
   Material& operator=(const Material&);
-  std::variant<LitMaterial, UnlitMaterial> material;
+  std::variant<LitMaterial, UnlitMaterial> current;
   std::type_index GetTypeIndex() const;
   MaterialType GetType() const;
+  void SetType(MaterialType);
   void Apply(Shader*) const;
 };
 enum class MaterialProperty {

@@ -10,7 +10,7 @@ template <typename T>
 struct KUKI_ENGINE_API TrieNode {
   // TODO: add unicode support
   std::unordered_map<unsigned char, T*> children;
-  /// @brief Whether this node terminates a valid word
+  /// @brief Indicates if this node terminates a valid word
   bool last{false};
 };
 struct KUKI_ENGINE_API SuffixNode final : TrieNode<SuffixNode> {
@@ -38,7 +38,7 @@ private:
   T* root;
   const size_t maxInsertAttempts{8};
   /// @brief Insert a word starting at a given node
-  /// @returns true if no duplicates, false otherwise
+  /// @returns `true` if no duplicates, `false` otherwise
   bool InsertAt(const std::string&, T*)
     requires(IsSuffixNode<T> && !IsActionNode<T>);
   void RemoveAll(T*);
@@ -64,15 +64,15 @@ public:
     return *this;
   }
   /// @brief Insert a word, overwrite duplicates
-  /// @returns true if the word did not already exist, false otherwise
+  /// @returns `true` if the word did not already exist, `false` otherwise
   bool Insert(const std::string&)
     requires(!IsSuffixNode<T> && !IsActionNode<T>);
   /// @brief Insert a word, add a suffix if duplicate, modify the input string to include the suffix (if applicable)
-  /// @returns true if the word was inserted (with or without a suffix), false otherwise
+  /// @returns `true` if the word was inserted (with or without a suffix), `false` otherwise
   bool Insert(std::string&)
     requires(IsSuffixNode<T> && !IsActionNode<T>);
   /// @brief Insert a trigger (key sequence) and an associated action to execute
-  /// @returns true if the trigger did not contain or was not a prefix of another trigger, false otherwise
+  /// @returns `true` if the trigger did not contain or was not a prefix of another trigger, `false` otherwise
   bool Insert(const std::string&, InputAction)
     requires(!IsSuffixNode<T> && IsActionNode<T>);
   /// @brief Delete the given word if it's in the trie

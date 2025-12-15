@@ -27,7 +27,7 @@ AppConfig::AppConfig(std::string name, std::filesystem::path logoPath, int scree
   : name(name), logoPath(logoPath), screenWidth(screenWidth), screenHeight(screenHeight) {}
 Application::Application(const AppConfig& config)
   : config(config), assetManager(), assetLoader(this, assetManager), inputManager(), sceneManager(), commandManager() {
-  // TODO: validate the config, use defaults if necessary
+  // TODO: validate the config, fallback to defaults for invalid entries
 }
 const std::string& Application::GetName() const {
   return config.name;
@@ -58,9 +58,11 @@ Camera* Application::GetActiveCamera() {
   return scene->GetCamera();
 }
 void Application::Init() {
+  static constexpr auto GL_MAJOR = 4;
+  static constexpr auto GL_MINOR = 6;
   glfwInit();
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GL_MAJOR);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GL_MINOR);
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -81,8 +83,8 @@ void Application::Init() {
   int major, minor;
   glGetIntegerv(GL_MAJOR_VERSION, &major);
   glGetIntegerv(GL_MINOR_VERSION, &minor);
-  if (major < 4 || (major == 4 && minor < 6)) {
-    spdlog::error("OpenGL 4.6 or higher is required.");
+  if (major < GL_MAJOR || (major == GL_MAJOR && minor < GL_MINOR)) {
+    spdlog::error("OpenGL {}.{} or higher is required.", GL_MAJOR, GL_MINOR);
     return;
   }
   SetWindowIcon(config.logoPath);

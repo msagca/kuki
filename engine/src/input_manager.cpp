@@ -20,23 +20,23 @@ bool InputManager::IsReleased(int input) const {
   return releaseState[index];
 }
 glm::vec2 InputManager::GetWASD() const {
-  glm::vec2 wasd(.0f, .0f);
+  glm::vec2 wasd(0.f, 0.f);
   auto w = GetState(GLFW_KEY_W);
   auto s = GetState(GLFW_KEY_S);
   auto a = GetState(GLFW_KEY_A);
   auto d = GetState(GLFW_KEY_D);
-  wasd.y = w ? (s ? .0f : 1.0f) : (s ? -1.0f : .0f);
-  wasd.x = d ? (a ? .0f : 1.0f) : (a ? -1.0f : .0f);
+  wasd.y = w ? (s ? 0.f : 1.f) : (s ? -1.f : 0.f);
+  wasd.x = d ? (a ? 0.f : 1.f) : (a ? -1.f : 0.f);
   return wasd;
 }
 glm::vec2 InputManager::GetArrow() const {
-  glm::vec2 arrow(.0f, .0f);
+  glm::vec2 arrow(0.f, 0.f);
   auto up = GetState(GLFW_KEY_UP);
   auto down = GetState(GLFW_KEY_DOWN);
   auto left = GetState(GLFW_KEY_LEFT);
   auto right = GetState(GLFW_KEY_RIGHT);
-  arrow.y = up ? (down ? .0f : 1.0f) : (down ? -1.0f : .0f);
-  arrow.x = right ? (left ? .0f : 1.0f) : (left ? -1.0f : .0f);
+  arrow.y = up ? (down ? 0.f : 1.f) : (down ? -1.f : 0.f);
+  arrow.x = right ? (left ? 0.f : 1.f) : (left ? -1.f : 0.f);
   return arrow;
 }
 glm::vec2 InputManager::GetMousePos() const {

@@ -1,7 +1,6 @@
 #pragma once
 #include <entity_manager.hpp>
 #include <framebuffer_pool.hpp>
-#include <gl_constants.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <kuki_engine_export.h>
 #include <octree.hpp>
@@ -35,10 +34,10 @@ private:
   RenderbufferPool renderbufferPool;
   TexturePool texturePool;
   UniformBufferPool uniformBufferPool;
-  std::unordered_map<ID, GLConst::UINT> assetToTexture;
+  std::unordered_map<ID, unsigned int> assetToTexture;
   size_t fps{};
-  GLConst::UINT materialVBO{0};
-  GLConst::UINT transformVBO{0};
+  unsigned int materialVBO{0};
+  unsigned int transformVBO{0};
   size_t gizmoMask{0};
   static bool wireframeMode;
   /// @brief Update framebuffer attachments
@@ -48,8 +47,8 @@ private:
   /// @param textures OpenGL IDs of the textures that are the color attachments
   /// @return true if the framebuffer is complete, false otherwise
   template <typename... T>
-  requires(std::same_as<T, GLConst::UINT> && ...)
-  bool UpdateAttachments(const TextureParams&, GLConst::UINT, GLConst::UINT, T...);
+  requires(std::same_as<T, unsigned int> && ...)
+  bool UpdateAttachments(const TextureParams&, unsigned int, unsigned int, T...);
   void DrawAsset(ID);
   void DrawAssetHierarchy(ID);
   void DrawEntitiesInstanced(const Camera*, const Mesh*, const std::vector<ID>&);
@@ -60,7 +59,7 @@ private:
   /// @brief Draws a skybox asset by applying equirectangular projection to it
   void DrawSkyboxAsset(ID);
   void DrawViewFrustum(const Camera*, const Camera*);
-  void ApplyPostProc(GLConst::UINT, GLConst::UINT, const TextureParams&);
+  void ApplyPostProc(unsigned int, unsigned int, const TextureParams&);
   BoundingBox GetAssetBounds(ID);
   Shader* GetShader(MaterialType);
   ComputeShader* GetCompute(ComputeType);

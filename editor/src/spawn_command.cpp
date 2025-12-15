@@ -40,7 +40,7 @@ int SpawnCommand::Execute(const std::span<std::string> args) {
       return -3;
     }
   }
-  float radius = 10.0f;
+  float radius = 10.f;
   if (args.size() > 2) {
     auto& radiusStr = args[2];
     try {

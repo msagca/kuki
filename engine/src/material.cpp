@@ -10,42 +10,42 @@ namespace kuki {
 Material::Material()
   : IComponent(std::in_place_type<Material>) {}
 Material::Material(const Material& other)
-  : IComponent(other), material(other.material) {}
+  : IComponent(other), current(other.current) {}
 void Material::Apply(Shader* shader) const {
-  std::visit([shader](const auto& material) { material.Apply(shader); }, material);
+  std::visit([shader](const auto& material) { material.Apply(shader); }, current);
 }
-/// @brief Copies the material only if the source and destination variants hold the same type
-struct CopyMatching {
-  Material& operator()(const LitMaterial& source, LitMaterial& destination, Material& self) const {
-    destination = source;
-    return self;
-  }
-  Material& operator()(const UnlitMaterial& source, UnlitMaterial& destination, Material& self) const {
-    destination = source;
-    return self;
-  }
-  template <typename S, typename D>
-  Material& operator()(const S&, D&, Material& self) const {
-    return self; // no-op, but still return self
-  }
-};
 Material& Material::operator=(const Material& other) {
   return std::visit(
-    [&](auto& dest, const auto& src) -> Material& {
-      using D = std::decay_t<decltype(dest)>;
-      using S = std::decay_t<decltype(src)>;
+    [&](auto& destination, const auto& source) -> Material& {
+      using D = std::decay_t<decltype(destination)>;
+      using S = std::decay_t<decltype(source)>;
       if constexpr (std::is_same_v<D, S>)
-        dest = src;
+        destination = source;
       return *this;
     },
-    material,
-    other.material);
+    current,
+    other.current);
 }
 std::type_index Material::GetTypeIndex() const {
-  return std::visit([](const auto& material) -> std::type_index { return typeid(material); }, material);
+  return std::visit([](const auto& material) -> std::type_index { return typeid(material); }, current);
 }
 MaterialType Material::GetType() const {
-  return std::visit([](const auto& material) -> MaterialType { return material.type; }, material);
+  return std::visit([](const auto& material) -> MaterialType { return material.type; }, current);
+}
+void Material::SetType(MaterialType type) {
+  if (type == GetType())
+    return;
+  if (auto litMaterial = std::get_if<LitMaterial>(&current)) {
+    auto color = litMaterial->fallback.albedo;
+    current = UnlitMaterial{};
+    auto unlitMaterial = std::get_if<UnlitMaterial>(&current);
+    unlitMaterial->fallback.base = color;
+  } else if (auto unlitMaterial = std::get_if<UnlitMaterial>(&current)) {
+    auto color = unlitMaterial->fallback.base;
+    current = LitMaterial{};
+    auto litMaterial = std::get_if<LitMaterial>(&current);
+    litMaterial->fallback.albedo = color;
+  }
 }
 void LitMaterial::Apply(Shader* shader) const {
   if (type != shader->GetType())

@@ -2,14 +2,12 @@
 #include <cstdint>
 #include <functional>
 #include <kuki_engine_export.h>
-#include <string>
-#include <string_view>
 namespace kuki {
 struct KUKI_ENGINE_API UUID64 {
   std::uint64_t value{0};
   UUID64() = default;
   UUID64(std::uint64_t);
-  /// @brief Generate a random v4 UUID
+  /// @brief Generate a random UUID
   static UUID64 Generate();
   /// @brief A value to indicate the ID is invalid
   static UUID64 Invalid();
