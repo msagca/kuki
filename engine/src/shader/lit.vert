@@ -1,15 +1,15 @@
 #version 460 core
-out vec3 position;
-out vec3 normal;
-out vec2 texCoord;
-out vec3 tangent;
-out vec4 albedo;
-out vec4 specular;
-out vec4 emissive;
+flat out int textureMask;
 out float metalness;
 out float occlusion;
 out float roughness;
-flat out int textureMask;
+out vec2 texCoord;
+out vec3 normal;
+out vec3 position;
+out vec3 tangent;
+out vec4 albedo;
+out vec4 emissive;
+out vec4 specular;
 layout(location = 0) in vec3 i_position;
 layout(location = 1) in vec3 i_normal;
 layout(location = 2) in vec2 i_texCoord;

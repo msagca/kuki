@@ -372,7 +372,6 @@ Texture AssetLoader::CreateTexture(const TextureData& textureData) {
     glGenerateTextureMipmap(textureId);
     break;
   case TextureType::Normal:
-  case TextureType::BRDF:
   case TextureType::HDR:
   case TextureType::EXR:
     glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -415,11 +414,11 @@ ID AssetLoader::CreateTextureAsset(const TextureData& textureData) {
 }
 ID AssetLoader::CreateSkyboxAsset(const TextureData& textureData) {
   auto texture = CreateTexture(textureData);
-  std::string name = textureData.name + "Skybox";
+  std::string name = textureData.name;
   auto assetId = app->CreateAsset(name);
   auto skybox = app->AddAssetComponent<Skybox>(assetId);
   auto cubeMap = app->CreateCubeMapFromEquirect(texture);
-  skybox->skybox = cubeMap.id;
+  skybox->original = cubeMap.id;
   skybox->irradiance = app->CreateIrradianceMapFromCubeMap(cubeMap).id;
   skybox->prefilter = app->CreatePrefilterMapFromCubeMap(cubeMap).id;
   skybox->brdf = app->CreateBRDF_LUT().id;

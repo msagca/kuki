@@ -40,7 +40,9 @@ enum class CameraType : uint8_t {
   Orthographic
 };
 enum class ComputeType : uint8_t {
-  BRDF
+  BRDF_LUT,
+  Irradiance,
+  Prefilter
 };
 enum class LightType : uint8_t {
   Directional,
@@ -50,10 +52,8 @@ enum class LightType : uint8_t {
 enum class MaterialType : uint8_t {
   Bloom,
   Blur,
-  Bright,
+  BrightPass,
   CubeMapEquirect,
-  CubeMapIrradiance,
-  CubeMapPrefilter,
   EquirectCubeMap,
   Lit,
   Skybox,
@@ -70,7 +70,9 @@ enum class TextureType : uint8_t {
   CubeMap,
   HDR,
   EXR, // same as HDR, but this requires flipping as TinyEXR uses a different coordinate system for textures
-  BRDF
+  BRDF_LUT,
+  Irradiance,
+  Prefilter
 };
 enum class TextureMask : size_t {
   Albedo = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Albedo),
@@ -82,7 +84,10 @@ enum class TextureMask : size_t {
   Emissive = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Emissive),
   CubeMap = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::CubeMap),
   HDR = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::HDR),
-  EXR = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::EXR)
+  EXR = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::EXR),
+  BRDF_LUT = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::BRDF_LUT),
+  Irradiance = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Irradiance),
+  Prefilter = static_cast<size_t>(1) << static_cast<uint8_t>(TextureType::Prefilter)
 };
 template <typename T>
 struct EnumTraits {
@@ -92,7 +97,7 @@ struct EnumTraits {
 template <>
 struct EnumTraits<ComputeType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"BRDF"};
+    static const std::vector<const char*> names = {"BRDF_LUT", "Irradiance", "Prefilter"};
     return names;
   }
 };
@@ -113,14 +118,14 @@ struct EnumTraits<LightType> {
 template <>
 struct EnumTraits<MaterialType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Bloom", "Blur", "Bright", "CubeMapEquirect", "CubeMapIrradiance", "CubeMapPrefilter", "EquirectCubeMap", "Lit", "Skybox", "Unlit"};
+    static const std::vector<const char*> names = {"Bloom", "Blur", "BrightPass", "CubeMapEquirect", "EquirectCubeMap", "Lit", "Skybox", "Unlit"};
     return names;
   }
 };
 template <>
 struct EnumTraits<TextureType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "Specular", "Emissive", "CubeMap", "HDR", "EXR", "BRDF"};
+    static const std::vector<const char*> names = {"Albedo", "Normal", "Metalness", "Occlusion", "Roughness", "Specular", "Emissive", "CubeMap", "HDR", "EXR", "BRDF_LUT", "Irradiance", "Prefilter"};
     return names;
   }
 };

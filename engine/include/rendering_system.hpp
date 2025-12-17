@@ -35,6 +35,7 @@ private:
   TexturePool texturePool;
   UniformBufferPool uniformBufferPool;
   std::unordered_map<ID, unsigned int> assetToTexture;
+  Texture brdf{}; // NOTE: generate once and re-use
   size_t fps{};
   unsigned int materialVBO{0};
   unsigned int transformVBO{0};

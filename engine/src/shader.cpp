@@ -22,6 +22,9 @@
 namespace kuki {
 IShader::IShader(const std::string& name, RenderingSystem& renderer)
   : name(name), renderer(renderer) {}
+IShader::~IShader() {
+  glDeleteProgram(id);
+}
 unsigned int IShader::GetId() const {
   return id;
 }
@@ -62,46 +65,68 @@ void IShader::CacheLocations() {
   GLenum type;
   for (auto i = 0; i < params; ++i) {
     glGetActiveUniform(id, i, bufSize, &length, &size, &type, name);
-    locations[name] = glGetUniformLocation(id, name);
+    auto loc = glGetUniformLocation(id, name);
+    if (loc >= 0) {
+      uniformToLocation[name] = loc;
+      cachedLocations.insert(loc);
+    }
   }
 }
 void IShader::Use() const {
   glUseProgram(id);
 }
 void IShader::SetUniform(const std::string& name, const glm::mat4& value) {
-  glUniformMatrix4fv(locations[name], 1, GL_FALSE, glm::value_ptr(value));
+  if (auto it = uniformToLocation.find(name); it != uniformToLocation.end())
+    glUniformMatrix4fv(it->second, 1, GL_FALSE, glm::value_ptr(value));
 }
 void IShader::SetUniform(const std::string& name, const glm::vec3& value) {
-  glUniform3fv(locations[name], 1, glm::value_ptr(value));
+  if (auto it = uniformToLocation.find(name); it != uniformToLocation.end())
+    glUniform3fv(it->second, 1, glm::value_ptr(value));
 }
 void IShader::SetUniform(const std::string& name, const glm::vec4& value) {
-  glUniform4fv(locations[name], 1, glm::value_ptr(value));
+  if (auto it = uniformToLocation.find(name); it != uniformToLocation.end())
+    glUniform4fv(it->second, 1, glm::value_ptr(value));
 }
 void IShader::SetUniform(const std::string& name, float value) {
-  glUniform1f(locations[name], value);
+  if (auto it = uniformToLocation.find(name); it != uniformToLocation.end())
+    glUniform1f(it->second, value);
 }
 void IShader::SetUniform(const std::string& name, int value) {
-  glUniform1i(locations[name], value);
+  if (auto it = uniformToLocation.find(name); it != uniformToLocation.end())
+    glUniform1i(it->second, value);
 }
 void IShader::SetUniform(const std::string& name, unsigned int value) {
-  glUniform1ui(locations[name], value);
+  if (auto it = uniformToLocation.find(name); it != uniformToLocation.end())
+    glUniform1ui(it->second, value);
 }
 void IShader::SetUniform(int loc, const glm::mat4& value) {
+  if (cachedLocations.find(loc) == cachedLocations.end())
+    return;
   glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 }
 void IShader::SetUniform(int loc, const glm::vec3& value) {
+  if (cachedLocations.find(loc) == cachedLocations.end())
+    return;
   glUniform3fv(loc, 1, glm::value_ptr(value));
 }
 void IShader::SetUniform(int loc, const glm::vec4& value) {
+  if (cachedLocations.find(loc) == cachedLocations.end())
+    return;
   glUniform4fv(loc, 1, glm::value_ptr(value));
 }
 void IShader::SetUniform(int loc, float value) {
+  if (cachedLocations.find(loc) == cachedLocations.end())
+    return;
   glUniform1f(loc, value);
 }
 void IShader::SetUniform(int loc, int value) {
+  if (cachedLocations.find(loc) == cachedLocations.end())
+    return;
   glUniform1i(loc, value);
 }
 void IShader::SetUniform(int loc, unsigned int value) {
+  if (cachedLocations.find(loc) == cachedLocations.end())
+    return;
   glUniform1ui(loc, value);
 }
 ComputeShader::ComputeShader(const std::string& name, const std::filesystem::path& comp, RenderingSystem& renderer, ComputeType type)
@@ -213,7 +238,7 @@ void LitShader::SetLighting(const Light* light) {
 }
 void LitShader::SetLighting(std::span<const Light*> lights) {
   auto dirExists = false;
-  auto pointIndex = 0;
+  unsigned int pointIndex = 0;
   for (const auto& light : lights)
     if (light->type == LightType::Directional) {
       SetUniform("dirLight.direction", light->vector);
@@ -223,13 +248,13 @@ void LitShader::SetLighting(std::span<const Light*> lights) {
       dirExists = true;
     } else if (light->type == LightType::Point) {
       auto offset = pointIndex * 7;
-      SetUniform(locations["pointLights[0].position"] + offset, light->vector);
-      SetUniform(locations["pointLights[0].ambient"] + offset, light->ambient);
-      SetUniform(locations["pointLights[0].diffuse"] + offset, light->diffuse);
-      SetUniform(locations["pointLights[0].specular"] + offset, light->specular);
-      SetUniform(locations["pointLights[0].constant"] + offset, light->constant);
-      SetUniform(locations["pointLights[0].linear"] + offset, light->linear);
-      SetUniform(locations["pointLights[0].quadratic"] + offset, light->quadratic);
+      SetUniform(uniformToLocation["pointLights[0].position"] + offset, light->vector);
+      SetUniform(uniformToLocation["pointLights[0].ambient"] + offset, light->ambient);
+      SetUniform(uniformToLocation["pointLights[0].diffuse"] + offset, light->diffuse);
+      SetUniform(uniformToLocation["pointLights[0].specular"] + offset, light->specular);
+      SetUniform(uniformToLocation["pointLights[0].constant"] + offset, light->constant);
+      SetUniform(uniformToLocation["pointLights[0].linear"] + offset, light->linear);
+      SetUniform(uniformToLocation["pointLights[0].quadratic"] + offset, light->quadratic);
       pointIndex++;
     }
   SetUniform("pointCount", pointIndex);

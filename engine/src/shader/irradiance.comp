@@ -1,0 +1,83 @@
+#version 460 core
+const float PI = 3.14159265359;
+const uint SAMPLE_COUNT = 128u;
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(rgba32f, binding = 0) writeonly uniform imageCube irradianceMap;
+uniform samplerCube cubeMap;
+uniform uint cubeSize;
+float RadicalInverseVdC(uint);
+mat3 TangentToWorldBasis(vec3);
+vec2 Hammersley(uint, uint);
+vec3 CubeDirectionFromCoord(ivec3, uint);
+vec3 SampleHemisphere(vec2);
+vec3 TangentToWorld(vec3, vec3);
+void main() {
+        ivec3 gid = ivec3(gl_GlobalInvocationID);
+        if (gid.x >= cubeSize || gid.y >= cubeSize || gid.z >= 6) return;
+        vec3 normal = normalize(CubeDirectionFromCoord(gid, cubeSize));
+        vec3 irradiance = vec3(0.0);
+        for (uint i = 0u; i < SAMPLE_COUNT; ++i) {
+                vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+                vec3 sampleDir = SampleHemisphere(Xi);
+                vec3 sampleVec = TangentToWorld(sampleDir, normal);
+                irradiance += texture(cubeMap, sampleVec).rgb;
+        }
+        irradiance /= float(SAMPLE_COUNT);
+        imageStore(irradianceMap, gid, vec4(irradiance, 1.0));
+}
+vec3 CubeDirectionFromCoord(ivec3 coord, uint cubeSize) {
+        uint face = coord.z;
+        float u = (float(coord.x) + 0.5) / float(cubeSize);
+        float v = (float(coord.y) + 0.5) / float(cubeSize);
+        float s = 2.0 * u - 1.0;
+        float t = 2.0 * v - 1.0;
+        vec3 dir;
+        switch (face) {
+                case 0:
+                dir = vec3(1.0, -t, -s);
+                break; // +x
+                case 1:
+                dir = vec3(-1.0, -t, s);
+                break; // -x
+                case 2:
+                dir = vec3(s, 1.0, t);
+                break; // +y
+                case 3:
+                dir = vec3(s, -1.0, -t);
+                break; // -y
+                case 4:
+                dir = vec3(s, -t, 1.0);
+                break; // +z
+                case 5:
+                dir = vec3(-s, -t, -1.0);
+                break; // -z
+        }
+        return normalize(dir);
+}
+vec2 Hammersley(uint i, uint n) {
+        return vec2(float(i) / float(n), RadicalInverseVdC(i));
+}
+float RadicalInverseVdC(uint bits) {
+        bits = (bits << 16u) | (bits >> 16u);
+        bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+        bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+        bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+        bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+        return float(bits) * 2.3283064365386963e-10;
+}
+vec3 SampleHemisphere(vec2 Xi) {
+        float phi = 2.0 * PI * Xi.x;
+        float cosTheta = sqrt(Xi.y);
+        float sinTheta = sqrt(1.0 - Xi.y);
+        return vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+}
+vec3 TangentToWorld(vec3 sampleDir, vec3 normal) {
+        mat3 TBN = TangentToWorldBasis(normal);
+        return normalize(TBN * sampleDir);
+}
+mat3 TangentToWorldBasis(vec3 normal) {
+        vec3 up = abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+        vec3 tangent = normalize(cross(up, normal));
+        vec3 bitangent = cross(normal, tangent);
+        return mat3(tangent, bitangent, normal);
+}

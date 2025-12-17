@@ -94,7 +94,7 @@ void UnlitMaterial::Apply(Shader* shader) const {
     if (type == MaterialType::Skybox) {
       glBindTexture(GL_TEXTURE_CUBE_MAP, data.base);
       shader->SetUniform("skybox", 0);
-    } else if (type == MaterialType::CubeMapEquirect || type == MaterialType::CubeMapIrradiance) {
+    } else if (type == MaterialType::CubeMapEquirect) {
       glBindTexture(GL_TEXTURE_CUBE_MAP, data.base);
       shader->SetUniform("cubeMap", 0);
     } else if (type == MaterialType::EquirectCubeMap) {

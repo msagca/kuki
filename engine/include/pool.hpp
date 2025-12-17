@@ -5,10 +5,10 @@
 #include <vector>
 namespace kuki {
 template <typename T>
-concept Hashable = requires(const T& t) {
+concept IsHashable = requires(const T& t) {
   { std::hash<T>{}(t) } -> std::convertible_to<std::size_t>;
 };
-template <Hashable Key, typename Val>
+template <IsHashable Key, typename Val>
 class Pool {
 protected:
   std::unordered_map<Key, std::vector<Val>> pool;

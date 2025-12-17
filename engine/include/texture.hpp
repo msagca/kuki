@@ -7,6 +7,7 @@ struct KUKI_ENGINE_API Texture final : public IComponent {
   TextureType type{};
   int width{};
   int height{};
-  int id{};
+  unsigned int id{};
+  bool IsValid();
 };
 } // namespace kuki

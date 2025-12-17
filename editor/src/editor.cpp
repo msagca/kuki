@@ -147,9 +147,6 @@ void Editor::LoadDefaultScene() {
   filter = AddEntityComponent<MeshFilter>(entityId);
   filter->mesh = *GetAssetComponent<Mesh>(GetAssetId("CubeInverted"));
   AddEntityComponent<Skybox>(entityId);
-  entityName = "Light";
-  entityId = CreateEntity(entityName);
-  AddEntityComponent<Light>(entityId);
 }
 void Editor::LoadDefaultAssets() {
   LoadPrimitive(PrimitiveType::Cube);
@@ -352,6 +349,11 @@ void Editor::DisplayAssets() {
   if (!renderSystem)
     return;
   ImGui::Begin("Assets");
+  const auto clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+  const auto windowHovered = ImGui::IsWindowHovered();
+  const auto itemsHovered = ImGui::IsAnyItemHovered();
+  if (clicked && windowHovered && !itemsHovered)
+    context.assetMask = -1;
   const auto contentRegion = ImGui::GetContentRegionAvail();
   const auto tilesPerRow = std::max(1, static_cast<int>(contentRegion.x / TILE_TOTAL_WIDTH));
   const auto scrollY = ImGui::GetScrollY();

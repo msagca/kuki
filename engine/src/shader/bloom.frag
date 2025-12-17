@@ -1,10 +1,10 @@
 #version 460 core
 in vec2 texCoord;
 out vec4 color;
-uniform sampler2D hdrImage;
-uniform sampler2D bloomImage;
 uniform float exposure;
 uniform float gamma;
+uniform sampler2D bloomImage;
+uniform sampler2D hdrImage;
 void main() {
         vec4 sceneColor = texture(hdrImage, texCoord);
         vec4 bloomColor = texture(bloomImage, texCoord);

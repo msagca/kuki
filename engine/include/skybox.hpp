@@ -6,7 +6,7 @@ namespace kuki {
 /// @brief Texture IDs associated with a skybox component
 struct KUKI_ENGINE_API Skybox final : public IComponent {
   Skybox();
-  int skybox{};
+  int original{};
   int irradiance{};
   int prefilter{};
   int brdf{};

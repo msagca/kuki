@@ -42,25 +42,25 @@ RenderingSystem::~RenderingSystem() {
 void RenderingSystem::Start() {
   glCreateBuffers(1, &materialVBO);
   glCreateBuffers(1, &transformVBO);
+  auto brdfCompute = new ComputeShader("BRDF_LUT", "shader/brdf_lut.comp", *this, ComputeType::BRDF_LUT);
+  auto irradianceCompute = new ComputeShader("Irradiance", "shader/irradiance.comp", *this, ComputeType::Irradiance);
+  auto prefilterCompute = new ComputeShader("Prefilter", "shader/prefilter.comp", *this, ComputeType::Prefilter);
   auto bloomShader = new Shader("Postprocessing", "shader/standard_m.vert", "shader/bloom.frag", *this, MaterialType::Bloom);
   auto blurShader = new Shader("Blur", "shader/standard_m.vert", "shader/blur.frag", *this, MaterialType::Blur);
-  auto brdfCompute = new ComputeShader("BRDF", "shader/brdf.comp", *this, ComputeType::BRDF);
-  auto brightShader = new Shader("Blur", "shader/standard_m.vert", "shader/bright.frag", *this, MaterialType::Bright);
+  auto brightShader = new Shader("BrightPass", "shader/standard_m.vert", "shader/bright_pass.frag", *this, MaterialType::BrightPass);
   auto cubeMapEquirectShader = new Shader("CubeMapEquirect", "shader/standard_m.vert", "shader/cubemap_equirect.frag", *this, MaterialType::CubeMapEquirect);
-  auto cubeMapIrradianceShader = new Shader("CubeMapIrradiance", "shader/standard_mvp.vert", "shader/cubemap_irradiance.frag", *this, MaterialType::CubeMapIrradiance);
-  auto cubeMapPrefilterShader = new Shader("CubeMapPrefilter", "shader/standard_mvp.vert", "shader/cubemap_prefilter.frag", *this, MaterialType::CubeMapPrefilter);
   auto equirectCubeMapShader = new Shader("EquirectCubeMap", "shader/standard_mvp.vert", "shader/equirect_cubemap.frag", *this, MaterialType::EquirectCubeMap);
   auto litShader = new LitShader("Lit", "shader/lit.vert", "shader/lit.frag", *this);
   auto litSkinnedShader = new LitShader("LitSkinned", "shader/lit_skinned.vert", "shader/lit.frag", *this);
   auto skyboxShader = new Shader("Skybox", "shader/skybox.vert", "shader/skybox.frag", *this, MaterialType::Skybox);
   auto unlitShader = new UnlitShader("Unlit", "shader/unlit.vert", "shader/unlit.frag", *this);
   computes.insert({brdfCompute->GetType(), brdfCompute});
+  computes.insert({irradianceCompute->GetType(), irradianceCompute});
+  computes.insert({prefilterCompute->GetType(), prefilterCompute});
   shaders.insert({bloomShader->GetType(), bloomShader});
   shaders.insert({blurShader->GetType(), blurShader});
   shaders.insert({brightShader->GetType(), brightShader});
   shaders.insert({cubeMapEquirectShader->GetType(), cubeMapEquirectShader});
-  shaders.insert({cubeMapIrradianceShader->GetType(), cubeMapIrradianceShader});
-  shaders.insert({cubeMapPrefilterShader->GetType(), cubeMapPrefilterShader});
   shaders.insert({equirectCubeMapShader->GetType(), equirectCubeMapShader});
   shaders.insert({litShader->GetType(), litShader});
   shaders.insert({litSkinnedShader->GetType(), litSkinnedShader});
@@ -90,14 +90,19 @@ void RenderingSystem::Shutdown() {
     delete compute;
   for (const auto& [_, shader] : shaders)
     delete shader;
-  for (const auto& [_, texture] : assetToTexture)
+  for (auto& [_, texture] : assetToTexture) {
     glDeleteTextures(1, &texture);
+    texture = 0;
+  }
+  glDeleteTextures(1, &brdf.id);
+  brdf.id = 0;
   computes.clear();
   shaders.clear();
   framebufferPool.Clear();
   renderbufferPool.Clear();
   texturePool.Clear();
   uniformBufferPool.Clear();
+  // FIXME: make sure entities return GPU resources at destruction
 }
 size_t RenderingSystem::GetFPS() const {
   return fps;
@@ -118,14 +123,10 @@ Shader* RenderingSystem::GetShader(MaterialType type) {
     return shaders[MaterialType::CubeMapEquirect];
   case MaterialType::EquirectCubeMap:
     return shaders[MaterialType::EquirectCubeMap];
-  case MaterialType::CubeMapIrradiance:
-    return shaders[MaterialType::CubeMapIrradiance];
-  case MaterialType::CubeMapPrefilter:
-    return shaders[MaterialType::CubeMapPrefilter];
   case MaterialType::Bloom:
     return shaders[MaterialType::Bloom];
-  case MaterialType::Bright:
-    return shaders[MaterialType::Bright];
+  case MaterialType::BrightPass:
+    return shaders[MaterialType::BrightPass];
   case MaterialType::Blur:
     return shaders[MaterialType::Blur];
   default:
@@ -134,8 +135,12 @@ Shader* RenderingSystem::GetShader(MaterialType type) {
 }
 ComputeShader* RenderingSystem::GetCompute(ComputeType type) {
   switch (type) {
-  case ComputeType::BRDF:
-    return computes[ComputeType::BRDF];
+  case ComputeType::BRDF_LUT:
+    return computes[ComputeType::BRDF_LUT];
+  case ComputeType::Irradiance:
+    return computes[ComputeType::Irradiance];
+  case ComputeType::Prefilter:
+    return computes[ComputeType::Prefilter];
   default:
     return nullptr;
   }
@@ -209,9 +214,9 @@ void RenderingSystem::ApplyPostProc(unsigned int textureIn, unsigned int texture
     spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::Bloom)));
     return;
   }
-  auto brightShader = GetShader(MaterialType::Bright);
+  auto brightShader = GetShader(MaterialType::BrightPass);
   if (!brightShader) {
-    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::Bright)));
+    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::BrightPass)));
     return;
   }
   auto blurShader = GetShader(MaterialType::Blur);
@@ -351,7 +356,7 @@ void RenderingSystem::DrawScene(const Camera* camera, const Camera* observer) {
   });
 }
 void RenderingSystem::DrawSkybox(const Camera* camera, const Skybox* skybox) {
-  if (!camera || !skybox || skybox->skybox == 0)
+  if (!camera || !skybox)
     return;
   auto cubeAsset = app.GetAssetId("CubeInverted");
   auto mesh = app.GetAssetComponent<Mesh>(cubeAsset);
@@ -362,9 +367,14 @@ void RenderingSystem::DrawSkybox(const Camera* camera, const Skybox* skybox) {
   shader->SetCamera(camera);
   auto model = glm::scale(glm::mat4(1.f), glm::vec3(2.f));
   shader->SetUniform("model", model);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->skybox);
-  shader->SetUniform("skybox", 0);
+  if (skybox->original == 0)
+    shader->SetUniform("useSkybox", false);
+  else {
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->original);
+    shader->SetUniform("skybox", 0);
+    shader->SetUniform("useSkybox", true);
+  }
   glDepthFunc(GL_LEQUAL);
   shader->Draw(mesh);
   glDepthFunc(GL_LESS);
@@ -407,20 +417,34 @@ void RenderingSystem::DrawEntitiesInstanced(const Camera* camera, const Mesh* me
     shader->Use();
     shader->SetCamera(camera);
     shader->SetLighting(lights);
-    if (skybox && skybox->skybox != 0) {
-      // TODO: let the shader handle which texture unit to use
-      glActiveTexture(GL_TEXTURE5); // units 0-4 are used by other textures such as albedo map
-      glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->irradiance);
-      glActiveTexture(GL_TEXTURE6);
-      glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->prefilter);
-      glActiveTexture(GL_TEXTURE7);
-      glBindTexture(GL_TEXTURE_2D, skybox->brdf);
-      shader->SetUniform("irradianceMap", 5);
-      shader->SetUniform("prefilterMap", 6);
-      shader->SetUniform("brdfLUT", 7);
+    if (skybox) {
+      // TODO: let the shader handle which texture units to use
+      // NOTE: units 0-4 are used by other textures such as albedo map
+      if (skybox->irradiance > 0) {
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->irradiance);
+        shader->SetUniform("irradianceMap", 5);
+      }
+      if (skybox->prefilter > 0) {
+        glActiveTexture(GL_TEXTURE6);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->prefilter);
+        shader->SetUniform("prefilterMap", 6);
+      }
+      if (skybox->brdf > 0) {
+        glActiveTexture(GL_TEXTURE7);
+        glBindTexture(GL_TEXTURE_2D, skybox->brdf);
+        shader->SetUniform("brdfLUT", 7);
+      }
       shader->SetUniform("hasSkybox", true);
-    } else
+      shader->SetUniform("hasIrradianceMap", skybox->irradiance > 0);
+      shader->SetUniform("hasPrefilterMap", skybox->prefilter > 0);
+      shader->SetUniform("hasBRDF", skybox->brdf > 0);
+    } else {
       shader->SetUniform("hasSkybox", false);
+      shader->SetUniform("hasIrradianceMap", false);
+      shader->SetUniform("hasPrefilterMap", false);
+      shader->SetUniform("hasBRDF", false);
+    }
     shader->SetMaterial(&materialLit);
     shader->SetMaterialFallback(mesh, litMaterials, materialVBO);
     shader->SetTransform(mesh, litTransforms, transformVBO);
@@ -438,7 +462,7 @@ void RenderingSystem::DrawEntitiesInstanced(const Camera* camera, const Mesh* me
 }
 void RenderingSystem::DrawSkyboxAsset(ID id) {
   auto skybox = app.GetAssetComponent<Skybox>(id);
-  if (!skybox || skybox->skybox == 0)
+  if (!skybox || skybox->original == 0)
     return;
   auto frameId = app.GetAssetId("Frame");
   auto mesh = app.GetAssetComponent<Mesh>(frameId);
@@ -447,7 +471,7 @@ void RenderingSystem::DrawSkyboxAsset(ID id) {
   static Material material;
   material.current = UnlitMaterial();
   auto& unlitMaterial = std::get<UnlitMaterial>(material.current);
-  unlitMaterial.data.base = skybox->skybox;
+  unlitMaterial.data.base = skybox->original;
   unlitMaterial.type = MaterialType::CubeMapEquirect;
   auto shader = GetShader(MaterialType::CubeMapEquirect);
   shader->Use();
@@ -604,8 +628,8 @@ Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect) {
   texture.id = textureId;
   glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
   glActiveTexture(GL_TEXTURE0);
-  shader->SetUniform("equirect", 0);
   glBindTexture(GL_TEXTURE_2D, equirect.id);
+  shader->SetUniform("equirect", 0);
   glViewport(0, 0, width, height);
   for (auto i = 0; i < 6; ++i) {
     shader->SetUniform("view", viewMatrices[i]);
@@ -619,129 +643,85 @@ Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect) {
   return texture;
 }
 Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
+  constexpr unsigned int workgroupSize = 8;
+  constexpr unsigned int textureSize = 64;
+  const auto numGroups = static_cast<unsigned int>(std::ceil(static_cast<float>(textureSize) / workgroupSize));
   Texture texture{};
-  texture.type = TextureType::CubeMap;
-  auto shader = GetShader(MaterialType::CubeMapIrradiance);
+  texture.type = TextureType::Irradiance;
+  texture.width = textureSize;
+  texture.height = textureSize;
+  TextureParams params{textureSize, textureSize, GL_TEXTURE_CUBE_MAP, GL_RGBA32F};
+  texture.id = texturePool.Request(params);
+  auto shader = GetCompute(ComputeType::Irradiance);
   if (!shader) {
-    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::CubeMapIrradiance)));
+    spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::Irradiance)));
     return texture;
   }
-  auto cubeId = app.GetAssetId("CubeInverted");
-  auto mesh = app.GetAssetComponent<Mesh>(cubeId);
-  if (!mesh) {
-    spdlog::warn("Cube mesh not found.");
-    return texture;
-  }
-  const auto width = 64; // TODO: make this configurable
-  const auto height = width;
-  texture.width = width;
-  texture.height = height;
-  auto projection = glm::perspective(glm::radians(90.f), 1.f, .1f, 10.f);
   shader->Use();
-  shader->SetUniform("projection", projection);
-  auto model = glm::scale(glm::mat4(1.f), glm::vec3(2.f));
-  shader->SetUniform("model", model);
-  glm::mat4 viewMatrices[] = {glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(1.f, 0.f, 0.f), glm::vec3(0.f, -1.f, 0.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(-1.f, 0.f, 0.f), glm::vec3(0.f, -1.f, 0.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f), glm::vec3(0.f, 0.f, 1.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, -1.f, 0.f), glm::vec3(0.f, 0.f, -1.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 0.f, 1.f), glm::vec3(0.f, -1.f, 0.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 0.f, -1.f), glm::vec3(0.f, -1.f, 0.f))};
-  TextureParams params{width, height, GL_TEXTURE_CUBE_MAP};
-  auto framebuffer = framebufferPool.Request(params);
-  auto renderbuffer = renderbufferPool.Request(params);
-  auto textureId = texturePool.Request(params);
-  UpdateAttachments(params, framebuffer, renderbuffer, textureId);
-  texture.id = textureId;
   glActiveTexture(GL_TEXTURE0);
-  shader->SetUniform("cubeMap", 0);
   glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
-  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-  glViewport(0, 0, width, height);
-  for (auto i = 0; i < 6; ++i) {
-    shader->SetUniform("view", viewMatrices[i]);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, texture.id, 0);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    shader->Draw(mesh);
-  }
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  framebufferPool.Release(params, framebuffer);
-  renderbufferPool.Release(params, renderbuffer);
+  shader->SetUniform("cubeMap", 0);
+  shader->SetUniform("cubeSize", textureSize);
+  glBindImageTexture(0, texture.id, 0, GL_TRUE, 0, GL_WRITE_ONLY, params.format);
+  glDispatchCompute(numGroups, numGroups, 6);
+  glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
   return texture;
 }
 Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
+  constexpr unsigned int workgroupSize = 8;
+  constexpr unsigned int textureSize = 128;
+  const auto mipLevels = static_cast<unsigned int>(std::floor(std::log2(textureSize))) + 1;
   Texture texture{};
-  texture.type = TextureType::CubeMap;
-  auto shader = GetShader(MaterialType::CubeMapPrefilter);
+  texture.type = TextureType::Prefilter;
+  texture.width = textureSize;
+  texture.height = textureSize;
+  TextureParams params{textureSize, textureSize, GL_TEXTURE_CUBE_MAP, GL_RGBA32F, 1, mipLevels};
+  texture.id = texturePool.Request(params);
+  auto shader = GetCompute(ComputeType::Prefilter);
   if (!shader) {
-    spdlog::warn("Shader not found: {}.", EnumTraits<MaterialType>().GetNames().at(static_cast<uint8_t>(MaterialType::CubeMapPrefilter)));
+    spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::Prefilter)));
     return texture;
   }
-  auto cubeId = app.GetAssetId("CubeInverted");
-  auto mesh = app.GetAssetComponent<Mesh>(cubeId);
-  if (!mesh) {
-    spdlog::warn("Cube mesh not found.");
-    return texture;
-  }
-  const auto width = 256; // TODO: make this configurable
-  const auto height = width;
-  texture.width = width;
-  texture.height = height;
-  auto projection = glm::perspective(glm::radians(90.f), 1.f, .1f, 10.f);
   shader->Use();
-  shader->SetUniform("projection", projection);
-  auto model = glm::scale(glm::mat4(1.f), glm::vec3(2.f));
-  shader->SetUniform("model", model);
-  glm::mat4 viewMatrices[] = {glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(1.f, 0.f, 0.f), glm::vec3(0.f, -1.f, 0.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(-1.f, 0.f, 0.f), glm::vec3(0.f, -1.f, 0.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f), glm::vec3(0.f, 0.f, 1.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, -1.f, 0.f), glm::vec3(0.f, 0.f, -1.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 0.f, 1.f), glm::vec3(0.f, -1.f, 0.f)), glm::lookAt(glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 0.f, -1.f), glm::vec3(0.f, -1.f, 0.f))};
-  TextureParams params{width, height, GL_TEXTURE_CUBE_MAP};
-  auto framebuffer = framebufferPool.Request(params);
-  auto renderbuffer = renderbufferPool.Request(params);
-  params.mipmaps = std::log2(width) + 1;
-  auto textureId = texturePool.Request(params);
-  UpdateAttachments(params, framebuffer, renderbuffer, textureId);
-  texture.id = textureId;
   glActiveTexture(GL_TEXTURE0);
-  shader->SetUniform("cubeMap", 0);
-  shader->SetUniform("mipLevels", params.mipmaps);
-  shader->SetUniform("mipWidth", width);
   glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
-  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-  for (auto level = 0; level < params.mipmaps; ++level) {
-    auto mipWidth = static_cast<int>(width * std::pow(.5f, level));
-    auto mipHeight = static_cast<int>(height * std::pow(.5f, level));
-    glViewport(0, 0, mipWidth, mipHeight);
-    auto roughness = static_cast<float>(level) / (params.mipmaps - 1);
+  shader->SetUniform("cubeMap", 0);
+  shader->SetUniform("mipLevels", mipLevels);
+  for (auto mip = 0; mip < mipLevels; ++mip) {
+    unsigned int mipSize = textureSize >> mip;
+    auto roughness = static_cast<float>(mip) / (mipLevels - 1);
     shader->SetUniform("roughness", roughness);
-    for (auto face = 0; face < 6; ++face) {
-      shader->SetUniform("view", viewMatrices[face]);
-      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, texture.id, level);
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      shader->Draw(mesh);
-    }
+    shader->SetUniform("mipWidth", mipSize);
+    shader->SetUniform("cubeSize", mipSize);
+    glBindImageTexture(0, texture.id, mip, GL_TRUE, 0, GL_WRITE_ONLY, params.format);
+    auto numGroups = static_cast<unsigned int>(std::ceil(static_cast<float>(mipSize) / workgroupSize));
+    glDispatchCompute(numGroups, numGroups, 6);
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
   }
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  framebufferPool.Release(params, framebuffer);
-  renderbufferPool.Release(params, renderbuffer);
   return texture;
 }
 Texture RenderingSystem::CreateBRDF_LUT() {
+  if (brdf.IsValid())
+    return brdf;
+  constexpr unsigned int workgroupSize = 8;
+  constexpr unsigned int textureSize = 512;
+  const auto numGroups = static_cast<unsigned int>(std::ceil(static_cast<float>(textureSize) / workgroupSize));
   Texture texture{};
-  texture.type = TextureType::BRDF;
-  auto shader = GetCompute(ComputeType::BRDF);
+  texture.type = TextureType::BRDF_LUT;
+  texture.width = textureSize;
+  texture.height = textureSize;
+  TextureParams params{textureSize, textureSize, GL_TEXTURE_2D, GL_RG16F};
+  texture.id = texturePool.Request(params);
+  auto shader = GetCompute(ComputeType::BRDF_LUT);
   if (!shader) {
-    spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::BRDF)));
+    spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::BRDF_LUT)));
     return texture;
   }
-  const auto width = 1024; // TODO: make this configurable
-  const auto height = width;
-  texture.width = width;
-  texture.height = height;
-  TextureParams params{width, height, GL_TEXTURE_2D, GL_RG16F};
-  auto textureId = texturePool.Request(params);
-  texture.id = textureId;
-  glBindImageTexture(0, texture.id, 0, GL_FALSE, 0, GL_WRITE_ONLY, params.format);
   shader->Use();
-  const auto workGroupSizeX = 16;
-  const auto workGroupSizeY = 16;
-  auto numGroupsX = (width + workGroupSizeX - 1) / workGroupSizeX;
-  auto numGroupsY = (height + workGroupSizeY - 1) / workGroupSizeY;
-  glDispatchCompute(numGroupsX, numGroupsY, 1);
+  glBindImageTexture(0, texture.id, 0, GL_FALSE, 0, GL_WRITE_ONLY, params.format);
+  glDispatchCompute(numGroups, numGroups, 1);
   glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-  return texture;
+  brdf = texture;
+  return brdf;
 }
 } // namespace kuki

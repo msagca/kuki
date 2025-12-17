@@ -371,13 +371,15 @@ struct DisplayTraits<Skybox> {
       std::function<void()> onClick;
     };
     TexEntry entries[] = {
-      {"Skybox##Texture", static_cast<ImTextureID>(skybox->skybox), "Skybox", [&context] {
+      // NOTE: a preview is displayed instead of the skybox which is a cubemap
+      {"Skybox##Texture", static_cast<ImTextureID>(skybox->preview), "Skybox", [&context] {
 	context.selectedComponent = static_cast<int>(ComponentType::Skybox);
         context.assetMask = static_cast<int>(ComponentMask::Skybox); }},
       // {"Irradiance", static_cast<ImTextureID>(skybox->irradiance), "Irradiance", [] {}},
       // {"Prefilter", static_cast<ImTextureID>(skybox->prefilter), "Prefilter", [] {}},
       // {"BRDF", static_cast<ImTextureID>(skybox->brdf), "BRDF", [] {}},
-      {"Preview", static_cast<ImTextureID>(skybox->preview), "Preview", [] {}}};
+      // {"Preview", static_cast<ImTextureID>(skybox->preview), "Preview", [] {}}
+    };
     auto firstOnLine = true;
     auto remaining = .0f;
     for (const auto& e : entries) {

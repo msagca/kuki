@@ -1,7 +1,7 @@
 #version 460 core
+flat out int textureMask;
 out vec2 texCoord;
 out vec4 baseColor;
-flat out int textureMask;
 layout(location = 0) in vec3 i_position;
 layout(location = 1) in vec3 i_normal;
 layout(location = 2) in vec2 i_texCoord;

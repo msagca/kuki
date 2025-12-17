@@ -34,7 +34,7 @@ private:
   std::vector<ID> displayedEntities{};
   std::unique_ptr<CameraController> cameraController{};
   bool showConsole{false};
-  bool showFPS{true};
+  bool showFPS{false};
   bool ctrlHeld{false};
   bool shiftHeld{false};
   bool backspacePressed{false};

@@ -10,6 +10,8 @@
 #include <mesh.hpp>
 #include <span>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 namespace kuki {
 class RenderingSystem;
 class KUKI_ENGINE_API IShader {
@@ -21,10 +23,11 @@ protected:
   std::string Read(const std::filesystem::path&);
   unsigned int Compile(const char*, int);
   void CacheLocations();
-  std::unordered_map<std::string, int> locations;
+  std::unordered_map<std::string, int> uniformToLocation;
+  std::unordered_set<int> cachedLocations;
 public:
   IShader(const std::string&, RenderingSystem&);
-  virtual ~IShader() = default;
+  virtual ~IShader();
   const std::string& GetName() const;
   unsigned int GetId() const;
   void Use() const;
@@ -45,7 +48,7 @@ class KUKI_ENGINE_API ComputeShader : public IShader {
 private:
   ComputeType type;
 public:
-  ComputeShader(const std::string&, const std::filesystem::path&, RenderingSystem&, ComputeType = ComputeType::BRDF);
+  ComputeShader(const std::string&, const std::filesystem::path&, RenderingSystem&, ComputeType = ComputeType::BRDF_LUT);
   ComputeType GetType() const;
 };
 class KUKI_ENGINE_API Shader : public IShader {
