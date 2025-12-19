@@ -41,6 +41,7 @@ enum class CameraType : uint8_t {
 };
 enum class ComputeType : uint8_t {
   BRDF_LUT,
+  EquirectCubeMap,
   Irradiance,
   Prefilter
 };
@@ -54,7 +55,6 @@ enum class MaterialType : uint8_t {
   Blur,
   BrightPass,
   CubeMapEquirect,
-  EquirectCubeMap,
   Lit,
   Skybox,
   Unlit
@@ -97,7 +97,7 @@ struct EnumTraits {
 template <>
 struct EnumTraits<ComputeType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"BRDF_LUT", "Irradiance", "Prefilter"};
+    static const std::vector<const char*> names = {"BRDF_LUT", "EquirectCubeMap", "Irradiance", "Prefilter"};
     return names;
   }
 };
@@ -118,7 +118,7 @@ struct EnumTraits<LightType> {
 template <>
 struct EnumTraits<MaterialType> {
   static const std::vector<const char*>& GetNames() {
-    static const std::vector<const char*> names = {"Bloom", "Blur", "BrightPass", "CubeMapEquirect", "EquirectCubeMap", "Lit", "Skybox", "Unlit"};
+    static const std::vector<const char*> names = {"Bloom", "Blur", "BrightPass", "CubeMapEquirect", "Lit", "Skybox", "Unlit"};
     return names;
   }
 };

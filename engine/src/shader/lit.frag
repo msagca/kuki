@@ -57,6 +57,7 @@ float GeometrySchlickGGX(float, float);
 float GeometrySmith(vec3, vec3, vec3, float);
 vec2 FallbackBRDF(float, float);
 vec3 DirLightContribution(DirLight, vec3, vec3, vec3, float, float, vec3);
+/// @brief A gradient sky to use as fallback in the absence of a cubemap
 vec3 FallbackSky(vec3);
 vec3 FresnelSchlick(float, vec3);
 vec3 FresnelSchlickRoughness(float, vec3, float);
@@ -132,7 +133,6 @@ float DistributionGGX(vec3 N, vec3 H, float R) {
 vec2 FallbackBRDF(float NdotV, float roughness) {
         return vec2(NdotV, 1.0 - roughness);
 }
-/// @brief A gradient sky to use as fallback in the absence of a cubemap
 vec3 FallbackSky(vec3 dir) {
         // NOTE: make sure this is consistent with the skybox shader's gradient calculation
         float t = clamp(normalize(dir).y * 0.5 + 0.5, 0.0, 1.0);

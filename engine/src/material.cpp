@@ -97,9 +97,6 @@ void UnlitMaterial::Apply(Shader* shader) const {
     } else if (type == MaterialType::CubeMapEquirect) {
       glBindTexture(GL_TEXTURE_CUBE_MAP, data.base);
       shader->SetUniform("cubeMap", 0);
-    } else if (type == MaterialType::EquirectCubeMap) {
-      glBindTexture(GL_TEXTURE_2D, data.base);
-      shader->SetUniform("equirect", 0);
     } else {
       glBindTexture(GL_TEXTURE_2D, data.base);
       shader->SetUniform("material.base", 0);

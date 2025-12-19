@@ -24,21 +24,19 @@ GLuint TexturePool::Allocate(const TextureParams& params) {
   return texture;
 }
 void TexturePool::Reallocate(const TextureParams& params, GLuint& texture) {
+  // FIXME: this creates immutable storage — resizing is not possible
   if (texture == 0)
     return;
-  // FIXME: glTexStorage2D creates immutable textures, this function is supposed to resize textures if requested
   glBindTexture(params.target, texture);
   if (params.target == GL_TEXTURE_2D_MULTISAMPLE)
-    glTexImage2DMultisample(params.target, params.samples, params.format, params.width, params.height, GL_TRUE);
+    glTexStorage2DMultisample(params.target, params.samples, params.format, params.width, params.height, GL_TRUE);
   else {
     glTexParameteri(params.target, GL_TEXTURE_MIN_FILTER, params.mipmaps > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
     glTexParameteri(params.target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(params.target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    if (params.target == GL_TEXTURE_CUBE_MAP) {
+    if (params.target == GL_TEXTURE_CUBE_MAP)
       glTexParameteri(params.target, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-      glTexStorage2D(GL_TEXTURE_CUBE_MAP, params.mipmaps, params.format, params.width, params.height);
-    } else
-      glTexStorage2D(params.target, params.mipmaps, params.format, params.width, params.height);
+    glTexStorage2D(params.target, params.mipmaps, params.format, params.width, params.height);
   }
   glBindTexture(params.target, 0);
 }

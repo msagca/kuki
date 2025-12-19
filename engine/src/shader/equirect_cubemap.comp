@@ -1,0 +1,45 @@
+#version 460 core
+const vec2 INV_ATAN = vec2(0.1591, 0.3183); // 1/(2pi), 1/pi
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(rgba32f, binding = 0) writeonly uniform imageCube cubeMap;
+uniform sampler2D equirect;
+uniform uint size;
+uniform bool invert;
+vec2 SampleSphericalMap(vec3);
+vec3 GetDirection(ivec3, ivec2);
+void main() {
+        ivec3 gid = ivec3(gl_GlobalInvocationID);
+        if (gid.x >= size || gid.y >= size || gid.z >= 6)
+                return;
+        vec3 dir = GetDirection(gid, ivec2(size));
+        vec2 uv = SampleSphericalMap(dir);
+        if (invert) // invert if EXR
+                uv.y = 1.0 - uv.y;
+        vec3 color = texture(equirect, uv).rgb;
+        imageStore(cubeMap, gid, vec4(color, 1.0));
+}
+vec3 GetDirection(ivec3 coord, ivec2 size) {
+        uint face = coord.z;
+        vec2 uv = (coord.xy + 0.5) / size * 2.0 - 1.0;
+        switch (face) {
+                case 0:
+                return normalize(vec3(1.0, -uv.y, -uv.x)); // +x
+                case 1:
+                return normalize(vec3(-1.0, -uv.y, uv.x)); // -x
+                case 2:
+                return normalize(vec3(uv.x, 1.0, uv.y)); // +y
+                case 3:
+                return normalize(vec3(uv.x, -1.0, -uv.y)); // -y
+                case 4:
+                return normalize(vec3(uv.x, -uv.y, 1.0)); // +z
+                case 5:
+                return normalize(vec3(-uv.x, -uv.y, -1.0)); // -z
+        }
+        return vec3(0.0);
+}
+vec2 SampleSphericalMap(vec3 v) {
+        vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
+        uv *= INV_ATAN;
+        uv += 0.5;
+        return uv;
+}
