@@ -31,7 +31,7 @@ struct DisplayTraits<BoneData> {
     return "BoneData";
   }
   static void DisplayProperties(BoneData* boneData, EditorContext& context) {
-    constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
+    static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
     if (!boneData)
       return;
     auto ssbo = boneData->boneSSBO;
@@ -48,7 +48,7 @@ struct DisplayTraits<Camera> {
     return "Camera";
   }
   static void DisplayProperties(Camera* camera, EditorContext& context) {
-    constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
+    static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
     if (!camera)
       return;
     auto settingsDirty = false;
@@ -158,7 +158,7 @@ struct DisplayTraits<LitMaterial> {
     return "Lit Material";
   }
   static void DisplayProperties(LitMaterial* material, EditorContext& context) {
-    constexpr ImVec2 TEXTURE_SIZE(64, 64);
+    static constexpr ImVec2 TEXTURE_SIZE(64, 64);
     if (!material)
       return;
     const auto& style = ImGui::GetStyle();
@@ -340,64 +340,29 @@ struct DisplayTraits<Skybox> {
     return "Skybox";
   }
   static void DisplayProperties(Skybox* skybox, EditorContext& context) {
-    constexpr ImVec2 TEXTURE_SIZE(64, 64);
+    static constexpr ImVec2 uv0(0.f, 1.f);
+    static constexpr ImVec2 uv1(1.f, 0.f);
+    static constexpr ImVec2 TEXTURE_SIZE(64, 64);
     if (!skybox)
       return;
     const auto& style = ImGui::GetStyle();
-    auto GetTileWidth = [&](const char* label) -> float {
-      const auto textWidth = ImGui::CalcTextSize(label).x;
-      const auto buttonWidth = TEXTURE_SIZE.x + style.FramePadding.x * 2.0f;
-      return (std::max)(buttonWidth, textWidth);
-    };
-    auto DrawTextureTile = [&](const char* id, ImTextureID tex, const char* label, auto onClick) -> float {
-      const auto tileWidth = GetTileWidth(label);
-      auto start_pos = ImGui::GetCursorPos();
-      ImGui::BeginGroup();
-      auto clicked = ImGui::ImageButton(id, tex, TEXTURE_SIZE);
-      if (clicked)
-        onClick();
-      const auto textWidth = ImGui::CalcTextSize(label).x;
-      const auto buttonHeight = TEXTURE_SIZE.y + style.FramePadding.y * 2.0f;
-      ImGui::SetCursorPosX(start_pos.x + (tileWidth - textWidth) * .5f);
-      ImGui::SetCursorPosY(start_pos.y + buttonHeight + style.ItemInnerSpacing.y);
-      ImGui::TextUnformatted(label);
-      ImGui::EndGroup();
-      return tileWidth;
-    };
-    struct TexEntry {
-      const char* id;
-      ImTextureID tex;
-      const char* label;
-      std::function<void()> onClick;
-    };
-    TexEntry entries[] = {
-      // NOTE: a preview is displayed instead of the skybox which is a cubemap
-      {"Skybox##Texture", static_cast<ImTextureID>(skybox->preview), "Skybox", [&context] {
-	context.selectedComponent = static_cast<int>(ComponentType::Skybox);
-        context.assetMask = static_cast<int>(ComponentMask::Skybox); }},
-      // {"Irradiance", static_cast<ImTextureID>(skybox->irradiance), "Irradiance", [] {}},
-      // {"Prefilter", static_cast<ImTextureID>(skybox->prefilter), "Prefilter", [] {}},
-      // {"BRDF", static_cast<ImTextureID>(skybox->brdf), "BRDF", [] {}},
-      // {"Preview", static_cast<ImTextureID>(skybox->preview), "Preview", [] {}}
-    };
-    auto firstOnLine = true;
-    auto remaining = .0f;
-    for (const auto& e : entries) {
-      if (firstOnLine)
-        remaining = ImGui::GetContentRegionAvail().x;
-      const auto tileWidth = GetTileWidth(e.label);
-      if (!firstOnLine) {
-        if (tileWidth + style.ItemSpacing.x <= remaining) {
-          ImGui::SameLine();
-          remaining -= style.ItemSpacing.x;
-        } else {
-          firstOnLine = true;
-          remaining = ImGui::GetContentRegionAvail().x;
-        }
-      }
-      remaining -= DrawTextureTile(e.id, e.tex, e.label, e.onClick);
-      firstOnLine = false;
+    const auto label = "Skybox";
+    auto tex = static_cast<ImTextureID>(skybox->preview);
+    const float textWidth = ImGui::CalcTextSize(label).x;
+    const float buttonWidth = TEXTURE_SIZE.x + style.FramePadding.x * 2.f;
+    const float tileWidth = std::max(buttonWidth, textWidth);
+    auto startPos = ImGui::GetCursorPos();
+    ImGui::BeginGroup();
+    bool clicked = ImGui::ImageButton("Skybox##Texture", tex, TEXTURE_SIZE, uv0, uv1);
+    if (clicked) {
+      context.selectedComponent = static_cast<int>(ComponentType::Skybox);
+      context.assetMask = static_cast<int>(ComponentMask::Skybox);
     }
+    const auto buttonHeight = TEXTURE_SIZE.y + style.FramePadding.y * 2.f;
+    ImGui::SetCursorPosX(startPos.x + (tileWidth - textWidth) * .5f);
+    ImGui::SetCursorPosY(startPos.y + buttonHeight + style.ItemInnerSpacing.y);
+    ImGui::TextUnformatted(label);
+    ImGui::EndGroup();
   }
 };
 template <>
@@ -406,8 +371,8 @@ struct DisplayTraits<Texture> {
     return "Texture";
   }
   static void DisplayProperties(Texture* texture, EditorContext& context) {
-    constexpr auto MAX_INT = std::numeric_limits<int>::max();
-    constexpr auto TEXTURE_SIZE = ImVec2(64, 64);
+    static constexpr auto MAX_INT = std::numeric_limits<int>::max();
+    static constexpr auto TEXTURE_SIZE = ImVec2(64, 64);
     if (!texture)
       return;
     auto types = EnumTraits<TextureType>::GetNames();
@@ -430,7 +395,7 @@ struct DisplayTraits<Transform> {
     return "Transform";
   }
   static void DisplayProperties(Transform* transform, EditorContext& context) {
-    constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
+    static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
     if (!transform)
       return;
     auto dirty = false;

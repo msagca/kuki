@@ -57,8 +57,6 @@ private:
   void DrawGizmos(const Camera*, const Camera* = nullptr);
   void DrawScene(const Camera*, const Camera* = nullptr);
   void DrawSkybox(const Camera*, const Skybox*);
-  /// @brief Draws a skybox asset by applying equirectangular projection to it
-  void DrawSkyboxAsset(ID);
   void DrawViewFrustum(const Camera*, const Camera*);
   void ApplyPostProc(unsigned int, unsigned int, const TextureParams&);
   BoundingBox GetAssetBounds(ID);
@@ -75,11 +73,12 @@ public:
   void Shutdown() override;
   size_t GetFPS() const;
   int RenderSceneToTexture(Camera* = nullptr);
-  int RenderAssetToTexture(ID, int);
-  Texture CreateCubeMapFromEquirect(Texture);
-  Texture CreateIrradianceMapFromCubeMap(Texture);
-  Texture CreatePrefilterMapFromCubeMap(Texture);
-  Texture CreateBRDF_LUT();
+  int RenderAssetToTexture(ID, const int = 64);
+  Texture CreateCubeMapFromEquirect(Texture, const int = 1024);
+  Texture CreateEquirectFromCubeMap(Texture, const int = 1024);
+  Texture CreateIrradianceMapFromCubeMap(Texture, const int = 32);
+  Texture CreatePrefilterMapFromCubeMap(Texture, const int = 1024);
+  Texture CreateBRDF_LUT(const int = 512);
   size_t GetGizmoMask() const;
   void SetGizmoMask(size_t);
   static void ToggleWireframeMode();

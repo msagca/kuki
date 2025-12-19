@@ -470,30 +470,6 @@ void Application::UnregisterInputAction(int trigger, bool press) {
 void Application::UnregisterInputAction(const std::string& trigger) {
   inputManager.UnregisterAction(trigger);
 }
-Texture Application::CreateCubeMapFromEquirect(Texture equirect) {
-  auto renderingSystem = GetSystem<RenderingSystem>();
-  if (!renderingSystem)
-    return Texture{};
-  return renderingSystem->CreateCubeMapFromEquirect(equirect);
-}
-Texture Application::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
-  auto renderingSystem = GetSystem<RenderingSystem>();
-  if (!renderingSystem)
-    return Texture{};
-  return renderingSystem->CreateIrradianceMapFromCubeMap(cubeMap);
-}
-Texture Application::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
-  auto renderingSystem = GetSystem<RenderingSystem>();
-  if (!renderingSystem)
-    return Texture{};
-  return renderingSystem->CreatePrefilterMapFromCubeMap(cubeMap);
-}
-Texture Application::CreateBRDF_LUT() {
-  auto renderingSystem = GetSystem<RenderingSystem>();
-  if (!renderingSystem)
-    return Texture{};
-  return renderingSystem->CreateBRDF_LUT();
-}
 void Application::LoadModelAsync(const std::filesystem::path& path) {
   assetLoader.LoadModelAsync(path);
 }

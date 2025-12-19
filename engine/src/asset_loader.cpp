@@ -36,6 +36,7 @@
 #include <memory>
 #include <mesh.hpp>
 #include <primitive.hpp>
+#include <rendering_system.hpp>
 #include <skybox.hpp>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
@@ -417,13 +418,45 @@ ID AssetLoader::CreateSkyboxAsset(const TextureData& textureData) {
   std::string name = textureData.name;
   auto assetId = app->CreateAsset(name);
   auto skybox = app->AddAssetComponent<Skybox>(assetId);
-  auto cubeMap = app->CreateCubeMapFromEquirect(texture);
+  auto cubeMap = CreateCubeMapFromEquirect(texture);
   skybox->original = cubeMap.id;
-  skybox->irradiance = app->CreateIrradianceMapFromCubeMap(cubeMap).id;
-  skybox->prefilter = app->CreatePrefilterMapFromCubeMap(cubeMap).id;
-  skybox->brdf = app->CreateBRDF_LUT().id;
+  skybox->irradiance = CreateIrradianceMapFromCubeMap(cubeMap).id;
+  skybox->prefilter = CreatePrefilterMapFromCubeMap(cubeMap).id;
+  skybox->brdf = CreateBRDF_LUT().id;
+  skybox->preview = CreateCubeMapPreview(cubeMap).id;
   spdlog::info("Skybox is created: {}.", name);
   return assetId;
+}
+Texture AssetLoader::CreateCubeMapFromEquirect(Texture equirect) {
+  auto renderingSystem = app->GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return Texture{};
+  return renderingSystem->CreateCubeMapFromEquirect(equirect);
+}
+Texture AssetLoader::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
+  auto renderingSystem = app->GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return Texture{};
+  return renderingSystem->CreateIrradianceMapFromCubeMap(cubeMap);
+}
+Texture AssetLoader::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
+  auto renderingSystem = app->GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return Texture{};
+  return renderingSystem->CreatePrefilterMapFromCubeMap(cubeMap);
+}
+Texture AssetLoader::CreateBRDF_LUT() {
+  auto renderingSystem = app->GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return Texture{};
+  return renderingSystem->CreateBRDF_LUT();
+}
+Texture AssetLoader::CreateCubeMapPreview(Texture cubeMap) {
+  auto renderingSystem = app->GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return Texture{};
+  // TODO: read the preview size from a config
+  return renderingSystem->CreateEquirectFromCubeMap(cubeMap, 64);
 }
 Material AssetLoader::CreateMaterial(const MaterialData& materialData) {
   Material material{};

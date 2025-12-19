@@ -12,6 +12,7 @@
 #include <kuki_engine_export.h>
 #include <primitive.hpp>
 #include <string>
+#include <texture.hpp>
 #include <vector>
 namespace kuki {
 struct NodeData {
@@ -93,6 +94,11 @@ private:
   TextureData LoadTexture(const std::filesystem::path&, TextureType = TextureType::Albedo);
   void CalculateBounds(Mesh&, const std::vector<Vertex>&);
   void CreateIndexBuffer(Mesh&, const std::vector<unsigned int>&);
+  Texture CreateCubeMapFromEquirect(Texture);
+  Texture CreateIrradianceMapFromCubeMap(Texture);
+  Texture CreatePrefilterMapFromCubeMap(Texture);
+  Texture CreateBRDF_LUT();
+  Texture CreateCubeMapPreview(Texture);
 public:
   AssetLoader(Application*, EntityManager&);
   /// @brief Process pending load operations

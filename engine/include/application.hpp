@@ -156,11 +156,6 @@ public:
   void RegisterInputAction(const std::string&, InputAction);
   void UnregisterInputAction(int, bool = true);
   void UnregisterInputAction(const std::string&);
-  // TODO: move the following four functions to AssetLoader
-  Texture CreateCubeMapFromEquirect(Texture);
-  Texture CreateIrradianceMapFromCubeMap(Texture);
-  Texture CreatePrefilterMapFromCubeMap(Texture);
-  Texture CreateBRDF_LUT();
   void LoadModelAsync(const std::filesystem::path&);
   void LoadTextureAsync(const std::filesystem::path&, TextureType = TextureType::Albedo);
   ID LoadPrimitive(PrimitiveType);

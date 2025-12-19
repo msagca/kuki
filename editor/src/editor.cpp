@@ -167,8 +167,8 @@ void Editor::InitImGui() {
   fileBrowser.SetTitle("Browse Files");
 }
 void Editor::DisplayScene() {
-  static const ImVec2 uv0(0.f, 1.f);
-  static const ImVec2 uv1(1.f, 0.f);
+  static constexpr ImVec2 uv0(0.f, 1.f);
+  static constexpr ImVec2 uv1(1.f, 0.f);
   ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   const auto fPressed = ImGui::IsKeyPressed(ImGuiKey_F);
   const auto focused = ImGui::IsWindowFocused();
@@ -335,14 +335,14 @@ enum class FileType : uint8_t {
   Image
 };
 void Editor::DisplayAssets() {
-  static const ImVec2 uv0(0.f, 1.f);
-  static const ImVec2 uv1(1.f, 0.f);
-  static const auto THUMBNAIL_SIZE = 128.f;
-  static const ImVec2 TILE_SIZE(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
-  static const auto TILE_PADDING = 2.f;
-  static const auto TEXT_PADDING = 2.f;
+  static constexpr ImVec2 uv0(0.f, 1.f);
+  static constexpr ImVec2 uv1(1.f, 0.f);
+  static constexpr auto THUMBNAIL_SIZE = 128.f;
+  static constexpr ImVec2 TILE_SIZE(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+  static constexpr auto TILE_PADDING = 2.f;
+  static constexpr auto TEXT_PADDING = 2.f;
   static const auto TEXT_HEIGHT = ImGui::GetTextLineHeight();
-  static const auto TILE_TOTAL_WIDTH = THUMBNAIL_SIZE + TILE_PADDING;
+  static constexpr auto TILE_TOTAL_WIDTH = THUMBNAIL_SIZE + TILE_PADDING;
   static const auto TILE_TOTAL_HEIGHT = THUMBNAIL_SIZE + TEXT_PADDING + TEXT_HEIGHT + TILE_PADDING;
   static auto fileType = FileType::None;
   auto renderSystem = GetSystem<RenderingSystem>();

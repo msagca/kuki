@@ -8,10 +8,10 @@ struct KUKI_ENGINE_API TextureParams {
   int width{1024};
   int height{1024};
   int target{GLConst::TEXTURE_2D};
-  int format{GLConst::RGB16F};
+  int format{GLConst::RGBA16F};
   int samples{1};
   int mipmaps{1};
-  TextureParams(int = 1024, int = 1024, int = GLConst::TEXTURE_2D, int = GLConst::RGB16F, int = 1, int = 1);
+  TextureParams(int = 1024, int = 1024, int = GLConst::TEXTURE_2D, int = GLConst::RGBA16F, int = 1, int = 1);
   bool operator==(const TextureParams&) const;
 };
 } // namespace kuki

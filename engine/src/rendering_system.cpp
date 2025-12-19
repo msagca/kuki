@@ -1,5 +1,4 @@
 #define GLM_ENABLE_EXPERIMENTAL
-#include <algorithm>
 #include <application.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
@@ -43,25 +42,25 @@ void RenderingSystem::Start() {
   glCreateBuffers(1, &materialVBO);
   glCreateBuffers(1, &transformVBO);
   auto brdfCompute = new ComputeShader("BRDF_LUT", "shader/brdf_lut.comp", *this, ComputeType::BRDF_LUT);
+  auto cubeMapEquirectCompute = new ComputeShader("CubeMapEquirect", "shader/cubemap_equirect.comp", *this, ComputeType::CubeMapEquirect);
   auto equirectCubeMapCompute = new ComputeShader("EquirectCubeMap", "shader/equirect_cubemap.comp", *this, ComputeType::EquirectCubeMap);
-  auto irradianceCompute = new ComputeShader("Irradiance", "shader/irradiance.comp", *this, ComputeType::Irradiance);
-  auto prefilterCompute = new ComputeShader("Prefilter", "shader/prefilter.comp", *this, ComputeType::Prefilter);
+  auto irradianceCompute = new ComputeShader("Irradiance", "shader/irradiance.comp", *this, ComputeType::IrradianceMap);
+  auto prefilterCompute = new ComputeShader("Prefilter", "shader/prefilter.comp", *this, ComputeType::PrefilterMap);
   auto bloomShader = new Shader("Postprocessing", "shader/standard_m.vert", "shader/bloom.frag", *this, MaterialType::Bloom);
   auto blurShader = new Shader("Blur", "shader/standard_m.vert", "shader/blur.frag", *this, MaterialType::Blur);
   auto brightShader = new Shader("BrightPass", "shader/standard_m.vert", "shader/bright_pass.frag", *this, MaterialType::BrightPass);
-  auto cubeMapEquirectShader = new Shader("CubeMapEquirect", "shader/standard_m.vert", "shader/cubemap_equirect.frag", *this, MaterialType::CubeMapEquirect);
   auto litShader = new LitShader("Lit", "shader/lit.vert", "shader/lit.frag", *this);
   auto litSkinnedShader = new LitShader("LitSkinned", "shader/lit_skinned.vert", "shader/lit.frag", *this);
   auto skyboxShader = new Shader("Skybox", "shader/skybox.vert", "shader/skybox.frag", *this, MaterialType::Skybox);
   auto unlitShader = new UnlitShader("Unlit", "shader/unlit.vert", "shader/unlit.frag", *this);
   computes.insert({brdfCompute->GetType(), brdfCompute});
+  computes.insert({cubeMapEquirectCompute->GetType(), cubeMapEquirectCompute});
   computes.insert({equirectCubeMapCompute->GetType(), equirectCubeMapCompute});
   computes.insert({irradianceCompute->GetType(), irradianceCompute});
   computes.insert({prefilterCompute->GetType(), prefilterCompute});
   shaders.insert({bloomShader->GetType(), bloomShader});
   shaders.insert({blurShader->GetType(), blurShader});
   shaders.insert({brightShader->GetType(), brightShader});
-  shaders.insert({cubeMapEquirectShader->GetType(), cubeMapEquirectShader});
   shaders.insert({litShader->GetType(), litShader});
   shaders.insert({litSkinnedShader->GetType(), litSkinnedShader});
   shaders.insert({skyboxShader->GetType(), skyboxShader});
@@ -119,8 +118,6 @@ Shader* RenderingSystem::GetShader(MaterialType type) {
     return shaders[MaterialType::Unlit];
   case MaterialType::Skybox:
     return shaders[MaterialType::Skybox];
-  case MaterialType::CubeMapEquirect:
-    return shaders[MaterialType::CubeMapEquirect];
   case MaterialType::Bloom:
     return shaders[MaterialType::Bloom];
   case MaterialType::BrightPass:
@@ -135,12 +132,14 @@ ComputeShader* RenderingSystem::GetCompute(ComputeType type) {
   switch (type) {
   case ComputeType::BRDF_LUT:
     return computes[ComputeType::BRDF_LUT];
+  case ComputeType::CubeMapEquirect:
+    return computes[ComputeType::CubeMapEquirect];
   case ComputeType::EquirectCubeMap:
     return computes[ComputeType::EquirectCubeMap];
-  case ComputeType::Irradiance:
-    return computes[ComputeType::Irradiance];
-  case ComputeType::Prefilter:
-    return computes[ComputeType::Prefilter];
+  case ComputeType::IrradianceMap:
+    return computes[ComputeType::IrradianceMap];
+  case ComputeType::PrefilterMap:
+    return computes[ComputeType::PrefilterMap];
   default:
     return nullptr;
   }
@@ -291,24 +290,17 @@ void RenderingSystem::ApplyPostProc(unsigned int textureIn, unsigned int texture
   texturePool.Release(params, texturePong);
   texturePool.Release(params, textureNormal);
 }
-int RenderingSystem::RenderAssetToTexture(ID assetId, int size) {
-  static constexpr auto MIN_SIZE = 16;
-  auto textureSize = std::max(MIN_SIZE, size);
-  auto [texture, skybox] = app.GetAssetComponents<Texture, Skybox>(assetId);
-  auto it = assetToTexture.find(assetId);
-  auto isPresent = it != assetToTexture.end();
+int RenderingSystem::RenderAssetToTexture(ID assetId, const int textureSize) {
+  const auto [texture, skybox] = app.GetAssetComponents<Texture, Skybox>(assetId);
   GLuint textureIdPost = 0;
-  auto isCubeMap = false;
-  if (isPresent)
+  if (auto it = assetToTexture.find(assetId); it != assetToTexture.end())
     textureIdPost = it->second;
-  else if (texture) {
-    isCubeMap = texture->type == TextureType::CubeMap;
-    if (!isCubeMap)
-      textureIdPost = texture->id;
-  }
-  if (!isPresent && !texture) {
-    TextureParams textureParams{textureSize, textureSize, GL_TEXTURE_2D, GL_RGBA16F};
-    textureParams.target = isCubeMap ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
+  else if (texture)
+    textureIdPost = texture->id;
+  else if (skybox)
+    textureIdPost = skybox->preview;
+  else {
+    TextureParams textureParams{textureSize, textureSize, GL_TEXTURE_2D, GL_RGBA32F};
     auto textureIdPre = texturePool.Request(textureParams);
     textureIdPost = texturePool.Request(textureParams);
     auto framebuffer = framebufferPool.Request(textureParams);
@@ -318,10 +310,7 @@ int RenderingSystem::RenderAssetToTexture(ID assetId, int size) {
     glViewport(0, 0, textureSize, textureSize);
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    if (isCubeMap || skybox)
-      DrawSkyboxAsset(assetId);
-    else
-      DrawAssetHierarchy(assetId);
+    DrawAssetHierarchy(assetId);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     framebufferPool.Release(textureParams, framebuffer);
     renderbufferPool.Release(textureParams, renderbuffer);
@@ -329,8 +318,6 @@ int RenderingSystem::RenderAssetToTexture(ID assetId, int size) {
     texturePool.Release(textureParams, textureIdPre);
     assetToTexture[assetId] = textureIdPost;
   }
-  if (skybox)
-    skybox->preview = textureIdPost;
   return textureIdPost;
 }
 void RenderingSystem::DrawScene(const Camera* camera, const Camera* observer) {
@@ -460,25 +447,6 @@ void RenderingSystem::DrawEntitiesInstanced(const Camera* camera, const Mesh* me
     shader->DrawInstanced(mesh, unlitTransforms.size());
   }
 }
-void RenderingSystem::DrawSkyboxAsset(ID id) {
-  auto skybox = app.GetAssetComponent<Skybox>(id);
-  if (!skybox || skybox->original == 0)
-    return;
-  auto frameId = app.GetAssetId("Frame");
-  auto mesh = app.GetAssetComponent<Mesh>(frameId);
-  if (!mesh)
-    return;
-  static Material material;
-  material.current = UnlitMaterial();
-  auto& unlitMaterial = std::get<UnlitMaterial>(material.current);
-  unlitMaterial.data.base = skybox->original;
-  unlitMaterial.type = MaterialType::CubeMapEquirect;
-  auto shader = GetShader(MaterialType::CubeMapEquirect);
-  shader->Use();
-  shader->SetUniform("model", glm::mat4(1.0));
-  shader->SetMaterial(&material);
-  shader->Draw(mesh);
-}
 void RenderingSystem::DrawAssetHierarchy(ID id) {
   static const Light dirLight{};
   auto shader = static_cast<LitShader*>(GetShader(MaterialType::Lit));
@@ -487,6 +455,7 @@ void RenderingSystem::DrawAssetHierarchy(ID id) {
   shader->Use();
   shader->SetCamera(&assetCam);
   shader->SetLighting(&dirLight);
+  shader->SetUniform("hasSkybox", false);
   DrawAsset(id);
 }
 void RenderingSystem::DrawAsset(ID id) {
@@ -597,9 +566,8 @@ size_t RenderingSystem::GetGizmoMask() const {
 void RenderingSystem::SetGizmoMask(size_t mask) {
   gizmoMask = mask;
 }
-Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect) {
+Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect, const int textureSize) {
   constexpr unsigned int workgroupSize = 8;
-  constexpr unsigned int textureSize = 512;
   Texture texture{};
   texture.type = TextureType::CubeMap;
   texture.width = textureSize;
@@ -623,9 +591,32 @@ Texture RenderingSystem::CreateCubeMapFromEquirect(Texture equirect) {
   glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
   return texture;
 }
-Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
+Texture RenderingSystem::CreateEquirectFromCubeMap(Texture cubeMap, const int textureSize) {
   constexpr unsigned int workgroupSize = 8;
-  constexpr unsigned int textureSize = 128;
+  Texture texture{};
+  texture.type = TextureType::Equirect;
+  texture.width = textureSize;
+  texture.height = textureSize;
+  const auto numGroups = static_cast<unsigned int>(std::ceil(static_cast<float>(textureSize) / workgroupSize));
+  TextureParams params{texture.width, texture.height, GL_TEXTURE_2D, GL_RGBA32F};
+  texture.id = texturePool.Request(params);
+  auto shader = GetCompute(ComputeType::CubeMapEquirect);
+  if (!shader) {
+    spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::CubeMapEquirect)));
+    return texture;
+  }
+  shader->Use();
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
+  shader->SetUniform("cubeMap", 0);
+  shader->SetUniform("size", static_cast<unsigned int>(textureSize));
+  glBindImageTexture(0, texture.id, 0, GL_TRUE, 0, GL_WRITE_ONLY, params.format);
+  glDispatchCompute(numGroups, numGroups, 6);
+  glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+  return texture;
+}
+Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap, const int textureSize) {
+  constexpr unsigned int workgroupSize = 8;
   const auto numGroups = static_cast<unsigned int>(std::ceil(static_cast<float>(textureSize) / workgroupSize));
   Texture texture{};
   texture.type = TextureType::Irradiance;
@@ -633,24 +624,23 @@ Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap) {
   texture.height = textureSize;
   TextureParams params{textureSize, textureSize, GL_TEXTURE_CUBE_MAP, GL_RGBA32F};
   texture.id = texturePool.Request(params);
-  auto shader = GetCompute(ComputeType::Irradiance);
+  auto shader = GetCompute(ComputeType::IrradianceMap);
   if (!shader) {
-    spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::Irradiance)));
+    spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::IrradianceMap)));
     return texture;
   }
   shader->Use();
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
   shader->SetUniform("cubeMap", 0);
-  shader->SetUniform("cubeSize", textureSize);
+  shader->SetUniform("cubeSize", static_cast<unsigned int>(textureSize));
   glBindImageTexture(0, texture.id, 0, GL_TRUE, 0, GL_WRITE_ONLY, params.format);
   glDispatchCompute(numGroups, numGroups, 6);
   glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
   return texture;
 }
-Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
+Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap, const int textureSize) {
   constexpr unsigned int workgroupSize = 8;
-  constexpr unsigned int textureSize = 128;
   const auto mipLevels = static_cast<unsigned int>(std::floor(std::log2(textureSize))) + 1;
   Texture texture{};
   texture.type = TextureType::Prefilter;
@@ -658,9 +648,9 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
   texture.height = textureSize;
   TextureParams params{textureSize, textureSize, GL_TEXTURE_CUBE_MAP, GL_RGBA32F, 1, static_cast<int>(mipLevels)};
   texture.id = texturePool.Request(params);
-  auto shader = GetCompute(ComputeType::Prefilter);
+  auto shader = GetCompute(ComputeType::PrefilterMap);
   if (!shader) {
-    spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::Prefilter)));
+    spdlog::warn("Compute shader not found: {}.", EnumTraits<ComputeType>().GetNames().at(static_cast<uint8_t>(ComputeType::PrefilterMap)));
     return texture;
   }
   shader->Use();
@@ -669,7 +659,7 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
   shader->SetUniform("cubeMap", 0);
   shader->SetUniform("mipLevels", mipLevels);
   for (auto mip = 0; mip < mipLevels; ++mip) {
-    unsigned int mipSize = textureSize >> mip;
+    auto mipSize = static_cast<unsigned int>(textureSize) >> mip;
     auto roughness = static_cast<float>(mip) / (mipLevels - 1);
     shader->SetUniform("roughness", roughness);
     shader->SetUniform("mipWidth", mipSize);
@@ -681,14 +671,13 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap) {
   }
   return texture;
 }
-Texture RenderingSystem::CreateBRDF_LUT() {
+Texture RenderingSystem::CreateBRDF_LUT(const int textureSize) {
   if (brdf.IsValid())
     return brdf;
   constexpr unsigned int workgroupSize = 8;
-  constexpr unsigned int textureSize = 512;
   const auto numGroups = static_cast<unsigned int>(std::ceil(static_cast<float>(textureSize) / workgroupSize));
   Texture texture{};
-  texture.type = TextureType::BRDF_LUT;
+  texture.type = TextureType::BRDF;
   texture.width = textureSize;
   texture.height = textureSize;
   TextureParams params{textureSize, textureSize, GL_TEXTURE_2D, GL_RG16F};
