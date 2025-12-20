@@ -176,8 +176,8 @@ int RenderingSystem::RenderSceneToTexture(Camera* camera) {
     camera->rotationDirty = true;
     camera->uboDirty = true;
   }
-  const TextureParams singleParams{width, height, GL_TEXTURE_2D, GL_RGB16F, 1, 1};
-  const TextureParams multiParams{width, height, GL_TEXTURE_2D_MULTISAMPLE, GL_RGB16F, 4, 1};
+  const TextureParams singleParams{width, height, GL_TEXTURE_2D, GL_RGB32F, 1, 1};
+  const TextureParams multiParams{width, height, GL_TEXTURE_2D_MULTISAMPLE, GL_RGB32F, 4, 1};
   auto framebufferMulti = framebufferPool.Request(multiParams);
   auto framebufferSingle = framebufferPool.Request(singleParams);
   auto renderbufferMulti = renderbufferPool.Request(multiParams);
@@ -606,9 +606,9 @@ Texture RenderingSystem::CreateEquirectFromCubeMap(Texture cubeMap, const int te
     return texture;
   }
   shader->Use();
-  glActiveTexture(GL_TEXTURE0);
+  glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
-  shader->SetUniform("cubeMap", 0);
+  shader->SetUniform("cubeMap", 1);
   shader->SetUniform("size", static_cast<unsigned int>(textureSize));
   glBindImageTexture(0, texture.id, 0, GL_TRUE, 0, GL_WRITE_ONLY, params.format);
   glDispatchCompute(numGroups, numGroups, 6);
@@ -630,9 +630,9 @@ Texture RenderingSystem::CreateIrradianceMapFromCubeMap(Texture cubeMap, const i
     return texture;
   }
   shader->Use();
-  glActiveTexture(GL_TEXTURE0);
+  glActiveTexture(GL_TEXTURE2);
   glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
-  shader->SetUniform("cubeMap", 0);
+  shader->SetUniform("cubeMap", 2);
   shader->SetUniform("cubeSize", static_cast<unsigned int>(textureSize));
   glBindImageTexture(0, texture.id, 0, GL_TRUE, 0, GL_WRITE_ONLY, params.format);
   glDispatchCompute(numGroups, numGroups, 6);
@@ -654,9 +654,9 @@ Texture RenderingSystem::CreatePrefilterMapFromCubeMap(Texture cubeMap, const in
     return texture;
   }
   shader->Use();
-  glActiveTexture(GL_TEXTURE0);
+  glActiveTexture(GL_TEXTURE3);
   glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMap.id);
-  shader->SetUniform("cubeMap", 0);
+  shader->SetUniform("cubeMap", 3);
   shader->SetUniform("mipLevels", mipLevels);
   for (auto mip = 0; mip < mipLevels; ++mip) {
     auto mipSize = static_cast<unsigned int>(textureSize) >> mip;
