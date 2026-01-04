@@ -1,5 +1,4 @@
 #define GLM_ENABLE_EXPERIMENTAL
-#include <component.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float3.hpp>
@@ -8,9 +7,7 @@
 #include <transform.hpp>
 #include <utility>
 namespace kuki {
-Light::Light()
-  : IComponent(std::in_place_type<Light>) {}
-Transform Light::GetTransform() const {
+auto Light::GetTransform() const -> Transform {
   // TODO: cache the transform
   static const auto WORLD_UP = glm::vec3(0.f, 1.f, 0.f);
   static const auto WORLD_BACK = glm::vec3(0.f, 0.f, 1.f);
@@ -18,7 +15,7 @@ Transform Light::GetTransform() const {
   Transform transform;
   if (type == LightType::Directional) {
     transform.position = glm::vec3(0.f);
-    auto forward = glm::normalize(vector);
+    const auto forward = glm::normalize(vector);
     auto up = WORLD_UP;
     if (glm::abs(glm::dot(forward, up)) > PARALLEL_THRESHOLD)
       up = WORLD_BACK;
@@ -27,13 +24,13 @@ Transform Light::GetTransform() const {
     transform.position = vector;
     transform.rotation = glm::quat(1.f, 0.f, 0.f, 0.f);
   }
-  auto translation = glm::translate(glm::mat4(1.f), transform.position);
+  const auto translation = glm::translate(glm::mat4(1.f), transform.position);
   transform.local = translation * glm::toMat4(transform.rotation);
   return transform;
 }
-void Light::SetTransform(const Transform& transform) {
+auto Light::SetTransform(const Transform &transform) -> void {
   if (type == LightType::Directional) {
-    auto forward = glm::vec3(0.f, 0.f, -1.f);
+    const auto forward = glm::vec3(0.f, 0.f, -1.f);
     vector = glm::normalize(transform.rotation * forward);
   } else if (type == LightType::Point)
     vector = transform.position;

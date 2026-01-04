@@ -2,7 +2,7 @@
 const float PI = 3.14159265359;
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba32f, binding = 0) writeonly uniform image2D equirect;
-uniform samplerCube cubeMap;
+uniform samplerCube cubemap;
 uniform uint size;
 void main() {
         ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
@@ -14,6 +14,6 @@ void main() {
         dir.x = cos(latitude) * sin(longitude);
         dir.y = sin(latitude);
         dir.z = cos(latitude) * cos(longitude);
-        vec4 color = texture(cubeMap, dir);
+        vec4 color = texture(cubemap, dir);
         imageStore(equirect, pixelCoord, color);
 }

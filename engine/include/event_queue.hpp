@@ -12,9 +12,9 @@ public:
   std::unique_ptr<T> Pop();
   /// @brief Process all events in the queue by applying the given function to each event
   /// @tparam F Function type
-  /// @param F&& Function to apply to each event
+  /// @param F&& Function to execute on events
   template <typename F>
-  void Drain(F&&);
+  void Drain(F &&);
 };
 template <typename T>
 void EventQueue<T>::Push(std::unique_ptr<T> event) {
@@ -32,17 +32,16 @@ std::unique_ptr<T> EventQueue<T>::Pop() {
 }
 template <typename T>
 template <typename F>
-void EventQueue<T>::Drain(F&& func) {
+void EventQueue<T>::Drain(F &&func) {
   std::queue<std::unique_ptr<T>> queue_;
-  {
+  { // NOTE: create new scope so that the mutex is released before the func calls, avoiding unnecessary blocking or potential deadlocks (if func enqueues new items)
     std::lock_guard<std::mutex> lock(mutex);
     if (queue.empty())
       return;
     queue_.swap(queue);
   }
-  auto func_ = std::forward<F>(func);
   while (!queue_.empty()) {
-    func_(std::move(queue_.front()));
+    func(std::move(queue_.front()));
     queue_.pop();
   }
 }

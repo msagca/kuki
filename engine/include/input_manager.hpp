@@ -22,9 +22,9 @@ private:
   bool buttonsEnabled{true};
   bool SequenceInProgress() const;
   void FireAction(unsigned char);
-  /// @returns An index for the given GLFW key or button
+  /// @return An index for the given GLFW key or button
   static unsigned char GLFWInputToIndex(int);
-  /// @returns A string representation for the given GLFW key or button
+  /// @return A string representation for the given GLFW key or button
   static std::string GLFWKeyToString(int);
 public:
   /// @return true if the key/button is pressed or repeated, false otherwise
@@ -41,15 +41,15 @@ public:
   /// @return Time passed since last user input
   double GetInactivityTime() const;
   /// @brief Register an action that is triggered by the given character sequence
-  /// @returns true if both the trigger and action are valid and there is no collision, false otherwise
-  bool RegisterAction(const std::string&, InputAction);
+  /// @return true if both the trigger and action are valid and there is no collision, false otherwise
+  bool RegisterAction(std::string_view, InputAction);
   /// @brief Register an action that is triggered by the given key/button, overwrite any existing action
   void RegisterAction(int, InputAction, bool = true);
   /// @brief Unregister the action associated with the given character sequence
-  /// @returns true if a mapping was found and removed, false otherwise
-  bool UnregisterAction(const std::string&);
+  /// @return true if a mapping was found and removed, false otherwise
+  bool UnregisterAction(std::string_view);
   /// @brief Unregister the action associated with the given key/button
-  /// @returns true if a mapping was found and removed, false otherwise
+  /// @return true if a mapping was found and removed, false otherwise
   bool UnregisterAction(int, bool = true);
   void EnableKeys();
   void DisableKeys();
@@ -57,9 +57,9 @@ public:
   void DisableButtons();
   void EnableAll();
   void DisableAll();
-  void CharCallback(GLFWwindow*, unsigned int);
-  void KeyCallback(GLFWwindow*, int, int, int, int);
-  void MouseButtonCallback(GLFWwindow*, int, int, int);
-  void CursorPosCallback(GLFWwindow*, double, double);
+  void CharCallback(GLFWwindow *, unsigned int);
+  void KeyCallback(GLFWwindow *, int, int, int, int);
+  void MouseButtonCallback(GLFWwindow *, int, int, int);
+  void CursorPosCallback(GLFWwindow *, double, double);
 };
 } // namespace kuki

@@ -1,24 +1,32 @@
+#include <array>
 #include <cstdint>
 #include <random>
 #include <uuid.hpp>
 namespace kuki {
-UUID64::UUID64(std::uint64_t v)
-  : value(v) {}
-UUID64 UUID64::Generate() {
-  static thread_local std::mt19937_64 rng{std::random_device{}()};
-  std::uniform_int_distribution<std::uint64_t> dist;
-  return UUID64{dist(rng)};
+UUID128::UUID128(uint64_t high, uint64_t low)
+  : high(high), low(low) {}
+const UUID128 UUID128::Invalid{0, 0};
+UUID128 UUID128::Generate() {
+  std::random_device rd;
+  std::mt19937_64 gen(rd());
+  std::array<uint8_t, 16> bytes;
+  for (auto &b : bytes)
+    b = static_cast<uint8_t>(gen() & 0xFF);
+  bytes[6] = (bytes[6] & 0x0F) | 0x40;
+  bytes[8] = (bytes[8] & 0x3F) | 0x80;
+  UUID128 id;
+  id.high = 0;
+  id.low = 0;
+  for (auto i = 0; i < 8; ++i)
+    id.high = (id.high << 8) | bytes[i];
+  for (auto i = 8; i < 16; ++i)
+    id.low = (id.low << 8) | bytes[i];
+  return id;
 }
-UUID64 UUID64::Invalid() {
-  return {0};
+UUID128::operator bool() const {
+  return *this != Invalid;
 }
-bool UUID64::IsValid() const {
-  return value != 0;
-}
-UUID64::operator long() const {
-  return static_cast<long>(value);
-}
-UUID64::operator long long() const {
-  return static_cast<long long>(value);
+UUID128::operator int() const {
+  return static_cast<int>(high ^ low);
 }
 } // namespace kuki

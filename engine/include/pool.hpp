@@ -1,43 +1,41 @@
 #pragma once
-#include <concepts>
-#include <functional>
+#include <concepts.hpp>
 #include <unordered_map>
 #include <vector>
 namespace kuki {
-template <typename T>
-concept IsHashable = requires(const T& t) {
-  { std::hash<T>{}(t) } -> std::convertible_to<std::size_t>;
-};
-template <IsHashable Key, typename Val>
+template <IsHashable K, typename V>
 class Pool {
-protected:
-  std::unordered_map<Key, std::vector<Val>> pool;
-  virtual Val Allocate(const Key&) = 0;
-  virtual void Reallocate(const Key&, Val&) {}
 public:
-  Pool() = default;
   virtual ~Pool() = default;
-  Val Request(const Key& key) {
-    if (auto it = pool.find(key); it != pool.end() && !it->second.empty()) {
-      auto val = std::move(it->second.back());
-      it->second.pop_back();
-      return val;
-    }
-    return Allocate(key);
-  }
-  template <std::convertible_to<Val>... Vals>
-  void Release(const Key& key, Vals&&... vals) {
-    auto& resources = pool[key];
-    (resources.push_back(std::forward<Vals>(vals)), ...);
-  }
-  virtual void Clear() {
-    pool.clear();
-  }
-  void PreAllocate(const Key& key, std::size_t count) {
-    auto& resources = pool[key];
-    resources.reserve(resources.size() + count);
-    for (auto i = 0; i < count; ++i)
-      resources.push_back(Allocate(key));
-  }
+  auto PreAllocate(const K &, const size_t) -> void;
+  auto Request(const K &) -> V;
+  template <std::convertible_to<V>... Vals>
+  auto Release(const K &, Vals &&...) -> void;
+protected:
+  std::unordered_map<K, std::vector<V>> pool;
+  virtual auto Allocate(const K &) -> V = 0;
+  virtual auto Reallocate(const K &, V &) -> void {}
 };
+template <IsHashable K, typename V>
+auto Pool<K, V>::PreAllocate(const K &key, const size_t count) -> void {
+  if (count == 0)
+    return;
+  pool[key].reserve(pool[key].size() + count);
+  for (auto i = 0; i < count; ++i)
+    pool[key].push_back(Allocate(key));
+}
+template <IsHashable K, typename V>
+auto Pool<K, V>::Request(const K &key) -> V {
+  if (auto it = pool.find(key); it != pool.end() && !it->second.empty()) {
+    auto val = std::move(it->second.back());
+    it->second.pop_back();
+    return val;
+  }
+  return Allocate(key);
+}
+template <IsHashable K, typename V>
+template <std::convertible_to<V>... Vals>
+auto Pool<K, V>::Release(const K &key, Vals &&...vals) -> void {
+  (pool[key].push_back(std::forward<Vals>(vals)), ...);
+}
 } // namespace kuki

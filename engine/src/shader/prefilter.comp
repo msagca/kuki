@@ -4,7 +4,7 @@ const float PI = 3.14159265359;
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba32f, binding = 0) writeonly uniform imageCube prefilteredMap;
 uniform float roughness;
-uniform samplerCube cubeMap;
+uniform samplerCube cubemap;
 uniform uint cubeSize;
 uniform uint mipLevels;
 uniform uint mipWidth;
@@ -37,7 +37,7 @@ void main() {
                         float saSample = 1.0 / (float(sampleCount) * pdf + EPSILON);
                         float mipLevel = roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel);
                         mipLevel = clamp(mipLevel, 0.0, float(mipLevels - 1));
-                        prefilteredColor += textureLod(cubeMap, L, mipLevel).rgb * NdotL;
+                        prefilteredColor += textureLod(cubemap, L, mipLevel).rgb * NdotL;
                         totalWeight += NdotL;
                 }
         }

@@ -11,12 +11,12 @@ using namespace kuki;
 /// @brief An FPS-style camera controller for the editor
 class CameraController {
 private:
-  Application& app;
-  ID entityId{};
+  Application &app;
+  EntityID entityId{};
   bool UpdatePosition(float);
   bool UpdateRotation(glm::vec2);
 public:
-  CameraController(Application&, ID);
+  CameraController(Application &, EntityID);
   Camera camera{};
   float mouseSensitivity{.001f};
   bool mouselook{true};

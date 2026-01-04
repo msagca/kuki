@@ -1,5 +1,5 @@
 #include <game.hpp>
-int main() {
+auto main() -> int {
   Game game;
   game.Run();
   return 0;

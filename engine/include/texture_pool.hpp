@@ -1,14 +1,14 @@
 #pragma once
 #include <kuki_engine_export.h>
 #include <pool.hpp>
-#include <texture_params.hpp>
+#include <target_description.hpp>
 namespace kuki {
-class KUKI_ENGINE_API TexturePool final : public Pool<TextureParams, unsigned int> {
-protected:
-  unsigned int Allocate(const TextureParams&) override;
-  void Reallocate(const TextureParams&, unsigned int&) override;
+class KUKI_ENGINE_API TexturePool final : public Pool<TargetDescription, unsigned int> {
 public:
   ~TexturePool() override;
-  void Clear() override;
+  auto Clear() -> void;
+protected:
+  auto Allocate(const TargetDescription &) -> unsigned int override;
+  auto Reallocate(const TargetDescription &, unsigned int &) -> void override;
 };
 } // namespace kuki

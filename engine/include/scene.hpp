@@ -1,50 +1,94 @@
 #pragma once
+#include <camera.hpp>
+#include <component.hpp>
+#include <component_type.hpp>
+#include <concepts.hpp>
 #include <entity_manager.hpp>
 #include <id.hpp>
 #include <kuki_engine_export.h>
-#include <octree.hpp>
+#include <string>
 namespace kuki {
-class Camera;
 class KUKI_ENGINE_API Scene {
-private:
-  const std::string name;
-  size_t id{0};
 public:
-  Scene(const std::string&, unsigned int);
-  // TODO: expose helper functions to hide EntityManager and Octree details
+  Scene(const SceneID);
+  auto AddChildEntity(const EntityID, const EntityID) -> bool;
+  auto CopyEntityFrom(const EntityManager &, const EntityID) -> EntityID;
+  auto CopyEntityTo(const EntityID, EntityManager &) const -> EntityID;
+  auto CreateEntity(std::string) -> EntityID;
+  auto DeleteEntities() -> void;
+  auto DeleteEntity(const EntityID) -> bool;
+  auto EntityHasChildren(const EntityID) const -> bool;
+  auto EntityHasParent(const EntityID) const -> bool;
+  auto GetEntityComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto GetEntityCount() const -> size_t;
+  auto GetEntityName(const EntityID) const -> std::string;
+  auto GetID() const -> SceneID;
+  auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto IsEntity(const EntityID) const -> bool;
+  auto RenameEntity(const EntityID, const std::string &) -> bool;
+  // templates
+  auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;
+  auto ForEachRootEntity(this auto &, auto &&) -> void;
+  auto GetActiveCamera(this auto &self) -> ConstCorrectPointer<decltype(self), Camera>;
+  template <typename... T>
+  auto AddEntityComponent(const EntityID) -> decltype(auto);
+  template <typename... T>
+  auto EntityHasComponent(const EntityID) const -> bool;
+  template <typename... T>
+  auto ForEachEntity(this auto &, auto &&) -> void;
+  template <typename... T>
+  auto ForFirstEntity(this auto &, auto &&) -> void;
+  template <typename... T>
+  auto GetEntityComponent(this auto &, const EntityID) -> decltype(auto);
+  template <typename... T>
+  auto SortComponents() -> void;
+  template <typename... T>
+  auto UpdateComponents() -> void;
+  template <typename... T>
+  auto RemoveEntityComponent(const EntityID) -> bool;
+private:
+  const SceneID id{};
   EntityManager entityManager{};
-  Octree<ID> octree{}; // TODO: move this into EntityManager
-  // NOTE: for most scenes, a quadtree would be more appropriate
-  std::string GetName() const;
-  unsigned int GetId() const;
-  Camera* GetCamera();
-  ID CreateEntity(std::string&);
-  void DeleteEntity(ID);
-  void DeleteEntity(const std::string&);
-  void DeleteAllEntities();
-  void DeleteAllEntities(const std::string&);
-  void SortTransforms();
-  void UpdateTransforms();
-  template <typename F>
-  void ForEachVisibleEntity(const Camera&, F&&);
-  template <typename F>
-  void ForEachOctreeNode(F&&);
-  template <typename F>
-  void ForEachOctreeLeafNode(F&&);
 };
-template <typename F>
-void Scene::ForEachVisibleEntity(const Camera& camera, F&& func) {
-  auto func_ = std::forward(func);
-  octree.ForEachInFrustum(camera, [&](ID id) {
-    func_(id);
-  });
+auto Scene::ForEachChildEntity(this auto &self, const EntityID id, auto &&func) -> void {
+  self.entityManager.ForEachChild(id, std::forward<decltype(func)>(func));
 }
-template <typename F>
-void Scene::ForEachOctreeNode(F&& func) {
-  octree.ForEach(func);
+auto Scene::ForEachRootEntity(this auto &self, auto &&func) -> void {
+  self.entityManager.ForEachRoot(std::forward<decltype(func)>(func));
 }
-template <typename F>
-void Scene::ForEachOctreeLeafNode(F&& func) {
-  octree.ForEachLeaf(func);
+auto Scene::GetActiveCamera(this auto &self) -> ConstCorrectPointer<decltype(self), Camera> {
+  return self.entityManager.template GetFirst<Camera>();
+}
+template <typename... T>
+auto Scene::AddEntityComponent(const EntityID id) -> decltype(auto) {
+  return entityManager.AddComponent<T...>(id);
+}
+template <typename... T>
+auto Scene::EntityHasComponent(const EntityID id) const -> bool {
+  return entityManager.HasComponent<T...>(id);
+}
+template <typename... T>
+auto Scene::ForEachEntity(this auto &self, auto &&func) -> void {
+  self.entityManager.template ForEach<T...>(std::forward<decltype(func)>(func));
+}
+template <typename... T>
+auto Scene::ForFirstEntity(this auto &self, auto &&func) -> void {
+  self.entityManager.template ForFirst<T...>(std::forward<decltype(func)>(func));
+}
+template <typename... T>
+auto Scene::GetEntityComponent(this auto &self, const EntityID id) -> decltype(auto) {
+  return self.entityManager.template GetComponent<T...>(id);
+}
+template <typename... T>
+auto Scene::SortComponents() -> void {
+  entityManager.SortComponents<T...>();
+}
+template <typename... T>
+auto Scene::UpdateComponents() -> void {
+  entityManager.UpdateComponents<T...>();
+}
+template <typename... T>
+auto Scene::RemoveEntityComponent(const EntityID id) -> bool {
+  return entityManager.RemoveComponent<T...>(id);
 }
 } // namespace kuki

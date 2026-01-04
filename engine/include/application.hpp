@@ -1,308 +1,224 @@
 #pragma once
 #include <app_config.hpp>
-#include <asset_loader.hpp>
-#include <command_manager.hpp>
+#include <asset_manager.hpp>
+#include <concepts.hpp>
 #include <entity_manager.hpp>
 #include <id.hpp>
 #include <input_manager.hpp>
 #include <kuki_engine_export.h>
+#include <memory>
 #include <primitive.hpp>
 #include <scene.hpp>
 #include <scene_manager.hpp>
 #include <system.hpp>
+#include <typeindex>
 #include <vector>
 namespace kuki {
 class KUKI_ENGINE_API Application {
+public:
+  Application(const AppConfig &);
+  virtual ~Application();
+  auto Run() -> void;
+  virtual auto Init() -> void;
+  virtual auto Start() -> void;
+  virtual auto Status() -> bool;
+  virtual auto Update() -> void;
+  virtual auto LateUpdate() -> void;
+  virtual auto Shutdown() -> void;
+  auto AddChildEntity(const EntityID, const EntityID) -> bool;
+  auto Configure(const AppConfig &) -> void;
+  auto CreateEntity(std::string = "") -> EntityID;
+  auto CreateScene(std::string = "") -> SceneID;
+  auto DeleteEntities() -> void;
+  auto DeleteEntity(const EntityID) -> void;
+  auto DeleteScene(const SceneID) -> bool;
+  auto DisableButtons() -> void;
+  auto DisableInputs() -> void;
+  auto DisableKeys() -> void;
+  auto EnableButtons() -> void;
+  auto EnableInputs() -> void;
+  auto EnableKeys() -> void;
+  auto EntityHasChildren(const EntityID) const -> bool;
+  auto EntityHasParent(const EntityID) const -> bool;
+  auto GetArrowKeys() const -> glm::vec2;
+  auto GetAssetName(const AssetID) const -> std::string;
+  auto GetButton(int) const -> bool;
+  auto GetButtonDown(int) const -> bool;
+  auto GetButtonUp(int) const -> bool;
+  auto GetConfig() const -> AppConfig;
+  auto GetEntityComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto GetEntityCount() const -> size_t;
+  auto GetEntityName(const EntityID) const -> std::string;
+  auto GetFPS() const -> size_t;
+  auto GetKey(int) const -> bool;
+  auto GetKeyDown(int) const -> bool;
+  auto GetKeyUp(int) const -> bool;
+  auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto GetMousePos() const -> glm::vec2;
+  auto GetName() const -> std::string;
+  auto GetWASDKeys() const -> glm::vec2;
+  auto InstantiateAsset(const AssetID) -> EntityID;
+  auto IsEntity(const EntityID) const -> bool;
+  auto LoadAsset(const std::filesystem::path &) -> AssetID;
+  auto LoadAssetAsync(const std::filesystem::path &) -> AssetID;
+  auto RegisterInputAction(std::string, InputAction) -> void;
+  auto RegisterInputAction(int, InputAction, bool = true) -> void;
+  auto RenameEntity(const EntityID, std::string) -> bool;
+  auto UnloadAsset(const AssetID) -> bool;
+  auto UnregisterInputAction(const std::string &) -> void;
+  auto UnregisterInputAction(int, bool = true) -> void;
+  // templates
+  auto ForEachAsset(this auto &, const AssetType, auto &&) -> void;
+  auto ForEachAssetPerType(this auto &, auto &&) -> void;
+  auto ForEachAssetType(this auto &, auto &&) -> void;
+  auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;
+  auto ForEachPrefab(this auto &, auto &&) -> void;
+  auto ForEachRootEntity(this auto &, auto &&) -> void;
+  auto GetActiveCamera(this auto &self) -> ConstCorrectPointer<decltype(self), Camera>;
+  auto GetActiveScene(this auto &self) -> ConstCorrectPointer<decltype(self), Scene>;
+  auto GetAsset(this auto &self, const AssetID) -> ConstCorrectPointer<decltype(self), Asset>;
+  template <typename... T>
+  auto AddEntityComponent(const EntityID) -> decltype(auto);
+  template <IsSystem T, typename... Args>
+  auto CreateSystem(Args &&...) -> T *;
+  template <IsSystem T>
+  auto DeleteSystem() -> bool;
+  template <typename... T>
+  auto EntityHasComponent(const EntityID) const -> bool;
+  template <IsAsset... T>
+  auto ForEachAsset(this auto &, auto &&) -> void;
+  template <typename... T>
+  auto ForEachEntity(this auto &, auto &&) -> void;
+  template <typename... T>
+  auto ForFirstEntity(this auto &, auto &&) -> void;
+  template <IsAsset T>
+  auto GetAsset(const AssetID) -> decltype(auto);
+  template <typename... T>
+  auto GetEntityComponent(this auto &, const EntityID) -> decltype(auto);
+  template <IsSystem T>
+  auto GetSystem(this auto &) -> decltype(auto);
+  template <typename... T>
+  auto RemoveEntityComponent(const EntityID) -> bool;
+protected:
+  GLFWwindow *window{};
+  float deltaTime{};
 private:
   AppConfig config;
-  std::vector<System*> systems;
-  static void WindowCloseCallback(GLFWwindow*);
-  static void FramebufferSizeCallback(GLFWwindow*, int, int);
-  static void DebugMessageCallback(unsigned int, unsigned int, unsigned int, unsigned int, int, const char*, const void*);
-  static void CursorPosCallback(GLFWwindow*, double, double);
-  static void KeyCallback(GLFWwindow*, int, int, int, int);
-  static void CharCallback(GLFWwindow*, unsigned int);
-  static void MouseButtonCallback(GLFWwindow*, int, int, int);
-  void SetWindowIcon(const std::filesystem::path&);
-  AssetLoader assetLoader;
-  CommandManager commandManager;
-  EntityManager assetManager;
+  AssetManager assetManager;
   InputManager inputManager;
   SceneManager sceneManager;
-protected:
-  GLFWwindow* window{};
-  float deltaTime{};
-  size_t activeSceneId{};
-public:
-  Application(const AppConfig&);
-  virtual ~Application() = default;
-  const std::string& GetName() const;
-  void Configure(const AppConfig&);
-  const AppConfig& GetConfig() const;
-  /// @brief Initialize app window, graphics API, and the systems
-  virtual void Init();
-  /// @brief Start the systems
-  virtual void Start();
-  /// @return true if the application is running, false otherwise
-  virtual bool Status();
-  /// @brief Update application state
-  virtual void Update();
-  virtual void LateUpdate();
-  /// @brief Clean up memory and terminate the application
-  virtual void Shutdown();
-  /// @brief Start, then update the application indefinitely until status becomes false
-  void Run();
-  void RegisterCommand(ICommand*);
-  void UnregisterCommand(const std::string&);
-  int DispatchCommand(const std::string&, std::string&);
-  template <typename T, typename... Z>
-  requires std::derived_from<T, System>
-  T* CreateSystem(Z&&...);
-  template <typename T>
-  void DeleteSystem();
-  template <typename T>
-  T* GetSystem();
-  size_t CreateScene(const std::string&);
-  void DeleteScene(size_t);
-  void SetActiveScene(size_t);
-  Scene* GetActiveScene();
-  Camera* GetActiveCamera();
-  ID CreateEntity(std::string&);
-  ID CreateAsset(std::string&);
-  void DeleteEntity(const ID);
-  void DeleteAsset(const ID);
-  void DeleteEntity(const std::string&);
-  void DeleteAllEntities();
-  void DeleteAllEntities(const std::string&);
-  size_t GetEntityCount();
-  std::string GetEntityName(const ID);
-  std::string GetAssetName(const ID);
-  bool IsEntity(const ID);
-  ID GetEntityId(const std::string&);
-  ID GetAssetId(const std::string&);
-  void RenameEntity(const ID, std::string&);
-  bool AddChildEntity(const ID, const ID);
-  bool EntityHasParent(const ID);
-  bool EntityHasChildren(const ID);
-  template <typename T>
-  T* AddEntityComponent(const ID);
-  template <typename T>
-  T* AddAssetComponent(const ID);
-  IComponent* AddEntityComponent(const ID, const std::string&);
-  template <typename T>
-  void RemoveEntityComponent(const ID);
-  void RemoveEntityComponent(const ID, ComponentType);
-  void RemoveEntityComponent(const ID, const std::string&);
-  template <typename T>
-  T* GetEntityComponent(const ID);
-  template <typename T>
-  T* GetAssetComponent(const ID);
-  template <typename... T>
-  std::tuple<T*...> GetEntityComponents(const ID);
-  template <typename... T>
-  std::tuple<T*...> GetAssetComponents(const ID);
-  IComponent* GetEntityComponent(const ID, ComponentType);
-  IComponent* GetEntityComponent(const ID, const std::string&);
-  std::vector<IComponent*> GetAllEntityComponents(const ID);
-  std::vector<std::string> GetMissingEntityComponents(const ID);
-  void SortEntityTransforms();
-  void UpdateEntityTransforms();
-  template <typename... T, typename F>
-  void ForFirstEntity(F&&);
-  template <typename... T, typename F>
-  void ForEachEntity(F&&);
-  template <typename... T, typename F>
-  void ForEachAsset(F&&);
-  template <typename F>
-  void ForEachChildEntity(const ID, F&&);
-  template <typename F>
-  void ForEachChildAsset(const ID, F&&);
-  template <typename F>
-  void ForEachRootEntity(F&&);
-  template <typename F>
-  void ForEachRootAsset(F&&);
-  template <typename F>
-  void ForAllEntities(F&&);
-  template <typename F>
-  void ForEachVisibleEntity(const Camera&, F&&);
-  template <typename F>
-  void ForEachOctreeNode(F&&);
-  template <typename F>
-  void ForEachOctreeLeafNode(F&&);
-  template <typename... T>
-  bool EntityHasComponents(const ID);
-  template <typename... T>
-  bool AssetHasComponents(const ID);
-  template <typename T>
-  bool AssetHasComponent(const ID);
-  size_t GetFPS();
-  // NOTE: key and button variants of the following functions are just for convenience; there is no such distinction on InputManager side – they are given non-overlaping IDs
-  bool GetKey(int) const;
-  bool GetKeyDown(int) const;
-  bool GetKeyUp(int) const;
-  bool GetButton(int) const;
-  bool GetButtonDown(int) const;
-  bool GetButtonUp(int) const;
-  glm::vec2 GetMousePos() const;
-  glm::vec2 GetWASDKeys() const;
-  glm::vec2 GetArrowKeys() const;
-  void EnableKeys();
-  void DisableKeys();
-  void EnableButtons();
-  void DisableButtons();
-  void EnableInputs();
-  void DisableInputs();
-  void RegisterInputAction(int, InputAction, bool = true);
-  void RegisterInputAction(const std::string&, InputAction);
-  void UnregisterInputAction(int, bool = true);
-  void UnregisterInputAction(const std::string&);
-  void LoadModelAsync(const std::filesystem::path&);
-  void LoadTextureAsync(const std::filesystem::path&, TextureType = TextureType::Albedo);
-  ID LoadPrimitive(PrimitiveType);
+  auto InitGL() -> void;
+  auto SetWindowIcon(const std::filesystem::path &) -> void;
+  static void CharCallback(GLFWwindow *, unsigned int);
+  static void CursorPosCallback(GLFWwindow *, double, double);
+  static void DebugMessageCallback(unsigned int, unsigned int, unsigned int, unsigned int, int, const char *, const void *);
+  static void FramebufferSizeCallback(GLFWwindow *, int, int);
+  static void KeyCallback(GLFWwindow *, int, int, int, int);
+  static void MouseButtonCallback(GLFWwindow *, int, int, int);
+  static void WindowCloseCallback(GLFWwindow *);
+  // TODO: create a system manager
+  std::unordered_map<std::type_index, std::unique_ptr<System>> typeIndexToSystem;
 };
-template <typename T, typename... Z>
-requires std::derived_from<T, System>
-T* Application::CreateSystem(Z&&... args) {
-  auto system = new T(std::forward<Z>(args)...);
-  systems.push_back(static_cast<System*>(system));
-  return system;
+auto Application::ForEachAsset(this auto &self, const AssetType type, auto &&func) -> void {
+  self.assetManager.ForEach(type, std::forward<decltype(func)>(func));
 }
-template <typename T>
-void Application::DeleteSystem() {
-  auto it = std::remove_if(systems.begin(), systems.end(), [](System* system) {
-    if (auto systemT = static_cast<T*>(system)) {
-      delete systemT;
-      return true;
-    }
-    return false;
-  });
-  systems.erase(it, systems.end());
+auto Application::ForEachAssetPerType(this auto &self, auto &&func) -> void {
+  self.assetManager.ForEachPerType(std::forward<decltype(func)>(func));
 }
-template <typename T>
-T* Application::GetSystem() {
-  for (auto system : systems)
-    if (auto systemT = static_cast<T*>(system))
-      return systemT;
+auto Application::ForEachAssetType(this auto &self, auto &&func) -> void {
+  self.assetManager.ForEachType(std::forward<decltype(func)>(func));
+}
+auto Application::ForEachChildEntity(this auto &self, const EntityID parent, auto &&func) -> void {
+  if (auto scene = self.GetActiveScene(); scene)
+    scene->ForEachChildEntity(parent, std::forward<decltype(func)>(func));
+}
+auto Application::ForEachPrefab(this auto &self, auto &&func) -> void {
+  self.assetManager.ForEachPrefab(std::forward<decltype(func)>(func));
+}
+auto Application::ForEachRootEntity(this auto &self, auto &&func) -> void {
+  if (auto scene = self.GetActiveScene(); scene)
+    scene->ForEachRootEntity(std::forward<decltype(func)>(func));
+}
+auto Application::GetActiveCamera(this auto &self) -> ConstCorrectPointer<decltype(self), Camera> {
+  if (auto scene = self.GetActiveScene(); scene)
+    return scene->GetActiveCamera();
   return nullptr;
 }
-template <typename T>
-T* Application::AddEntityComponent(const ID id) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return nullptr;
-  return scene->entityManager.AddComponent<T>(id);
+auto Application::GetActiveScene(this auto &self) -> ConstCorrectPointer<decltype(self), Scene> {
+  return self.sceneManager.GetActive();
 }
-template <typename T>
-T* Application::AddAssetComponent(const ID id) {
-  return assetManager.AddComponent<T>(id);
-}
-template <typename T>
-void Application::RemoveEntityComponent(const ID id) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->entityManager.RemoveComponent<T>(id);
+auto Application::GetAsset(this auto &self, const AssetID id) -> ConstCorrectPointer<decltype(self), Asset> {
+  return self.assetManager.Get(id);
 }
 template <typename... T>
-bool Application::AssetHasComponents(const ID id) {
-  return assetManager.HasComponents<T...>(id);
+auto Application::AddEntityComponent(const EntityID id) -> decltype(auto) {
+  static_assert(sizeof...(T) > 0, "`AddEntityComponent` requires at least one type parameter.");
+  if (auto scene = GetActiveScene(); scene)
+    return scene->template AddEntityComponent<T...>(id);
+  if constexpr (sizeof...(T) == 1) {
+    using C = std::tuple_element_t<0, std::tuple<T...>>;
+    return static_cast<C *>(nullptr);
+  } else
+    return std::tuple(static_cast<T *>(nullptr)...);
 }
-template <typename T>
-bool Application::AssetHasComponent(const ID id) {
-  return assetManager.HasComponent<T>(id);
+template <IsSystem T, typename... Args>
+auto Application::CreateSystem(Args &&...args) -> T * {
+  const auto typeIndex = std::type_index(typeid(T));
+  if (auto it = typeIndexToSystem.find(typeIndex); it != typeIndexToSystem.end())
+    return static_cast<T *>(it->second.get());
+  auto [it, _] = typeIndexToSystem.emplace(typeIndex, std::make_unique<T>(std::forward<Args>(args)...));
+  return static_cast<T *>(it->second.get());
 }
-template <typename... T>
-bool Application::EntityHasComponents(const ID id) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return false;
-  return scene->entityManager.HasComponents<T...>(id);
-}
-template <typename T>
-T* Application::GetEntityComponent(const ID id) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return nullptr;
-  return scene->entityManager.GetComponent<T>(id);
-}
-template <typename T>
-T* Application::GetAssetComponent(const ID id) {
-  return assetManager.GetComponent<T>(id);
-}
-template <typename... T, typename F>
-void Application::ForFirstEntity(F&& func) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->entityManager.ForFirst<T...>(func);
-}
-template <typename... T, typename F>
-void Application::ForEachEntity(F&& func) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->entityManager.ForEach<T...>(func);
-}
-template <typename... T, typename F>
-void Application::ForEachAsset(F&& func) {
-  assetManager.ForEach<T...>(func);
-}
-template <typename F>
-void Application::ForEachChildEntity(const ID parent, F&& func) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->entityManager.ForEachChild(parent, func);
-}
-template <typename F>
-void Application::ForEachChildAsset(const ID parent, F&& func) {
-  assetManager.ForEachChild(parent, func);
-}
-template <typename F>
-void Application::ForEachRootEntity(F&& func) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->entityManager.ForEachRoot(func);
-}
-template <typename F>
-void Application::ForEachRootAsset(F&& func) {
-  assetManager.ForEachRoot(func);
-}
-template <typename F>
-void Application::ForAllEntities(F&& func) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->entityManager.ForAll(func);
-}
-template <typename F>
-void Application::ForEachVisibleEntity(const Camera& camera, F&& func) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->ForEachVisibleEntity(camera, func);
-}
-template <typename F>
-void Application::ForEachOctreeNode(F&& func) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->ForEachOctreeNode(func);
-}
-template <typename F>
-void Application::ForEachOctreeLeafNode(F&& func) {
-  auto scene = GetActiveScene();
-  if (!scene)
-    return;
-  scene->ForEachOctreeLeafNode(func);
+template <IsSystem T>
+auto Application::DeleteSystem() -> bool {
+  const auto typeIndex = std::type_index(typeid(T));
+  return typeIndexToSystem.erase(typeIndex);
 }
 template <typename... T>
-std::tuple<T*...> Application::GetEntityComponents(const ID id) {
-  return std::make_tuple(GetEntityComponent<T>(id)...);
+auto Application::EntityHasComponent(const EntityID id) const -> bool {
+  if (auto scene = GetActiveScene(); scene)
+    return scene->template EntityHasComponent<T...>(id);
+  return false;
+}
+template <IsAsset... T>
+auto Application::ForEachAsset(this auto &self, auto &&func) -> void {
+  self.assetManager.template ForEach<T...>(std::forward<decltype(func)>(func));
 }
 template <typename... T>
-std::tuple<T*...> Application::GetAssetComponents(const ID id) {
-  return std::make_tuple(assetManager.GetComponent<T>(id)...);
+auto Application::ForEachEntity(this auto &self, auto &&func) -> void {
+  if (auto scene = self.GetActiveScene(); scene)
+    scene->template ForEachEntity<T...>(std::forward<decltype(func)>(func));
+}
+template <typename... T>
+auto Application::ForFirstEntity(this auto &self, auto &&func) -> void {
+  if (auto scene = self.GetActiveScene(); scene)
+    scene->template ForFirstEntity<T...>(std::forward<decltype(func)>(func));
+}
+template <IsAsset T>
+auto Application::GetAsset(const AssetID id) -> decltype(auto) {
+  return assetManager.Get<T>(id);
+}
+template <typename... T>
+auto Application::GetEntityComponent(this auto &self, const EntityID id) -> decltype(auto) {
+  if (auto scene = self.GetActiveScene(); scene)
+    return scene->template GetEntityComponent<T...>(id);
+  if constexpr (sizeof...(T) == 1) {
+    using C = std::tuple_element_t<0, std::tuple<T...>>;
+    return static_cast<ConstCorrectPointer<decltype(self), C>>(nullptr);
+  } else
+    return std::tuple(static_cast<ConstCorrectPointer<decltype(self), T>>(nullptr)...);
+}
+template <IsSystem T>
+auto Application::GetSystem(this auto &self) -> decltype(auto) {
+  const auto typeIndex = std::type_index(typeid(T));
+  if (auto it = self.typeIndexToSystem.find(typeIndex); it != self.typeIndexToSystem.end())
+    return static_cast<ConstCorrectPointer<decltype(self), T>>(it->second.get());
+  return static_cast<ConstCorrectPointer<decltype(self), T>>(nullptr);
+}
+template <typename... T>
+auto Application::RemoveEntityComponent(const EntityID id) -> bool {
+  if (auto scene = GetActiveScene(); scene)
+    return scene->template RemoveEntityComponent<T...>(id);
+  return false;
 }
 } // namespace kuki

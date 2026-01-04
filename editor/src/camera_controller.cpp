@@ -9,7 +9,7 @@
 #include <glm/gtx/norm.hpp>
 #include <id.hpp>
 using namespace kuki;
-CameraController::CameraController(Application& app, ID entityId)
+CameraController::CameraController(Application &app, EntityID entityId)
   : app(app), entityId(entityId) {}
 void CameraController::Update(float deltaTime) {
   static auto firstEnter = true;

@@ -11,7 +11,7 @@ A hobby game engine project that I'm working on to learn about game engine archi
 
 #### Windows
 
-- [Visual Studio](https://visualstudio.microsoft.com/vs/community) (with C++ workload)
+- [Visual Studio](https://visualstudio.microsoft.com) (with C++ workload)
 
 #### Linux
 

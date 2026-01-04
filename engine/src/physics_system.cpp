@@ -1,9 +1,8 @@
-#include <application.hpp>
 #include <physics_system.hpp>
 #include <system.hpp>
 namespace kuki {
-PhysicsSystem::PhysicsSystem(Application& app)
-  : System(app), simulationTimestep(1.f / 100) {}
+PhysicsSystem::PhysicsSystem()
+  : System(std::in_place_type<PhysicsSystem>), simulationTimestep(1.f / 100) {}
 PhysicsSystem::~PhysicsSystem() {
   Shutdown();
 }

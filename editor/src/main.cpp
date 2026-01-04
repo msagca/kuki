@@ -1,5 +1,5 @@
 #include <editor.hpp>
-int main() {
+auto main() -> int {
   Editor editor;
   editor.Run();
   return 0;

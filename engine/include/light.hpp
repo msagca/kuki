@@ -1,11 +1,10 @@
 #pragma once
-#include <component.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <kuki_engine_export.h>
+#include <light_type.hpp>
 #include <transform.hpp>
 namespace kuki {
-struct KUKI_ENGINE_API Light final : public IComponent {
-  Light();
+struct KUKI_ENGINE_API Light {
   LightType type{LightType::Directional};
   glm::vec3 vector{3.0f};
   glm::vec3 ambient{.2f};
@@ -15,7 +14,7 @@ struct KUKI_ENGINE_API Light final : public IComponent {
   float constant{1.0f};
   float linear{.09f};
   float quadratic{.032f};
-  Transform GetTransform() const;
-  void SetTransform(const Transform&);
+  auto GetTransform() const -> Transform;
+  auto SetTransform(const Transform &) -> void;
 };
 } // namespace kuki

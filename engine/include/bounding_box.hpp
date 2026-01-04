@@ -1,5 +1,4 @@
 #pragma once
-#include <component.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <kuki_engine_export.h>
@@ -12,6 +11,6 @@ struct KUKI_ENGINE_API BoundingBox {
   BoundingBox();
   BoundingBox(glm::vec3, glm::vec3);
   /// @brief Get the world space bounds
-  BoundingBox GetWorldBounds(const glm::mat4&);
+  BoundingBox GetWorldBounds(const glm::mat4 &) const;
 };
 } // namespace kuki

@@ -23,7 +23,6 @@ MaxEmptyLinesToKeep: 0
 NamespaceIndentation: Inner
 PPIndentWidth: 2
 PackConstructorInitializers: NextLineOnly
-PointerAlignment: Left
 ReflowComments: false
 RequiresClausePosition: WithPreceding
 SpacesInContainerLiterals: false

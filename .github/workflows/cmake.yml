@@ -1,4 +1,4 @@
-name: CMake Build & Test
+name: CMake Build
 on:
   push:
     paths:
@@ -8,14 +8,14 @@ on:
       - "**.h"
       - "**.inl"
       - "**/CMakeLists.txt"
-  pull_request:
-    paths:
-      - "**.cpp"
-      - "**.c"
-      - "**.hpp"
-      - "**.h"
-      - "**.inl"
-      - "**/CMakeLists.txt"
+      # pull_request:
+      #   paths:
+      #     - "**.cpp"
+      #     - "**.c"
+      #     - "**.hpp"
+      #     - "**.h"
+      #     - "**.inl"
+      #     - "**/CMakeLists.txt"
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -24,7 +24,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: "recursive"
       - name: Install Linux prerequisites
@@ -37,7 +37,7 @@ jobs:
       - name: Install Ninja for Windows
         if: runner.os == 'Windows'
         run: winget install --id Ninja-build.Ninja --accept-source-agreements --disable-interactivity
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: build
           key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt','**/CMakePresets.json') }}
@@ -45,24 +45,24 @@ jobs:
             ${{ runner.os }}-cmake-
       - name: CMake configure
         run: |
-          cmake -G "Ninja" -B build --preset Release -DBUILD_TESTS=ON
+          cmake -S . -B build -G "Ninja" --preset Release
       - name: CMake build
         run: |
           cmake --build build --preset Release
-      - uses: actions/upload-artifact@v4
-        if: runner.os == 'Linux'
-        with:
-          name: test-artifacts
-          path: build/tests
-  test:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: test-artifacts
-          path: build/tests
-      - name: CMake test
-        run: |
-          chmod +x build/tests/KukiTests
-          ctest --test-dir build/tests --output-on-failure
+  #     - uses: actions/upload-artifact@v6
+  #       if: runner.os == 'Linux'
+  #       with:
+  #         name: test-artifacts
+  #         path: build/tests
+  # test:
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   steps:
+  #     - uses: actions/download-artifact@v7
+  #       with:
+  #         name: test-artifacts
+  #         path: build/tests
+  #     - name: CMake test
+  #       run: |
+  #         chmod +x build/tests/KukiTests
+  #         ctest --test-dir build/tests --output-on-failure

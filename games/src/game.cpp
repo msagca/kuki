@@ -5,9 +5,9 @@ Game::~Game() {
   Shutdown();
 }
 void Game::Start() {}
-bool Game::Status() {
+auto Game::Status() -> bool {
   return true;
 }
-void Game::Update() {}
-void Game::LateUpdate() {}
-void Game::Shutdown() {}
+auto Game::Update() -> void {}
+auto Game::LateUpdate() -> void {}
+auto Game::Shutdown() -> void {}

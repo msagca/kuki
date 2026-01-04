@@ -1,29 +1,31 @@
+#include <gl_resource_manager.hpp>
 #include <glad/glad.h>
 #include <pool.hpp>
 #include <renderbuffer_pool.hpp>
-#include <texture_params.hpp>
 namespace kuki {
 RenderbufferPool::~RenderbufferPool() {
   Clear();
 }
-void RenderbufferPool::Clear() {
-  for (const auto& [params, renderbuffers] : pool)
+auto RenderbufferPool::Clear() -> void {
+  for (const auto &[params, renderbuffers] : pool)
     for (auto id : renderbuffers)
       glDeleteRenderbuffers(1, &id);
-  Pool::Clear();
 }
-GLuint RenderbufferPool::Allocate(const TextureParams& params) {
-  GLuint renderbuffer;
+auto RenderbufferPool::Allocate(const TargetDescription &desc) -> unsigned int {
+  unsigned int renderbuffer;
   glGenRenderbuffers(1, &renderbuffer);
-  Reallocate(params, renderbuffer);
+  Reallocate(desc, renderbuffer);
   return renderbuffer;
 }
-void RenderbufferPool::Reallocate(const TextureParams& params, GLuint& renderbuffer) {
+auto RenderbufferPool::Reallocate(const TargetDescription &desc, unsigned int &renderbuffer) -> void {
+  if (renderbuffer == 0)
+    return;
+  const auto format = GL_DEPTH24_STENCIL8;
   glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
-  if (params.samples > 1)
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, params.samples, GL_DEPTH24_STENCIL8, params.width, params.height);
+  if (desc.samples > 1)
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, desc.samples, format, desc.width, desc.height);
   else
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, params.width, params.height);
+    glRenderbufferStorage(GL_RENDERBUFFER, format, desc.width, desc.height);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
 }
 } // namespace kuki

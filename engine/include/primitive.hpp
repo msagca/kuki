@@ -19,27 +19,19 @@ struct Triangle {
   glm::vec3 v2{};
   glm::vec3 v3{};
 };
-enum class PrimitiveType : uint8_t {
-  Cube,
-  Sphere,
-  Cylinder,
-  Plane,
-  CubeInverted,
-  Frame
-};
 /// @brief A container class for functions that construct primitive shapes
 class KUKI_ENGINE_API Primitive {
 private:
   static std::vector<Triangle> CreateOctahedron();
   static std::vector<Triangle> CreateIcosahedron();
-  static std::vector<Triangle> Subdivide(const std::vector<Triangle>&, int);
+  static std::vector<Triangle> Subdivide(const std::vector<Triangle> &, unsigned int = 1);
 public:
   /// @brief Flip the winding order (clockwise <-> counter-clockwise) of faces in a mesh
-  static void FlipWindingOrder(std::vector<Vertex>&);
+  static void FlipWindingOrder(std::vector<Vertex> &);
   static std::vector<Vertex> Cube();
-  static std::vector<Vertex> Cylinder(int = 40);
+  static std::vector<Vertex> Cylinder(unsigned int = 40);
   static std::vector<Vertex> Frame();
   static std::vector<Vertex> Plane();
-  static std::vector<Vertex> Sphere(int = 4);
+  static std::vector<Vertex> Sphere(unsigned int = 4);
 };
 } // namespace kuki

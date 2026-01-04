@@ -2,8 +2,8 @@
 #include <application.hpp>
 #include <system.hpp>
 namespace kuki {
-AnimationSystem::AnimationSystem(Application& app)
-  : System(app) {}
+AnimationSystem::AnimationSystem()
+  : System(std::in_place_type<AnimationSystem>) {}
 AnimationSystem::~AnimationSystem() {
   Shutdown();
 }

@@ -1,12 +1,12 @@
 #pragma once
 #include <kuki_engine_export.h>
-#include <texture_pool.hpp>
+#include <object_pool.hpp>
 namespace kuki {
-class KUKI_ENGINE_API FramebufferPool final : public Pool<TextureParams, unsigned int> {
-protected:
-  unsigned int Allocate(const TextureParams&) override;
+class KUKI_ENGINE_API FramebufferPool final : public ObjectPool<unsigned int> {
 public:
   ~FramebufferPool() override;
-  void Clear() override;
+  auto Clear() -> void;
+protected:
+  auto Allocate() -> unsigned int override;
 };
 } // namespace kuki

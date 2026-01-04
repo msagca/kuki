@@ -1,5 +1,6 @@
 #pragma once
-#include <component.hpp>
+#include <cassert>
+#include <concepts.hpp>
 #include <id.hpp>
 #include <stack>
 #include <transform.hpp>
@@ -10,69 +11,40 @@ namespace kuki {
 class IComponentManager {
 public:
   virtual ~IComponentManager() = default;
-  virtual IComponent& AddBase(const ID) = 0;
-  virtual void Remove(const ID) = 0;
-  virtual bool Has(const ID) = 0;
-  virtual IComponent* GetBase(const ID) = 0;
-  virtual void Sort() = 0;
-  virtual void Update() = 0;
+  virtual auto Has(const EntityID) const -> bool = 0;
+  virtual auto Remove(const EntityID) -> bool = 0;
+  virtual auto Sort() -> void = 0;
+  virtual auto Update() -> void = 0;
 };
+// TODO: remove the constraint on the type, components don't have to extend the `Component` class
 template <typename T>
 class ComponentManager final : public IComponentManager {
-private:
-  std::vector<T> components;
-  std::unordered_map<ID, size_t> entityToComponent;
-  std::vector<ID> componentToEntity;
-  size_t inactiveCount{}; // TODO: to reclaim some memory, shrink the array if inactive count gets too high
 public:
-  size_t ActiveCount();
-  size_t InactiveCount();
-  T& Add(const ID);
-  IComponent& AddBase(const ID) override;
-  void Remove(const ID) override;
-  bool Has(const ID) override;
-  T* Get(const ID);
-  /// @brief Casts the component pointer to IComponent pointer
-  /// @param Entity Id
-  /// @return An IComponent pointer
-  IComponent* GetBase(const ID) override;
-  T* GetFirst();
-  void Sort() override;
-  void Update() override;
-  template <typename F>
-  void ForEach(F&&);
+  auto Has(const EntityID) const -> bool override;
+  auto Remove(const EntityID) -> bool override;
+  auto Sort() -> void override;
+  auto Update() -> void override;
+  auto ActiveCount() const -> size_t;
+  auto Add(const EntityID) -> T &;
+  auto ForEach(this auto &, auto &&) -> void;
+  auto Get(this auto &self, const EntityID) -> ConstCorrectPointer<decltype(self), T>;
+  auto GetAny(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
+  auto InactiveCount() const -> size_t;
+private:
+  size_t inactiveCount{};
+  std::unordered_map<EntityID, size_t> entityToComponent;
+  std::vector<EntityID> componentToEntity;
+  std::vector<T> components;
 };
 template <typename T>
-size_t ComponentManager<T>::ActiveCount() {
-  return components.size() - inactiveCount;
+auto ComponentManager<T>::Has(const EntityID id) const -> bool {
+  return entityToComponent.find(id) != entityToComponent.end();
 }
 template <typename T>
-size_t ComponentManager<T>::InactiveCount() {
-  return inactiveCount;
-}
-template <typename T>
-T& ComponentManager<T>::Add(const ID id) {
-  if (auto it = entityToComponent.find(id); it != entityToComponent.end())
-    return components[it->second];
-  auto componentId = components.size();
-  if (inactiveCount > 0) {
-    componentId = ActiveCount();
-    inactiveCount--;
-  } else
-    components.emplace_back();
-  entityToComponent.insert({id, componentId});
-  componentToEntity.push_back(id);
-  return components[componentId];
-}
-template <typename T>
-IComponent& ComponentManager<T>::AddBase(const ID id) {
-  return static_cast<IComponent&>(Add(id));
-}
-template <typename T>
-void ComponentManager<T>::Remove(const ID id) {
+auto ComponentManager<T>::Remove(const EntityID id) -> bool {
   auto it = entityToComponent.find(id);
   if (it == entityToComponent.end())
-    return;
+    return false;
   auto componentId = it->second;
   auto lastId = ActiveCount() - 1;
   if (componentId != lastId) {
@@ -82,109 +54,60 @@ void ComponentManager<T>::Remove(const ID id) {
     entityToComponent[componentToEntity[componentId]] = componentId;
   }
   entityToComponent.erase(id);
-  componentToEntity.pop_back();
+  componentToEntity.pop_back(); // TODO: optimize this
   inactiveCount++;
   if constexpr (std::is_same_v<T, Transform>)
     // TODO: implement a partial sort function
     Sort();
+  return true;
 }
 template <typename T>
-bool ComponentManager<T>::Has(const ID id) {
-  return entityToComponent.find(id) != entityToComponent.end();
+auto ComponentManager<T>::Sort() -> void {}
+template <typename T>
+auto ComponentManager<T>::Update() -> void {}
+template <typename T>
+auto ComponentManager<T>::ActiveCount() const -> size_t {
+  assert(components.size() >= inactiveCount && "Inactive count cannot be larger than the size of the components array.");
+  // TODO: make sure this doesn't wrap around to a huge number (if `inactiveCount` is larger than the size somehow)
+  return components.size() - inactiveCount;
 }
 template <typename T>
-T* ComponentManager<T>::Get(const ID id) {
+auto ComponentManager<T>::Add(const EntityID id) -> T & {
   if (auto it = entityToComponent.find(id); it != entityToComponent.end())
-    return &components[it->second];
+    return components[it->second];
+  auto componentId = components.size();
+  if (inactiveCount > 0) {
+    componentId = ActiveCount();
+    inactiveCount--;
+  } else
+    components.emplace_back();
+  componentToEntity.push_back(id);
+  entityToComponent.emplace(id, componentId);
+  return components[componentId];
+}
+template <typename T>
+auto ComponentManager<T>::ForEach(this auto &self, auto &&func) -> void {
+  for (auto i = 0; i < self.ActiveCount(); ++i) {
+    const auto id = self.componentToEntity[i];
+    auto &comp = self.components[i];
+    func(id, &comp);
+  }
+}
+template <typename T>
+auto ComponentManager<T>::Get(this auto &self, const EntityID id) -> ConstCorrectPointer<decltype(self), T> {
+  if (auto it = self.entityToComponent.find(id); it != self.entityToComponent.end())
+    return &self.components[it->second];
   return nullptr;
 }
 template <typename T>
-IComponent* ComponentManager<T>::GetBase(const ID id) {
-  return static_cast<IComponent*>(Get(id));
+auto ComponentManager<T>::GetAny(this auto &self) -> ConstCorrectPointer<decltype(self), T> {
+  if (self.ActiveCount() > 0)
+    return &self.components.front();
+  return nullptr;
 }
 template <typename T>
-T* ComponentManager<T>::GetFirst() {
-  return ActiveCount() > 0 ? &components.front() : nullptr;
+auto ComponentManager<T>::InactiveCount() const -> size_t {
+  return inactiveCount;
 }
-template <typename T>
-template <typename F>
-void ComponentManager<T>::ForEach(F&& func) {
-  auto func_ = std::forward<F>(func);
-  for (auto i = 0; i < ActiveCount(); i++) {
-    auto id = componentToEntity[i];
-    func_(id, &components[i]);
-  }
-}
-template <typename T>
-void ComponentManager<T>::Sort() {}
-template <typename T>
-void ComponentManager<T>::Update() {}
-template <>
-inline void ComponentManager<Transform>::Sort() {
-  auto count = ActiveCount();
-  if (count == 0)
-    return;
-  std::vector<Transform> components_;
-  std::unordered_map<ID, size_t> entityToComponent_;
-  std::vector<ID> componentToEntity_;
-  components_.reserve(count);
-  entityToComponent_.reserve(count);
-  componentToEntity_.reserve(count);
-  std::stack<size_t> parents;
-  for (auto i = 0; i < count; ++i) {
-    auto entityId = componentToEntity[i];
-    if (entityToComponent_.find(entityId) != entityToComponent_.end())
-      // skip if entity has been processed
-      continue;
-    auto parentId = components[i].parent;
-    while (parentId.IsValid()) {
-      if (entityToComponent_.find(parentId) != entityToComponent_.end())
-        // skip if parent has been processed
-        break;
-      if (auto it = entityToComponent.find(parentId); it != entityToComponent.end()) {
-        parents.push(it->second);
-        parentId = components[it->second].parent;
-      } else // TODO: if parent ID is valid, then this is unexpected — throw an exception maybe
-        break;
-    }
-    while (!parents.empty()) {
-      auto componentId = parents.top();
-      auto entityId = componentToEntity[componentId];
-      componentToEntity_.push_back(entityId);
-      auto componentId_ = components_.size();
-      entityToComponent_.insert({entityId, componentId_});
-      auto& component = components[componentId];
-      components_.push_back(component);
-      parents.pop();
-    }
-    componentToEntity_.push_back(entityId);
-    auto componentId_ = components_.size();
-    entityToComponent_.insert({entityId, componentId_});
-    auto& component = components[i];
-    components_.push_back(component);
-  }
-  components = std::move(components_);
-  entityToComponent = std::move(entityToComponent_);
-  componentToEntity = std::move(componentToEntity_);
-  inactiveCount = 0;
-}
-template <>
-inline void ComponentManager<Transform>::Update() {
-  auto count = ActiveCount();
-  if (count == 0)
-    return;
-  for (auto i = 0; i < count; ++i) {
-    auto& transform = components[i];
-    Transform* parentTransform = nullptr;
-    auto parentId = transform.parent;
-    if (auto it = entityToComponent.find(parentId); it != entityToComponent.end())
-      parentTransform = &components[it->second];
-    if (parentTransform && parentTransform->dirty)
-      transform.dirty = true;
-    if (transform.dirty)
-      transform.Update(parentTransform);
-  }
-  for (auto& c : components)
-    c.dirty = false;
-}
+#include <component_manager.inl>
 } // namespace kuki

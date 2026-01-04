@@ -1,87 +1,37 @@
 #pragma once
-#include <entity_manager.hpp>
-#include <framebuffer_pool.hpp>
-#include <glm/ext/matrix_float4x4.hpp>
+#include <compute_type.hpp>
+#include <gl_renderer.hpp>
 #include <kuki_engine_export.h>
-#include <octree.hpp>
-#include <renderbuffer_pool.hpp>
-#include <shader.hpp>
-#include <spdlog/spdlog.h>
+#include <material_type.hpp>
+#include <memory>
+#include <render_graph.hpp>
+#include <render_graph_builder.hpp>
+#include <scene_manager.hpp>
+#include <shader_asset.hpp>
 #include <system.hpp>
-#include <texture.hpp>
-#include <texture_pool.hpp>
-#include <uniform_buffer_pool.hpp>
-#include <unordered_map>
 namespace kuki {
-enum class GizmoType : uint8_t {
-  Manipulator,
-  ViewFrustum,
-  FrustumCulling
-};
-enum class GizmoMask : size_t {
-  Manipulator = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoType::Manipulator),
-  ViewFrustum = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoType::ViewFrustum),
-  FrustumCulling = static_cast<size_t>(1) << static_cast<uint8_t>(GizmoType::FrustumCulling),
-};
-class Application;
 class KUKI_ENGINE_API RenderingSystem final : public System {
-  friend class Shader;
-private:
-  std::unordered_map<MaterialType, Shader*> shaders;
-  std::unordered_map<ComputeType, ComputeShader*> computes;
-  Camera assetCam{};
-  FramebufferPool framebufferPool;
-  RenderbufferPool renderbufferPool;
-  TexturePool texturePool;
-  UniformBufferPool uniformBufferPool;
-  std::unordered_map<ID, unsigned int> assetToTexture;
-  Texture brdf{}; // NOTE: generate once and re-use
-  size_t fps{};
-  unsigned int materialVBO{0};
-  unsigned int transformVBO{0};
-  size_t gizmoMask{0};
-  static bool wireframeMode;
-  /// @brief Update framebuffer attachments
-  /// @param params Texture parameters
-  /// @param framebuffer OpenGL ID of the framebuffer
-  /// @param renderbuffer OpenGL ID of the renderbuffer that is the depth and stencil attachment
-  /// @param textures OpenGL IDs of the textures that are the color attachments
-  /// @return true if the framebuffer is complete, false otherwise
-  template <typename... T>
-  requires(std::same_as<T, unsigned int> && ...)
-  bool UpdateAttachments(const TextureParams&, unsigned int, unsigned int, T...);
-  void DrawAsset(ID);
-  void DrawAssetHierarchy(ID);
-  void DrawEntitiesInstanced(const Camera*, const Mesh*, const std::vector<ID>&);
-  void DrawFrustumCulling(const Camera*, const Camera*);
-  void DrawGizmos(const Camera*, const Camera* = nullptr);
-  void DrawScene(const Camera*, const Camera* = nullptr);
-  void DrawSkybox(const Camera*, const Skybox*);
-  void DrawViewFrustum(const Camera*, const Camera*);
-  void ApplyPostProc(unsigned int, unsigned int, const TextureParams&);
-  BoundingBox GetAssetBounds(ID);
-  Shader* GetShader(MaterialType);
-  ComputeShader* GetCompute(ComputeType);
-  void UpdateEntityTransforms();
-  void UpdateCameraTransforms();
 public:
-  RenderingSystem(Application&);
+  RenderingSystem(SceneManager &);
   ~RenderingSystem();
-  void Start() override;
-  void Update(float) override;
-  void LateUpdate(float) override;
-  void Shutdown() override;
-  size_t GetFPS() const;
-  int RenderSceneToTexture(Camera* = nullptr);
-  int RenderAssetToTexture(ID, const int = 64);
-  Texture CreateCubeMapFromEquirect(Texture, const int = 1024);
-  Texture CreateEquirectFromCubeMap(Texture, const int = 1024);
-  Texture CreateIrradianceMapFromCubeMap(Texture, const int = 32);
-  Texture CreatePrefilterMapFromCubeMap(Texture, const int = 1024);
-  Texture CreateBRDF_LUT(const int = 512);
-  size_t GetGizmoMask() const;
-  void SetGizmoMask(size_t);
-  static void ToggleWireframeMode();
+  auto LateUpdate(float) -> void override;
+  auto Shutdown() -> void override;
+  auto Start() -> void override;
+  auto Update(float) -> void override;
+  auto ActivateScene(const Scene &) -> void;
+  auto DeactivateScene(const Scene &) -> void;
+  auto GetFPS() const -> size_t;
+  auto GetTarget(const std::string &) -> RenderTarget *;
+  auto LoadCompute(const ComputeType, const ShaderAsset &) -> void;
+  auto LoadPrimitive(const PrimitiveType) -> void;
+  auto LoadScene(const Scene &) -> void;
+  auto LoadShader(const MaterialType, const ShaderAsset &, const ShaderAsset &) -> void;
+  auto UnloadScene(const Scene &) -> void;
+private:
+  GLRenderer glRenderer;
+  RenderGraphBuilder graphBuilder;
+  SceneManager &sceneManager;
+  size_t fps{};
+  std::unique_ptr<RenderGraph> renderGraph;
 };
-#include <rendering_system.inl>
 } // namespace kuki

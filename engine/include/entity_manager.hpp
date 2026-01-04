@@ -1,230 +1,252 @@
 #pragma once
+#include <bone_data.hpp>
+#include <camera.hpp>
 #include <component.hpp>
 #include <component_manager.hpp>
-#include <component_traits.hpp>
+#include <component_type.hpp>
+#include <concepts.hpp>
+#include <gl_material.hpp>
+#include <gl_mesh.hpp>
+#include <gl_skybox.hpp>
+#include <gl_texture.hpp>
 #include <id.hpp>
+#include <light.hpp>
+#include <material_handle.hpp>
+#include <memory>
+#include <mesh_handle.hpp>
+#include <skybox_handle.hpp>
+#include <transform.hpp>
 #include <trie.hpp>
 #include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 namespace kuki {
-template <typename T>
-concept IsComponent = std::is_base_of_v<IComponent, T>;
-/// @brief Manages entities and their components in a scene
 class KUKI_ENGINE_API EntityManager {
-private:
-  Trie<SuffixNode> names; // TODO: no need to have unique names, entities already have unique IDs
-  std::unordered_map<ComponentType, std::type_index> idToType;
-  std::unordered_map<ID, ID> idToParent;
-  std::unordered_map<ID, std::string> idToName;
-  std::unordered_map<ID, std::unordered_set<ID>> idToChildren;
-  std::unordered_map<std::string, ID> nameToId;
-  std::unordered_map<std::string, std::type_index> nameToType;
-  std::unordered_map<std::type_index, ComponentMask> typeToMask;
-  std::unordered_map<std::type_index, IComponentManager*> typeToManager;
-  // TODO: implement spatial partitioning, keep a ComponentManager per quadrant/octant for certain component types (e.g., Transform)
-  std::unordered_set<ID> ids;
-  template <IsComponent C>
-  ComponentManager<C>* GetManager();
-  IComponentManager* GetManager(std::type_index);
-  IComponentManager* GetManager(const std::string&);
-  IComponentManager* GetManager(ComponentType);
-  template <typename C>
-  size_t GetComponentMask() const;
-  void DeleteRecords(const ID);
 public:
-  ~EntityManager();
-  ID Create(std::string&);
-  void Delete(const ID);
-  void Delete(const std::string&);
-  void DeleteAll();
-  void DeleteAll(const std::string&);
-  bool Rename(const ID, std::string&);
-  bool IsEntity(const ID);
-  const std::string& GetName(const ID) const;
-  ID GetId(const std::string&);
-  /// @brief Create parent-child relationship between the given entities
-  /// @param parent Parent entity ID
-  /// @param child Child entity ID
-  /// @param keepWorld Preserve child's world transform
-  /// @return true if the operation was successful, false otherwise
-  bool AddChild(const ID, const ID, bool = false);
-  /// @brief Remove the parent-child relationship between the given entities
-  void RemoveChild(const ID, const ID);
-  bool HasChildren(const ID) const;
-  bool HasParent(const ID) const;
-  ID GetParent(const ID) const;
-  size_t GetCount() const;
-  template <typename C>
-  C* AddComponent(const ID);
-  IComponent* AddComponent(const ID, ComponentType);
-  IComponent* AddComponent(const ID, const std::string&);
-  template <typename... C>
-  std::tuple<C*...> AddComponents(ID);
-  template <typename C>
-  void RemoveComponent(const ID);
-  void RemoveComponent(const ID, ComponentType);
-  void RemoveComponent(const ID, const std::string&);
-  template <typename... C>
-  void RemoveComponents(const ID);
-  void RemoveAllComponents(const ID);
-  template <typename C>
-  bool HasComponent(const ID);
-  bool HasComponent(const ID, std::type_index);
-  template <typename... C>
-  bool HasComponents(const ID);
-  template <typename C>
-  C* GetComponent(const ID);
-  IComponent* GetComponent(const ID, ComponentType);
-  IComponent* GetComponent(const ID, const std::string&);
-  template <typename... C>
-  std::tuple<C*...> GetComponents(const ID);
-  /// @brief Get the first component of the specified type
-  /// @return A pointer to the first component, or nullptr if no such component exists
-  template <typename C>
-  C* GetFirstComponent();
-  std::vector<IComponent*> GetAllComponents(const ID);
-  std::vector<std::string> GetMissingComponents(const ID);
-  template <typename C>
-  void SortComponents();
-  template <typename C>
-  void UpdateComponents();
-  void Update();
-  /// @brief Execute a function on the first entity with specified components
-  template <typename... C, typename F>
-  void ForFirst(F&&);
-  /// @brief Execute a function on entities with specified components
-  template <typename... C, typename F>
-  void ForEach(F&&);
-  /// @brief Execute a function on all children of a given entity
-  template <typename F>
-  void ForEachChild(const ID, F&&);
-  /// @brief Execute a function on all root entities
-  template <typename F>
-  void ForEachRoot(F&&);
-  /// @brief Execute a function on all entities
-  template <typename F>
-  void ForAll(F&&);
+  // TODO: validate EntityID before performing the following tasks
+  auto AddChild(const EntityID, const EntityID, bool = false) -> bool;
+  auto CopyFrom(const EntityManager &, const EntityID) -> EntityID;
+  auto CopyTo(const EntityID, EntityManager &) const -> EntityID;
+  auto Create(std::string = "") -> EntityID;
+  auto Delete(const EntityID) -> bool;
+  auto DeleteAll() -> void;
+  auto GetComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto GetCount() const -> size_t;
+  auto GetMissingComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto GetName(const EntityID) const -> std::string;
+  auto GetID(const std::string &) const -> EntityID;
+  auto GetParent(const EntityID) const -> EntityID;
+  auto HasChildren(const EntityID) const -> bool;
+  auto HasParent(const EntityID) const -> bool;
+  auto IsEntity(const EntityID) const -> bool;
+  auto IsEntity(const std::string &) const -> EntityID;
+  auto RemoveChild(const EntityID, const EntityID) -> bool;
+  auto RemoveComponents(const EntityID) -> bool;
+  auto Rename(const EntityID, std::string) -> bool;
+  auto Update() -> void;
+  // templates
+  auto ForEachChild(this auto &, const EntityID, auto &&) -> void;
+  auto ForEachComponent(this auto &, const EntityID, auto &&) -> void;
+  auto ForEachRoot(this auto &, auto &&) -> void;
+  template <typename... T>
+  auto AddComponent(const EntityID) -> decltype(auto);
+  template <typename... T>
+  auto ForEach(this auto &, auto &&) -> void;
+  template <typename... T>
+  auto ForFirst(this auto &, auto &&) -> void;
+  template <typename... T>
+  auto GetComponent(this auto &, const EntityID) -> decltype(auto);
+  template <typename T>
+  auto GetFirst(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
+  template <typename... T>
+  auto HasComponent(const EntityID) const -> bool;
+  template <typename... T>
+  auto RemoveComponent(const EntityID) -> bool;
+  template <typename... T>
+  auto SortComponents() -> void;
+  template <typename... T>
+  auto UpdateComponents() -> void;
+private:
+  EntityID nextId{0};
+  // NOTE: to check for the existance of an entity, search the `idToMask` map; the id may not always be present in the other maps
+  std::unordered_map<ComponentMask, std::unordered_set<EntityID>> maskToIdSet;
+  std::unordered_map<EntityID, ComponentMask> idToMask;
+  std::unordered_map<EntityID, EntityID> idToParent;
+  std::unordered_map<EntityID, std::string> idToName;
+  std::unordered_map<EntityID, std::unordered_set<EntityID>> idToChildren;
+  std::unordered_map<std::type_index, std::unique_ptr<IComponentManager>> typeIndexToManager;
+  std::unordered_multimap<std::string, EntityID> nameToId;
+  std::unordered_set<ComponentType> registeredTypes;
+  std::unordered_set<EntityID> rootEntities;
+  void DeleteRecords(const EntityID);
+  // templates
+  template <typename T>
+  auto GetManager(this auto &) -> decltype(auto);
 };
-template <typename T>
-struct IsFalseType : std::false_type {};
-template <typename C>
-C* EntityManager::AddComponent(const ID id) {
-  auto manager = GetManager<C>();
-  if (manager->Has(id))
-    return manager->Get(id);
-  return &manager->Add(id);
+auto EntityManager::ForEachChild(this auto &self, const EntityID parent, auto &&func) -> void {
+  if (auto it = self.idToChildren.find(parent); it != self.idToChildren.end())
+    for (const auto &childId : it->second)
+      func(childId);
 }
-template <typename... C>
-std::tuple<C*...> EntityManager::AddComponents(const ID id) {
-  return std::tie(AddComponent<C>(id)...);
+auto EntityManager::ForEachComponent(this auto &self, const EntityID id, auto &&func) -> void {
+  // FIXME: `IComponentManager` cannot not have a `Get` method that would return the concrete type
+  // if (auto it = self.idToMask.find(id); it != self.idToMask.end()) {
+  //   const auto &mask = it->second;
+  //   Component::ForEachSetType(mask, [&](const std::type_index &typeIndex) {
+  //     if (auto it = self.typeIndexToManager.find(typeIndex); it != self.typeIndexToManager.end()) {
+  //       auto manager = it->second.get();
+  //       auto component = manager->Get(id);
+  //       if (component)
+  //         func(component);
+  //     }
+  //   });
+  // }
 }
-template <typename C>
-void EntityManager::RemoveComponent(const ID id) {
-  GetManager<C>()->Remove(id);
+auto EntityManager::ForEachRoot(this auto &self, auto &&func) -> void {
+  for (const auto &id : self.rootEntities)
+    func(id);
 }
-template <typename... C>
-void EntityManager::RemoveComponents(const ID id) {
-  (RemoveComponent<C>(id), ...);
+template <typename... T>
+auto EntityManager::AddComponent(const EntityID id) -> decltype(auto) {
+  static_assert(sizeof...(T) > 0, "`AddComponent` requires at least one type parameter.");
+  if constexpr (sizeof...(T) == 1) {
+    using C = std::tuple_element_t<0, std::tuple<T...>>;
+    auto manager = GetManager<C>();
+    if (manager->Has(id))
+      return manager->Get(id);
+    const auto typeIndex = std::type_index(typeid(C));
+    ComponentMask mask{0};
+    if (auto it = idToMask.find(id); it != idToMask.end()) {
+      mask = it->second;
+      if (auto it2 = maskToIdSet.find(it->second); it2 != maskToIdSet.end()) {
+        it2->second.erase(id);
+        if (it2->second.empty())
+          maskToIdSet.erase(it2);
+      }
+    }
+    mask.set(Component::GetBit(typeIndex));
+    idToMask[id] = mask;
+    maskToIdSet[mask].insert(id);
+    return &manager->Add(id);
+  } else
+    return std::tie(AddComponent<T>(id)...);
 }
-template <typename C>
-bool EntityManager::HasComponent(const ID id) {
-  return GetManager<C>()->Has(id);
+template <typename... T>
+auto EntityManager::ForEach(this auto &self, auto &&func) -> void {
+  if constexpr (sizeof...(T) == 0)
+    for (const auto &[id, _] : self.idToMask)
+      func(id);
+  else {
+    ComponentMask mask;
+    (mask.set(Component::GetBit(typeid(T))), ...);
+    for (const auto &[m, s] : self.maskToIdSet)
+      if ((mask & m) == mask)
+        for (const auto &id : s) {
+          auto components = self.template GetComponent<T...>(id);
+          if constexpr (sizeof...(T) == 1)
+            func(id, components);
+          else
+            std::apply([&](auto... args) { func(id, args...); }, components);
+        }
+  }
 }
-template <typename... C>
-bool EntityManager::HasComponents(const ID id) {
-  return (HasComponent<C>(id) && ...);
-}
-template <typename C>
-C* EntityManager::GetComponent(const ID id) {
-  return GetManager<C>()->Get(id);
-}
-template <typename... C>
-std::tuple<C*...> EntityManager::GetComponents(const ID id) {
-  return std::make_tuple(GetComponent<C>(id)...);
-}
-template <typename C>
-C* EntityManager::GetFirstComponent() {
-  return GetManager<C>()->GetFirst();
-}
-template <typename... C, typename F>
-void EntityManager::ForFirst(F&& func) {
-  auto func_ = std::forward<F>(func);
-  for (const auto& id : ids)
-    if (HasComponents<C...>(id)) {
-      auto components = GetComponents<C...>(id);
-      std::apply([&](C*... args) { func_(id, args...); }, components);
-      return;
+template <typename... T>
+auto EntityManager::ForFirst(this auto &self, auto &&func) -> void {
+  static_assert(sizeof...(T) > 0, "`ForFirst` requires at least one type parameter.");
+  ComponentMask mask;
+  (mask.set(Component::GetBit(typeid(T))), ...);
+  for (const auto &[m, s] : self.maskToIdSet)
+    if ((mask & m) == mask) {
+      const auto id = *s.begin();
+      auto components = self.template GetComponent<T...>(id);
+      if constexpr (sizeof...(T) == 1)
+        func(id, components);
+      else
+        std::apply([&](auto... args) { func(id, args...); }, components);
     }
 }
-template <typename... C, typename F>
-void EntityManager::ForEach(F&& func) {
-  auto func_ = std::forward<F>(func);
-  if constexpr (sizeof...(C) == 1) {
-    using FirstC = std::tuple_element_t<0, std::tuple<C...>>;
-    auto manager = GetManager<FirstC>();
-    manager->ForEach([&](const ID id, FirstC* c) { func_(id, c); });
+template <typename... T>
+auto EntityManager::GetComponent(this auto &self, const EntityID id) -> decltype(auto) {
+  static_assert(sizeof...(T) > 0, "`GetComponent` requires at least one type parameter.");
+  if constexpr (sizeof...(T) == 1) {
+    using C = std::tuple_element_t<0, std::tuple<T...>>;
+    if (auto manager = self.template GetManager<C>(); manager)
+      return manager->Get(id);
+    return static_cast<ConstCorrectPointer<decltype(self), C>>(nullptr);
   } else
-    for (const auto& id : ids)
-      if (HasComponents<C...>(id)) {
-        // TODO: implement archetypes for faster look up of certain component combinations
-        auto components = GetComponents<C...>(id);
-        std::apply([&](C*... args) { func_(id, args...); }, components);
+    return std::tuple(self.template GetComponent<T>(id)...);
+}
+template <typename T>
+auto EntityManager::GetFirst(this auto &self) -> ConstCorrectPointer<decltype(self), T> {
+  if (auto manager = self.template GetManager<T>(); manager)
+    return manager->GetAny();
+  return nullptr;
+}
+template <typename... T>
+auto EntityManager::HasComponent(const EntityID id) const -> bool {
+  ComponentMask mask;
+  (mask.set(Component::GetBit(typeid(T))), ...);
+  for (const auto &[m, s] : maskToIdSet)
+    if ((mask & m) == mask)
+      if (s.contains(id))
+        return true;
+  return false;
+}
+template <typename... T>
+auto EntityManager::RemoveComponent(const EntityID id) -> bool {
+  static_assert(sizeof...(T) > 0, "`RemoveComponent` requires at least one type parameter.");
+  if constexpr (sizeof...(T) == 1) {
+    using C = std::tuple_element_t<0, std::tuple<T...>>;
+    if (auto manager = GetManager<C>(); manager)
+      if (manager->Has(id)) {
+        const auto typeIndex = std::type_index(typeid(C));
+        if (auto it = idToMask.find(id); it != idToMask.end()) {
+          auto &mask = it->second;
+          if (auto it2 = maskToIdSet.find(it->second); it2 != maskToIdSet.end()) {
+            it2->second.erase(id);
+            if (it2->second.size() == 0)
+              maskToIdSet.erase(it2);
+          }
+          mask.reset(Component::GetBit(typeIndex));
+          maskToIdSet[mask].insert(id);
+        }
+        return manager->Remove(id);
       }
+  } else
+    return (RemoveComponent<T>(id) && ...);
 }
-template <typename F>
-void EntityManager::ForEachChild(const ID parent, F&& func) {
-  auto func_ = std::forward<F>(func);
-  if (auto it = idToChildren.find(parent); it != idToChildren.end())
-    for (auto& child : it->second)
-      func_(child);
+template <typename... T>
+auto EntityManager::SortComponents() -> void {
+  static_assert(sizeof...(T) > 0, "`SortComponents` requires at least one type parameter.");
+  if constexpr (sizeof...(T) == 1) {
+    using C = std::tuple_element_t<0, std::tuple<T...>>;
+    if (auto manager = GetManager<C>(); manager)
+      manager->Sort();
+  } else
+    (SortComponents<T>(), ...);
 }
-template <typename F>
-void EntityManager::ForEachRoot(F&& func) {
-  auto func_ = std::forward<F>(func);
-  for (const auto& id : ids)
-    if (!HasParent(id))
-      func_(id);
+template <typename... T>
+auto EntityManager::UpdateComponents() -> void {
+  static_assert(sizeof...(T) > 0, "`UpdateComponents` requires at least one type parameter.");
+  if constexpr (sizeof...(T) == 1) {
+    using C = std::tuple_element_t<0, std::tuple<T...>>;
+    if (auto manager = GetManager<C>(); manager)
+      manager->Update();
+  } else
+    (UpdateComponents<T>(), ...);
 }
-template <typename F>
-void EntityManager::ForAll(F&& func) {
-  auto func_ = std::forward<F>(func);
-  for (const auto& id : ids)
-    func_(id);
-}
-template <IsComponent C>
-ComponentManager<C>* EntityManager::GetManager() {
-  auto type = std::type_index(typeid(C));
-  auto it = typeToManager.find(type);
-  if (it == typeToManager.end()) {
-    typeToManager.emplace(type, new ComponentManager<C>());
-    nameToType.emplace(ComponentTraits<C>::GetName(), type);
-    idToType.emplace(ComponentTraits<C>::GetType(), type);
-    typeToMask.emplace(type, ComponentTraits<C>::GetMask());
+template <typename T>
+auto EntityManager::GetManager(this auto &self) -> decltype(auto) {
+  const auto typeIndex = std::type_index(typeid(T));
+  if (auto it = self.typeIndexToManager.find(typeIndex); it != self.typeIndexToManager.end())
+    return static_cast<ConstCorrectPointer<decltype(self), ComponentManager<T>>>(it->second.get());
+  if constexpr (std::is_const_v<std::remove_reference_t<decltype(self)>>)
+    return static_cast<const ComponentManager<T> *>(nullptr);
+  else {
+    auto [it, _] = self.typeIndexToManager.emplace(typeIndex, std::make_unique<ComponentManager<T>>());
+    self.registeredTypes.insert(Component::GetType(typeIndex));
+    return static_cast<ComponentManager<T> *>(it->second.get());
   }
-  return static_cast<ComponentManager<C>*>(typeToManager[type]);
-}
-template <typename C>
-size_t EntityManager::GetComponentMask() const {
-  auto type = std::type_index(typeid(C));
-  auto it = typeToMask.find(type);
-  if (it == typeToMask.end())
-    return 0;
-  return static_cast<size_t>(it->second);
-}
-template <typename C>
-void EntityManager::SortComponents() {
-  auto manager = GetManager<C>();
-  if (!manager)
-    return;
-  manager->Sort();
-}
-template <typename C>
-void EntityManager::UpdateComponents() {
-  auto manager = GetManager<C>();
-  if (!manager)
-    return;
-  manager->Update();
 }
 } // namespace kuki

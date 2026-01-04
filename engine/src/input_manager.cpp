@@ -8,33 +8,33 @@
 #include <utility>
 namespace kuki {
 bool InputManager::GetState(int input) const {
-  auto index = GLFWInputToIndex(input);
+  const auto index = GLFWInputToIndex(input);
   return inputState[index];
 }
 bool InputManager::IsPressed(int input) const {
-  auto index = GLFWInputToIndex(input);
+  const auto index = GLFWInputToIndex(input);
   return pressState[index];
 }
 bool InputManager::IsReleased(int input) const {
-  auto index = GLFWInputToIndex(input);
+  const auto index = GLFWInputToIndex(input);
   return releaseState[index];
 }
 glm::vec2 InputManager::GetWASD() const {
   glm::vec2 wasd(0.f, 0.f);
-  auto w = GetState(GLFW_KEY_W);
-  auto s = GetState(GLFW_KEY_S);
-  auto a = GetState(GLFW_KEY_A);
-  auto d = GetState(GLFW_KEY_D);
+  const auto w = GetState(GLFW_KEY_W);
+  const auto s = GetState(GLFW_KEY_S);
+  const auto a = GetState(GLFW_KEY_A);
+  const auto d = GetState(GLFW_KEY_D);
   wasd.y = w ? (s ? 0.f : 1.f) : (s ? -1.f : 0.f);
   wasd.x = d ? (a ? 0.f : 1.f) : (a ? -1.f : 0.f);
   return wasd;
 }
 glm::vec2 InputManager::GetArrow() const {
   glm::vec2 arrow(0.f, 0.f);
-  auto up = GetState(GLFW_KEY_UP);
-  auto down = GetState(GLFW_KEY_DOWN);
-  auto left = GetState(GLFW_KEY_LEFT);
-  auto right = GetState(GLFW_KEY_RIGHT);
+  const auto up = GetState(GLFW_KEY_UP);
+  const auto down = GetState(GLFW_KEY_DOWN);
+  const auto left = GetState(GLFW_KEY_LEFT);
+  const auto right = GetState(GLFW_KEY_RIGHT);
   arrow.y = up ? (down ? 0.f : 1.f) : (down ? -1.f : 0.f);
   arrow.x = right ? (left ? 0.f : 1.f) : (left ? -1.f : 0.f);
   return arrow;
@@ -54,12 +54,12 @@ static inline bool IsASCIIPrintable(unsigned int codepoint) {
 static inline unsigned char ToASCII(unsigned int codepoint) {
   return static_cast<unsigned char>(codepoint);
 }
-void InputManager::CharCallback(GLFWwindow* window, unsigned int codepoint) {
+void InputManager::CharCallback(GLFWwindow *window, unsigned int codepoint) {
   if (!keysEnabled)
     return;
   if (!IsASCIIPrintable(codepoint))
     return;
-  auto c = ToASCII(codepoint);
+  const auto c = ToASCII(codepoint);
   keyseq.push_back(c);
   // NOTE: if there is an action registered to this sequence, it will fire during the trie traversal
   auto found = keymap.FindWord(keyseq.begin(), keyseq.end());
@@ -85,85 +85,83 @@ void InputManager::FireAction(unsigned char index) {
     if (auto it = releaseActions.find(index); it != releaseActions.end())
       it->second();
 }
-void InputManager::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+void InputManager::KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) {
   if (!keysEnabled)
     return;
   lastInputTime = glfwGetTime();
   static constexpr int cancelKeys[] = {GLFW_KEY_ESCAPE, GLFW_KEY_BACKSPACE, GLFW_KEY_DELETE, GLFW_KEY_SPACE};
-  for (const auto& k : std::span(cancelKeys))
+  for (const auto &k : std::span(cancelKeys))
     if (key == k)
       keyseq.clear();
-  auto index = GLFWInputToIndex(key);
+  const auto index = GLFWInputToIndex(key);
   inputState[index] = action == GLFW_PRESS || action == GLFW_REPEAT;
   pressState[index] = action == GLFW_PRESS;
   releaseState[index] = action == GLFW_RELEASE;
   FireAction(index);
 }
-void InputManager::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+void InputManager::MouseButtonCallback(GLFWwindow *window, int button, int action, int mods) {
   if (!buttonsEnabled)
     return;
   lastInputTime = glfwGetTime();
-  auto index = GLFWInputToIndex(button);
+  const auto index = GLFWInputToIndex(button);
   pressState[index] = action == GLFW_PRESS;
   releaseState[index] = action == GLFW_RELEASE;
   FireAction(index);
 }
-void InputManager::CursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
+void InputManager::CursorPosCallback(GLFWwindow *window, double xpos, double ypos) {
   if (!buttonsEnabled)
     return;
   lastInputTime = glfwGetTime();
   mousePos.x = xpos;
   mousePos.y = ypos;
 }
-bool InputManager::RegisterAction(const std::string& trigger, InputAction action) {
-  auto result = keymap.Insert(trigger, action);
+bool InputManager::RegisterAction(std::string_view trigger, InputAction action) {
+  const auto result = keymap.Insert(trigger, action);
   if (!result)
     spdlog::warn("Failed to register action for trigger '{}'. It may be a prefix of another trigger or contain a subsequence that is already registered.", trigger);
   else
-    spdlog::info("Registered action for trigger '{}'.", trigger);
+    spdlog::info("Registered action for trigger: {}", trigger);
   return result;
 }
 void InputManager::RegisterAction(int trigger, InputAction action, bool press) {
   // FIXME: if the trigger is ASCII printable, register it as a key sequence instead; otherwise, multiple actions may be registered for the same key
-  auto index = GLFWInputToIndex(trigger);
-  auto triggerStr = GLFWKeyToString(trigger);
+  const auto index = GLFWInputToIndex(trigger);
+  const auto triggerStr = GLFWKeyToString(trigger);
   if (press) {
-    auto exists = pressActions.find(index) != pressActions.end();
-    if (exists)
-      spdlog::warn("Overwriting existing press action for key/button '{}'.", triggerStr);
+    if (pressActions.contains(index))
+      spdlog::warn("Overwriting existing press action for key/button: {}", triggerStr);
     else
-      spdlog::info("Registered press action for key/button '{}'.", triggerStr);
+      spdlog::info("Registered press action for key/button: {}", triggerStr);
     pressActions[index] = std::move(action);
   } else {
-    auto exists = releaseActions.find(index) != releaseActions.end();
-    if (exists)
-      spdlog::warn("Overwriting existing release action for key/button '{}'.", triggerStr);
+    if (releaseActions.contains(index))
+      spdlog::warn("Overwriting existing release action for key/button: {}", triggerStr);
     else
-      spdlog::info("Registered release action for key/button '{}'.", triggerStr);
+      spdlog::info("Registered release action for key/button: {}", triggerStr);
     releaseActions[index] = std::move(action);
   }
 }
-bool InputManager::UnregisterAction(const std::string& trigger) {
-  auto result = keymap.Remove(trigger);
+bool InputManager::UnregisterAction(std::string_view trigger) {
+  const auto result = keymap.Remove(trigger);
   if (result)
-    spdlog::info("Unregistered action for trigger '{}'.", trigger);
+    spdlog::info("Unregistered action for trigger: {}", trigger);
   else
-    spdlog::warn("No action found for trigger '{}'.", trigger);
+    spdlog::warn("No action found for trigger: {}", trigger);
   return result;
 }
 bool InputManager::UnregisterAction(int trigger, bool press) {
-  auto index = GLFWInputToIndex(trigger);
-  auto triggerStr = GLFWKeyToString(trigger);
+  const auto index = GLFWInputToIndex(trigger);
+  const auto triggerStr = GLFWKeyToString(trigger);
   bool result{false};
   if (press) {
     result = pressActions.erase(index);
     if (!result)
-      spdlog::warn("No press action found for key/button '{}'.", triggerStr);
+      spdlog::warn("No press action found for key/button: {}", triggerStr);
     return result;
   }
   result = releaseActions.erase(index);
   if (!result)
-    spdlog::warn("No release action found for key/button '{}'.", triggerStr);
+    spdlog::warn("No release action found for key/button: {}", triggerStr);
   return result;
 }
 void InputManager::EnableKeys() {

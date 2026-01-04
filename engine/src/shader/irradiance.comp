@@ -3,7 +3,7 @@ const float PI = 3.14159265359;
 const uint SAMPLE_COUNT = 128u;
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba32f, binding = 0) writeonly uniform imageCube irradianceMap;
-uniform samplerCube cubeMap;
+uniform samplerCube cubemap;
 uniform uint cubeSize;
 float RadicalInverseVdC(uint);
 mat3 TangentToWorldBasis(vec3);
@@ -21,7 +21,7 @@ void main() {
                 vec2 Xi = Hammersley(i, SAMPLE_COUNT);
                 vec3 sampleDir = SampleHemisphere(Xi);
                 vec3 sampleVec = TangentToWorld(sampleDir, normal);
-                irradiance += texture(cubeMap, sampleVec).rgb;
+                irradiance += texture(cubemap, sampleVec).rgb;
         }
         irradiance /= float(SAMPLE_COUNT);
         imageStore(irradianceMap, gid, vec4(irradiance, 1.0));

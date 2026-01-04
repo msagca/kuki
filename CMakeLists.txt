@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.31)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Export compile commands")
-set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard version to use")
+set(CMAKE_CXX_STANDARD 23 CACHE STRING "C++ standard version to use")
 set(
   CMAKE_CXX_STANDARD_REQUIRED
   ON
@@ -15,12 +15,19 @@ set(
 )
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries")
 if(BUILD_SHARED_LIBS)
-  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+  set(
+    CMAKE_POSITION_INDEPENDENT_CODE
+    ON
+    CACHE BOOL
+    "Enable position independent code"
+  )
 endif()
+find_program(CLANG_TIDY_EXE NAMES clang-tidy)
 project(Kuki)
 include(GNUInstallDirs)
-option(BUILD_TESTS "Build engine tests" OFF)
-option(BUILD_GAMES "Build game samples" OFF)
+option(BUILD_TESTS "Build engine tests" ON)
+option(BUILD_GAMES "Build game samples" ON)
+option(ENABLE_LINTING "Enable linting" OFF)
 add_compile_options(
   $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:MSVC>>:/O2>
   $<$<AND:$<CONFIG:Release>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-O2>

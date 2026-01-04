@@ -7,22 +7,22 @@
 namespace kuki {
 Plane::Plane()
   : point(0.f), normal({0.f, 1.f, 0.f}) {}
-Plane::Plane(const glm::vec3& point, const glm::vec3& normal)
+Plane::Plane(const glm::vec3 &point, const glm::vec3 &normal)
   : point(point), normal(glm::normalize(normal)) {}
-Plane::Plane(const glm::vec4& plane) {
+Plane::Plane(const glm::vec4 &plane) {
   auto len = glm::length(glm::vec3(plane));
   auto p = plane / len;
   normal = glm::vec3(p);
   point = -p.w * normal;
 }
-bool Plane::OnPositiveSide(const BoundingBox& bounds) const {
+bool Plane::OnPositiveSide(const BoundingBox &bounds) const {
   glm::vec3 positiveCorner{};
   positiveCorner.x = (normal.x >= 0) ? bounds.max.x : bounds.min.x;
   positiveCorner.y = (normal.y >= 0) ? bounds.max.y : bounds.min.y;
   positiveCorner.z = (normal.z >= 0) ? bounds.max.z : bounds.min.z;
   return SignedDistance(positiveCorner) >= 0;
 }
-float Plane::SignedDistance(const glm::vec3& point) const {
+float Plane::SignedDistance(const glm::vec3 &point) const {
   return glm::dot(normal, point - this->point);
 }
 } // namespace kuki
