@@ -84,8 +84,6 @@ auto GLRenderer::ApplyAntiAliasing(Renderer &renderer, std::span<std::string> in
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   glBindFramebuffer(GL_READ_FRAMEBUFFER, in->framebuffer);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, out->framebuffer);
-  glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, out->renderbuffer);
-  glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, out->texture, 0);
   glBlitFramebuffer(0, 0, desc.width, desc.height, 0, 0, desc.width, desc.height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -103,8 +101,6 @@ auto GLRenderer::ApplyBloomEffect(Renderer &renderer, std::span<std::string> inp
   const auto in1 = static_cast<GLRenderTarget *>(renderer.GetTarget(inputs[1]));
   const auto out = static_cast<GLRenderTarget *>(renderer.CreateTarget(outputs[0].name, outputs[0].desc));
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, out->renderbuffer);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, out->texture, 0);
   glViewport(0, 0, desc.width, desc.height);
   glClearColor(0.f, 0.f, 0.f, 0.f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -132,17 +128,13 @@ auto GLRenderer::ApplyBlurEffect(Renderer &renderer, std::span<std::string> inpu
   blurShader->SetUniform("model", glm::mat4(1.f));
   for (auto i = 0; i < blurPasses; ++i) {
     const auto pingPong = i % 2 == 0; // NOTE: this is `true` in the first iteration, so `in->texture` is read first (as it should be)
-    const auto texSrc = pingPong ? in->texture : out->texture;
-    const auto texDst = pingPong ? out->texture : in->texture;
-    const auto rb = pingPong ? out->renderbuffer : in->renderbuffer;
-    const auto fb = pingPong ? out->framebuffer : in->framebuffer;
-    glBindFramebuffer(GL_FRAMEBUFFER, fb);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rb);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texDst, 0);
+    const auto srcImg = pingPong ? in->texture : out->texture;
+    const auto dstBuf = pingPong ? out->framebuffer : in->framebuffer;
+    glBindFramebuffer(GL_FRAMEBUFFER, dstBuf);
     glViewport(0, 0, desc.width, desc.height);
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    blurShader->SetTexture("image", texSrc);
+    blurShader->SetTexture("image", srcImg);
     blurShader->SetUniform("horizontal", pingPong);
     blurShader->Draw(*mesh);
   }
@@ -161,8 +153,6 @@ auto GLRenderer::ApplyBrightPassFilter(Renderer &renderer, std::span<std::string
   const auto in = static_cast<GLRenderTarget *>(renderer.GetTarget(inputs[0]));
   const auto out = static_cast<GLRenderTarget *>(renderer.CreateTarget(outputs[0].name, outputs[0].desc));
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, out->renderbuffer);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, out->texture, 0);
   glViewport(0, 0, desc.width, desc.height);
   glClearColor(0.f, 0.f, 0.f, 0.f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -185,8 +175,6 @@ auto GLRenderer::ApplyGammaCorrection(Renderer &renderer, std::span<std::string>
   const auto in = static_cast<GLRenderTarget *>(renderer.GetTarget(inputs[0]));
   const auto out = static_cast<GLRenderTarget *>(renderer.CreateTarget(outputs[0].name, outputs[0].desc));
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, out->renderbuffer);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, out->texture, 0);
   glViewport(0, 0, desc.width, desc.height);
   glClearColor(0.f, 0.f, 0.f, 0.f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -299,8 +287,6 @@ auto GLRenderer::RenderScene(Renderer &renderer, std::span<std::string> inputs, 
   const auto &desc = outputs[0].desc;
   const auto out = static_cast<GLRenderTarget *>(renderer.CreateTarget(outputs[0].name, outputs[0].desc));
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, out->texture, 0);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, out->renderbuffer);
   glGenerateMipmap(GL_TEXTURE_2D);
   glViewport(0, 0, desc.width, desc.height);
   glClearColor(0.f, 0.f, 0.f, 0.f);

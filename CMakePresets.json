@@ -1,29 +1,67 @@
 ﻿{
-  "version": 3,
+  "version": 10,
+  "cmakeMinimumRequired": { "major": 3, "minor": 31, "patch": 0 },
   "configurePresets": [
     {
+      "name": "Base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": { "CMAKE_EXPORT_COMPILE_COMMANDS": "ON" }
+    },
+    {
       "name": "Debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
+      "inherits": "Base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
     },
     {
       "name": "Release",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
-      }
+      "inherits": "Base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     }
   ],
   "buildPresets": [
-    {
-      "name": "Debug",
-      "configurePreset": "Debug",
-      "configuration": "Debug"
-    },
+    { "name": "Debug", "configurePreset": "Debug", "configuration": "Debug" },
     {
       "name": "Release",
       "configurePreset": "Release",
       "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    { "name": "Debug", "configurePreset": "Debug" },
+    { "name": "Release", "configurePreset": "Release" }
+  ],
+  "packagePresets": [{ "name": "Release", "configurePreset": "Release" }],
+  "workflowPresets": [
+    {
+      "name": "Debug",
+      "steps": [
+        { "type": "configure", "name": "Debug" },
+        { "type": "build", "name": "Debug" }
+      ]
+    },
+    {
+      "name": "Test",
+      "steps": [
+        { "type": "configure", "name": "Debug" },
+        { "type": "build", "name": "Debug" },
+        { "type": "test", "name": "Debug" }
+      ]
+    },
+    {
+      "name": "Release",
+      "steps": [
+        { "type": "configure", "name": "Release" },
+        { "type": "build", "name": "Release" }
+      ]
+    },
+    {
+      "name": "Package",
+      "steps": [
+        { "type": "configure", "name": "Release" },
+        { "type": "build", "name": "Release" },
+        { "type": "package", "name": "Release" }
+      ]
     }
   ]
 }

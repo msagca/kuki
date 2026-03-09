@@ -124,7 +124,8 @@ auto EntityManager::AddComponent(const EntityID id) -> decltype(auto) {
         if (it2->second.empty())
           maskToIdSet.erase(it2);
       }
-    }
+    } else
+      return static_cast<C *>(nullptr);
     mask.set(Component::GetBit(typeIndex));
     idToMask[id] = mask;
     maskToIdSet[mask].insert(id);

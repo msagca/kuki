@@ -14,8 +14,12 @@ target_include_directories(
   ${PROJECT_NAME}
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE kuki_engine)
-install(TARGETS ${PROJECT_NAME} DESTINATION "${CMAKE_INSTALL_BINDIR}")
+target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngine)
+install(
+  TARGETS ${PROJECT_NAME}
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  COMPONENT ${PROJECT_NAME}
+)
 if(UNIX AND NOT APPLE)
   set_target_properties(
     ${PROJECT_NAME}
@@ -26,6 +30,6 @@ add_custom_command(
   TARGET ${PROJECT_NAME}
   POST_BUILD
   COMMAND
-    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:kuki_engine>/shader
+    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:KukiEngine>/shader
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
 )

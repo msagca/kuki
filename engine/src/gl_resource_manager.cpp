@@ -143,10 +143,14 @@ auto GLResourceManager::CreateTarget(std::string name, const TargetDescription &
   if (auto id = entityManager.IsEntity(name); id)
     return id;
   const auto entityId = entityManager.Create(name);
-  auto renderTarget = entityManager.AddComponent<GLRenderTarget>(entityId);
-  renderTarget->framebuffer = BorrowFramebuffer();
-  renderTarget->renderbuffer = BorrowRenderbuffer(desc);
-  renderTarget->texture = BorrowTexture(desc);
+  auto target = entityManager.AddComponent<GLRenderTarget>(entityId);
+  target->framebuffer = BorrowFramebuffer();
+  target->renderbuffer = BorrowRenderbuffer(desc);
+  target->texture = BorrowTexture(desc);
+  glBindFramebuffer(GL_FRAMEBUFFER, target->framebuffer);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, target->renderbuffer);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target->texture, 0);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return entityId;
 }
 auto GLResourceManager::CreateTexture(std::string name, const TextureAsset &textureAsset) -> EntityID {

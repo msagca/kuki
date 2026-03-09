@@ -17,9 +17,13 @@ target_include_directories(
   ${PROJECT_NAME}
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE kuki_engine gtest)
+target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngine gtest)
 gtest_discover_tests(${PROJECT_NAME})
-install(TARGETS ${PROJECT_NAME} DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(
+  TARGETS ${PROJECT_NAME}
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  COMPONENT ${PROJECT_NAME}
+)
 if(UNIX AND NOT APPLE)
   set_target_properties(
     ${PROJECT_NAME}

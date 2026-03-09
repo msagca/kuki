@@ -29,16 +29,28 @@ target_include_directories(
 )
 target_link_libraries(
   ${PROJECT_NAME}
-  PRIVATE kuki_engine imgui imgui_filebrowser imguizmo
+  PRIVATE KukiEngine imgui imgui_filebrowser imguizmo
 )
 if(UNIX AND NOT APPLE)
   find_package(X11 REQUIRED)
   target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
 endif()
 target_sources(${PROJECT_NAME} PRIVATE ${FONT_SOURCES} ${IMAGE_SOURCES})
-install(DIRECTORY "${IMAGE_SOURCE_DIR}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
-install(DIRECTORY "${FONT_SOURCE_DIR}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
-install(TARGETS ${PROJECT_NAME} DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(
+  DIRECTORY "${IMAGE_SOURCE_DIR}"
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  COMPONENT ${PROJECT_NAME}
+)
+install(
+  DIRECTORY "${FONT_SOURCE_DIR}"
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  COMPONENT ${PROJECT_NAME}
+)
+install(
+  TARGETS ${PROJECT_NAME}
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  COMPONENT ${PROJECT_NAME}
+)
 install(
   CODE
     "message(STATUS \"Installation complete. Binaries can be found at: ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")"
@@ -65,7 +77,7 @@ add_custom_command(
     ${CMAKE_COMMAND} -E copy_directory "${IMAGE_SOURCE_DIR}"
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/image
   COMMAND
-    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:kuki_engine>/shader
+    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:KukiEngine>/shader
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
   COMMAND
     ${CMAKE_COMMAND} -E cmake_echo_color

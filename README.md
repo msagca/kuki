@@ -38,7 +38,7 @@ sudo apt install -y build-essential cmake git libgl1-mesa-dev ninja-build xorg-d
 git clone --recursive https://github.com/msagca/kuki
 ```
 
-> If you have already cloned the repository without `--recursive`, run `git submodule update --init --recursive` to fetch the submodules.
+> If you have already cloned it without `--recursive`, run `git submodule update --init --recursive` to fetch the submodules.
 
 - Navigate to the project directory
 
@@ -46,28 +46,14 @@ git clone --recursive https://github.com/msagca/kuki
 cd kuki
 ```
 
-- Configure the project with CMake
+- Configure and build the project
 
 ```bash
-cmake -B build --preset Release
+cmake --workflow --preset Release
 ```
 
-> If this step fails due to missing dependencies, refer to the error messages to install the required packages.
+> If this fails due to missing dependencies, refer to the error messages to install the required packages. Then, run the command again.
 
-- Build the project
+If successful, you can launch `KukiEditor` from the build directory.
 
-```bash
-cmake --build build --preset Release
-```
-
-- Install the binaries (optional)
-
-```bash
-cmake --install build
-```
-
-> Install command may require administrative privileges to write to system directories.
-
-- Run the editor application
-
-> Refer to the build/install output for the exact path of the executable.
+> Refer to the build output for the exact path of the executable.

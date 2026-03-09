@@ -1,4 +1,4 @@
-project(kuki_engine)
+project(KukiEngine)
 file(
   GLOB_RECURSE C_SOURCES
   CONFIGURE_DEPENDS
@@ -37,12 +37,16 @@ target_link_libraries(
   PUBLIC OpenGL::GL assimp glad glfw glm nlohmann_json spdlog stb tinyexr
 )
 target_sources(${PROJECT_NAME} PRIVATE ${SHADER_SOURCES})
-install(DIRECTORY "${SHADER_SOURCE_DIR}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(
-  FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}_export.h"
-  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+  DIRECTORY "${SHADER_SOURCE_DIR}"
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  COMPONENT ${PROJECT_NAME}
 )
-install(TARGETS ${PROJECT_NAME} DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+# install(
+#   TARGETS ${PROJECT_NAME}
+#   DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+#   COMPONENT ${PROJECT_NAME}
+# )
 add_custom_command(
   TARGET ${PROJECT_NAME}
   POST_BUILD

@@ -78,7 +78,7 @@ auto Editor::Update() -> void {
   cameraController->Update(deltaTime);
 }
 auto Editor::DisplayAssetCategories() -> void {
-  ImGui::Begin("AssetCategories");
+  ImGui::Begin("Categories");
   ForEachAssetType([this](const AssetType type, const std::string name) {
     if (ImGui::Selectable(name.c_str(), context.selectedAssetType == type))
       context.selectedAssetType = type;
@@ -204,8 +204,7 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
     }
   }
   if (hovered && doubleClicked) {
-    strncpy(newName, entityNameCStr, NAME_LENGTH);
-    newName[NAME_LENGTH - 1] = '\0';
+    strcpy_s(newName, entityNameCStr);
     context.state = EditorState::Rename;
     context.renamedEntityID = id;
   }
@@ -412,7 +411,7 @@ auto Editor::InitLayout() -> void {
   auto bottomId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Down, .3f, nullptr, &mainId);
   ImGui::DockBuilderDockWindow("Assets", bottomId);
   const auto bottomLeftId = ImGui::DockBuilderSplitNode(bottomId, ImGuiDir_Left, .2f, nullptr, &bottomId);
-  ImGui::DockBuilderDockWindow("AssetCategories", bottomLeftId);
+  ImGui::DockBuilderDockWindow("Categories", bottomLeftId);
   ImGui::DockBuilderFinish(dockspaceId);
 }
 auto Editor::LoadDefaultAssets() -> void {
