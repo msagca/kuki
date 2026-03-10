@@ -12,6 +12,9 @@ Scene::Scene(const SceneID id)
 auto Scene::AddChildEntity(const EntityID parent, const EntityID child) -> bool {
   return entityManager.AddChild(parent, child);
 }
+auto Scene::AddEntityComponent(const EntityID id, const ComponentType type) -> void {
+  return entityManager.AddComponent(id, type);
+}
 auto Scene::CopyEntityFrom(const EntityManager &otherManager, const EntityID id) -> EntityID {
   return entityManager.CopyFrom(otherManager, id);
 }
@@ -33,8 +36,11 @@ auto Scene::EntityHasChildren(const EntityID id) const -> bool {
 auto Scene::EntityHasParent(const EntityID id) const -> bool {
   return entityManager.HasParent(id);
 }
-auto Scene::GetEntityComponents(const EntityID id) const -> std::vector<ComponentType> {
-  return entityManager.GetComponents(id);
+auto Scene::GetEntityComponent(const EntityID id, const ComponentType type) -> std::optional<ComponentVariant> {
+  return entityManager.GetComponent(id, type);
+}
+auto Scene::GetEntityComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
+  return entityManager.GetComponentTypes(id);
 }
 auto Scene::GetEntityCount() const -> size_t {
   return entityManager.GetCount();
@@ -46,10 +52,13 @@ auto Scene::GetID() const -> SceneID {
   return id;
 }
 auto Scene::GetMissingEntityComponents(const EntityID id) const -> std::vector<ComponentType> {
-  return entityManager.GetMissingComponents(id);
+  return entityManager.GetMissingComponentTypes(id);
 }
 auto Scene::IsEntity(const EntityID id) const -> bool {
   return entityManager.IsEntity(id);
+}
+auto Scene::RemoveEntityComponent(const EntityID id, const ComponentType type) -> bool {
+  return entityManager.RemoveComponent(id, type);
 }
 auto Scene::RenameEntity(const EntityID id, const std::string &name) -> bool {
   return entityManager.Rename(id, name);

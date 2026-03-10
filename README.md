@@ -52,8 +52,8 @@ cd kuki
 cmake --workflow --preset Release
 ```
 
-> If this fails due to missing dependencies, refer to the error messages to install the required packages. Then, run the command again.
+> If it fails due to missing dependencies, refer to the error messages to install the required packages. Then, run the command again.
 
-If successful, you can launch `KukiEditor` from the build directory.
+If it succeeds, you can launch `KukiEditor` from the build directory.
 
 > Refer to the build output for the exact path of the executable.

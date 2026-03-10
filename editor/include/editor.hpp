@@ -45,8 +45,8 @@ struct EditorContext {
 class Editor final : public Application {
 public:
   Editor();
-private:
   EditorContext context{};
+private:
   ImGui::FileBrowser fileBrowser{};
   std::unique_ptr<CameraController> cameraController{};
   std::vector<EntityID> displayedEntities{};
@@ -60,6 +60,7 @@ private:
   auto DisplayEntity(const EntityID) -> void;
   auto DisplayHierarchy() -> void;
   auto DisplayProperties() -> void;
+  auto DisplayProperties(ComponentVariant) -> void;
   auto DisplayScene() -> void;
   auto DrawManipulator(const float, const float) -> void;
   auto InitImGui() -> void;

@@ -26,14 +26,17 @@ class KUKI_ENGINE_API EntityManager {
 public:
   // TODO: validate EntityID before performing the following tasks
   auto AddChild(const EntityID, const EntityID, bool = false) -> bool;
+  auto AddComponent(const EntityID, const ComponentType) -> void;
   auto CopyFrom(const EntityManager &, const EntityID) -> EntityID;
   auto CopyTo(const EntityID, EntityManager &) const -> EntityID;
   auto Create(std::string = "") -> EntityID;
   auto Delete(const EntityID) -> bool;
   auto DeleteAll() -> void;
-  auto GetComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto GetComponent(const EntityID, const ComponentType) -> ComponentVariant;
+  auto GetComponent(const EntityID, const ComponentType) const -> const ComponentVariant;
+  auto GetComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetCount() const -> size_t;
-  auto GetMissingComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto GetMissingComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetName(const EntityID) const -> std::string;
   auto GetID(const std::string &) const -> EntityID;
   auto GetParent(const EntityID) const -> EntityID;
@@ -42,7 +45,8 @@ public:
   auto IsEntity(const EntityID) const -> bool;
   auto IsEntity(const std::string &) const -> EntityID;
   auto RemoveChild(const EntityID, const EntityID) -> bool;
-  auto RemoveComponents(const EntityID) -> bool;
+  auto RemoveComponent(const EntityID, const ComponentType) -> bool;
+  auto RemoveAllComponents(const EntityID) -> bool;
   auto Rename(const EntityID, std::string) -> bool;
   auto Update() -> void;
   // templates
@@ -90,18 +94,13 @@ auto EntityManager::ForEachChild(this auto &self, const EntityID parent, auto &&
       func(childId);
 }
 auto EntityManager::ForEachComponent(this auto &self, const EntityID id, auto &&func) -> void {
-  // FIXME: `IComponentManager` cannot not have a `Get` method that would return the concrete type
-  // if (auto it = self.idToMask.find(id); it != self.idToMask.end()) {
-  //   const auto &mask = it->second;
-  //   Component::ForEachSetType(mask, [&](const std::type_index &typeIndex) {
-  //     if (auto it = self.typeIndexToManager.find(typeIndex); it != self.typeIndexToManager.end()) {
-  //       auto manager = it->second.get();
-  //       auto component = manager->Get(id);
-  //       if (component)
-  //         func(component);
-  //     }
-  //   });
-  // }
+  if (auto it = self.idToMask.find(id); it != self.idToMask.end()) {
+    const auto &mask = it->second;
+    Component::ForEachSetType(mask, [&](const ComponentType type) {
+      auto component = self.GetComponent(id, type);
+      func(component);
+    });
+  }
 }
 auto EntityManager::ForEachRoot(this auto &self, auto &&func) -> void {
   for (const auto &id : self.rootEntities)
@@ -214,6 +213,7 @@ auto EntityManager::RemoveComponent(const EntityID id) -> bool {
         }
         return manager->Remove(id);
       }
+    return false;
   } else
     return (RemoveComponent<T>(id) && ...);
 }

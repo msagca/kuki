@@ -1,6 +1,8 @@
 #pragma once
-#include <app_config.hpp>
+#include <application_description.hpp>
+#include <application_settings.hpp>
 #include <asset_manager.hpp>
+#include <component_type.hpp>
 #include <concepts.hpp>
 #include <entity_manager.hpp>
 #include <id.hpp>
@@ -13,10 +15,11 @@
 #include <system.hpp>
 #include <typeindex>
 #include <vector>
+#include <whereami.h>
 namespace kuki {
 class KUKI_ENGINE_API Application {
 public:
-  Application(const AppConfig &);
+  Application(ApplicationDescription = {});
   virtual ~Application();
   auto Run() -> void;
   virtual auto Init() -> void;
@@ -26,7 +29,7 @@ public:
   virtual auto LateUpdate() -> void;
   virtual auto Shutdown() -> void;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
-  auto Configure(const AppConfig &) -> void;
+  auto AddEntityComponent(const EntityID, const ComponentType) -> void;
   auto CreateEntity(std::string = "") -> EntityID;
   auto CreateScene(std::string = "") -> SceneID;
   auto DeleteEntities() -> void;
@@ -45,17 +48,19 @@ public:
   auto GetButton(int) const -> bool;
   auto GetButtonDown(int) const -> bool;
   auto GetButtonUp(int) const -> bool;
-  auto GetConfig() const -> AppConfig;
-  auto GetEntityComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto GetEntityComponent(const EntityID, const ComponentType) -> std::optional<ComponentVariant>;
+  auto GetEntityComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetEntityCount() const -> size_t;
   auto GetEntityName(const EntityID) const -> std::string;
   auto GetFPS() const -> size_t;
+  auto GetInfo() const -> const ApplicationDescription &;
   auto GetKey(int) const -> bool;
   auto GetKeyDown(int) const -> bool;
   auto GetKeyUp(int) const -> bool;
   auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
   auto GetMousePos() const -> glm::vec2;
   auto GetName() const -> std::string;
+  auto GetSettings() const -> const ApplicationSettings &;
   auto GetWASDKeys() const -> glm::vec2;
   auto InstantiateAsset(const AssetID) -> EntityID;
   auto IsEntity(const EntityID) const -> bool;
@@ -63,6 +68,7 @@ public:
   auto LoadAssetAsync(const std::filesystem::path &) -> AssetID;
   auto RegisterInputAction(std::string, InputAction) -> void;
   auto RegisterInputAction(int, InputAction, bool = true) -> void;
+  auto RemoveEntityComponent(const EntityID, const ComponentType) -> bool;
   auto RenameEntity(const EntityID, std::string) -> bool;
   auto UnloadAsset(const AssetID) -> bool;
   auto UnregisterInputAction(const std::string &) -> void;
@@ -102,13 +108,15 @@ public:
 protected:
   GLFWwindow *window{};
   float deltaTime{};
+  ApplicationDescription desc;
+  ApplicationSettings settings;
 private:
-  AppConfig config;
   AssetManager assetManager;
   InputManager inputManager;
   SceneManager sceneManager;
   auto InitGL() -> void;
-  auto SetWindowIcon(const std::filesystem::path &) -> void;
+  auto GetExePath() -> std::filesystem::path;
+  auto SetWindowIcon() -> void;
   static void CharCallback(GLFWwindow *, unsigned int);
   static void CursorPosCallback(GLFWwindow *, double, double);
   static void DebugMessageCallback(unsigned int, unsigned int, unsigned int, unsigned int, int, const char *, const void *);

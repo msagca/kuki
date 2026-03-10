@@ -51,9 +51,9 @@ auto GLShader::Draw(const GLMesh &mesh) -> void {
   glBindVertexArray(0);
 }
 auto GLShader::SetCamera(const Camera &camera, unsigned int ubo) -> void {
-  if (!camera.uboDirty)
+  if (!camera.dirty)
     return;
-  camera.uboDirty = false;
+  camera.dirty = false;
   auto bindingPoint = 0; // TODO: store binding point in shader
   glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, ubo);
   glNamedBufferSubData(ubo, 0, sizeof(CameraTransform), &camera.transform);

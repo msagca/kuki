@@ -22,13 +22,7 @@ struct KUKI_ENGINE_API Camera {
   /// @brief Local transform matrix of the camera
   glm::mat4 local{1.0f};
   CameraTransform transform;
-  // TODO: turn the following dirty flags into a bitfield
-  mutable bool positionDirty{true};
-  mutable bool rotationDirty{true};
-  mutable bool settingsDirty{true};
-  // TODO: UBO is OpenGL specific; get rid of it, or define a `GLCamera`
-  /// @brief Indicates if uniform buffer data needs to be resent
-  mutable bool uboDirty{true};
+  mutable bool dirty{true};
   Frustum frustum{};
   float fov{45.0f};
   float aspectRatio{1.0f};
@@ -44,7 +38,6 @@ struct KUKI_ENGINE_API Camera {
   auto SetTransform(const Transform &) -> void;
   auto Update() -> void;
 private:
-  auto ClearFlags() -> void;
   auto UpdateBasis() -> void;
   auto UpdateFrustum() -> void;
   auto UpdateTransform() -> void;

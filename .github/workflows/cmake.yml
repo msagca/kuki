@@ -1,8 +1,7 @@
 name: CMake
 on:
   push:
-    branches: ["main"]
-    tags: ["v*.*.*"]
+    branches: ["main", "dev"]
 jobs:
   cmake:
     runs-on: ${{ matrix.os }}
@@ -35,7 +34,7 @@ jobs:
         if: runner.os == 'Windows'
       - name: Install Ninja build
         if: runner.os == 'Windows'
-        run: winget install --id Ninja-build.Ninja --accept-source-agreements --disable-interactivity
+        run: winget install ninja-build.ninja nsis --accept-source-agreements --disable-interactivity
       - uses: actions/cache@v5
         with:
           path: build

@@ -33,7 +33,7 @@ auto Camera::Frame(const BoundingBox &bounds, float distanceFactor) -> void {
     farPlane = distance + radius;
   UpdateTransform();
   UpdateFrustum();
-  uboDirty = true;
+  dirty = true;
 }
 auto Camera::GetTransform() const -> Transform {
   Transform transform;
@@ -48,29 +48,20 @@ auto Camera::IntersectsFrustum(const BoundingBox &bounds) const -> bool {
 auto Camera::SetTransform(const Transform &transform) -> void {
   position = transform.position;
   rotation = transform.rotation;
-  positionDirty = true;
-  rotationDirty = true;
-  uboDirty = true;
+  dirty = true;
 }
 auto Camera::Update() -> void {
   UpdateBasis();
   UpdateTransform();
   UpdateFrustum();
-  ClearFlags();
 }
-auto Camera::ClearFlags() -> void {
-  positionDirty = false;
-  rotationDirty = false;
-  settingsDirty = false;
-  // NOTE: uboDirty is not cleared here; it is the responsibility of the rendering system to clear it after updating the GPU buffer
-}
-auto Camera::UpdateBasis() -> void {
+inline auto Camera::UpdateBasis() -> void {
   auto R = glm::toMat4(rotation);
   right = glm::vec3(R[0]);
   up = glm::vec3(R[1]);
   forward = -glm::vec3(R[2]);
 }
-auto Camera::UpdateFrustum() -> void {
+inline auto Camera::UpdateFrustum() -> void {
   auto vp = transform.projection * transform.view;
   frustum.left = {vp[3] + vp[0]};
   frustum.right = {vp[3] - vp[0]};
@@ -79,7 +70,7 @@ auto Camera::UpdateFrustum() -> void {
   frustum.near = {vp[3] + vp[2]};
   frustum.far = {vp[3] - vp[2]};
 }
-auto Camera::UpdateTransform() -> void {
+inline auto Camera::UpdateTransform() -> void {
   auto T = glm::translate(glm::mat4(1.f), position);
   auto R = glm::toMat4(rotation);
   local = T * R;

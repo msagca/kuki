@@ -12,6 +12,7 @@ class KUKI_ENGINE_API Scene {
 public:
   Scene(const SceneID);
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
+  auto AddEntityComponent(const EntityID, const ComponentType) -> void;
   auto CopyEntityFrom(const EntityManager &, const EntityID) -> EntityID;
   auto CopyEntityTo(const EntityID, EntityManager &) const -> EntityID;
   auto CreateEntity(std::string) -> EntityID;
@@ -19,12 +20,14 @@ public:
   auto DeleteEntity(const EntityID) -> bool;
   auto EntityHasChildren(const EntityID) const -> bool;
   auto EntityHasParent(const EntityID) const -> bool;
-  auto GetEntityComponents(const EntityID) const -> std::vector<ComponentType>;
+  auto GetEntityComponent(const EntityID, const ComponentType) -> std::optional<ComponentVariant>;
+  auto GetEntityComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetEntityCount() const -> size_t;
   auto GetEntityName(const EntityID) const -> std::string;
   auto GetID() const -> SceneID;
   auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
   auto IsEntity(const EntityID) const -> bool;
+  auto RemoveEntityComponent(const EntityID, const ComponentType) -> bool;
   auto RenameEntity(const EntityID, const std::string &) -> bool;
   // templates
   auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;

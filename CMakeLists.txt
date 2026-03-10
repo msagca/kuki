@@ -122,6 +122,15 @@ target_include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr/deps/miniz"
 )
+## whereami
+add_library(
+  whereami
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/whereami/src/whereami.c"
+)
+target_include_directories(
+  whereami
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/whereami/src/"
+)
 # targets to build
 add_subdirectory(engine)
 add_subdirectory(editor)
@@ -141,10 +150,8 @@ if(WIN32)
 endif()
 # installer
 set(PROJECT_URL "https://github.com/msagca/kuki")
-set(
-  CPACK_PACKAGE_DESCRIPTION_SUMMARY
-  "A 3D ECS game engine with an editor application"
-)
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A 3D ECS game engine")
+set(CPACK_PACKAGE_EXECUTABLES "KukiEditor" "Kuki Editor")
 set(CPACK_PACKAGE_HOMEPAGE_URL ${PROJECT_URL})
 set(CPACK_PACKAGE_INSTALL_DIRECTORY ${PROJECT_NAME})
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME})

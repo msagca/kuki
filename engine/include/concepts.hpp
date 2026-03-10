@@ -37,4 +37,6 @@ template <typename T>
 concept IsCharIterator = std::input_iterator<T> && IsCharLike<std::iter_value_t<T>>;
 template <typename S, typename T>
 using ConstCorrectPointer = std::conditional_t<std::is_const_v<std::remove_reference_t<S>>, const T *, T *>;
+template <typename S, typename T>
+using ConstCorrectValue = std::conditional_t<std::is_const_v<std::remove_reference_t<S>>, const T, T>;
 } // namespace kuki

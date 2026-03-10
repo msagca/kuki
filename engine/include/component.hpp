@@ -1,9 +1,18 @@
 #pragma once
+#include <bone_data.hpp>
+#include <camera.hpp>
 #include <component_type.hpp>
+#include <gl_material.hpp>
+#include <gl_mesh.hpp>
+#include <gl_skybox.hpp>
+#include <gl_texture.hpp>
 #include <kuki_engine_export.h>
+#include <light.hpp>
 #include <typeindex>
 #include <unordered_map>
+#include <variant>
 namespace kuki {
+using ComponentVariant = std::variant<BoneData *, Camera *, GLMaterial *, GLMesh *, GLSkybox *, GLTexture *, Light *, Transform *, std::monostate>;
 class KUKI_ENGINE_API Component {
 public:
   static auto ForEachSetType(const ComponentMask &, auto &&) -> void;

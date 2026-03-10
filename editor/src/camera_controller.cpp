@@ -11,7 +11,7 @@
 using namespace kuki;
 CameraController::CameraController(Application &app, EntityID entityId)
   : app(app), entityId(entityId) {}
-void CameraController::Update(float deltaTime) {
+auto CameraController::Update(float deltaTime) -> void {
   static auto firstEnter = true;
   static glm::vec2 mousePos;
   static glm::vec2 mouseLast;
@@ -39,16 +39,11 @@ void CameraController::Update(float deltaTime) {
     if (rotationDirty)
       cameraPtr->rotation = camera.rotation;
     cameraPtr->aspectRatio = camera.aspectRatio; // aspect ratio is only allowed to be updated by the rendering system, not through the editor UI
-    cameraPtr->positionDirty |= positionDirty;
-    cameraPtr->rotationDirty |= rotationDirty;
-    cameraPtr->uboDirty |= positionDirty || rotationDirty;
-    // NOTE: `Camera` components are updated by a relevant system (if marked dirty); do not call `camera->Update()` here
-    // TODO: maybe make `Update()` private and the system responsible for calling it a `friend` of the `Camera` struct
     camera = *cameraPtr; // reflect editor changes to the local copy
   }
   camera.Update(); // NOTE: local camera needs to be updated manually
 }
-bool CameraController::UpdatePosition(float deltaTime) {
+auto CameraController::UpdatePosition(float deltaTime) -> bool {
   static constexpr auto MOVE_SPEED = 5.f;
   static constexpr auto MOVE_THRESHOLD = 1e-6f;
   static constexpr auto BOOST_FACTOR_MAX = 10.f;
@@ -72,7 +67,7 @@ bool CameraController::UpdatePosition(float deltaTime) {
   camera.position += (camera.forward * input.y + camera.right * input.x) * velocity;
   return true;
 }
-bool CameraController::UpdateRotation(glm::vec2 mouseDiff) {
+auto CameraController::UpdateRotation(glm::vec2 mouseDiff) -> bool {
   static constexpr auto MOVE_THRESHOLD = 1e-6f;
   if (glm::length2(mouseDiff) < MOVE_THRESHOLD)
     return false;

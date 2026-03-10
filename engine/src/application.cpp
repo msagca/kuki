@@ -1,5 +1,5 @@
-#include <app_config.hpp>
 #include <application.hpp>
+#include <application_description.hpp>
 #include <camera.hpp>
 #include <chrono>
 #include <concepts.hpp>
@@ -19,10 +19,9 @@
 //
 #include <GLFW/glfw3.h>
 namespace kuki {
-AppConfig::AppConfig(std::string name, std::filesystem::path logoPath, int screenWidth, int screenHeight)
-  : name(name), logoPath(logoPath), screenWidth(screenWidth), screenHeight(screenHeight) {}
-Application::Application(const AppConfig &config)
-  : config(config) { // TODO: validate the config, fallback to defaults for invalid entries
+Application::Application(ApplicationDescription desc)
+  : desc(std::move(desc)) {
+  desc.path = GetExePath();
 }
 Application::~Application() {
   Shutdown();
@@ -78,8 +77,9 @@ auto Application::AddChildEntity(const EntityID parent, const EntityID child) ->
     return scene->AddChildEntity(parent, child);
   return false;
 }
-void Application::Configure(const AppConfig &config) {
-  this->config = config;
+auto Application::AddEntityComponent(const EntityID id, const ComponentType type) -> void {
+  if (auto scene = GetActiveScene(); scene)
+    return scene->AddEntityComponent(id, type);
 }
 auto Application::CreateEntity(std::string name) -> EntityID {
   if (auto scene = GetActiveScene(); scene)
@@ -143,12 +143,14 @@ auto Application::GetButtonDown(int button) const -> bool {
 auto Application::GetButtonUp(int button) const -> bool {
   return inputManager.IsReleased(button);
 }
-auto Application::GetConfig() const -> AppConfig {
-  return config;
-}
-auto Application::GetEntityComponents(const EntityID id) const -> std::vector<ComponentType> {
+auto Application::GetEntityComponent(const EntityID id, const ComponentType type) -> std::optional<ComponentVariant> {
   if (auto scene = GetActiveScene(); scene)
-    return scene->GetEntityComponents(id);
+    return scene->GetEntityComponent(id, type);
+  return std::nullopt;
+}
+auto Application::GetEntityComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
+  if (auto scene = GetActiveScene(); scene)
+    return scene->GetEntityComponentTypes(id);
   return {};
 }
 auto Application::GetEntityCount() const -> size_t {
@@ -165,6 +167,9 @@ auto Application::GetFPS() const -> size_t {
   if (auto renderingSystem = GetSystem<RenderingSystem>(); renderingSystem)
     return renderingSystem->GetFPS();
   return 0;
+}
+auto Application::GetInfo() const -> const ApplicationDescription & {
+  return desc;
 }
 auto Application::GetKey(int key) const -> bool {
   return inputManager.GetState(key);
@@ -184,7 +189,10 @@ auto Application::GetMousePos() const -> glm::vec2 {
   return inputManager.GetMousePos();
 };
 auto Application::GetName() const -> std::string {
-  return config.name;
+  return desc.name;
+}
+auto Application::GetSettings() const -> const ApplicationSettings & {
+  return settings;
 }
 auto Application::GetWASDKeys() const -> glm::vec2 {
   return inputManager.GetWASD();
@@ -211,6 +219,11 @@ auto Application::RegisterInputAction(std::string trigger, InputAction action) -
 auto Application::RegisterInputAction(int trigger, InputAction action, bool press) -> void {
   inputManager.RegisterAction(trigger, action, press);
 }
+auto Application::RemoveEntityComponent(const EntityID id, const ComponentType type) -> bool {
+  if (auto scene = GetActiveScene(); scene)
+    return scene->RemoveEntityComponent(id, type);
+  return false;
+}
 auto Application::RenameEntity(const EntityID id, std::string name) -> bool {
   if (auto scene = GetActiveScene(); scene)
     return scene->RenameEntity(id, name);
@@ -235,7 +248,7 @@ auto Application::InitGL() -> void {
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_SAMPLES, 4);
-  window = glfwCreateWindow(config.screenWidth, config.screenHeight, config.name.c_str(), nullptr, nullptr);
+  window = glfwCreateWindow(settings.width, settings.height, desc.name.c_str(), nullptr, nullptr);
   if (!window) {
     spdlog::error("Failed to create GLFW window.");
     glfwTerminate();
@@ -255,7 +268,7 @@ auto Application::InitGL() -> void {
     spdlog::error("OpenGL {}.{} or higher is required.", GL_MAJOR, GL_MINOR);
     return;
   }
-  SetWindowIcon(config.logoPath);
+  SetWindowIcon();
   glfwSwapInterval(0);
   glfwSetWindowUserPointer(window, this);
   glfwSetCursorPosCallback(window, CursorPosCallback);
@@ -265,7 +278,7 @@ auto Application::InitGL() -> void {
   glfwSetCharCallback(window, CharCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetWindowCloseCallback(window, WindowCloseCallback);
-  glViewport(0, 0, config.screenWidth, config.screenHeight);
+  glViewport(0, 0, settings.width, settings.height);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glCullFace(GL_BACK);
   glEnable(GL_BLEND);
@@ -279,11 +292,18 @@ auto Application::InitGL() -> void {
   glDebugMessageCallback(DebugMessageCallback, nullptr);
   glfwMaximizeWindow(window);
 }
-auto Application::SetWindowIcon(const std::filesystem::path &path) -> void {
-  if (path.empty())
+auto Application::GetExePath() -> std::filesystem::path {
+  int length = wai_getExecutablePath(nullptr, 0, nullptr);
+  std::string path(length, '\0');
+  wai_getExecutablePath(path.data(), length, nullptr);
+  return std::filesystem::path(path).parent_path();
+}
+auto Application::SetWindowIcon() -> void {
+  if (desc.iconPath.empty())
     return;
   int width, height, channels;
-  if (auto data = stbi_load(path.string().c_str(), &width, &height, &channels, 4); data) {
+  const auto iconPath = (desc.path / desc.iconPath).string();
+  if (auto data = stbi_load(iconPath.c_str(), &width, &height, &channels, 4); data) {
     GLFWimage images[1]{};
     images[0].width = width;
     images[0].height = height;
@@ -291,7 +311,7 @@ auto Application::SetWindowIcon(const std::filesystem::path &path) -> void {
     glfwSetWindowIcon(window, 1, images);
     stbi_image_free(data);
   } else
-    spdlog::error("Failed to load app icon: '{}'.", path.string());
+    spdlog::error("Failed to load app icon: {}", iconPath);
 }
 auto Application::CharCallback(GLFWwindow *window, unsigned int codepoint) -> void {
   if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance)

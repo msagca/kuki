@@ -22,11 +22,10 @@ if(ENABLE_LINTING AND CLANG_TIDY_EXE)
   )
 endif()
 include(GenerateExportHeader)
-string(TOUPPER ${PROJECT_NAME} PROJECT_NAME_UPPER)
 generate_export_header(
   ${PROJECT_NAME}
-  BASE_NAME ${PROJECT_NAME}
-  EXPORT_MACRO_NAME "${PROJECT_NAME_UPPER}_API"
+  BASE_NAME kuki_engine
+  EXPORT_MACRO_NAME KUKI_ENGINE_API
 )
 target_include_directories(
   ${PROJECT_NAME}
@@ -34,7 +33,17 @@ target_include_directories(
 )
 target_link_libraries(
   ${PROJECT_NAME}
-  PUBLIC OpenGL::GL assimp glad glfw glm nlohmann_json spdlog stb tinyexr
+  PUBLIC
+    OpenGL::GL
+    assimp
+    glad
+    glfw
+    glm
+    nlohmann_json
+    spdlog
+    stb
+    tinyexr
+    whereami
 )
 target_sources(${PROJECT_NAME} PRIVATE ${SHADER_SOURCES})
 install(

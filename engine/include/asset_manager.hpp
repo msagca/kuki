@@ -154,7 +154,7 @@ auto AssetManager::LoadAsync(const AssetID id) -> std::future<std::unique_ptr<As
   auto path = GetPath(id);
   if (path.empty())
     return {};
-  return std::async(std::launch::async, [&]() {
+  return std::async(std::launch::async, [=, this]() {
     return Load<T>(id, path);
   });
 }

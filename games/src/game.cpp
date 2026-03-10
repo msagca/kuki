@@ -1,6 +1,6 @@
 #include <game.hpp>
 Game::Game()
-  : Application(AppConfig{}) {}
+  : Application() {}
 Game::~Game() {
   Shutdown();
 }

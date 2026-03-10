@@ -14,7 +14,6 @@
 #include <skybox_handle.hpp>
 #include <string>
 #include <transform.hpp>
-#include <typeindex>
 #include <unordered_map>
 #include <vector>
 namespace kuki {
@@ -40,12 +39,44 @@ auto EntityManager::AddChild(const EntityID parent, const EntityID child, bool k
   transformManager->Sort(); // TODO: replace this with a partial sort function
   return true;
 }
+auto EntityManager::AddComponent(const EntityID id, const ComponentType type) -> void {
+  switch (type) {
+  case ComponentType::BoneData:
+    AddComponent<BoneData>(id);
+    break;
+  case ComponentType::Camera:
+    AddComponent<Camera>(id);
+    break;
+  case ComponentType::GLMaterial:
+    AddComponent<GLMaterial>(id);
+    break;
+  case ComponentType::GLMesh:
+    AddComponent<GLMesh>(id);
+    break;
+  case ComponentType::GLSkybox:
+    AddComponent<GLSkybox>(id);
+    break;
+  case ComponentType::GLTexture:
+    AddComponent<GLTexture>(id);
+    break;
+  case ComponentType::Light:
+    AddComponent<Light>(id);
+    break;
+  case ComponentType::Transform:
+    AddComponent<Transform>(id);
+    break;
+  default:
+    break;
+  }
+}
 auto EntityManager::CopyFrom(const EntityManager &other, const EntityID otherId) -> EntityID {
   if (!other.IsEntity(otherId))
     return EntityID::Invalid;
   const auto id = Create(other.GetName(otherId));
   auto cloner = ComponentCloner(*this, id);
-  other.ForEachComponent(otherId, cloner);
+  other.ForEachComponent(otherId, [&](const ComponentVariant component) {
+    std::visit(cloner, component);
+  });
   other.ForEachChild(otherId, [this, &other, &id](const EntityID otherChildId) {
     const auto childId = CopyFrom(other, otherChildId);
     AddChild(id, childId);
@@ -68,7 +99,7 @@ auto EntityManager::Create(std::string name) -> EntityID {
   return id;
 }
 auto EntityManager::Delete(const EntityID id) -> bool {
-  if (!RemoveComponents(id))
+  if (!RemoveAllComponents(id))
     return false;
   ForEachChild(id, [this](const EntityID childId) {
     Delete(childId);
@@ -87,7 +118,51 @@ auto EntityManager::DeleteAll() -> void {
   rootEntities.clear();
   typeIndexToManager.clear();
 }
-auto EntityManager::GetComponents(const EntityID id) const -> std::vector<ComponentType> {
+auto EntityManager::GetComponent(const EntityID id, const ComponentType type) -> ComponentVariant {
+  switch (type) {
+  case ComponentType::BoneData:
+    return GetComponent<BoneData>(id);
+  case ComponentType::Camera:
+    return GetComponent<Camera>(id);
+  case ComponentType::GLMaterial:
+    return GetComponent<GLMaterial>(id);
+  case ComponentType::GLMesh:
+    return GetComponent<GLMesh>(id);
+  case ComponentType::GLSkybox:
+    return GetComponent<GLSkybox>(id);
+  case ComponentType::GLTexture:
+    return GetComponent<GLTexture>(id);
+  case ComponentType::Light:
+    return GetComponent<Light>(id);
+  case ComponentType::Transform:
+    return GetComponent<Transform>(id);
+  default: // invalid type
+    return std::monostate{};
+  }
+}
+auto EntityManager::GetComponent(const EntityID id, const ComponentType type) const -> const ComponentVariant {
+  switch (type) {
+  case ComponentType::BoneData:
+    return {const_cast<BoneData *>(GetComponent<BoneData>(id))};
+  case ComponentType::Camera:
+    return {const_cast<Camera *>(GetComponent<Camera>(id))};
+  case ComponentType::GLMaterial:
+    return {const_cast<GLMaterial *>(GetComponent<GLMaterial>(id))};
+  case ComponentType::GLMesh:
+    return {const_cast<GLMesh *>(GetComponent<GLMesh>(id))};
+  case ComponentType::GLSkybox:
+    return {const_cast<GLSkybox *>(GetComponent<GLSkybox>(id))};
+  case ComponentType::GLTexture:
+    return {const_cast<GLTexture *>(GetComponent<GLTexture>(id))};
+  case ComponentType::Light:
+    return {const_cast<Light *>(GetComponent<Light>(id))};
+  case ComponentType::Transform:
+    return {const_cast<Transform *>(GetComponent<Transform>(id))};
+  default: // invalid type
+    return std::monostate{};
+  }
+}
+auto EntityManager::GetComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
   std::vector<ComponentType> components;
   if (auto it = idToMask.find(id); it != idToMask.end()) {
     const auto &mask = it->second;
@@ -100,7 +175,7 @@ auto EntityManager::GetComponents(const EntityID id) const -> std::vector<Compon
 auto EntityManager::GetCount() const -> size_t {
   return idToMask.size();
 }
-auto EntityManager::GetMissingComponents(const EntityID id) const -> std::vector<ComponentType> {
+auto EntityManager::GetMissingComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
   std::vector<ComponentType> components;
   if (auto it = idToMask.find(id); it != idToMask.end()) {
     const auto &mask = it->second;
@@ -165,7 +240,29 @@ auto EntityManager::RemoveChild(const EntityID parent, const EntityID child) -> 
   transformManager->Sort();
   return true;
 }
-auto EntityManager::RemoveComponents(const EntityID id) -> bool {
+auto EntityManager::RemoveComponent(const EntityID id, const ComponentType type) -> bool {
+  switch (type) {
+  case ComponentType::BoneData:
+    return RemoveComponent<BoneData>(id);
+  case ComponentType::Camera:
+    return RemoveComponent<Camera>(id);
+  case ComponentType::GLMaterial:
+    return RemoveComponent<GLMaterial>(id);
+  case ComponentType::GLMesh:
+    return RemoveComponent<GLMesh>(id);
+  case ComponentType::GLSkybox:
+    return RemoveComponent<GLSkybox>(id);
+  case ComponentType::GLTexture:
+    return RemoveComponent<GLTexture>(id);
+  case ComponentType::Light:
+    return RemoveComponent<Light>(id);
+  case ComponentType::Transform:
+    return RemoveComponent<Transform>(id);
+  default:
+    return false;
+  }
+}
+auto EntityManager::RemoveAllComponents(const EntityID id) -> bool {
   if (auto it = idToMask.find(id); it != idToMask.end()) {
     Component::ForEachSetType(it->second, [this, &id](const ComponentType type) {
       const auto typeIndex = Component::GetTypeIndex(type);

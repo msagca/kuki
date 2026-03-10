@@ -1,5 +1,5 @@
 ﻿{
-  "version": 10,
+  "version": 9,
   "cmakeMinimumRequired": { "major": 3, "minor": 31, "patch": 0 },
   "configurePresets": [
     {
@@ -17,6 +17,32 @@
       "name": "Release",
       "inherits": "Base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "MSVC",
+      "inherits": "Base",
+      "generator": "Visual Studio 18 2026",
+      "cacheVariables": { "CMAKE_C_COMPILER": "cl", "CMAKE_CXX_COMPILER": "cl" }
+    },
+    {
+      "name": "Clang",
+      "hidden": true,
+      "inherits": "Base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "Clang-Debug",
+      "inherits": "Clang",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "Clang-Release",
+      "inherits": "Clang",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     }
   ],
   "buildPresets": [
@@ -25,6 +51,24 @@
       "name": "Release",
       "configurePreset": "Release",
       "configuration": "Release"
+    },
+    {
+      "name": "MSVC-Debug",
+      "configurePreset": "MSVC",
+      "configuration": "Debug"
+    },
+    {
+      "name": "MSVC-Release",
+      "configurePreset": "MSVC",
+      "configuration": "Release"
+    },
+    {
+      "name": "Clang-Debug",
+      "configurePreset": "Clang-Debug"
+    },
+    {
+      "name": "Clang-Release",
+      "configurePreset": "Clang-Release"
     }
   ],
   "testPresets": [
@@ -41,6 +85,20 @@
       ]
     },
     {
+      "name": "MSVC-Debug",
+      "steps": [
+        { "type": "configure", "name": "MSVC" },
+        { "type": "build", "name": "MSVC-Debug" }
+      ]
+    },
+    {
+      "name": "Clang-Debug",
+      "steps": [
+        { "type": "configure", "name": "Clang-Debug" },
+        { "type": "build", "name": "Clang-Debug" }
+      ]
+    },
+    {
       "name": "Test",
       "steps": [
         { "type": "configure", "name": "Debug" },
@@ -53,6 +111,20 @@
       "steps": [
         { "type": "configure", "name": "Release" },
         { "type": "build", "name": "Release" }
+      ]
+    },
+    {
+      "name": "MSVC-Release",
+      "steps": [
+        { "type": "configure", "name": "MSVC" },
+        { "type": "build", "name": "MSVC-Release" }
+      ]
+    },
+    {
+      "name": "Clang-Release",
+      "steps": [
+        { "type": "configure", "name": "Clang-Release" },
+        { "type": "build", "name": "Clang-Release" }
       ]
     },
     {

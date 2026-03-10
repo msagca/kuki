@@ -1,11 +1,10 @@
 #include <algorithm>
-#include <app_config.hpp>
 #include <application.hpp>
+#include <application_description.hpp>
 #include <bone_data.hpp>
 #include <camera.hpp>
 #include <camera_controller.hpp>
 #include <component.hpp>
-#include <display_traits.hpp>
 #include <editor.hpp>
 #include <filesystem>
 #include <gl_material.hpp>
@@ -26,6 +25,7 @@
 #include <light.hpp>
 #include <memory>
 #include <primitive.hpp>
+#include <property_displayer.hpp>
 #include <rendering_system.hpp>
 #include <shader_asset.hpp>
 #include <spdlog/logger.h>
@@ -40,7 +40,7 @@
 #include <imfilebrowser.h>
 using namespace kuki;
 Editor::Editor()
-  : Application(AppConfig{"Kuki Editor", "image/logo.png"}) {}
+  : Application({"Kuki Editor"}) {}
 auto Editor::Init() -> void {
   Application::Init();
   RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
@@ -105,7 +105,7 @@ auto Editor::DisplayAssets() -> void {
     if (ImGui::Selectable(name.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick))
       context.selectedAssetID = id;
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-      ImGui::SetDragDropPayload("Asset", &id, sizeof(AssetID));
+      ImGui::SetDragDropPayload("##SpawnPayload", &id, sizeof(AssetID));
       ImGui::Text("%s", name.c_str());
       ImGui::EndDragDropSource();
     }
@@ -255,7 +255,7 @@ auto Editor::DisplayProperties() -> void {
   if (!context.selectedEntityID)
     return;
   ImGui::Begin("Properties");
-  auto components = GetEntityComponents(context.selectedEntityID);
+  auto components = GetEntityComponentTypes(context.selectedEntityID);
   for (auto i = 0; i < components.size(); ++i) {
     const auto componentType = components[i];
     const auto isSelected = context.selectedComponentType == componentType;
@@ -266,15 +266,17 @@ auto Editor::DisplayProperties() -> void {
     auto removed = false;
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove")) {
-        // RemoveEntityComponent(context.selectedEntityID, static_cast<ComponentType>(componentType));
+        RemoveEntityComponent(context.selectedEntityID, componentType);
         if (context.selectedComponentType == componentType)
           context.selectedComponentType = ComponentType::Unknown;
         removed = true;
       }
       ImGui::EndPopup();
     }
-    // if (!removed)
-    //   DisplayProperties(componentType);
+    if (!removed) {
+      auto componentOpt = GetEntityComponent(context.selectedEntityID, componentType);
+      DisplayProperties(componentOpt.value());
+    }
     ImGui::PopID();
     if (removed) {
       ImGui::End();
@@ -285,11 +287,15 @@ auto Editor::DisplayProperties() -> void {
     auto availableComponents = GetMissingEntityComponents(context.selectedEntityID);
     for (const auto &compType : availableComponents)
       if (ImGui::MenuItem(Component::GetTypeName(compType).c_str())) {
-        // AddEntityComponent(context.selectedEntityID, compType);
+        AddEntityComponent(context.selectedEntityID, compType);
       }
     ImGui::EndPopup();
   }
   ImGui::End();
+}
+auto Editor::DisplayProperties(ComponentVariant variant) -> void {
+  PropertyDisplayer displayer(*this);
+  std::visit(displayer, variant);
 }
 auto Editor::DisplayScene() -> void {
   static constexpr auto SCENE_WINDOW_FLAGS = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
@@ -303,18 +309,16 @@ auto Editor::DisplayScene() -> void {
   if (renderSystem) {
     const auto sceneTarget = static_cast<GLRenderTarget *>(renderSystem->GetTarget("SceneSRGB"));
     if (sceneTarget && sceneTarget->texture > 0) {
-      const auto config = GetConfig();
-      const auto width = config.screenWidth;
-      const auto height = config.screenHeight;
+      const auto &settings = GetSettings();
       const auto contentRegion = ImGui::GetContentRegionAvail();
-      const auto scaleFactor = std::max(contentRegion.x / width, contentRegion.y / height);
-      const auto drawWidth = width * scaleFactor;
-      const auto drawHeight = height * scaleFactor;
+      const auto scaleFactor = std::max(contentRegion.x / settings.width, contentRegion.y / settings.height);
+      const auto drawWidth = settings.width * scaleFactor;
+      const auto drawHeight = settings.height * scaleFactor;
       ImGui::Image(sceneTarget->texture, ImVec2(drawWidth, drawHeight), UV0, UV1);
     }
   }
   if (ImGui::BeginDragDropTarget()) {
-    if (auto payload = ImGui::AcceptDragDropPayload("Asset")) {
+    if (auto payload = ImGui::AcceptDragDropPayload("##SpawnPayload")) {
       const auto assetIdPtr = static_cast<const AssetID *>(payload->Data);
       InstantiateAsset(*assetIdPtr);
       ImGui::SetWindowFocus();
@@ -370,7 +374,8 @@ auto Editor::InitImGui() -> void {
   ImGui::CreateContext();
   auto &io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_DockingEnable;
-  io.Fonts->AddFontFromFileTTF("font/Inter-VariableFont_opsz,wght.ttf", FONT_SIZE);
+  auto fontPath = std::filesystem::path{desc.path / "font/Inter-VariableFont_opsz,wght.ttf"}.string();
+  io.Fonts->AddFontFromFileTTF(fontPath.c_str(), FONT_SIZE);
   auto &style = ImGui::GetStyle();
   style.ChildBorderSize = .0f;
   style.ChildRounding = .0f;
@@ -437,25 +442,26 @@ auto Editor::LoadDefaultShaderAssets() -> void {
     if (vertAsset && fragAsset)
       renderingSystem->LoadShader(type, *vertAsset, *fragAsset);
   };
-  const auto LoadCompute = [this, &renderingSystem](const ComputeType type, const std::filesystem::path &comp) {
+  const auto LoadCompute = [&](const ComputeType type, const std::filesystem::path &comp) {
     const auto compId = LoadAsset(comp);
     const auto compAsset = GetAsset<ShaderAsset>(compId);
     if (compAsset)
       renderingSystem->LoadCompute(type, *compAsset);
   };
-  LoadCompute(ComputeType::BRDF_LUT, "shader/brdf_lut.comp");
-  LoadCompute(ComputeType::CubemapEquirect, "shader/cubemap_equirect.comp");
-  LoadCompute(ComputeType::EquirectCubemap, "shader/equirect_cubemap.comp");
-  LoadCompute(ComputeType::IrradianceMap, "shader/irradiance.comp");
-  LoadCompute(ComputeType::PrefilterMap, "shader/prefilter.comp");
-  LoadShader(MaterialType::Bloom, "shader/standard_m.vert", "shader/bloom.frag");
-  LoadShader(MaterialType::Blur, "shader/standard_m.vert", "shader/blur.frag");
-  LoadShader(MaterialType::BrightPass, "shader/standard_m.vert", "shader/bright_pass.frag");
-  LoadShader(MaterialType::GammaCorrect, "shader/standard_m.vert", "shader/gamma_correction.frag");
-  LoadShader(MaterialType::Lit, "shader/lit.vert", "shader/lit.frag");
-  LoadShader(MaterialType::Lit, "shader/lit_skinned.vert", "shader/lit.frag");
-  LoadShader(MaterialType::Skybox, "shader/skybox.vert", "shader/skybox.frag");
-  LoadShader(MaterialType::Unlit, "shader/unlit.vert", "shader/unlit.frag");
+  const auto &info = GetInfo();
+  LoadCompute(ComputeType::BRDF_LUT, info.path / "shader/brdf_lut.comp");
+  LoadCompute(ComputeType::CubemapEquirect, info.path / "shader/cubemap_equirect.comp");
+  LoadCompute(ComputeType::EquirectCubemap, info.path / "shader/equirect_cubemap.comp");
+  LoadCompute(ComputeType::IrradianceMap, info.path / "shader/irradiance.comp");
+  LoadCompute(ComputeType::PrefilterMap, info.path / "shader/prefilter.comp");
+  LoadShader(MaterialType::Bloom, info.path / "shader/standard_m.vert", info.path / "shader/bloom.frag");
+  LoadShader(MaterialType::Blur, info.path / "shader/standard_m.vert", info.path / "shader/blur.frag");
+  LoadShader(MaterialType::BrightPass, info.path / "shader/standard_m.vert", info.path / "shader/bright_pass.frag");
+  LoadShader(MaterialType::GammaCorrect, info.path / "shader/standard_m.vert", info.path / "shader/gamma_correction.frag");
+  LoadShader(MaterialType::Lit, info.path / "shader/lit.vert", info.path / "shader/lit.frag");
+  LoadShader(MaterialType::Lit, info.path / "shader/lit_skinned.vert", info.path / "shader/lit.frag");
+  LoadShader(MaterialType::Skybox, info.path / "shader/skybox.vert", info.path / "shader/skybox.frag");
+  LoadShader(MaterialType::Unlit, info.path / "shader/unlit.vert", info.path / "shader/unlit.frag");
 }
 auto Editor::UpdateIO() -> void {
   static auto stateOld = EditorState::Normal;
