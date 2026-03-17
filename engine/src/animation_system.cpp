@@ -7,12 +7,8 @@ AnimationSystem::AnimationSystem()
 AnimationSystem::~AnimationSystem() {
   Shutdown();
 }
-void AnimationSystem::Start() {
-}
-void AnimationSystem::Update(float deltaTime) {
-}
-void AnimationSystem::LateUpdate(float deltaTime) {
-}
-void AnimationSystem::Shutdown() {
-}
+void AnimationSystem::Awake() {}
+void AnimationSystem::Start() {}
+void AnimationSystem::Update(const float) {}
+void AnimationSystem::Shutdown() {}
 } // namespace kuki

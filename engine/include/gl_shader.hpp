@@ -1,7 +1,6 @@
 #pragma once
 #include <bone_data.hpp>
 #include <camera.hpp>
-#include <compute_type.hpp>
 #include <gl_material.hpp>
 #include <gl_mesh.hpp>
 #include <gl_shader_base.hpp>
@@ -19,7 +18,7 @@ struct KUKI_ENGINE_API GLShader : public GLShaderBase {
   MaterialType type{MaterialType::Unknown};
   auto DrawInstanced(const GLMesh &, const unsigned int) -> void;
   auto SetBoneTransforms(const BoneData &) -> void;
-  auto SetMaterial(const GLMaterial &) -> void;
+  auto SetMaterial(const GLMaterial &) const -> void;
   auto SetMaterialFallback(const GLMesh &, const MaterialFallback &, const unsigned int) -> void;
   auto SetTransform(const GLMesh &, const glm::mat4 &, const unsigned int) -> void;
   auto SetTransform(const GLMesh &, std::span<const glm::mat4>, const unsigned int) -> void;

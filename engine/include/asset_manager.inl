@@ -16,7 +16,7 @@ inline auto AssetManager::CreatePrefab<SkyboxAsset>(const AssetID assetId) -> En
   return EntityID::Invalid;
 }
 template <>
-inline auto AssetManager::Load<SceneAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
+inline auto AssetManager::Load<SceneAsset>(const AssetID id, const std::filesystem::path &path, std::string name) -> std::unique_ptr<Asset> {
   Assimp::Importer importer;
   const auto aiScene = importer.ReadFile(path.string(), aiProcess_CalcTangentSpace | aiProcess_GlobalScale | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_Triangulate);
   if (!aiScene) {
@@ -25,23 +25,14 @@ inline auto AssetManager::Load<SceneAsset>(const AssetID id, const std::filesyst
   }
   if (!aiScene->mRootNode)
     return nullptr;
-  auto scene = std::make_unique<SceneAsset>(id);
+  auto scene = std::make_unique<SceneAsset>(id, std::move(name));
   LoadNode(*aiScene->mRootNode, *aiScene, *scene.get());
   spdlog::info("Loaded scene asset: {}", path.string());
   return scene;
 }
 template <>
-inline auto AssetManager::Load<ShaderAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
-  auto shader = std::make_unique<ShaderAsset>(id);
-  const auto ext = path.extension().string();
-  if (ext == ".comp")
-    shader->type = ShaderType::Compute;
-  else if (ext == ".frag" || ext == ".fs")
-    shader->type = ShaderType::Fragment;
-  else if (ext == ".geom" || ext == ".gs")
-    shader->type = ShaderType::Geometry;
-  else if (ext == ".vert" || ext == ".vs")
-    shader->type = ShaderType::Vertex;
+inline auto AssetManager::Load<ShaderAsset>(const AssetID id, const std::filesystem::path &path, std::string name) -> std::unique_ptr<Asset> {
+  auto shader = std::make_unique<ShaderAsset>(id, std::move(name));
   std::ifstream fs(path);
   if (!fs) {
     spdlog::error("Failed to open shader file: {}", path.string());
@@ -59,8 +50,8 @@ inline auto AssetManager::Load<ShaderAsset>(const AssetID id, const std::filesys
   return shader;
 }
 template <>
-inline auto AssetManager::Load<SkyboxAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
-  auto skybox = std::make_unique<SkyboxAsset>(id);
+inline auto AssetManager::Load<SkyboxAsset>(const AssetID id, const std::filesystem::path &path, std::string name) -> std::unique_ptr<Asset> {
+  auto skybox = std::make_unique<SkyboxAsset>(id, std::move(name));
   const auto ext = path.extension().string();
   if (ext == ".exr") {
     float *data = nullptr;

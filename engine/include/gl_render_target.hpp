@@ -4,8 +4,8 @@
 namespace kuki {
 struct KUKI_ENGINE_API GLRenderTarget final : public RenderTarget {
   GLRenderTarget();
-  unsigned int framebuffer;
-  unsigned int renderbuffer;
-  unsigned int texture;
+  unsigned int framebuffer{};
+  unsigned int renderbuffer{};
+  unsigned int texture{};
 };
 } // namespace kuki

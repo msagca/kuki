@@ -16,9 +16,8 @@ auto GLShader::DrawInstanced(const GLMesh &mesh, const unsigned int count) -> vo
     glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, count);
   glBindVertexArray(0);
 }
-auto GLShader::SetBoneTransforms(const BoneData &boneData) -> void {
-}
-auto GLShader::SetMaterial(const GLMaterial &material) -> void {
+auto GLShader::SetBoneTransforms(const BoneData &boneData) -> void {}
+auto GLShader::SetMaterial(const GLMaterial &material) const -> void {
   material.Apply(*this);
 }
 auto GLShader::SetMaterialFallback(const GLMesh &mesh, const MaterialFallback &fallback, const unsigned int buffer) -> void {

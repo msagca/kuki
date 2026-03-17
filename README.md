@@ -15,7 +15,7 @@ A hobby game engine project that I'm working on to learn about game engine archi
 
 #### Linux
 
-- [GCC](https://gcc.gnu.org) or [Clang](https://llvm.org)
+- [Clang](https://llvm.org) or [GCC](https://gcc.gnu.org)
 - [Mesa 3D](https://mesa3d.org)
 - [Ninja](https://ninja-build.org)
 - [X.Org](https://www.x.org)
@@ -27,7 +27,7 @@ sudo apt update
 ```
 
 ```bash
-sudo apt install -y build-essential cmake git libgl1-mesa-dev ninja-build xorg-dev
+sudo apt install -y build-essential clang cmake git libgl1-mesa-dev ninja-build xorg-dev
 ```
 
 ### Build Instructions

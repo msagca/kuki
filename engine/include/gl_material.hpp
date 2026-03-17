@@ -17,7 +17,7 @@ class GLShader;
 struct KUKI_ENGINE_API GLMaterial {
   GLTextures textures{};
   MaterialFallback fallback{};
-  MaterialType type{MaterialType::Lit};
+  MaterialType type{MaterialType::Unknown};
   auto Apply(const GLShader &) const -> void;
   auto operator==(const GLMaterial &) const -> bool;
 };

@@ -1,4 +1,3 @@
-#include <compute_type.hpp>
 #include <gl_compute_shader.hpp>
 #include <glad/glad.h>
 namespace kuki {

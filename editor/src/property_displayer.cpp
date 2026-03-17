@@ -9,8 +9,7 @@ auto PropertyDisplayer::operator()(kuki::BoneData *boneData) -> void {
   if (!boneData)
     return;
   auto count = boneData->boneCount;
-  if (ImGui::InputInt("Bone Count", &count))
-    boneData->boneCount = count;
+  ImGui::InputInt("Bone Count", &count, 1, 100, ImGuiInputTextFlags_ReadOnly);
 }
 auto PropertyDisplayer::operator()(kuki::Camera *camera) -> void {
   if (!camera)
@@ -98,7 +97,7 @@ auto PropertyDisplayer::operator()(kuki::GLMaterial *material) -> void {
     return tileWidth;
   };
   const auto SelectProperty = [&](const kuki::MaterialProperty prop) {
-    editor.context.selectedComponentType = kuki::ComponentType::TextureHandle;
+    editor.context.selectedComponentType = kuki::ComponentType::GLMaterial;
     editor.context.selectedProperty = static_cast<uint8_t>(prop);
   };
   struct TexEntry {
@@ -161,23 +160,17 @@ auto PropertyDisplayer::operator()(kuki::GLMesh *mesh) -> void {
   if (!mesh)
     return;
   auto vao = static_cast<int>(mesh->vao);
-  if (ImGui::InputInt("Vertex Array Object", &vao))
-    mesh->vao = vao;
+  ImGui::InputInt("Vertex Array Object", &vao, 1, 100, ImGuiInputTextFlags_ReadOnly);
   auto ebo = static_cast<int>(mesh->ebo);
-  if (ImGui::InputInt("Element Buffer Object", &ebo))
-    mesh->ebo = ebo;
+  ImGui::InputInt("Element Buffer Object", &ebo, 1, 100, ImGuiInputTextFlags_ReadOnly);
   auto vertexCount = mesh->vertexCount;
-  if (ImGui::InputInt("Vertex Count", &vertexCount))
-    mesh->vertexCount = vertexCount;
+  ImGui::InputInt("Vertex Count", &vertexCount, 1, 100, ImGuiInputTextFlags_ReadOnly);
   auto indexCount = mesh->indexCount;
-  if (ImGui::InputInt("Index Count", &indexCount))
-    mesh->indexCount = indexCount;
+  ImGui::InputInt("Index Count", &indexCount, 1, 100, ImGuiInputTextFlags_ReadOnly);
   auto minBounds = mesh->bounds.min;
-  if (ImGui::InputFloat3("Minimum Bounds", glm::value_ptr(minBounds)))
-    mesh->bounds.min = minBounds;
+  ImGui::InputFloat3("Minimum Bounds", glm::value_ptr(minBounds), nullptr, ImGuiInputTextFlags_ReadOnly);
   auto maxBounds = mesh->bounds.max;
-  if (ImGui::InputFloat3("Maximum Bounds", glm::value_ptr(maxBounds)))
-    mesh->bounds.max = maxBounds;
+  ImGui::InputFloat3("Maximum Bounds", glm::value_ptr(maxBounds), nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 auto PropertyDisplayer::operator()(kuki::GLSkybox *skybox) -> void {
   if (!skybox)
@@ -196,7 +189,7 @@ auto PropertyDisplayer::operator()(kuki::GLSkybox *skybox) -> void {
   ImGui::BeginGroup();
   bool clicked = ImGui::ImageButton("Skybox##Texture", tex, TEXTURE_SIZE, uv0, uv1);
   if (clicked)
-    editor.context.selectedComponentType = ComponentType::SkyboxHandle;
+    editor.context.selectedComponentType = ComponentType::GLSkybox;
   const auto buttonHeight = TEXTURE_SIZE.y + style.FramePadding.y * 2.f;
   ImGui::SetCursorPosX(startPos.x + (tileWidth - textWidth) * .5f);
   ImGui::SetCursorPosY(startPos.y + buttonHeight + style.ItemInnerSpacing.y);
@@ -246,18 +239,24 @@ auto PropertyDisplayer::operator()(kuki::Light *light) -> void {
 auto PropertyDisplayer::operator()(kuki::MaterialHandle *handle) -> void {
   if (!handle)
     return;
+  auto sceneAssetId = handle->sceneAssetId;
+  ImGui::InputScalar("Scene Asset ID", ImGuiDataType_U64, &sceneAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  auto materialIndex = handle->materialIndex;
+  ImGui::InputScalar("Material Index", ImGuiDataType_U64, &materialIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 auto PropertyDisplayer::operator()(kuki::MeshHandle *handle) -> void {
   if (!handle)
     return;
+  auto sceneAssetId = handle->sceneAssetId;
+  ImGui::InputScalar("Scene Asset ID", ImGuiDataType_U64, &sceneAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  auto meshIndex = handle->meshIndex;
+  ImGui::InputScalar("Mesh Index", ImGuiDataType_U64, &meshIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 auto PropertyDisplayer::operator()(kuki::SkyboxHandle *handle) -> void {
   if (!handle)
     return;
-}
-auto PropertyDisplayer::operator()(kuki::TextureHandle *handle) -> void {
-  if (!handle)
-    return;
+  auto assetId = handle->assetId;
+  ImGui::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 auto PropertyDisplayer::operator()(kuki::Transform *transform) -> void {
   if (!transform)
@@ -284,7 +283,7 @@ auto PropertyDisplayer::operator()(kuki::Transform *transform) -> void {
     dirty = true;
   }
   auto scale = transform->scale;
-  static auto uniformMode = false;
+  static auto uniformMode = true;
   if (uniformMode) {
     auto uniformScale = scale.x;
     if (ImGui::DragFloat("Scale", &uniformScale, .1f, .0f, MAX_FLOAT)) {

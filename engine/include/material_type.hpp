@@ -2,12 +2,8 @@
 #include <cstdint>
 namespace kuki {
 enum class MaterialType : uint8_t {
-  Bloom,
-  Blur,
-  BrightPass,
-  GammaCorrect,
   Lit,
-  Skybox,
+  LitSkinned,
   Unlit,
   Unknown
 };

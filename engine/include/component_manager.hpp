@@ -48,7 +48,6 @@ auto ComponentManager<T>::Remove(const EntityID id) -> bool {
   auto componentId = it->second;
   auto lastId = ActiveCount() - 1;
   if (componentId != lastId) {
-    // FIXME: clean up GPU resources associated with a removed component
     std::swap(components[componentId], components[lastId]);
     std::swap(componentToEntity[componentId], componentToEntity[lastId]);
     entityToComponent[componentToEntity[componentId]] = componentId;
@@ -87,10 +86,17 @@ auto ComponentManager<T>::Add(const EntityID id) -> T & {
 }
 template <typename T>
 auto ComponentManager<T>::ForEach(this auto &self, auto &&func) -> void {
-  for (auto i = 0; i < self.ActiveCount(); ++i) {
-    const auto id = self.componentToEntity[i];
-    auto &comp = self.components[i];
-    func(id, &comp);
+  if constexpr (std::is_const_v<std::remove_reference_t<decltype(self)>>) {
+    for (auto i = 0; i < self.ActiveCount(); ++i) {
+      const auto &id = self.componentToEntity[i];
+      auto &component = self.components[i];
+      func(id, &component);
+    }
+  } else {
+    std::vector<EntityID> ids{self.componentToEntity.begin(), self.componentToEntity.begin() + self.ActiveCount()};
+    for (const auto &id : ids)
+      if (auto component = self.Get(id))
+        func(id, component);
   }
 }
 template <typename T>

@@ -20,6 +20,7 @@ public:
   auto Compile() -> void;
   auto EndPass() -> RenderGraph &;
   auto Execute(Renderer &) -> void;
+  auto GetFinalOutput() -> std::string;
   auto GetInputs(const PassID) -> std::span<std::string>;
   auto GetOutputs(const PassID) -> std::span<TargetBinding>;
   auto BeginPass(auto &&) -> RenderGraph &;

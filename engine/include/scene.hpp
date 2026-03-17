@@ -11,6 +11,7 @@ namespace kuki {
 class KUKI_ENGINE_API Scene {
 public:
   Scene(const SceneID);
+  const SceneID id;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
   auto AddEntityComponent(const EntityID, const ComponentType) -> void;
   auto CopyEntityFrom(const EntityManager &, const EntityID) -> EntityID;
@@ -24,7 +25,6 @@ public:
   auto GetEntityComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetEntityCount() const -> size_t;
   auto GetEntityName(const EntityID) const -> std::string;
-  auto GetID() const -> SceneID;
   auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
   auto IsEntity(const EntityID) const -> bool;
   auto RemoveEntityComponent(const EntityID, const ComponentType) -> bool;
@@ -50,7 +50,6 @@ public:
   template <typename... T>
   auto RemoveEntityComponent(const EntityID) -> bool;
 private:
-  const SceneID id{};
   EntityManager entityManager{};
 };
 auto Scene::ForEachChildEntity(this auto &self, const EntityID id, auto &&func) -> void {
@@ -60,7 +59,7 @@ auto Scene::ForEachRootEntity(this auto &self, auto &&func) -> void {
   self.entityManager.ForEachRoot(std::forward<decltype(func)>(func));
 }
 auto Scene::GetActiveCamera(this auto &self) -> ConstCorrectPointer<decltype(self), Camera> {
-  return self.entityManager.template GetFirst<Camera>();
+  return self.entityManager.template GetAny<Camera>();
 }
 template <typename... T>
 auto Scene::AddEntityComponent(const EntityID id) -> decltype(auto) {

@@ -22,19 +22,19 @@ public:
   Application(ApplicationDescription = {});
   virtual ~Application();
   auto Run() -> void;
-  virtual auto Init() -> void;
+  virtual auto Awake() -> void;
   virtual auto Start() -> void;
-  virtual auto Status() -> bool;
-  virtual auto Update() -> void;
-  virtual auto LateUpdate() -> void;
+  virtual auto Update(const float) -> void;
   virtual auto Shutdown() -> void;
+  virtual auto Status() -> bool;
+  auto ActivateScene(const std::string &) -> bool;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
   auto AddEntityComponent(const EntityID, const ComponentType) -> void;
   auto CreateEntity(std::string = "") -> EntityID;
   auto CreateScene(std::string = "") -> SceneID;
   auto DeleteEntities() -> void;
   auto DeleteEntity(const EntityID) -> void;
-  auto DeleteScene(const SceneID) -> bool;
+  auto DeleteScene(const std::string &) -> bool;
   auto DisableButtons() -> void;
   auto DisableInputs() -> void;
   auto DisableKeys() -> void;
@@ -64,8 +64,7 @@ public:
   auto GetWASDKeys() const -> glm::vec2;
   auto InstantiateAsset(const AssetID) -> EntityID;
   auto IsEntity(const EntityID) const -> bool;
-  auto LoadAsset(const std::filesystem::path &) -> AssetID;
-  auto LoadAssetAsync(const std::filesystem::path &) -> AssetID;
+  auto LoadScene(const std::string &) -> bool;
   auto RegisterInputAction(std::string, InputAction) -> void;
   auto RegisterInputAction(int, InputAction, bool = true) -> void;
   auto RemoveEntityComponent(const EntityID, const ComponentType) -> bool;
@@ -73,7 +72,6 @@ public:
   auto UnloadAsset(const AssetID) -> bool;
   auto UnregisterInputAction(const std::string &) -> void;
   auto UnregisterInputAction(int, bool = true) -> void;
-  // templates
   auto ForEachAsset(this auto &, const AssetType, auto &&) -> void;
   auto ForEachAssetPerType(this auto &, auto &&) -> void;
   auto ForEachAssetType(this auto &, auto &&) -> void;
@@ -103,18 +101,27 @@ public:
   auto GetEntityComponent(this auto &, const EntityID) -> decltype(auto);
   template <IsSystem T>
   auto GetSystem(this auto &) -> decltype(auto);
+  template <IsAsset T>
+  auto LoadAsset(const std::filesystem::path &, std::string = "") -> AssetID;
+  template <IsAsset T>
+  auto LoadAssetAsync(const std::filesystem::path &, std::string = "") -> AssetID;
   template <typename... T>
   auto RemoveEntityComponent(const EntityID) -> bool;
 protected:
   GLFWwindow *window{};
-  float deltaTime{};
   ApplicationDescription desc;
   ApplicationSettings settings;
 private:
   AssetManager assetManager;
   InputManager inputManager;
   SceneManager sceneManager;
-  auto InitGL() -> void;
+  float deltaTime{};
+  auto PreAwake() -> void;
+  auto PreStart() -> void;
+  auto PreUpdate() -> void;
+  auto LateUpdate() -> void;
+  auto LateShutdown() -> void;
+  auto CreateWindow() -> void;
   auto GetExePath() -> std::filesystem::path;
   auto SetWindowIcon() -> void;
   static void CharCallback(GLFWwindow *, unsigned int);
@@ -222,6 +229,14 @@ auto Application::GetSystem(this auto &self) -> decltype(auto) {
   if (auto it = self.typeIndexToSystem.find(typeIndex); it != self.typeIndexToSystem.end())
     return static_cast<ConstCorrectPointer<decltype(self), T>>(it->second.get());
   return static_cast<ConstCorrectPointer<decltype(self), T>>(nullptr);
+}
+template <IsAsset T>
+auto Application::LoadAsset(const std::filesystem::path &path, std::string name) -> AssetID {
+  return assetManager.Load<T>(path, std::move(name));
+}
+template <IsAsset T>
+auto Application::LoadAssetAsync(const std::filesystem::path &path, std::string name) -> AssetID {
+  return assetManager.LoadAsync<T>(path, std::move(name));
 }
 template <typename... T>
 auto Application::RemoveEntityComponent(const EntityID id) -> bool {

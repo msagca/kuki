@@ -11,7 +11,7 @@
 using namespace kuki;
 CameraController::CameraController(Application &app, EntityID entityId)
   : app(app), entityId(entityId) {}
-auto CameraController::Update(float deltaTime) -> void {
+auto CameraController::Update(const float deltaTime) -> void {
   static auto firstEnter = true;
   static glm::vec2 mousePos;
   static glm::vec2 mouseLast;
@@ -43,7 +43,7 @@ auto CameraController::Update(float deltaTime) -> void {
   }
   camera.Update(); // NOTE: local camera needs to be updated manually
 }
-auto CameraController::UpdatePosition(float deltaTime) -> bool {
+auto CameraController::UpdatePosition(const float deltaTime) -> bool {
   static constexpr auto MOVE_SPEED = 5.f;
   static constexpr auto MOVE_THRESHOLD = 1e-6f;
   static constexpr auto BOOST_FACTOR_MAX = 10.f;

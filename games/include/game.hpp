@@ -1,13 +1,12 @@
 #pragma once
 #include <application.hpp>
-using namespace kuki;
-class Game final : public Application {
+class Game final : public kuki::Application {
 public:
   Game();
   ~Game();
+  void Awake() override;
   void Start() override;
-  bool Status() override;
-  void Update() override;
-  void LateUpdate() override;
+  void Update(const float) override;
   void Shutdown() override;
+  bool Status() override;
 };

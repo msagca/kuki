@@ -12,7 +12,6 @@ enum class ComponentType : uint8_t {
   MaterialHandle,
   MeshHandle,
   SkyboxHandle,
-  TextureHandle,
   Transform,
   Unknown
 };

@@ -48,9 +48,6 @@ auto Scene::GetEntityCount() const -> size_t {
 auto Scene::GetEntityName(const EntityID id) const -> std::string {
   return entityManager.GetName(id);
 }
-auto Scene::GetID() const -> SceneID {
-  return id;
-}
 auto Scene::GetMissingEntityComponents(const EntityID id) const -> std::vector<ComponentType> {
   return entityManager.GetMissingComponentTypes(id);
 }

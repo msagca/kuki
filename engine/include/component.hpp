@@ -8,11 +8,14 @@
 #include <gl_texture.hpp>
 #include <kuki_engine_export.h>
 #include <light.hpp>
+#include <material_handle.hpp>
+#include <mesh_handle.hpp>
+#include <skybox_handle.hpp>
 #include <typeindex>
 #include <unordered_map>
 #include <variant>
 namespace kuki {
-using ComponentVariant = std::variant<BoneData *, Camera *, GLMaterial *, GLMesh *, GLSkybox *, GLTexture *, Light *, Transform *, std::monostate>;
+using ComponentVariant = std::variant<BoneData *, Camera *, GLMaterial *, GLMesh *, GLSkybox *, GLTexture *, Light *, Transform *, MaterialHandle *, MeshHandle *, SkyboxHandle *, std::monostate>;
 class KUKI_ENGINE_API Component {
 public:
   static auto ForEachSetType(const ComponentMask &, auto &&) -> void;

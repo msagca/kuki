@@ -43,7 +43,7 @@ public:
   auto HasChildren(const EntityID) const -> bool;
   auto HasParent(const EntityID) const -> bool;
   auto IsEntity(const EntityID) const -> bool;
-  auto IsEntity(const std::string &) const -> EntityID;
+  auto IsEntity(const std::string &) const -> bool;
   auto RemoveChild(const EntityID, const EntityID) -> bool;
   auto RemoveComponent(const EntityID, const ComponentType) -> bool;
   auto RemoveAllComponents(const EntityID) -> bool;
@@ -59,10 +59,12 @@ public:
   auto ForEach(this auto &, auto &&) -> void;
   template <typename... T>
   auto ForFirst(this auto &, auto &&) -> void;
+  template <typename T>
+  auto GetAny(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
   template <typename... T>
   auto GetComponent(this auto &, const EntityID) -> decltype(auto);
-  template <typename T>
-  auto GetFirst(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
+  template <typename... T>
+  auto GetComponent(this auto &, const std::string &) -> decltype(auto);
   template <typename... T>
   auto HasComponent(const EntityID) const -> bool;
   template <typename... T>
@@ -130,7 +132,7 @@ auto EntityManager::AddComponent(const EntityID id) -> decltype(auto) {
     maskToIdSet[mask].insert(id);
     return &manager->Add(id);
   } else
-    return std::tie(AddComponent<T>(id)...);
+    return std::make_tuple(AddComponent<T>(id)...);
 }
 template <typename... T>
 auto EntityManager::ForEach(this auto &self, auto &&func) -> void {
@@ -138,33 +140,46 @@ auto EntityManager::ForEach(this auto &self, auto &&func) -> void {
     for (const auto &[id, _] : self.idToMask)
       func(id);
   else {
+    std::vector<EntityID> ids; // NOTE: each ID appears in at most one set
     ComponentMask mask;
     (mask.set(Component::GetBit(typeid(T))), ...);
     for (const auto &[m, s] : self.maskToIdSet)
       if ((mask & m) == mask)
-        for (const auto &id : s) {
-          auto components = self.template GetComponent<T...>(id);
-          if constexpr (sizeof...(T) == 1)
-            func(id, components);
-          else
-            std::apply([&](auto... args) { func(id, args...); }, components);
-        }
-  }
-}
-template <typename... T>
-auto EntityManager::ForFirst(this auto &self, auto &&func) -> void {
-  static_assert(sizeof...(T) > 0, "`ForFirst` requires at least one type parameter.");
-  ComponentMask mask;
-  (mask.set(Component::GetBit(typeid(T))), ...);
-  for (const auto &[m, s] : self.maskToIdSet)
-    if ((mask & m) == mask) {
-      const auto id = *s.begin();
+        for (const auto &id : s)
+          ids.push_back(id);
+    // TODO: if `self` is const, then the `func` can be called in the same loop as it cannot modify the `maskToIdSet`
+    for (const auto &id : ids) {
       auto components = self.template GetComponent<T...>(id);
       if constexpr (sizeof...(T) == 1)
         func(id, components);
       else
         std::apply([&](auto... args) { func(id, args...); }, components);
     }
+  }
+}
+template <typename... T>
+auto EntityManager::ForFirst(this auto &self, auto &&func) -> void {
+  EntityID id{};
+  ComponentMask mask;
+  (mask.set(Component::GetBit(typeid(T))), ...);
+  for (const auto &[m, s] : self.maskToIdSet)
+    if ((mask & m) == mask) {
+      id = *s.begin();
+      break;
+    }
+  if (!id)
+    return;
+  auto components = self.template GetComponent<T...>(id);
+  if constexpr (sizeof...(T) == 1)
+    func(id, components);
+  else
+    std::apply([&](auto... args) { func(id, args...); }, components);
+}
+template <typename T>
+auto EntityManager::GetAny(this auto &self) -> ConstCorrectPointer<decltype(self), T> {
+  if (auto manager = self.template GetManager<T>(); manager)
+    return manager->GetAny();
+  return nullptr;
 }
 template <typename... T>
 auto EntityManager::GetComponent(this auto &self, const EntityID id) -> decltype(auto) {
@@ -177,11 +192,21 @@ auto EntityManager::GetComponent(this auto &self, const EntityID id) -> decltype
   } else
     return std::tuple(self.template GetComponent<T>(id)...);
 }
-template <typename T>
-auto EntityManager::GetFirst(this auto &self) -> ConstCorrectPointer<decltype(self), T> {
-  if (auto manager = self.template GetManager<T>(); manager)
-    return manager->GetAny();
-  return nullptr;
+template <typename... T>
+auto EntityManager::GetComponent(this auto &self, const std::string &name) -> decltype(auto) {
+  static_assert(sizeof...(T) > 0, "`GetComponent` requires at least one type parameter.");
+  EntityID id{};
+  auto ids = self.nameToId.equal_range(name);
+  if (auto it = ids.first; it != ids.second)
+    id = it->second;
+  if constexpr (sizeof...(T) == 1) {
+    using C = std::tuple_element_t<0, std::tuple<T...>>;
+    if (id)
+      if (auto manager = self.template GetManager<C>(); manager)
+        return manager->Get(id);
+    return static_cast<ConstCorrectPointer<decltype(self), C>>(nullptr);
+  } else
+    return std::tuple(self.template GetComponent<T>(id)...);
 }
 template <typename... T>
 auto EntityManager::HasComponent(const EntityID id) const -> bool {

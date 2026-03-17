@@ -23,6 +23,7 @@
 #include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
 #include <light.hpp>
+#include <material_type.hpp>
 #include <memory>
 #include <primitive.hpp>
 #include <property_displayer.hpp>
@@ -41,8 +42,7 @@
 using namespace kuki;
 Editor::Editor()
   : Application({"Kuki Editor"}) {}
-auto Editor::Init() -> void {
-  Application::Init();
+auto Editor::Awake() -> void {
   RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
     cameraController->mouselook = true;
     context.state = EditorState::Fly;
@@ -57,8 +57,12 @@ auto Editor::Init() -> void {
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
   InitImGui();
 }
-auto Editor::LateUpdate() -> void {
-  Application::LateUpdate();
+auto Editor::Start() -> void {
+  LoadDefaultAssets();
+  LoadDefaultScene();
+}
+auto Editor::Update(const float deltaTime) -> void {
+  cameraController->Update(deltaTime);
   UpdateIO();
   UpdateView();
 }
@@ -66,16 +70,6 @@ auto Editor::Shutdown() -> void {
   ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
   ImGui::DestroyContext();
-  Application::Shutdown();
-}
-auto Editor::Start() -> void {
-  Application::Start();
-  LoadDefaultAssets();
-  LoadDefaultScene();
-}
-auto Editor::Update() -> void {
-  Application::Update();
-  cameraController->Update(deltaTime);
 }
 auto Editor::DisplayAssetCategories() -> void {
   ImGui::Begin("Categories");
@@ -123,8 +117,15 @@ auto Editor::DisplayAssets() -> void {
     const auto filepath = fileBrowser.GetSelected();
     if (!std::filesystem::exists(filepath))
       spdlog::error("File does not exist: {}", filepath.string());
-    else
-      LoadAssetAsync(filepath);
+    else {
+      const auto ext = filepath.extension();
+      if (ext == ".vert" || ext == ".frag" || ext == ".comp")
+        LoadAssetAsync<ShaderAsset>(filepath);
+      else if (ext == ".gltf")
+        LoadAssetAsync<SceneAsset>(filepath);
+      else if (ext == ".hdr" || ext == ".exr")
+        LoadAssetAsync<SkyboxAsset>(filepath);
+    }
     fileBrowser.ClearSelected();
   }
   ImGui::End();
@@ -204,7 +205,7 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
     }
   }
   if (hovered && doubleClicked) {
-    strcpy_s(newName, entityNameCStr);
+    strncpy(newName, entityNameCStr, NAME_LENGTH);
     context.state = EditorState::Rename;
     context.renamedEntityID = id;
   }
@@ -293,7 +294,7 @@ auto Editor::DisplayProperties() -> void {
   }
   ImGui::End();
 }
-auto Editor::DisplayProperties(ComponentVariant variant) -> void {
+auto Editor::DisplayProperties(const ComponentVariant &variant) -> void {
   PropertyDisplayer displayer(*this);
   std::visit(displayer, variant);
 }
@@ -305,9 +306,9 @@ auto Editor::DisplayScene() -> void {
   const auto fPressed = context.pressState.test(static_cast<uint8_t>(KeyBit::F));
   if (context.state == EditorState::Normal && fPressed)
     context.showFPS = !context.showFPS;
-  auto renderSystem = GetSystem<RenderingSystem>();
-  if (renderSystem) {
-    const auto sceneTarget = static_cast<GLRenderTarget *>(renderSystem->GetTarget("SceneSRGB"));
+  auto renderingSystem = GetSystem<RenderingSystem>();
+  if (renderingSystem) {
+    const auto sceneTarget = static_cast<GLRenderTarget *>(renderingSystem->GetFinalTarget());
     if (sceneTarget && sceneTarget->texture > 0) {
       const auto &settings = GetSettings();
       const auto contentRegion = ImGui::GetContentRegionAvail();
@@ -423,45 +424,50 @@ auto Editor::LoadDefaultAssets() -> void {
   LoadDefaultShaderAssets();
 }
 auto Editor::LoadDefaultScene() -> void {
-  CreateScene("Main");
+  const auto sceneName = "Main";
+  CreateScene(sceneName);
   auto entityId = CreateEntity("Camera");
   AddEntityComponent<Camera>(entityId);
   cameraController = std::make_unique<CameraController>(*this, entityId);
   entityId = CreateEntity("Skybox");
   AddEntityComponent<GLSkybox>(entityId);
+  LoadScene(sceneName);
 }
 auto Editor::LoadDefaultShaderAssets() -> void {
   auto renderingSystem = GetSystem<RenderingSystem>();
   if (!renderingSystem)
     return;
-  const auto LoadShader = [&](const MaterialType type, const std::filesystem::path &vert, const std::filesystem::path &frag) {
-    const auto vertId = LoadAsset(vert);
-    const auto fragId = LoadAsset(frag);
-    const auto vertAsset = GetAsset<ShaderAsset>(vertId);
-    const auto fragAsset = GetAsset<ShaderAsset>(fragId);
-    if (vertAsset && fragAsset)
-      renderingSystem->LoadShader(type, *vertAsset, *fragAsset);
+  const auto LoadShader = [&](const std::filesystem::path &vert, const std::filesystem::path &frag, std::string name, const MaterialType type = MaterialType::Unknown) {
+    const auto vertId = LoadAsset<ShaderAsset>(vert, name);
+    const auto fragId = LoadAsset<ShaderAsset>(frag, std::move(name));
+    auto vertAsset = GetAsset<ShaderAsset>(vertId);
+    auto fragAsset = GetAsset<ShaderAsset>(fragId);
+    if (vertAsset && fragAsset) {
+      if (type != MaterialType::Unknown)
+        fragAsset->type = type;
+      renderingSystem->LoadShader(*vertAsset, *fragAsset);
+    }
   };
-  const auto LoadCompute = [&](const ComputeType type, const std::filesystem::path &comp) {
-    const auto compId = LoadAsset(comp);
+  const auto LoadCompute = [&](const std::filesystem::path &comp, std::string name) {
+    const auto compId = LoadAsset<ShaderAsset>(comp, std::move(name));
     const auto compAsset = GetAsset<ShaderAsset>(compId);
     if (compAsset)
-      renderingSystem->LoadCompute(type, *compAsset);
+      renderingSystem->LoadCompute(*compAsset);
   };
   const auto &info = GetInfo();
-  LoadCompute(ComputeType::BRDF_LUT, info.path / "shader/brdf_lut.comp");
-  LoadCompute(ComputeType::CubemapEquirect, info.path / "shader/cubemap_equirect.comp");
-  LoadCompute(ComputeType::EquirectCubemap, info.path / "shader/equirect_cubemap.comp");
-  LoadCompute(ComputeType::IrradianceMap, info.path / "shader/irradiance.comp");
-  LoadCompute(ComputeType::PrefilterMap, info.path / "shader/prefilter.comp");
-  LoadShader(MaterialType::Bloom, info.path / "shader/standard_m.vert", info.path / "shader/bloom.frag");
-  LoadShader(MaterialType::Blur, info.path / "shader/standard_m.vert", info.path / "shader/blur.frag");
-  LoadShader(MaterialType::BrightPass, info.path / "shader/standard_m.vert", info.path / "shader/bright_pass.frag");
-  LoadShader(MaterialType::GammaCorrect, info.path / "shader/standard_m.vert", info.path / "shader/gamma_correction.frag");
-  LoadShader(MaterialType::Lit, info.path / "shader/lit.vert", info.path / "shader/lit.frag");
-  LoadShader(MaterialType::Lit, info.path / "shader/lit_skinned.vert", info.path / "shader/lit.frag");
-  LoadShader(MaterialType::Skybox, info.path / "shader/skybox.vert", info.path / "shader/skybox.frag");
-  LoadShader(MaterialType::Unlit, info.path / "shader/unlit.vert", info.path / "shader/unlit.frag");
+  LoadCompute(info.path / "shader/brdf_lut.comp", "BRDF_LUT");
+  LoadCompute(info.path / "shader/cubemap_equirect.comp", "CubemapEquirect");
+  LoadCompute(info.path / "shader/equirect_cubemap.comp", "EquirectCubemap");
+  LoadCompute(info.path / "shader/irradiance.comp", "IrradianceMap");
+  LoadCompute(info.path / "shader/prefilter.comp", "PrefilterMap");
+  LoadShader(info.path / "shader/lit.vert", info.path / "shader/lit.frag", "Lit", MaterialType::Lit);
+  LoadShader(info.path / "shader/lit_skinned.vert", info.path / "shader/lit.frag", "LitSkinned", MaterialType::LitSkinned);
+  LoadShader(info.path / "shader/unlit.vert", info.path / "shader/unlit.frag", "Unlit", MaterialType::Unlit);
+  LoadShader(info.path / "shader/skybox.vert", info.path / "shader/skybox.frag", "Skybox");
+  LoadShader(info.path / "shader/standard_m.vert", info.path / "shader/bloom.frag", "Bloom");
+  LoadShader(info.path / "shader/standard_m.vert", info.path / "shader/blur.frag", "Blur");
+  LoadShader(info.path / "shader/standard_m.vert", info.path / "shader/bright_pass.frag", "BrightPass");
+  LoadShader(info.path / "shader/standard_m.vert", info.path / "shader/gamma_correction.frag", "GammaCorrect");
 }
 auto Editor::UpdateIO() -> void {
   static auto stateOld = EditorState::Normal;

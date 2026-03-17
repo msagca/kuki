@@ -62,12 +62,6 @@ auto ComponentCloner::operator()(const SkyboxHandle *other) -> void {
   auto skyboxHandle = entityManager.AddComponent<SkyboxHandle>(entityId);
   *skyboxHandle = *other;
 }
-auto ComponentCloner::operator()(const TextureHandle *other) -> void {
-  if (!other)
-    return;
-  auto textureHandle = entityManager.AddComponent<TextureHandle>(entityId);
-  *textureHandle = *other;
-}
 auto ComponentCloner::operator()(const Transform *other) -> void {
   if (!other)
     return;

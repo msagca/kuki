@@ -1,5 +1,4 @@
 #pragma once
-#include <bone_data.hpp>
 #include <camera.hpp>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <kuki_engine_export.h>

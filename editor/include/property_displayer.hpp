@@ -24,7 +24,6 @@ public:
   auto operator()(kuki::MaterialHandle *) -> void;
   auto operator()(kuki::MeshHandle *) -> void;
   auto operator()(kuki::SkyboxHandle *) -> void;
-  auto operator()(kuki::TextureHandle *) -> void;
   auto operator()(kuki::Transform *) -> void;
   auto operator()(std::monostate) -> void;
 private:

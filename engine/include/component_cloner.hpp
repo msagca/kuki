@@ -15,7 +15,6 @@ public:
   auto operator()(const MaterialHandle *) -> void;
   auto operator()(const MeshHandle *) -> void;
   auto operator()(const SkyboxHandle *) -> void;
-  auto operator()(const TextureHandle *) -> void;
   auto operator()(const Transform *) -> void;
   auto operator()(std::monostate) -> void;
 private:

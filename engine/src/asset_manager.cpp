@@ -26,23 +26,11 @@ auto AssetManager::GetName(const AssetID id) const -> std::string {
 auto AssetManager::GetPath(const AssetID id) const -> std::filesystem::path {
   return assetDb.GetPath(id);
 }
-auto AssetManager::Instantiate(const AssetID id, Scene *scene) -> EntityID {
-  if (!scene)
-    return EntityID::Invalid;
+auto AssetManager::Instantiate(const AssetID id, Scene &scene) -> EntityID {
   const auto prefabId = CreatePrefab(id);
   if (!prefabId)
     return EntityID::Invalid;
-  return scene->CopyEntityFrom(prefabManager, prefabId);
-}
-auto AssetManager::Load(const std::filesystem::path &path) -> AssetID {
-  const auto id = Register(path);
-  Load(id);
-  return id;
-}
-auto AssetManager::LoadAsync(const std::filesystem::path &path) -> AssetID {
-  const auto id = Register(path);
-  LoadAsync(id);
-  return id;
+  return scene.CopyEntityFrom(prefabManager, prefabId);
 }
 auto AssetManager::Unload(const AssetID id) -> bool {
   // TODO: release GPU resources if applicable
@@ -97,26 +85,25 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const SceneAsset &sce
   if (nodeIndex >= sceneAsset.nodes.size())
     return EntityID::Invalid;
   const auto &node = sceneAsset.nodes[nodeIndex];
-  const auto nodeId = prefabManager.Create(node.name);
-  auto transform = prefabManager.AddComponent<Transform>(nodeId);
+  if (prefabManager.IsEntity(node.name))
+    return prefabManager.GetID(node.name);
+  const auto prefabId = prefabManager.Create(node.name);
+  auto transform = prefabManager.AddComponent<Transform>(prefabId);
   transform->world = node.transform;
-  const auto AddComponentHandles = [this, &sceneAsset, &assetId](const EntityID nodeId, const int meshIndex) {
+  const auto AddComponentHandles = [&](const EntityID nodeId, const int meshIndex) {
     auto meshHandle = prefabManager.AddComponent<MeshHandle>(nodeId);
-    meshHandle->assetId = assetId;
-    meshHandle->arrayIndex = meshIndex;
-    const auto materialIndex = sceneAsset.meshes[meshIndex].material;
+    meshHandle->sceneAssetId = assetId;
+    meshHandle->meshIndex = meshIndex;
+    const auto &materialIndex = sceneAsset.meshes[meshIndex].material;
     if (materialIndex < 0 || materialIndex >= sceneAsset.materials.size())
       return;
     auto materialHandle = prefabManager.AddComponent<MaterialHandle>(nodeId);
-    materialHandle->assetId = assetId;
-    materialHandle->arrayIndex = materialIndex;
+    materialHandle->sceneAssetId = assetId;
+    materialHandle->materialIndex = materialIndex;
     const auto &material = sceneAsset.materials[materialIndex];
     for (auto i = 0; i < material.textures.size(); ++i) {
-      const auto textureIndex = material.textures[i];
-      materialHandle->textureHandles.emplace_back();
-      auto &textureHandle = materialHandle->textureHandles.back();
-      textureHandle.assetId = assetId;
-      textureHandle.arrayIndex = textureIndex;
+      const auto &textureIndex = material.textures[i];
+      materialHandle->textureIndices.push_back(textureIndex);
     }
   };
   if (node.meshes.size() > 1) // create a child entity for each mesh
@@ -124,20 +111,20 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const SceneAsset &sce
       const auto childId = prefabManager.Create();
       auto childTransform = prefabManager.AddComponent<Transform>(childId);
       childTransform->world = node.transform;
-      prefabManager.AddChild(nodeId, childId);
-      const auto meshIndex = node.meshes[i];
+      prefabManager.AddChild(prefabId, childId);
+      const auto &meshIndex = node.meshes[i];
       AddComponentHandles(childId, meshIndex);
     }
   else if (node.meshes.size() == 1) { // attach mesh and material components to this node
-    const auto meshIndex = node.meshes[0];
-    AddComponentHandles(nodeId, meshIndex);
+    const auto &meshIndex = node.meshes[0];
+    AddComponentHandles(prefabId, meshIndex);
   }
   for (auto i = 0; i < node.children.size(); ++i) {
-    const auto childIndex = node.children[i];
-    const auto childId = CreateNodePrefab(assetId, sceneAsset, childIndex, nodeId);
-    prefabManager.AddChild(nodeId, childId);
+    const auto &childIndex = node.children[i];
+    const auto childId = CreateNodePrefab(assetId, sceneAsset, childIndex, prefabId);
+    prefabManager.AddChild(prefabId, childId);
   }
-  return nodeId;
+  return prefabId;
 }
 auto AssetManager::CreatePrefab(const AssetID assetId) -> EntityID {
   if (auto it = idToAsset.find(assetId); it != idToAsset.end()) {
@@ -166,60 +153,12 @@ auto AssetManager::CreatePrefab(const AssetID assetId) -> EntityID {
   }
   return EntityID::Invalid;
 }
-auto AssetManager::Load(const AssetID id) -> bool {
-  const auto status = assetDb.GetStatus(id);
-  if (status == AssetStatus::Unregistered || status == AssetStatus::Missing)
-    return false;
-  if (status != AssetStatus::Loaded) {
-    auto asset = LoadBase(id);
-    Load(std::move(asset));
-  }
-  return true;
-}
 auto AssetManager::Load(std::unique_ptr<Asset> asset) -> void {
-  const auto type = asset->GetTypeIndex();
-  const auto id = asset->GetID();
-  typeIndexToAssetSet[type].insert(id);
+  const auto typeIndex = asset->GetTypeIndex();
+  const auto &id = asset->id;
+  typeIndexToAssetSet[typeIndex].insert(id);
   idToAsset.insert_or_assign(id, std::move(asset));
   assetDb.SetStatus(id, AssetStatus::Loaded);
-}
-auto AssetManager::LoadAsync(const AssetID id) -> bool {
-  const auto status = assetDb.GetStatus(id);
-  if (status == AssetStatus::Unregistered || status == AssetStatus::Missing)
-    return false;
-  if (status != AssetStatus::Loaded)
-    if (auto it = idToFuture.find(id); it == idToFuture.end()) {
-      auto future = LoadAsyncBase(id);
-      if (future.valid())
-        idToFuture.emplace(id, std::move(future));
-    }
-  return true;
-}
-auto AssetManager::LoadAsyncBase(const AssetID id) -> std::future<std::unique_ptr<Asset>> {
-  const auto type = assetDb.GetType(id);
-  switch (type) {
-  case AssetType::Scene:
-    return LoadAsync<SceneAsset>(id);
-  case AssetType::Shader:
-    return LoadAsync<ShaderAsset>(id);
-  case AssetType::Skybox:
-    return LoadAsync<SkyboxAsset>(id);
-  default:
-    return {};
-  }
-}
-auto AssetManager::LoadBase(const AssetID id) -> std::unique_ptr<Asset> {
-  const auto type = assetDb.GetType(id);
-  switch (type) {
-  case AssetType::Scene:
-    return Load<SceneAsset>(id);
-  case AssetType::Shader:
-    return Load<ShaderAsset>(id);
-  case AssetType::Skybox:
-    return Load<SkyboxAsset>(id);
-  default:
-    return nullptr;
-  }
 }
 auto AssetManager::LoadMaterial(const aiMaterial &aiMaterial, SceneAsset &scene, const std::filesystem::path &path) -> int {
   const auto index = scene.materials.size();
@@ -337,11 +276,11 @@ auto AssetManager::LoadNode(const aiNode &aiNode, const aiScene &aiScene, SceneA
   }
   return index;
 }
-auto AssetManager::LoadTexture(const aiMaterial &aiMaterial, const aiTextureType aiTextureType, MaterialAsset &material, SceneAsset &scene, const std::filesystem::path &path) -> void {
+auto AssetManager::LoadTexture(const aiMaterial &aiMaterial, const aiTextureType aiTextureType, SceneMaterial &material, SceneAsset &scene, const std::filesystem::path &path) -> void {
   const auto count = aiMaterial.GetTextureCount(aiTextureType);
   for (auto i = 0; i < count; ++i) {
     const auto index = scene.textures.size();
-    TextureAsset texture{};
+    SceneTexture texture{};
     texture.content = AssimpTexToContent(aiTextureType);
     aiString texPath;
     aiMaterial.GetTexture(aiTextureType, i, &texPath);
@@ -355,9 +294,6 @@ auto AssetManager::LoadTexture(const aiMaterial &aiMaterial, const aiTextureType
       scene.textures.push_back(texture);
     }
   }
-}
-auto AssetManager::Register(const std::filesystem::path &path) -> AssetID {
-  return assetDb.Register(path);
 }
 auto AssetManager::Unregister(const AssetID id) -> bool {
   assetDb.Unregister(id);

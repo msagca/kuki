@@ -68,11 +68,24 @@ auto RenderGraph::EndPass() -> RenderGraph & {
 auto RenderGraph::Execute(Renderer &renderer) -> void {
   if (dirty)
     Compile();
+  renderer.Reset();
   ForEachPass([&](const PassID id, const PassFunc &func) {
     auto inputs = GetInputs(id);
     auto outputs = GetOutputs(id);
     func(renderer, inputs, outputs);
   });
+}
+auto RenderGraph::GetFinalOutput() -> std::string {
+  if (graphFlat.empty())
+    return "";
+  const auto index = graphFlat.size() - 1;
+  const auto &id = graphFlat[index];
+  if (auto it = idToOutputs.find(id); it != idToOutputs.end()) {
+    const auto &outputs = it->second;
+    if (!outputs.empty())
+      return outputs[0].name;
+  }
+  return "";
 }
 auto RenderGraph::GetInputs(const PassID id) -> std::span<std::string> {
   if (auto it = idToInputs.find(id); it != idToInputs.end())

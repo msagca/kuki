@@ -6,10 +6,10 @@ namespace kuki {
 class KUKI_ENGINE_API System {
 public:
   virtual ~System() = default;
-  virtual auto LateUpdate(float) -> void {};
-  virtual auto Shutdown() -> void {};
+  virtual auto Awake() -> void {};
   virtual auto Start() -> void {};
-  virtual auto Update(float) -> void {};
+  virtual auto Update(const float) -> void {};
+  virtual auto Shutdown() -> void {};
 protected:
   template <typename T>
   explicit System(std::in_place_type_t<T>);

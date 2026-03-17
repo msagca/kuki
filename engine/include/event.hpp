@@ -8,7 +8,7 @@ class Event {
 public:
   using Handler = std::function<void(T...)>;
   auto Emit(T...) -> void;
-  auto Subscribe(Handler) -> size_t;
+  auto Subscribe(auto &&) -> size_t;
   auto Unsubscribe(size_t) -> void;
 private:
   size_t nextId{0};
@@ -29,11 +29,11 @@ auto Event<T...>::Emit(T... args) -> void {
       handler(args...);
 }
 template <typename... T>
-auto Event<T...>::Subscribe(Handler handler) -> size_t {
+auto Event<T...>::Subscribe(auto &&handler) -> size_t {
   // TODO: return an object that unsubscribes automatically when destroyed
   std::lock_guard lock(mutex);
   const auto id = nextId++;
-  handlers.emplace(id, std::move(handler));
+  handlers.emplace(id, std::forward<decltype(handler)>(handler));
   return id;
 }
 template <typename... T>

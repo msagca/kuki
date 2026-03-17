@@ -5,7 +5,6 @@
 #include <assimp/material.h>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
-#include <compute_type.hpp>
 #include <concepts.hpp>
 #include <entity_manager.hpp>
 #include <filesystem>
@@ -21,7 +20,6 @@
 #include <skybox_asset.hpp>
 #include <skybox_handle.hpp>
 #include <stb_image.h>
-#include <texture_asset.hpp>
 #include <texture_content.hpp>
 #include <tinyexr.h>
 #include <unordered_set>
@@ -32,20 +30,23 @@ public:
   auto Get(this auto &self, const AssetID) -> ConstCorrectPointer<decltype(self), Asset>;
   auto GetName(const AssetID) const -> std::string;
   auto GetPath(const AssetID) const -> std::filesystem::path;
-  auto Instantiate(const AssetID, Scene *) -> EntityID;
-  auto Load(const std::filesystem::path &) -> AssetID;
-  auto LoadAsync(const std::filesystem::path &) -> AssetID;
+  auto Instantiate(const AssetID, Scene &) -> EntityID;
   auto Unload(const AssetID) -> bool;
   auto Update() -> void;
-  // templates
   auto ForEach(this auto &, const AssetType, auto &&) -> void;
   auto ForEachPerType(this auto &, auto &&) -> void;
   auto ForEachPrefab(this auto &, auto &&) -> void;
+  auto ForEachPrefabChild(this auto &, const EntityID, auto &&) -> void;
+  auto ForEachPrefabComponent(this auto &, const EntityID, auto &&) -> void;
   auto ForEachType(this auto &, auto &&) -> void;
   template <IsAsset... T>
   auto ForEach(this auto &, auto &&) -> void;
   template <IsAsset T>
   auto Get(this auto &self, const AssetID) -> ConstCorrectPointer<decltype(self), T>;
+  template <IsAsset T>
+  auto Load(const std::filesystem::path &, std::string = "") -> AssetID;
+  template <IsAsset T>
+  auto LoadAsync(const std::filesystem::path &, std::string = "") -> AssetID;
 private:
   AssetDatabase assetDb;
   EntityManager prefabManager;
@@ -54,30 +55,26 @@ private:
   std::unordered_map<AssetID, std::future<std::unique_ptr<Asset>>> idToFuture;
   std::unordered_map<AssetID, std::unique_ptr<Asset>> idToAsset;
   std::unordered_map<std::type_index, std::unordered_set<AssetID>> typeIndexToAssetSet;
-  auto AssimpToGlmMat4(const aiMatrix4x4 &) -> glm::mat4;
-  auto AssimpTexToContent(const aiTextureType) -> TextureContent;
+  static auto AssimpToGlmMat4(const aiMatrix4x4 &) -> glm::mat4;
+  static auto AssimpTexToContent(const aiTextureType) -> TextureContent;
   auto CreateNodePrefab(const AssetID, const SceneAsset &, const int = 0, const EntityID = EntityID::Invalid) -> EntityID;
   auto CreatePrefab(const AssetID) -> EntityID;
-  auto Load(const AssetID) -> bool;
   auto Load(std::unique_ptr<Asset>) -> void;
-  auto LoadAsync(const AssetID) -> bool;
-  auto LoadAsyncBase(const AssetID) -> std::future<std::unique_ptr<Asset>>;
-  auto LoadBase(const AssetID) -> std::unique_ptr<Asset>;
   auto LoadMaterial(const aiMaterial &, SceneAsset &, const std::filesystem::path & = {}) -> int;
   auto LoadMesh(const aiMesh &, SceneAsset &) -> int;
   auto LoadNode(const aiNode &, const aiScene &, SceneAsset &, const std::filesystem::path & = {}, int = -1) -> int;
-  auto LoadTexture(const aiMaterial &, const aiTextureType, MaterialAsset &, SceneAsset &, const std::filesystem::path &) -> void;
-  auto Register(const std::filesystem::path &) -> AssetID;
+  auto LoadTexture(const aiMaterial &, const aiTextureType, SceneMaterial &, SceneAsset &, const std::filesystem::path &) -> void;
   auto Unregister(const AssetID) -> bool;
-  // templates
   template <IsAsset T>
   auto CreatePrefab(const AssetID) -> EntityID;
   template <IsAsset T>
-  auto Load(const AssetID) -> std::unique_ptr<Asset>;
+  auto Load(const AssetID, std::string = "") -> std::unique_ptr<Asset>;
   template <IsAsset T>
-  auto Load(const AssetID, const std::filesystem::path &) -> std::unique_ptr<Asset>;
+  auto Load(const AssetID, const std::filesystem::path &, std::string = "") -> std::unique_ptr<Asset>;
   template <IsAsset T>
-  auto LoadAsync(const AssetID) -> std::future<std::unique_ptr<Asset>>;
+  auto LoadAsync(const AssetID, std::string = "") -> std::future<std::unique_ptr<Asset>>;
+  template <IsAsset T>
+  auto Register(const std::filesystem::path &, std::string = "") -> AssetID;
 };
 auto AssetManager::ForEach(this auto &self, const AssetType type, auto &&func) -> void {
   const auto typeIndex = Asset::GetTypeIndex(type);
@@ -98,6 +95,12 @@ auto AssetManager::ForEachPerType(this auto &self, auto &&func) -> void {
 }
 auto AssetManager::ForEachPrefab(this auto &self, auto &&func) -> void {
   self.prefabManager.ForEach(std::forward<decltype(func)>(func));
+}
+auto AssetManager::ForEachPrefabChild(this auto &self, const EntityID id, auto &&func) -> void {
+  self.prefabManager.ForEachChild(id, std::forward<decltype(func)>(func));
+}
+auto AssetManager::ForEachPrefabComponent(this auto &self, const EntityID id, auto &&func) -> void {
+  self.prefabManager.ForEachComponent(id, std::forward<decltype(func)>(func));
 }
 auto AssetManager::ForEachType(this auto &self, auto &&func) -> void {
   for (const auto &[typeIndex, _] : self.typeIndexToAssetSet) {
@@ -135,28 +138,60 @@ auto AssetManager::Get(this auto &self, const AssetID id) -> ConstCorrectPointer
   return nullptr;
 }
 template <IsAsset T>
+auto AssetManager::Load(const std::filesystem::path &path, std::string name) -> AssetID {
+  const auto id = Register<T>(path, name);
+  Load<T>(id, std::move(name));
+  return id;
+}
+template <IsAsset T>
+auto AssetManager::LoadAsync(const std::filesystem::path &path, std::string name) -> AssetID {
+  const auto id = Register<T>(path, name);
+  LoadAsync<T>(id, std::move(name));
+  return id;
+}
+template <IsAsset T>
 auto AssetManager::CreatePrefab(const AssetID) -> EntityID {
-  return {};
+  return EntityID::Invalid;
 }
 template <IsAsset T>
-auto AssetManager::Load(const AssetID id) -> std::unique_ptr<Asset> {
-  auto path = GetPath(id);
-  if (path.empty())
+auto AssetManager::Load(const AssetID id, std::string name) -> std::unique_ptr<Asset> {
+  const auto status = assetDb.GetStatus(id);
+  if (status == AssetStatus::Unregistered || status == AssetStatus::Missing)
     return nullptr;
-  return Load<T>(id, path);
-}
-template <IsAsset T>
-auto AssetManager::Load(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
+  if (status != AssetStatus::Loaded) {
+    auto path = GetPath(id);
+    if (path.empty())
+      return nullptr;
+    auto asset = Load<T>(id, path, std::move(name));
+    Load(std::move(asset));
+  }
   return nullptr;
 }
 template <IsAsset T>
-auto AssetManager::LoadAsync(const AssetID id) -> std::future<std::unique_ptr<Asset>> {
-  auto path = GetPath(id);
-  if (path.empty())
+auto AssetManager::Load(const AssetID, const std::filesystem::path &, std::string) -> std::unique_ptr<Asset> {
+  return nullptr;
+}
+template <IsAsset T>
+auto AssetManager::LoadAsync(const AssetID id, std::string name) -> std::future<std::unique_ptr<Asset>> {
+  const auto status = assetDb.GetStatus(id);
+  if (status == AssetStatus::Unregistered || status == AssetStatus::Missing)
     return {};
-  return std::async(std::launch::async, [=, this]() {
-    return Load<T>(id, path);
-  });
+  if (status != AssetStatus::Loaded)
+    if (auto it = idToFuture.find(id); it == idToFuture.end()) {
+      auto path = GetPath(id);
+      if (path.empty())
+        return {};
+      auto future = std::async(std::launch::async, [=, this]() {
+        return Load<T>(id, path, std::move(name));
+      });
+      if (future.valid())
+        idToFuture.emplace(id, std::move(future));
+    }
+  return {};
+}
+template <IsAsset T>
+auto AssetManager::Register(const std::filesystem::path &path, std::string name) -> AssetID {
+  return assetDb.Register<T>(path, std::move(name));
 }
 #include <asset_manager.inl>
 } // namespace kuki

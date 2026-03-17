@@ -24,7 +24,6 @@ const std::unordered_map<std::type_index, ComponentType> Component::indexToType 
   {typeid(MaterialHandle), ComponentType::MaterialHandle},
   {typeid(MeshHandle), ComponentType::MeshHandle},
   {typeid(SkyboxHandle), ComponentType::SkyboxHandle},
-  {typeid(TextureHandle), ComponentType::TextureHandle},
   {typeid(Transform), ComponentType::Transform}};
 const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex = {
   {ComponentType::BoneData, typeid(BoneData)},
@@ -37,7 +36,6 @@ const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex 
   {ComponentType::MaterialHandle, typeid(MaterialHandle)},
   {ComponentType::MeshHandle, typeid(MeshHandle)},
   {ComponentType::SkyboxHandle, typeid(SkyboxHandle)},
-  {ComponentType::TextureHandle, typeid(TextureHandle)},
   {ComponentType::Transform, typeid(Transform)}};
 const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::BoneData, "BoneData"},
@@ -50,12 +48,11 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::MaterialHandle, "MaterialHandle"},
   {ComponentType::MeshHandle, "MeshHandle"},
   {ComponentType::SkyboxHandle, "SkyboxHandle"},
-  {ComponentType::TextureHandle, "TextureHandle"},
   {ComponentType::Transform, "Transform"}};
 auto Component::GetBit(const std::type_index &typeIndex) -> size_t {
   if (auto it = indexToType.find(typeIndex); it != indexToType.end())
     return static_cast<size_t>(it->second);
-  return indexToType.size();
+  return static_cast<size_t>(ComponentType::Unknown);
 }
 auto Component::GetType(const std::type_index &typeIndex) -> ComponentType {
   if (auto it = indexToType.find(typeIndex); it != indexToType.end())

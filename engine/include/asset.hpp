@@ -10,33 +10,34 @@ namespace kuki {
 class KUKI_ENGINE_API Asset {
 public:
   virtual ~Asset() = default;
-  auto GetID() const -> AssetID;
-  auto GetType() const -> AssetType;
-  auto GetTypeIndex() const -> std::type_index;
-  auto GetTypeName() const -> std::string;
+  const AssetID id;
   static auto GetMask(const AssetType) -> AssetMask;
   static auto GetType(const std::type_index) -> AssetType;
   static auto GetTypeIndex(const AssetType) -> std::type_index;
   static auto GetTypeName(const AssetType) -> std::string;
-  // templates
   static auto ForEachType(auto &&) -> void;
+  auto GetName() const -> const std::string &;
+  auto GetType() const -> AssetType;
+  auto GetTypeIndex() const -> std::type_index;
+  auto GetTypeName() const -> std::string;
+  auto Rename(std::string = "") -> void;
   template <IsAsset T>
   auto As(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
   template <IsAsset T>
   auto Is() const -> bool;
 protected:
   template <typename T>
-  explicit Asset(std::in_place_type_t<T>, const AssetID = AssetID::Invalid);
+  explicit Asset(std::in_place_type_t<T>, AssetID = AssetID::Invalid, std::string = "");
+  std::string name;
 private:
-  const AssetID id;
+  std::type_index typeIndex;
   static const std::unordered_map<AssetType, std::string> typeToName;
   static const std::unordered_map<AssetType, std::type_index> typeToTypeIndex;
   static const std::unordered_map<std::type_index, AssetType> typeIndexToType;
-  std::type_index typeIndex;
 };
 template <typename T>
-Asset::Asset(std::in_place_type_t<T>, const AssetID id)
-  : typeIndex(typeid(T)), id(id) {}
+Asset::Asset(std::in_place_type_t<T>, AssetID id, std::string name)
+  : typeIndex(typeid(T)), id(id), name(std::move(name)) {}
 auto Asset::ForEachType(auto &&func) -> void {
   for (const auto &[type, name] : typeToName)
     func(type, name);

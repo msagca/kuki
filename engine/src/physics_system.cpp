@@ -6,10 +6,11 @@ PhysicsSystem::PhysicsSystem()
 PhysicsSystem::~PhysicsSystem() {
   Shutdown();
 }
-void PhysicsSystem::Start() {
+auto PhysicsSystem::Awake() -> void {}
+auto PhysicsSystem::Start() -> void {
   timeAccumulated = 0.f;
 }
-void PhysicsSystem::Update(float deltaTime) {
+auto PhysicsSystem::Update(const float deltaTime) -> void {
   timeAccumulated += deltaTime;
   while (timeAccumulated > simulationTimestep) {
     // run the physics simulation
@@ -18,6 +19,5 @@ void PhysicsSystem::Update(float deltaTime) {
   const auto alpha = timeAccumulated / simulationTimestep;
   // TODO: use this value to update the state via linear interpolation to fix visual stuttering
 }
-void PhysicsSystem::Shutdown() {
-}
+auto PhysicsSystem::Shutdown() -> void {}
 } // namespace kuki

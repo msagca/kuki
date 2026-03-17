@@ -26,31 +26,35 @@ Application::Application(ApplicationDescription desc)
 Application::~Application() {
   Shutdown();
 }
+auto Application::Awake() -> void {}
+auto Application::Start() -> void {}
+auto Application::Update(const float) -> void {}
+auto Application::Shutdown() -> void {}
 auto Application::Run() -> void {
-  Init();
+  // NOTE: Pre/Late* functions are not exposed to child classes
+  PreAwake();
+  Awake();
+  PreStart();
   Start();
   while (Status()) {
-    Update();
+    PreUpdate();
+    Update(deltaTime);
     LateUpdate();
   }
   Shutdown();
+  LateShutdown();
 }
-auto Application::Init() -> void {
-  InitGL();
-  auto renderingSystem = CreateSystem<RenderingSystem>(sceneManager);
-  sceneManager.OnSceneActivated.Subscribe([this, &renderingSystem](const Scene &scene) { renderingSystem->ActivateScene(scene); });
-  sceneManager.OnSceneDeactivated.Subscribe([this, &renderingSystem](const Scene &scene) { renderingSystem->DeactivateScene(scene); });
-  sceneManager.OnSceneLoaded.Subscribe([this, &renderingSystem](const Scene &scene) { renderingSystem->LoadScene(scene); });
-  sceneManager.OnSceneUnloaded.Subscribe([this, &renderingSystem](const Scene &scene) { renderingSystem->UnloadScene(scene); });
+auto Application::PreAwake() -> void {
+  CreateWindow();
+  CreateSystem<RenderingSystem>(sceneManager, assetManager);
+  for (auto &[_, system] : typeIndexToSystem)
+    system->Awake();
 }
-auto Application::Start() -> void {
+auto Application::PreStart() -> void {
   for (auto &[_, system] : typeIndexToSystem)
     system->Start();
 };
-auto Application::Status() -> bool {
-  return !glfwWindowShouldClose(window);
-};
-auto Application::Update() -> void {
+auto Application::PreUpdate() -> void {
   const auto timeNow = std::chrono::high_resolution_clock::now();
   static auto timeLast = timeNow;
   deltaTime = std::chrono::duration<float>(timeNow - timeLast).count();
@@ -60,18 +64,76 @@ auto Application::Update() -> void {
     system->Update(deltaTime);
 };
 auto Application::LateUpdate() -> void {
-  for (auto &[_, system] : typeIndexToSystem)
-    system->LateUpdate(deltaTime);
   glfwSwapBuffers(window);
   glfwPollEvents();
 }
-auto Application::Shutdown() -> void {
+auto Application::LateShutdown() -> void {
   for (auto &[_, system] : typeIndexToSystem)
     system->Shutdown();
   typeIndexToSystem.clear();
   glfwDestroyWindow(window);
   glfwTerminate();
 };
+auto Application::Status() -> bool {
+  return !glfwWindowShouldClose(window);
+};
+auto Application::CreateWindow() -> void {
+  static constexpr auto GL_MAJOR = 4;
+  static constexpr auto GL_MINOR = 6;
+  glfwInit();
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GL_MAJOR);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GL_MINOR);
+  glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+  glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  glfwWindowHint(GLFW_SAMPLES, 4);
+  window = glfwCreateWindow(settings.width, settings.height, desc.name.c_str(), nullptr, nullptr);
+  if (!window) {
+    spdlog::error("Failed to create GLFW window.");
+    glfwTerminate();
+    return;
+  }
+  glfwMakeContextCurrent(window);
+  if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+    spdlog::error("Failed to initialize GLAD.");
+    return;
+  }
+  auto version = reinterpret_cast<const char *>(glGetString(GL_VERSION));
+  spdlog::info("OpenGL version: {}", version);
+  int major, minor;
+  glGetIntegerv(GL_MAJOR_VERSION, &major);
+  glGetIntegerv(GL_MINOR_VERSION, &minor);
+  if (major < GL_MAJOR || (major == GL_MAJOR && minor < GL_MINOR)) {
+    spdlog::error("OpenGL {}.{} or higher is required.", GL_MAJOR, GL_MINOR);
+    return;
+  }
+  SetWindowIcon();
+  glfwSwapInterval(0);
+  glfwSetWindowUserPointer(window, this);
+  glfwSetCursorPosCallback(window, CursorPosCallback);
+  glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+  glfwSetKeyCallback(window, KeyCallback);
+  glfwSetCharCallback(window, CharCallback);
+  glfwSetMouseButtonCallback(window, MouseButtonCallback);
+  glfwSetWindowCloseCallback(window, WindowCloseCallback);
+  glViewport(0, 0, settings.width, settings.height);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glCullFace(GL_BACK);
+  glEnable(GL_BLEND);
+  glEnable(GL_CULL_FACE);
+  glEnable(GL_DEBUG_OUTPUT);
+  glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+  glEnable(GL_DEPTH_TEST);
+  glEnable(GL_MULTISAMPLE);
+  glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+  glFrontFace(GL_CCW);
+  glDebugMessageCallback(DebugMessageCallback, nullptr);
+  glfwMaximizeWindow(window);
+}
+auto Application::ActivateScene(const std::string &name) -> bool {
+  return sceneManager.Activate(name);
+}
 auto Application::AddChildEntity(const EntityID parent, const EntityID child) -> bool {
   if (auto scene = GetActiveScene(); scene)
     return scene->AddChildEntity(parent, child);
@@ -97,8 +159,8 @@ auto Application::DeleteEntity(const EntityID id) -> void {
   if (auto scene = GetActiveScene(); scene)
     scene->DeleteEntity(id);
 }
-auto Application::DeleteScene(const SceneID id) -> bool {
-  return sceneManager.Delete(id);
+auto Application::DeleteScene(const std::string &name) -> bool {
+  return sceneManager.Delete(name);
 }
 auto Application::DisableButtons() -> void {
   inputManager.DisableButtons();
@@ -199,7 +261,7 @@ auto Application::GetWASDKeys() const -> glm::vec2 {
 };
 auto Application::InstantiateAsset(const AssetID id) -> EntityID {
   if (auto scene = GetActiveScene(); scene)
-    return assetManager.Instantiate(id, scene);
+    return assetManager.Instantiate(id, *scene);
   return EntityID::Invalid;
 }
 auto Application::IsEntity(const EntityID id) const -> bool {
@@ -207,11 +269,8 @@ auto Application::IsEntity(const EntityID id) const -> bool {
     return scene->IsEntity(id);
   return false;
 }
-auto Application::LoadAsset(const std::filesystem::path &path) -> AssetID {
-  return assetManager.Load(path);
-}
-auto Application::LoadAssetAsync(const std::filesystem::path &path) -> AssetID {
-  return assetManager.LoadAsync(path);
+auto Application::LoadScene(const std::string &name) -> bool {
+  return sceneManager.Load(name);
 }
 auto Application::RegisterInputAction(std::string trigger, InputAction action) -> void {
   inputManager.RegisterAction(std::move(trigger), action);
@@ -237,60 +296,6 @@ auto Application::UnregisterInputAction(const std::string &trigger) -> void {
 }
 auto Application::UnregisterInputAction(int trigger, bool press) -> void {
   inputManager.UnregisterAction(trigger, press);
-}
-auto Application::InitGL() -> void {
-  static constexpr auto GL_MAJOR = 4;
-  static constexpr auto GL_MINOR = 6;
-  glfwInit();
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GL_MAJOR);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GL_MINOR);
-  glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
-  glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-  glfwWindowHint(GLFW_SAMPLES, 4);
-  window = glfwCreateWindow(settings.width, settings.height, desc.name.c_str(), nullptr, nullptr);
-  if (!window) {
-    spdlog::error("Failed to create GLFW window.");
-    glfwTerminate();
-    return;
-  }
-  glfwMakeContextCurrent(window);
-  if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    spdlog::error("Failed to initialize GLAD.");
-    return;
-  }
-  auto version = reinterpret_cast<const char *>(glGetString(GL_VERSION));
-  spdlog::info("OpenGL version: {}", version);
-  int major, minor;
-  glGetIntegerv(GL_MAJOR_VERSION, &major);
-  glGetIntegerv(GL_MINOR_VERSION, &minor);
-  if (major < GL_MAJOR || (major == GL_MAJOR && minor < GL_MINOR)) {
-    spdlog::error("OpenGL {}.{} or higher is required.", GL_MAJOR, GL_MINOR);
-    return;
-  }
-  SetWindowIcon();
-  glfwSwapInterval(0);
-  glfwSetWindowUserPointer(window, this);
-  glfwSetCursorPosCallback(window, CursorPosCallback);
-  glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-  glfwSetKeyCallback(window, KeyCallback);
-  glfwSetCharCallback(window, CharCallback);
-  glfwSetMouseButtonCallback(window, MouseButtonCallback);
-  glfwSetWindowCloseCallback(window, WindowCloseCallback);
-  glViewport(0, 0, settings.width, settings.height);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glCullFace(GL_BACK);
-  glEnable(GL_BLEND);
-  glEnable(GL_CULL_FACE);
-  glEnable(GL_DEBUG_OUTPUT);
-  glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-  glEnable(GL_DEPTH_TEST);
-  glEnable(GL_MULTISAMPLE);
-  glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-  glFrontFace(GL_CCW);
-  glDebugMessageCallback(DebugMessageCallback, nullptr);
-  glfwMaximizeWindow(window);
 }
 auto Application::GetExePath() -> std::filesystem::path {
   int length = wai_getExecutablePath(nullptr, 0, nullptr);

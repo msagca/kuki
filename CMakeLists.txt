@@ -29,10 +29,6 @@ include(GNUInstallDirs)
 option(${PROJECT_NAME_UPPER}_BUILD_TESTS "Build engine tests" ON)
 option(${PROJECT_NAME_UPPER}_BUILD_GAMES "Build game samples" ON)
 option(${PROJECT_NAME_UPPER}_ENABLE_LINTING "Enable linting" OFF)
-add_compile_options(
-  $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:MSVC>>:/O2>
-  $<$<AND:$<CONFIG:Release>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-O2>
-)
 # third party libraries
 ## assimp
 set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
@@ -181,7 +177,7 @@ cpack_add_component(
 cpack_add_component(
   KukiEditor
   DISPLAY_NAME "Kuki Editor"
-  DESCRIPTION "An editor to interface with the engine."
+  DESCRIPTION "An ImGui-based editor application."
   DEPENDS KukiEngine
   REQUIRED
 )

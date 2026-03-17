@@ -3,16 +3,24 @@
 #include <hash_utils.hpp>
 namespace kuki {
 enum class TargetFormat : uint8_t {
+  R8,
+  RG8,
+  RGB8,
   R16,
+  RG16,
   RGB16,
   RGB32,
+  RGBA8,
   RGBA16,
-  RGBA32
+  RGBA32,
+  SRGB8,
+  Unknown
 };
 enum class TargetType : uint8_t {
   Cubemap,
   Texture2D,
-  Texture2DMulti
+  Texture2DMulti,
+  Unknown
 };
 struct TargetDescription {
   TargetFormat format{TargetFormat::RGBA16};

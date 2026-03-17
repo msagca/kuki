@@ -77,7 +77,7 @@ auto EntityManager::CopyFrom(const EntityManager &other, const EntityID otherId)
   other.ForEachComponent(otherId, [&](const ComponentVariant component) {
     std::visit(cloner, component);
   });
-  other.ForEachChild(otherId, [this, &other, &id](const EntityID otherChildId) {
+  other.ForEachChild(otherId, [&](const EntityID otherChildId) {
     const auto childId = CopyFrom(other, otherChildId);
     AddChild(id, childId);
   });
@@ -136,6 +136,12 @@ auto EntityManager::GetComponent(const EntityID id, const ComponentType type) ->
     return GetComponent<Light>(id);
   case ComponentType::Transform:
     return GetComponent<Transform>(id);
+  case ComponentType::MaterialHandle:
+    return GetComponent<MaterialHandle>(id);
+  case ComponentType::MeshHandle:
+    return GetComponent<MeshHandle>(id);
+  case ComponentType::SkyboxHandle:
+    return GetComponent<SkyboxHandle>(id);
   default: // invalid type
     return std::monostate{};
   }
@@ -158,6 +164,12 @@ auto EntityManager::GetComponent(const EntityID id, const ComponentType type) co
     return {const_cast<Light *>(GetComponent<Light>(id))};
   case ComponentType::Transform:
     return {const_cast<Transform *>(GetComponent<Transform>(id))};
+  case ComponentType::MaterialHandle:
+    return {const_cast<MaterialHandle *>(GetComponent<MaterialHandle>(id))};
+  case ComponentType::MeshHandle:
+    return {const_cast<MeshHandle *>(GetComponent<MeshHandle>(id))};
+  case ComponentType::SkyboxHandle:
+    return {const_cast<SkyboxHandle *>(GetComponent<SkyboxHandle>(id))};
   default: // invalid type
     return std::monostate{};
   }
@@ -193,11 +205,9 @@ auto EntityManager::GetName(const EntityID id) const -> std::string {
   return "";
 }
 auto EntityManager::GetID(const std::string &name) const -> EntityID {
-  if (auto it = nameToId.find(name); it != nameToId.end()) {
-    auto ids = nameToId.equal_range(name);
-    if (auto it2 = ids.first; it2 != ids.second)
-      return it2->second;
-  }
+  auto ids = nameToId.equal_range(name);
+  if (auto it = ids.first; it != ids.second)
+    return it->second;
   return EntityID::Invalid;
 }
 auto EntityManager::GetParent(const EntityID id) const -> EntityID {
@@ -216,11 +226,11 @@ auto EntityManager::HasParent(const EntityID id) const -> bool {
 auto EntityManager::IsEntity(const EntityID id) const -> bool {
   return idToMask.find(id) != idToMask.end();
 }
-auto EntityManager::IsEntity(const std::string &name) const -> EntityID {
+auto EntityManager::IsEntity(const std::string &name) const -> bool {
   auto ids = nameToId.equal_range(name);
   if (auto it = ids.first; it != ids.second)
-    return it->second;
-  return EntityID::Invalid;
+    return true;
+  return false;
 }
 auto EntityManager::RemoveChild(const EntityID parent, const EntityID child) -> bool {
   auto it = idToChildren.find(parent);
