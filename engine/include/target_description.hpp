@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <hash_utils.hpp>
+#include <utility>
 namespace kuki {
 enum class TargetFormat : uint8_t {
   R8,

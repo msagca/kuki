@@ -27,11 +27,11 @@ public:
   // TODO: validate EntityID before performing the following tasks
   auto AddChild(const EntityID, const EntityID, bool = false) -> bool;
   auto AddComponent(const EntityID, const ComponentType) -> void;
+  auto Clear() -> void;
   auto CopyFrom(const EntityManager &, const EntityID) -> EntityID;
   auto CopyTo(const EntityID, EntityManager &) const -> EntityID;
   auto Create(std::string = "") -> EntityID;
   auto Delete(const EntityID) -> bool;
-  auto DeleteAll() -> void;
   auto GetComponent(const EntityID, const ComponentType) -> ComponentVariant;
   auto GetComponent(const EntityID, const ComponentType) const -> const ComponentVariant;
   auto GetComponentTypes(const EntityID) const -> std::vector<ComponentType>;

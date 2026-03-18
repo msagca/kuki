@@ -4,7 +4,6 @@
 #include <target_description.hpp>
 namespace kuki {
 struct KUKI_ENGINE_API GLRenderbuffer final : public RenderTarget {
-  GLRenderbuffer();
   unsigned int id{};
   TargetDescription desc{};
   explicit operator bool() const;

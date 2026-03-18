@@ -53,7 +53,7 @@ public:
   auto GetEntityCount() const -> size_t;
   auto GetEntityName(const EntityID) const -> std::string;
   auto GetFPS() const -> size_t;
-  auto GetInfo() const -> const ApplicationDescription &;
+  auto GetDescription() const -> const ApplicationDescription &;
   auto GetKey(int) const -> bool;
   auto GetKeyDown(int) const -> bool;
   auto GetKeyUp(int) const -> bool;

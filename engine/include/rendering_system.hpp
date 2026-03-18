@@ -18,17 +18,17 @@ public:
   auto Start() -> void override;
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
-  auto GetFinalTarget() -> RenderTarget *;
   auto GetFPS() const -> size_t;
-  auto GetTarget(const std::string &) -> RenderTarget *;
+  auto GetTarget(std::string = "") -> RenderTarget *;
   auto LoadCompute(ShaderAsset &) -> void;
   auto LoadPrimitive(const std::string &) -> void;
   auto LoadShader(ShaderAsset &, ShaderAsset &) -> void;
+  template <IsAsset T>
+  auto PreviewAsset(T &) -> RenderTarget *;
 private:
-  Renderer *activeRenderer;
+  Renderer *activeRenderer{};
   GLRenderer glRenderer;
   RenderGraphBuilder graphBuilder;
-  SceneManager &sceneManager;
   size_t fps{};
   std::unique_ptr<RenderGraph> renderGraph;
   static auto ApplyAntiAliasing(Renderer &, std::span<std::string>, std::span<TargetBinding>) -> void;
@@ -46,4 +46,6 @@ private:
   static auto DrawEntitiesInstanced(Renderer &, const GLMesh &, const GLMaterial &, const std::vector<MaterialFallback> &, const std::vector<glm::mat4> &) -> void;
   static auto DrawSkybox(Renderer &) -> void;
 };
+template <IsAsset T>
+auto RenderingSystem::PreviewAsset(T &) -> RenderTarget * {}
 } // namespace kuki

@@ -24,7 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          submodules: "recursive"
+          submodules: recursive
+          lfs: true
       - name: Install required packages
         if: runner.os == 'Linux'
         run: |

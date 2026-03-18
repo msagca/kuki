@@ -21,7 +21,7 @@
 namespace kuki {
 Application::Application(ApplicationDescription desc)
   : desc(std::move(desc)) {
-  desc.path = GetExePath();
+  this->desc.path = GetExePath();
 }
 Application::~Application() {
   Shutdown();
@@ -205,6 +205,9 @@ auto Application::GetButtonDown(int button) const -> bool {
 auto Application::GetButtonUp(int button) const -> bool {
   return inputManager.IsReleased(button);
 }
+auto Application::GetDescription() const -> const ApplicationDescription & {
+  return desc;
+}
 auto Application::GetEntityComponent(const EntityID id, const ComponentType type) -> std::optional<ComponentVariant> {
   if (auto scene = GetActiveScene(); scene)
     return scene->GetEntityComponent(id, type);
@@ -229,9 +232,6 @@ auto Application::GetFPS() const -> size_t {
   if (auto renderingSystem = GetSystem<RenderingSystem>(); renderingSystem)
     return renderingSystem->GetFPS();
   return 0;
-}
-auto Application::GetInfo() const -> const ApplicationDescription & {
-  return desc;
 }
 auto Application::GetKey(int key) const -> bool {
   return inputManager.GetState(key);
@@ -304,6 +304,7 @@ auto Application::GetExePath() -> std::filesystem::path {
   return std::filesystem::path(path).parent_path();
 }
 auto Application::SetWindowIcon() -> void {
+  // TODO: add .ico support
   if (desc.iconPath.empty())
     return;
   int width, height, channels;

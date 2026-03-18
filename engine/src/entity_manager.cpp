@@ -69,6 +69,17 @@ auto EntityManager::AddComponent(const EntityID id, const ComponentType type) ->
     break;
   }
 }
+auto EntityManager::Clear() -> void {
+  idToChildren.clear();
+  idToMask.clear();
+  idToName.clear();
+  idToParent.clear();
+  maskToIdSet.clear();
+  nameToId.clear();
+  registeredTypes.clear();
+  rootEntities.clear();
+  typeIndexToManager.clear();
+}
 auto EntityManager::CopyFrom(const EntityManager &other, const EntityID otherId) -> EntityID {
   if (!other.IsEntity(otherId))
     return EntityID::Invalid;
@@ -106,17 +117,6 @@ auto EntityManager::Delete(const EntityID id) -> bool {
   });
   DeleteRecords(id);
   return true;
-}
-auto EntityManager::DeleteAll() -> void {
-  idToChildren.clear();
-  idToMask.clear();
-  idToName.clear();
-  idToParent.clear();
-  maskToIdSet.clear();
-  nameToId.clear();
-  registeredTypes.clear();
-  rootEntities.clear();
-  typeIndexToManager.clear();
 }
 auto EntityManager::GetComponent(const EntityID id, const ComponentType type) -> ComponentVariant {
   switch (type) {

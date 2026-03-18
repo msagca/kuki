@@ -25,7 +25,7 @@ auto Scene::CreateEntity(std::string name) -> EntityID {
   return entityManager.Create(name);
 }
 auto Scene::DeleteEntities() -> void {
-  entityManager.DeleteAll();
+  entityManager.Clear();
 }
 auto Scene::DeleteEntity(const EntityID id) -> bool {
   return entityManager.Delete(id);

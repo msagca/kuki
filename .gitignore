@@ -16,6 +16,9 @@
 *.pdb
 *.sln
 *.so
+*.swo
+*.swp
+*.swx
 *.user
 *.vcxproj
 .cache/

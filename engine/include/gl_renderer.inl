@@ -1,11 +1,11 @@
 template <>
-inline auto GLResourceManager::LoadAsset<SceneAsset>(SceneAsset &sceneAsset) -> void {
+inline auto GLRenderer::LoadAsset<SceneAsset>(SceneAsset &sceneAsset) -> void {
   // NOTE: materials and textures are loaded in the process if they are referenced by any mesh
   for (auto i = 0; i < sceneAsset.meshes.size(); ++i)
     LoadSceneMesh(sceneAsset, i);
 }
 template <>
-inline auto GLResourceManager::LoadAsset<ShaderAsset>(ShaderAsset &compAsset) -> void {
+inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &compAsset) -> void {
   const auto &name = compAsset.GetName();
   if (resourceManager.IsEntity(name))
     return;
@@ -24,7 +24,7 @@ inline auto GLResourceManager::LoadAsset<ShaderAsset>(ShaderAsset &compAsset) ->
     compute->CacheLocations();
 }
 template <>
-inline auto GLResourceManager::LoadAsset<ShaderAsset>(ShaderAsset &vertAsset, ShaderAsset &fragAsset) -> void {
+inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &vertAsset, ShaderAsset &fragAsset) -> void {
   const auto &name = fragAsset.GetName();
   if (resourceManager.IsEntity(name))
     return;
@@ -57,4 +57,13 @@ inline auto GLResourceManager::LoadAsset<ShaderAsset>(ShaderAsset &vertAsset, Sh
   glGetProgramiv(programId, GL_LINK_STATUS, &success);
   if (success)
     shader->CacheLocations();
+}
+template <>
+inline auto GLRenderer::LoadAsset<SkyboxAsset>(SkyboxAsset &skyboxAsset) -> void {
+  if (!skyboxAsset.id || skyboxAsset.resourceId)
+    return;
+  const auto resourceId = resourceManager.Create(skyboxAsset.GetName());
+  skyboxAsset.resourceId = resourceId;
+  auto skybox = resourceManager.AddComponent<GLSkybox>(resourceId);
+  // TODO: dispatch computes to create irradiance/prefilter maps
 }

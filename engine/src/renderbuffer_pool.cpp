@@ -1,7 +1,7 @@
-#include <gl_resource_manager.hpp>
-#include <glad/glad.h>
 #include <pool.hpp>
 #include <renderbuffer_pool.hpp>
+//
+#include <glad/glad.h>
 namespace kuki {
 RenderbufferPool::~RenderbufferPool() {
   Clear();

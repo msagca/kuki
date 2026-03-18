@@ -75,7 +75,7 @@ auto RenderGraph::Execute(Renderer &renderer) -> void {
     func(renderer, inputs, outputs);
   });
 }
-auto RenderGraph::GetFinalOutput() -> std::string {
+auto RenderGraph::GetFinalOutputName() -> std::string {
   if (graphFlat.empty())
     return "";
   const auto index = graphFlat.size() - 1;
@@ -137,7 +137,7 @@ auto RenderGraph::Flatten() -> void {
   std::unordered_map<PassID, size_t> inDegrees;
   for (const auto &[node, predecessors] : idToPredecessors)
     inDegrees[node] = predecessors.size();
-  for (const auto &[node, _] : idToSuccessors)
+  for (const auto &[node, _] : idToFunc)
     if (!inDegrees.contains(node))
       inDegrees[node] = 0;
   std::queue<PassID> roots;

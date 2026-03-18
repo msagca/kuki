@@ -4,7 +4,6 @@
 #include <kuki_engine_export.h>
 namespace kuki {
 struct KUKI_ENGINE_API GLMesh final : public BufferObject {
-  GLMesh();
   unsigned int vao{};
   unsigned int ebo{};
   int vertexCount{};

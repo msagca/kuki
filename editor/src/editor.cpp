@@ -41,7 +41,7 @@
 #include <imfilebrowser.h>
 using namespace kuki;
 Editor::Editor()
-  : Application({"Kuki Editor"}) {}
+  : Application({.name = "Kuki Editor", .iconPath = "image/kuki.ico"}) {}
 auto Editor::Awake() -> void {
   RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
     cameraController->mouselook = true;
@@ -62,6 +62,7 @@ auto Editor::Start() -> void {
   LoadDefaultScene();
 }
 auto Editor::Update(const float deltaTime) -> void {
+  // TODO: create a scripting system to manage this
   cameraController->Update(deltaTime);
   UpdateIO();
   UpdateView();
@@ -90,7 +91,7 @@ auto Editor::DisplayAssets() -> void {
   const auto escapePressed = context.pressState.test(static_cast<uint8_t>(KeyBit::Escape));
   const auto clearSelection = (windowHovered && !itemsHovered) && (clicked || backspacePressed || deletePressed || escapePressed);
   if (context.state == EditorState::Normal && clearSelection) {
-    // context.selectedAssets.clear();
+    context.selectedAssets.clear();
     context.selectedAssetID = AssetID::Invalid;
   }
   ForEachAsset(context.selectedAssetType, [this](const AssetID id, const std::string &name) {
@@ -308,7 +309,7 @@ auto Editor::DisplayScene() -> void {
     context.showFPS = !context.showFPS;
   auto renderingSystem = GetSystem<RenderingSystem>();
   if (renderingSystem) {
-    const auto sceneTarget = static_cast<GLRenderTarget *>(renderingSystem->GetFinalTarget());
+    const auto sceneTarget = static_cast<GLRenderTarget *>(renderingSystem->GetTarget());
     if (sceneTarget && sceneTarget->texture > 0) {
       const auto &settings = GetSettings();
       const auto contentRegion = ImGui::GetContentRegionAvail();
@@ -378,18 +379,18 @@ auto Editor::InitImGui() -> void {
   auto fontPath = std::filesystem::path{desc.path / "font/Inter-VariableFont_opsz,wght.ttf"}.string();
   io.Fonts->AddFontFromFileTTF(fontPath.c_str(), FONT_SIZE);
   auto &style = ImGui::GetStyle();
-  style.ChildBorderSize = .0f;
+  // style.ChildBorderSize = .0f;
   style.ChildRounding = .0f;
-  style.FrameBorderSize = .0f;
-  style.FramePadding = ImVec2(.0f, .0f);
+  // style.FrameBorderSize = .0f;
+  // style.FramePadding = ImVec2(.0f, .0f);
   style.FrameRounding = .0f;
-  style.ItemInnerSpacing = ImVec2(.0f, .0f);
-  style.ItemSpacing = ImVec2(.0f, .0f);
-  style.TabBorderSize = .0f;
-  style.TabCloseButtonMinWidthSelected = .0f;
+  // style.ItemInnerSpacing = ImVec2(.0f, .0f);
+  // style.ItemSpacing = ImVec2(.0f, .0f);
+  // style.TabBorderSize = .0f;
+  // style.TabCloseButtonMinWidthSelected = .0f;
   style.TabRounding = .0f;
-  style.WindowBorderSize = .0f;
-  style.WindowPadding = ImVec2(.0f, .0f);
+  // style.WindowBorderSize = .0f;
+  // style.WindowPadding = ImVec2(.0f, .0f);
   style.WindowRounding = .0f;
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init();
@@ -454,20 +455,20 @@ auto Editor::LoadDefaultShaderAssets() -> void {
     if (compAsset)
       renderingSystem->LoadCompute(*compAsset);
   };
-  const auto &info = GetInfo();
-  LoadCompute(info.path / "shader/brdf_lut.comp", "BRDF_LUT");
-  LoadCompute(info.path / "shader/cubemap_equirect.comp", "CubemapEquirect");
-  LoadCompute(info.path / "shader/equirect_cubemap.comp", "EquirectCubemap");
-  LoadCompute(info.path / "shader/irradiance.comp", "IrradianceMap");
-  LoadCompute(info.path / "shader/prefilter.comp", "PrefilterMap");
-  LoadShader(info.path / "shader/lit.vert", info.path / "shader/lit.frag", "Lit", MaterialType::Lit);
-  LoadShader(info.path / "shader/lit_skinned.vert", info.path / "shader/lit.frag", "LitSkinned", MaterialType::LitSkinned);
-  LoadShader(info.path / "shader/unlit.vert", info.path / "shader/unlit.frag", "Unlit", MaterialType::Unlit);
-  LoadShader(info.path / "shader/skybox.vert", info.path / "shader/skybox.frag", "Skybox");
-  LoadShader(info.path / "shader/standard_m.vert", info.path / "shader/bloom.frag", "Bloom");
-  LoadShader(info.path / "shader/standard_m.vert", info.path / "shader/blur.frag", "Blur");
-  LoadShader(info.path / "shader/standard_m.vert", info.path / "shader/bright_pass.frag", "BrightPass");
-  LoadShader(info.path / "shader/standard_m.vert", info.path / "shader/gamma_correction.frag", "GammaCorrect");
+  const auto &desc = GetDescription();
+  LoadCompute(desc.path / "shader/brdf_lut.comp", "BRDF_LUT");
+  LoadCompute(desc.path / "shader/cubemap_equirect.comp", "CubemapEquirect");
+  LoadCompute(desc.path / "shader/equirect_cubemap.comp", "EquirectCubemap");
+  LoadCompute(desc.path / "shader/irradiance.comp", "IrradianceMap");
+  LoadCompute(desc.path / "shader/prefilter.comp", "PrefilterMap");
+  LoadShader(desc.path / "shader/lit.vert", desc.path / "shader/lit.frag", "Lit", MaterialType::Lit);
+  LoadShader(desc.path / "shader/lit_skinned.vert", desc.path / "shader/lit.frag", "LitSkinned", MaterialType::LitSkinned);
+  LoadShader(desc.path / "shader/unlit.vert", desc.path / "shader/unlit.frag", "Unlit", MaterialType::Unlit);
+  LoadShader(desc.path / "shader/skybox.vert", desc.path / "shader/skybox.frag", "Skybox");
+  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/bloom.frag", "Bloom");
+  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/blur.frag", "Blur");
+  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/bright_pass.frag", "BrightPass");
+  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/gamma_correction.frag", "GammaCorrect");
 }
 auto Editor::UpdateIO() -> void {
   static auto stateOld = EditorState::Normal;

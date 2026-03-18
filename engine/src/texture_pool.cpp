@@ -1,7 +1,8 @@
-#include <gl_resource_manager.hpp>
-#include <glad/glad.h>
+#include <gl_renderer.hpp>
 #include <pool.hpp>
 #include <texture_pool.hpp>
+//
+#include <glad/glad.h>
 namespace kuki {
 TexturePool::~TexturePool() {
   Clear();
@@ -21,8 +22,8 @@ auto TexturePool::Reallocate(const TargetDescription &desc, unsigned int &textur
   // FIXME: this creates immutable storage — resizing is not possible
   if (texture == 0)
     return;
-  const auto format = GLResourceManager::TargetFormatToGL(desc.format);
-  const auto target = GLResourceManager::TargetTypeToGL(desc.target);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
+  const auto target = GLRenderer::TargetTypeToGL(desc.target);
   glBindTexture(target, texture);
   if (target == GL_TEXTURE_2D_MULTISAMPLE)
     glTexStorage2DMultisample(target, desc.samples, format, desc.width, desc.height, GL_TRUE);

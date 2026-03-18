@@ -28,7 +28,7 @@
 #include <glad/glad.h>
 namespace kuki {
 RenderingSystem::RenderingSystem(SceneManager &sceneManager, AssetManager &assetManager)
-  : System(std::in_place_type<RenderingSystem>), sceneManager(sceneManager), glRenderer(sceneManager, assetManager) {}
+  : System(std::in_place_type<RenderingSystem>), glRenderer(sceneManager, assetManager) {}
 RenderingSystem::~RenderingSystem() {
   Shutdown();
 }
@@ -45,7 +45,6 @@ auto RenderingSystem::Awake() -> void {
   renderGraph = graphBuilder
                   .BeginGraph()
                   .BeginPass(RenderScene)
-                  .AddInput("Scene")
                   .AddOutput("SceneLinear", desc)
                   .EndPass()
                   .BeginPass(ApplyAntiAliasing)
@@ -72,7 +71,6 @@ auto RenderingSystem::Awake() -> void {
                   .EndGraph();
   if (renderGraph)
     renderGraph->Compile();
-  sceneManager.OnSceneLoaded.Subscribe([this](Scene &scene) { activeRenderer->PrepareScene(scene); });
 }
 auto RenderingSystem::Start() -> void {}
 auto RenderingSystem::Update(float deltaTime) -> void {
@@ -95,18 +93,14 @@ auto RenderingSystem::Shutdown() -> void {
   if (activeRenderer != &glRenderer)
     glRenderer.Clear();
 }
-auto RenderingSystem::GetFinalTarget() -> RenderTarget * {
-  if (!renderGraph)
-    return nullptr;
-  const auto &name = renderGraph->GetFinalOutput();
-  return GetTarget(name);
-}
 auto RenderingSystem::GetFPS() const -> size_t {
   return fps;
 }
-auto RenderingSystem::GetTarget(const std::string &name) -> RenderTarget * {
+auto RenderingSystem::GetTarget(std::string name) -> RenderTarget * {
   if (!activeRenderer)
     return nullptr;
+  if (name.empty() && renderGraph)
+    name = renderGraph->GetFinalOutputName();
   return activeRenderer->GetTarget(name);
 }
 auto RenderingSystem::LoadCompute(ShaderAsset &comp) -> void {
@@ -124,10 +118,12 @@ auto RenderingSystem::LoadShader(ShaderAsset &vert, ShaderAsset &frag) -> void {
 auto RenderingSystem::ApplyAntiAliasing(Renderer &renderer, std::span<std::string> inputs, std::span<TargetBinding> outputs) -> void {
   if (inputs.size() != 1 || outputs.size() != 1)
     return;
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
   const auto &desc = outputs[0].desc;
-  const auto in = glRenderer.GetTargetCopy(inputs[0]);
-  const auto out = glRenderer.CreateTarget(outputs[0].name, outputs[0].desc);
+  const auto in = glRenderer->GetTargetCopy(inputs[0]);
+  const auto out = glRenderer->CreateTarget(outputs[0].name, outputs[0].desc);
   if (!out)
     return;
   glBindFramebuffer(GL_READ_FRAMEBUFFER, in.framebuffer);
@@ -138,17 +134,19 @@ auto RenderingSystem::ApplyAntiAliasing(Renderer &renderer, std::span<std::strin
 auto RenderingSystem::ApplyBloomEffect(Renderer &renderer, std::span<std::string> inputs, std::span<TargetBinding> outputs) -> void {
   if (inputs.size() != 2 || outputs.size() != 1)
     return;
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto bloomShader = glRenderer.GetShader("Bloom");
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto bloomShader = glRenderer->GetShader("Bloom");
   if (!bloomShader)
     return;
-  const auto mesh = glRenderer.GetPrimitive("Frame");
+  const auto mesh = glRenderer->GetPrimitive("Frame");
   if (!mesh)
     return;
   const auto &desc = outputs[0].desc;
-  const auto in0 = glRenderer.GetTargetCopy(inputs[0]);
-  const auto in1 = glRenderer.GetTargetCopy(inputs[1]);
-  const auto out = glRenderer.CreateTarget(outputs[0].name, outputs[0].desc);
+  const auto in0 = glRenderer->GetTargetCopy(inputs[0]);
+  const auto in1 = glRenderer->GetTargetCopy(inputs[1]);
+  const auto out = glRenderer->CreateTarget(outputs[0].name, outputs[0].desc);
   if (!out)
     return;
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
@@ -164,16 +162,18 @@ auto RenderingSystem::ApplyBloomEffect(Renderer &renderer, std::span<std::string
 auto RenderingSystem::ApplyBlurEffect(Renderer &renderer, std::span<std::string> inputs, std::span<TargetBinding> outputs) -> void {
   if (inputs.size() != 1 || outputs.size() != 1)
     return;
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto blurShader = glRenderer.GetShader("Blur");
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto blurShader = glRenderer->GetShader("Blur");
   if (!blurShader)
     return;
-  const auto mesh = glRenderer.GetPrimitive("Frame");
+  const auto mesh = glRenderer->GetPrimitive("Frame");
   if (!mesh)
     return;
   const auto &desc = outputs[0].desc;
-  const auto in = glRenderer.GetTargetCopy(inputs[0]);
-  const auto out = glRenderer.CreateTarget(outputs[0].name, outputs[0].desc);
+  const auto in = glRenderer->GetTargetCopy(inputs[0]);
+  const auto out = glRenderer->CreateTarget(outputs[0].name, outputs[0].desc);
   if (!out)
     return;
   constexpr auto blurPasses = 8;
@@ -194,16 +194,18 @@ auto RenderingSystem::ApplyBlurEffect(Renderer &renderer, std::span<std::string>
 auto RenderingSystem::ApplyBrightPassFilter(Renderer &renderer, std::span<std::string> inputs, std::span<TargetBinding> outputs) -> void {
   if (inputs.size() != 1 || outputs.size() != 1)
     return;
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto brightShader = glRenderer.GetShader("BrightPass");
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto brightShader = glRenderer->GetShader("BrightPass");
   if (!brightShader)
     return;
-  const auto mesh = glRenderer.GetPrimitive("Frame");
+  const auto mesh = glRenderer->GetPrimitive("Frame");
   if (!mesh)
     return;
   const auto &desc = outputs[0].desc;
-  const auto in = glRenderer.GetTargetCopy(inputs[0]);
-  const auto out = glRenderer.CreateTarget(outputs[0].name, outputs[0].desc);
+  const auto in = glRenderer->GetTargetCopy(inputs[0]);
+  const auto out = glRenderer->CreateTarget(outputs[0].name, outputs[0].desc);
   if (!out)
     return;
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
@@ -218,16 +220,18 @@ auto RenderingSystem::ApplyBrightPassFilter(Renderer &renderer, std::span<std::s
 auto RenderingSystem::ApplyGammaCorrection(Renderer &renderer, std::span<std::string> inputs, std::span<TargetBinding> outputs) -> void {
   if (inputs.size() != 1 || outputs.size() != 1)
     return;
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto gammaShader = glRenderer.GetShader("GammaCorrect");
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto gammaShader = glRenderer->GetShader("GammaCorrect");
   if (!gammaShader)
     return;
-  const auto mesh = glRenderer.GetPrimitive("Frame");
+  const auto mesh = glRenderer->GetPrimitive("Frame");
   if (!mesh)
     return;
   const auto &desc = outputs[0].desc;
-  const auto in = glRenderer.GetTargetCopy(inputs[0]);
-  const auto out = glRenderer.CreateTarget(outputs[0].name, outputs[0].desc);
+  const auto in = glRenderer->GetTargetCopy(inputs[0]);
+  const auto out = glRenderer->CreateTarget(outputs[0].name, outputs[0].desc);
   if (!out)
     return;
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
@@ -243,36 +247,40 @@ auto RenderingSystem::ApplyGammaCorrection(Renderer &renderer, std::span<std::st
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 auto RenderingSystem::ConvertCubemapToEquirectangularMap(Renderer &renderer, const std::string &input, const TargetBinding &output) -> void {
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto compute = glRenderer.GetCompute("CubemapEquirect");
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto compute = glRenderer->GetCompute("CubemapEquirect");
   if (!compute)
     return;
   const auto &desc = output.desc;
-  const auto in = glRenderer.GetTargetCopy(input);
-  const auto out = glRenderer.CreateTarget(output.name, output.desc);
+  const auto in = glRenderer->GetTargetCopy(input);
+  const auto out = glRenderer->CreateTarget(output.name, output.desc);
   if (!out)
     return;
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
   compute->SetTexture("cubemap", in.texture);
   compute->SetUniform("size", static_cast<unsigned int>(desc.width));
-  const auto format = GLResourceManager::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   glBindImageTexture(0, out->texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, format);
   const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
   const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
   compute->Dispatch(numGroupsX, numGroupsY, 6);
 }
 auto RenderingSystem::ConvertEquirectangularMapToCubemap(Renderer &renderer, const std::string &input, const TargetBinding &output) -> void {
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto compute = glRenderer.GetCompute("EquirectCubemap");
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto compute = glRenderer->GetCompute("EquirectCubemap");
   if (!compute)
     return;
   const auto &desc = output.desc;
-  const auto in = glRenderer.GetTargetCopy(input);
-  const auto out = glRenderer.CreateTarget(output.name, output.desc);
+  const auto in = glRenderer->GetTargetCopy(input);
+  const auto out = glRenderer->CreateTarget(output.name, output.desc);
   if (!out)
     return;
-  const auto format = GLResourceManager::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
   compute->SetTexture("equirect", in.texture);
@@ -285,15 +293,17 @@ auto RenderingSystem::ConvertEquirectangularMapToCubemap(Renderer &renderer, con
   compute->Dispatch(numGroupsX, numGroupsY, 6);
 }
 auto RenderingSystem::CreateBRDF_LUT(Renderer &renderer, const TargetBinding &output) -> void {
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto compute = glRenderer.GetCompute("BRDF_LUT");
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto compute = glRenderer->GetCompute("BRDF_LUT");
   if (!compute)
     return;
   const auto &desc = output.desc;
-  const auto out = glRenderer.CreateTarget(output.name, output.desc);
+  const auto out = glRenderer->CreateTarget(output.name, output.desc);
   if (!out)
     return;
-  const auto format = GLResourceManager::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
   glBindImageTexture(0, out->texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, format);
@@ -302,16 +312,18 @@ auto RenderingSystem::CreateBRDF_LUT(Renderer &renderer, const TargetBinding &ou
   compute->Dispatch(numGroupsX, numGroupsY, 1);
 }
 auto RenderingSystem::CreateIrradianceMap(Renderer &renderer, const std::string &input, const TargetBinding &output) -> void {
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto compute = glRenderer.GetCompute("IrradianceMap");
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto compute = glRenderer->GetCompute("IrradianceMap");
   if (!compute)
     return;
   const auto &desc = output.desc;
-  const auto in = glRenderer.GetTargetCopy(input);
-  const auto out = glRenderer.CreateTarget(output.name, output.desc);
+  const auto in = glRenderer->GetTargetCopy(input);
+  const auto out = glRenderer->CreateTarget(output.name, output.desc);
   if (!out)
     return;
-  const auto format = GLResourceManager::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
   compute->SetTexture("cubemap", in.texture);
@@ -322,16 +334,18 @@ auto RenderingSystem::CreateIrradianceMap(Renderer &renderer, const std::string 
   compute->Dispatch(numGroupsX, numGroupsY, 6);
 }
 auto RenderingSystem::CreatePrefilterMap(Renderer &renderer, const std::string &input, const TargetBinding &output) -> void {
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto compute = glRenderer.GetCompute("PrefilterMap");
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto compute = glRenderer->GetCompute("PrefilterMap");
   if (!compute)
     return;
   const auto &desc = output.desc;
-  const auto in = glRenderer.GetTargetCopy(input);
-  const auto out = glRenderer.CreateTarget(output.name, output.desc);
+  const auto in = glRenderer->GetTargetCopy(input);
+  const auto out = glRenderer->CreateTarget(output.name, output.desc);
   if (!out)
     return;
-  const auto format = GLResourceManager::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
   compute->SetTexture("cubemap", in.texture);
@@ -351,15 +365,17 @@ auto RenderingSystem::CreatePrefilterMap(Renderer &renderer, const std::string &
 auto RenderingSystem::RenderScene(Renderer &renderer, std::span<std::string> inputs, std::span<TargetBinding> outputs) -> void {
   if (outputs.size() != 1)
     return;
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto scene = glRenderer.GetActiveScene();
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto scene = glRenderer->GetScene();
   if (!scene)
     return;
   const auto &desc = outputs[0].desc;
-  const auto out = glRenderer.CreateTarget(outputs[0].name, outputs[0].desc);
+  const auto out = glRenderer->CreateTarget(outputs[0].name, outputs[0].desc);
   if (!out)
     return;
-  glRenderer.PrepareScene(*scene); // TODO: optimize this
+  glRenderer->UpdateScene(*scene); // TODO: optimize this
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
   glViewport(0, 0, desc.width, desc.height);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -368,7 +384,7 @@ auto RenderingSystem::RenderScene(Renderer &renderer, std::span<std::string> inp
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 auto RenderingSystem::DrawEntities(Renderer &renderer) -> void {
-  auto scene = renderer.GetActiveScene();
+  auto scene = renderer.GetScene();
   if (!scene)
     return;
   // TODO: cache these
@@ -386,20 +402,22 @@ auto RenderingSystem::DrawEntities(Renderer &renderer) -> void {
     DrawEntitiesInstanced(renderer, meshMat.mesh, meshMat.material, meshToMatToFallbacks[meshMat], transforms);
 }
 auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, const GLMesh &mesh, const GLMaterial &material, const std::vector<MaterialFallback> &fallbacks, const std::vector<glm::mat4> &transforms) -> void {
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto scene = glRenderer.GetActiveScene();
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto scene = glRenderer->GetScene();
   if (!scene)
     return;
   auto camera = scene->GetActiveCamera();
   if (!camera)
     return;
-  auto shader = glRenderer.GetShader(material.type);
+  auto shader = glRenderer->GetShader(material.type);
   if (!shader)
     return;
-  const auto bufMat = glRenderer.CreateBuffer("MaterialBuffer", {});
-  const auto bufXfm = glRenderer.CreateBuffer("TransformBuffer", {});
+  const auto bufMat = glRenderer->CreateBuffer("MaterialBuffer", {});
+  const auto bufXfm = glRenderer->CreateBuffer("TransformBuffer", {});
   const auto bufDesc = BufferDescription{.size = sizeof(CameraTransform)};
-  const auto camBuf = glRenderer.CreateBuffer("CameraBuffer", bufDesc);
+  const auto camBuf = glRenderer->CreateBuffer("CameraBuffer", bufDesc);
   shader->Use();
   shader->SetCamera(*camera, camBuf->id);
   if (material.type == MaterialType::Lit) {
@@ -420,21 +438,23 @@ auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, const GLMesh &me
   shader->DrawInstanced(mesh, transforms.size());
 }
 auto RenderingSystem::DrawSkybox(Renderer &renderer) -> void {
-  auto &glRenderer = static_cast<GLRenderer &>(renderer);
-  auto scene = glRenderer.GetActiveScene();
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto scene = glRenderer->GetScene();
   if (!scene)
     return;
   auto camera = scene->GetActiveCamera();
   if (!camera)
     return;
-  auto shader = glRenderer.GetShader("Skybox");
+  auto shader = glRenderer->GetShader("Skybox");
   if (!shader)
     return;
-  const auto mesh = glRenderer.GetPrimitive("CubeInverted");
+  const auto mesh = glRenderer->GetPrimitive("CubeInverted");
   if (!mesh)
     return;
   const auto bufDesc = BufferDescription{.size = sizeof(CameraTransform)};
-  const auto camBuf = glRenderer.CreateBuffer("CameraBuffer", bufDesc);
+  const auto camBuf = glRenderer->CreateBuffer("CameraBuffer", bufDesc);
   shader->Use();
   shader->SetCamera(*camera, camBuf->id);
   const auto model = glm::scale(glm::mat4(1.f), glm::vec3(2.f));

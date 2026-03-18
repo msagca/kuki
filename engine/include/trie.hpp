@@ -131,12 +131,12 @@ auto Trie<T>::Insert(std::string_view trigger, InputAction action) -> bool
     if (!child)
       child = std::make_unique<T>();
     else if (child->last || child->action)
-      // NOTE: a subsequence already exists, abort
+      // a subsequence already exists, abort
       return false;
     node = child.get();
   }
   if (!node->children.empty())
-    // NOTE: trigger is a prefix of a longer sequence, abort
+    // trigger is a prefix of a longer sequence, abort
     return false;
   node->last = true;
   node->action = std::move(action);

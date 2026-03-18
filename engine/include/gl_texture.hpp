@@ -5,7 +5,6 @@
 #include <texture_content.hpp>
 namespace kuki {
 struct KUKI_ENGINE_API GLTexture final : public RenderTarget {
-  GLTexture();
   unsigned int id{};
   TextureContent content{TextureContent::Unknown};
   TargetDescription desc{};

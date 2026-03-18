@@ -12,24 +12,45 @@
 namespace kuki {
 class Renderer {
 public:
-  Renderer(SceneManager &);
+  virtual ~Renderer() = default;
+  template <typename T>
+  auto As(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
+  template <typename T>
+  auto Is() const -> bool;
   virtual auto CreateBuffer(std::string, const BufferDescription &) -> BufferObject * = 0;
   virtual auto CreateTarget(std::string, const TargetDescription &) -> RenderTarget * = 0;
-  virtual auto GetActiveScene() -> Scene * = 0;
+  virtual auto CreateTexture(std::string, const TargetDescription &) -> RenderTarget * = 0;
   virtual auto GetBuffer(const std::string &) -> BufferObject * = 0;
   virtual auto GetCompute(const std::string &) -> Shader * = 0;
   virtual auto GetPrimitive(const std::string &) -> BufferObject * = 0;
-  virtual auto GetScene(const std::string &) -> Scene * = 0;
+  virtual auto GetScene(const std::string & = "") -> Scene * = 0;
   virtual auto GetShader(const MaterialType) -> Shader * = 0;
   virtual auto GetShader(const std::string &, const MaterialType) -> Shader * = 0;
   virtual auto GetTarget(const std::string &) -> RenderTarget * = 0;
+  virtual auto GetTexture(const std::string &) -> RenderTarget * = 0;
   virtual auto LoadCompute(ShaderAsset &) -> Shader * = 0;
   virtual auto LoadPrimitive(const std::string &) -> BufferObject * = 0;
   virtual auto LoadShader(ShaderAsset &, ShaderAsset &) -> Shader * = 0;
-  virtual auto PrepareScene(Scene &) -> void = 0;
+  virtual auto UpdateScene(Scene &) -> void = 0;
   virtual auto Clear() -> void = 0;
   virtual auto Reset() -> void = 0;
 protected:
-  SceneManager &sceneManager;
+  template <typename T>
+  Renderer(std::in_place_type_t<T>);
+private:
+  std::type_index typeIndex;
 };
+template <typename T>
+Renderer::Renderer(std::in_place_type_t<T>)
+  : typeIndex(typeid(T)) {}
+template <typename T>
+auto Renderer::As(this auto &self) -> ConstCorrectPointer<decltype(self), T> {
+  if (self.template Is<T>())
+    return static_cast<ConstCorrectPointer<decltype(self), T>>(&self);
+  return nullptr;
+}
+template <typename T>
+auto Renderer::Is() const -> bool {
+  return typeIndex == typeid(T);
+}
 } // namespace kuki
