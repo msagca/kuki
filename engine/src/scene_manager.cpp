@@ -17,7 +17,6 @@ auto SceneManager::Activate(const std::string &name) -> bool {
             Deactivate(activeScene);
           it2->second = SceneStatus::Active;
           activeScene = id;
-          OnSceneActivated.Emit(*it3->second);
           return true;
         }
   }
@@ -92,7 +91,6 @@ auto SceneManager::Deactivate(const SceneID id) -> bool {
       if (auto it2 = idToScene.find(id); it2 != idToScene.end()) {
         it->second = SceneStatus::Loaded;
         activeScene = SceneID::Invalid;
-        OnSceneDeactivated.Emit(*it2->second);
         return true;
       }
   return false;
@@ -103,6 +101,8 @@ auto SceneManager::Load(const SceneID id) -> bool {
       if (auto it2 = idToScene.find(id); it2 != idToScene.end()) {
         it->second = SceneStatus::Loaded;
         OnSceneLoaded.Emit(*it2->second);
+        if (auto it3 = idToName.find(id); it3 != idToName.end())
+          spdlog::info("Scene loaded: {}", it3->second);
         return true;
       }
   return false;
@@ -113,7 +113,6 @@ auto SceneManager::Unload(const SceneID id) -> bool {
     if (it->second == SceneStatus::Loaded)
       if (auto it2 = idToScene.find(id); it2 != idToScene.end()) {
         it->second = SceneStatus::Registered;
-        OnSceneUnloaded.Emit(*it2->second);
         return true;
       }
   return false;

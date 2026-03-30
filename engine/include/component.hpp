@@ -2,20 +2,27 @@
 #include <bone_data.hpp>
 #include <camera.hpp>
 #include <component_type.hpp>
+#include <gl_buffer.hpp>
+#include <gl_compute_shader.hpp>
+#include <gl_lit_shader.hpp>
 #include <gl_material.hpp>
 #include <gl_mesh.hpp>
+#include <gl_render_target.hpp>
 #include <gl_skybox.hpp>
 #include <gl_texture.hpp>
+#include <gl_unlit_shader.hpp>
 #include <kuki_engine_export.h>
 #include <light.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
 #include <skybox_handle.hpp>
+#include <texture_handle.hpp>
 #include <typeindex>
 #include <unordered_map>
 #include <variant>
 namespace kuki {
-using ComponentVariant = std::variant<BoneData *, Camera *, GLMaterial *, GLMesh *, GLSkybox *, GLTexture *, Light *, Transform *, MaterialHandle *, MeshHandle *, SkyboxHandle *, std::monostate>;
+using ComponentVariant = std::variant<BoneData *, Camera *, GLBuffer *, GLComputeShader *, GLLitShader *, GLMaterial *, GLMesh *, GLRenderTarget *, GLSkybox *, GLTexture *, GLUnlitShader *, Light *, MaterialHandle *, MeshHandle *, SceneMaterialHandle *, SceneMeshHandle *, SkyboxHandle *, TextureHandle *, Transform *>;
+using ConstComponentVariant = std::variant<const BoneData *, const Camera *, const GLBuffer *, const GLComputeShader *, const GLLitShader *, const GLMaterial *, const GLMesh *, const GLRenderTarget *, const GLSkybox *, const GLTexture *, const GLUnlitShader *, const Light *, const MaterialHandle *, const MeshHandle *, const SceneMaterialHandle *, const SceneMeshHandle *, const SkyboxHandle *, const TextureHandle *, const Transform *>;
 class KUKI_ENGINE_API Component {
 public:
   static auto ForEachSetType(const ComponentMask &, auto &&) -> void;

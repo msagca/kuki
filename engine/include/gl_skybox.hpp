@@ -7,6 +7,6 @@ struct GLSkybox {
   int irradiance{};
   int prefilter{};
   int brdf{};
-  TargetDescription desc{.target = TargetType::Cubemap};
+  TargetDescription desc{};
 };
 } // namespace kuki

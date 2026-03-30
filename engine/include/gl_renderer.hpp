@@ -1,6 +1,5 @@
 #pragma once
 #include <asset_manager.hpp>
-#include <buffer_description.hpp>
 #include <buffer_pool.hpp>
 #include <component_manager.hpp>
 #include <concepts.hpp>
@@ -19,6 +18,8 @@
 #include <gl_unlit_shader.hpp>
 #include <id.hpp>
 #include <kuki_engine_export.h>
+#include <material_asset.hpp>
+#include <mesh_asset.hpp>
 #include <render_graph.hpp>
 #include <renderbuffer_pool.hpp>
 #include <renderer.hpp>
@@ -26,50 +27,63 @@
 #include <scene_manager.hpp>
 #include <skybox_asset.hpp>
 #include <target_description.hpp>
+#include <texture_asset.hpp>
 #include <texture_pool.hpp>
 //
 #include <glad/glad.h>
 namespace kuki {
+struct GLFormat {
+  unsigned int external;
+  unsigned int internal;
+};
 class KUKI_ENGINE_API GLRenderer final : public Renderer {
 public:
   GLRenderer(SceneManager &, AssetManager &);
   static auto GLFormatToTarget(const unsigned int) -> TargetFormat;
-  static auto GLTypeToTarget(const unsigned int) -> TargetType;
-  static auto TargetFormatToGL(const TargetFormat &) -> unsigned int;
-  static auto TargetTypeToGL(const TargetType &) -> unsigned int;
-  auto BorrowBuffer(const BufferDescription &) -> unsigned int;
+  static auto TargetFormatToGL(const TargetFormat &) -> GLFormat;
+  auto BorrowBuffer(const int & = 0) -> unsigned int;
   auto BorrowFramebuffer() -> unsigned int;
   auto BorrowRenderbuffer(const TargetDescription &) -> unsigned int;
   auto BorrowTexture(const TargetDescription &) -> unsigned int;
   auto Clear() -> void override;
-  auto CreateBuffer(std::string, const BufferDescription &) -> GLBuffer * override;
-  auto CreateTarget(std::string, const TargetDescription &) -> GLRenderTarget * override;
-  auto CreateTexture(std::string, const TargetDescription &) -> GLTexture * override;
+  // TODO: return the resource ID instead of a resource pointer below, otherwise some resources will be inaccessible due to duplicate names
+  /// @param name Resource name
+  /// @param size Buffer size in bytes; if 0, it must be allocated later using `glNamedBufferData`
+  auto CreateBuffer(std::string, const int & = 0) -> EntityID override;
+  auto CreateTarget(std::string, const TargetDescription &) -> EntityID override;
+  auto CreateTexture(std::string, const TargetDescription &) -> EntityID override;
+  auto GetBuffer(const EntityID) -> GLBuffer * override;
   auto GetBuffer(const std::string &) -> GLBuffer * override;
   auto GetCompute(const std::string &) -> GLComputeShader * override;
   auto GetPrimitive(const std::string &) -> GLMesh * override;
   auto GetResourceID(const std::string &) const -> EntityID;
   auto GetScene(const std::string & = "") -> Scene * override;
   auto GetShader(const MaterialType) -> GLShader * override;
-  auto GetShader(const std::string &, const MaterialType = MaterialType::Unknown) -> GLShader * override;
+  auto GetShader(const std::string &, const MaterialType = MaterialType::Unlit) -> GLShader * override;
+  auto GetTarget(const EntityID) -> GLRenderTarget * override;
   auto GetTarget(const std::string &) -> GLRenderTarget * override;
-  auto GetTargetCopy(const std::string &) -> GLRenderTarget;
+  auto GetTexture(const EntityID) -> GLTexture * override;
   auto GetTexture(const std::string &) -> GLTexture * override;
-  auto LoadCompute(ShaderAsset &) -> GLComputeShader * override;
-  auto LoadPrimitive(const std::string &) -> GLMesh * override;
-  auto LoadShader(ShaderAsset &, ShaderAsset &) -> GLShader * override;
+  auto LoadAsset(const AssetID) -> EntityID override;
+  auto LoadCompute(ShaderAsset &) -> EntityID override;
+  auto LoadPrimitive(const std::string &) -> EntityID override;
+  auto LoadScene(Scene &) -> void override;
+  auto LoadShader(ShaderAsset &, ShaderAsset &) -> EntityID override;
+  auto PreviewAsset(const AssetID) -> EntityID override;
   auto Reset() -> void override;
-  auto UpdateScene(Scene &) -> void override;
+  auto UpdateTarget(const std::string &, const TargetDescription &) -> void override;
   template <typename T>
   auto GetComponent(this auto &, const EntityID) -> decltype(auto);
   template <typename T>
   auto GetComponent(this auto &, const std::string & = "") -> decltype(auto);
   template <IsAsset T>
-  auto LoadAsset(T &) -> void;
+  auto LoadAsset(T &) -> EntityID;
   template <IsAsset T>
-  auto LoadAsset(T &, T &) -> void;
+  auto LoadAsset(T &, T &) -> EntityID;
+  template <IsAsset T>
+  auto PreviewAsset(T &) -> EntityID;
   template <AreUnsignedInt... Vals>
-  auto ReturnBuffer(const BufferDescription &, Vals &&...) -> void;
+  auto ReturnBuffer(Vals &&...) -> void;
   template <AreUnsignedInt... Vals>
   auto ReturnFramebuffer(Vals &&...) -> void;
   template <AreUnsignedInt... Vals>
@@ -84,9 +98,10 @@ private:
   FramebufferPool framebufferPool;
   RenderbufferPool renderbufferPool;
   TexturePool texturePool;
-  static auto CalculateBounds(GLMesh &, const std::vector<Vertex> &) -> void;
   static auto CreateIndexBuffer(GLMesh &, const std::vector<unsigned int> &) -> void;
   static auto CreateVertexBuffer(GLMesh &, const std::vector<Vertex> &, bool = false) -> void;
+  auto LoadMesh(GLMesh &, const Mesh &) -> void;
+  auto LoadTexture(GLTexture &, const Texture &) -> void;
   auto LoadSceneMaterial(SceneAsset &, size_t) -> EntityID;
   auto LoadSceneMesh(SceneAsset &, const size_t) -> EntityID;
   auto LoadSceneTexture(SceneAsset &, size_t) -> GLTexture *;
@@ -101,13 +116,9 @@ auto GLRenderer::GetComponent(this auto &self, const std::string &name) -> declt
     return self.resourceManager.template GetAny<T>();
   return self.resourceManager.template GetComponent<T>(name);
 }
-template <IsAsset T>
-auto GLRenderer::LoadAsset(T &) -> void {}
-template <IsAsset T>
-auto GLRenderer::LoadAsset(T &, T &) -> void {}
 template <AreUnsignedInt... Vals>
-auto GLRenderer::ReturnBuffer(const BufferDescription &desc, Vals &&...vals) -> void {
-  bufferPool.Release(desc, vals...);
+auto GLRenderer::ReturnBuffer(Vals &&...vals) -> void {
+  bufferPool.Release(vals...);
 }
 template <AreUnsignedInt... Vals>
 auto GLRenderer::ReturnFramebuffer(Vals &&...vals) -> void {
@@ -121,5 +132,184 @@ template <AreUnsignedInt... Vals>
 auto GLRenderer::ReturnTexture(const TargetDescription &desc, Vals &&...vals) -> void {
   texturePool.Release(desc, vals...);
 }
-#include <gl_renderer.inl>
+template <IsAsset T>
+auto GLRenderer::LoadAsset(T &) -> EntityID {
+  return EntityID::Invalid;
+}
+template <>
+inline auto GLRenderer::LoadAsset<MaterialAsset>(MaterialAsset &materialAsset) -> EntityID {
+  const auto &name = materialAsset.GetName();
+  if (resourceManager.IsEntity(name))
+    return resourceManager.GetID(name);
+  const auto id = resourceManager.Create(name);
+  materialAsset.resourceId = id;
+  auto glMaterial = resourceManager.AddComponent<GLMaterial>(id);
+  glMaterial->fallback = materialAsset.fallback;
+  glMaterial->type = materialAsset.type;
+  for (const auto &id : materialAsset.textures)
+    LoadAsset(id);
+  return id;
+}
+template <>
+inline auto GLRenderer::LoadAsset<MeshAsset>(MeshAsset &meshAsset) -> EntityID {
+  const auto &name = meshAsset.GetName();
+  if (resourceManager.IsEntity(name))
+    return resourceManager.GetID(name);
+  const auto id = resourceManager.Create(name);
+  meshAsset.resourceId = id;
+  auto glMesh = resourceManager.AddComponent<GLMesh>(id);
+  LoadMesh(*glMesh, meshAsset.mesh);
+  LoadAsset(meshAsset.material);
+  return id;
+}
+template <>
+inline auto GLRenderer::LoadAsset<SceneAsset>(SceneAsset &sceneAsset) -> EntityID {
+  // NOTE: materials and textures are loaded in the process if they are referenced by any mesh
+  for (auto i = 0; i < sceneAsset.meshes.size(); ++i)
+    LoadSceneMesh(sceneAsset, i);
+  return EntityID::Invalid; // TODO: decide which ID to return
+}
+template <>
+inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &compAsset) -> EntityID {
+  const auto &name = compAsset.GetName();
+  if (resourceManager.IsEntity(name))
+    return EntityID::Invalid;
+  const auto id = resourceManager.Create(name);
+  compAsset.resourceId = id;
+  auto compute = resourceManager.AddComponent<GLComputeShader>(id);
+  auto compId = GLShaderBase::Compile(compAsset.text.data(), GL_COMPUTE_SHADER);
+  const auto programId = glCreateProgram();
+  compute->id = programId;
+  glAttachShader(programId, compId);
+  glLinkProgram(programId);
+  glDeleteShader(compId);
+  int success;
+  glGetProgramiv(programId, GL_LINK_STATUS, &success);
+  if (success)
+    compute->CacheLocations();
+  return id;
+}
+template <>
+inline auto GLRenderer::LoadAsset<SkyboxAsset>(SkyboxAsset &skyboxAsset) -> EntityID {
+  if (!skyboxAsset.id || skyboxAsset.resourceId)
+    return EntityID::Invalid;
+  const auto id = resourceManager.Create(skyboxAsset.GetName());
+  skyboxAsset.resourceId = id;
+  auto skybox = resourceManager.AddComponent<GLSkybox>(id);
+  // TODO: dispatch computes to create irradiance/prefilter maps
+  return id;
+}
+template <>
+inline auto GLRenderer::LoadAsset<TextureAsset>(TextureAsset &textureAsset) -> EntityID {
+  const auto &name = textureAsset.GetName();
+  if (resourceManager.IsEntity(name))
+    return EntityID::Invalid;
+  const auto id = resourceManager.Create(name);
+  textureAsset.resourceId = id;
+  auto glTexture = resourceManager.AddComponent<GLTexture>(id);
+  LoadTexture(*glTexture, textureAsset.texture);
+  return id;
+}
+template <IsAsset T>
+auto GLRenderer::LoadAsset(T &, T &) -> EntityID {
+  return EntityID::Invalid;
+}
+template <>
+inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &vertAsset, ShaderAsset &fragAsset) -> EntityID {
+  const auto &name = fragAsset.GetName();
+  if (resourceManager.IsEntity(name))
+    return EntityID::Invalid;
+  const auto &id = resourceManager.Create(name);
+  vertAsset.resourceId = id;
+  fragAsset.resourceId = id;
+  GLShader *shader{};
+  switch (fragAsset.type) {
+  case MaterialType::Lit:
+  case MaterialType::LitSkinned:
+    shader = resourceManager.AddComponent<GLLitShader>(id);
+    break;
+  default:
+    shader = resourceManager.AddComponent<GLUnlitShader>(id);
+    break;
+  }
+  const auto &vertId = GLShaderBase::Compile(vertAsset.text.data(), GL_VERTEX_SHADER, vertAsset.GetName());
+  const auto &fragId = GLShaderBase::Compile(fragAsset.text.data(), GL_FRAGMENT_SHADER, fragAsset.GetName());
+  const auto &programId = glCreateProgram();
+  shader->id = programId;
+  glAttachShader(programId, vertId);
+  glAttachShader(programId, fragId);
+  glLinkProgram(programId);
+  glDeleteShader(vertId);
+  glDeleteShader(fragId);
+  int success;
+  glGetProgramiv(programId, GL_LINK_STATUS, &success);
+  if (success)
+    shader->CacheLocations();
+  return id;
+}
+template <IsAsset T>
+auto GLRenderer::PreviewAsset(T &) -> EntityID {
+  return EntityID::Invalid;
+}
+template <>
+inline auto GLRenderer::PreviewAsset<SceneAsset>(SceneAsset &sceneAsset) -> EntityID {
+  constexpr unsigned int PREVIEW_SIZE = 128; // TODO: make this configurable
+  auto shader = GetShader(MaterialType::Lit);
+  if (!shader)
+    return EntityID::Invalid;
+  if (sceneAsset.nodes.size() == 0)
+    return EntityID::Invalid;
+  const auto previewName = std::format("{}Preview", sceneAsset.GetName());
+  auto texture = resourceManager.GetComponent<GLTexture>(previewName);
+  if (texture)
+    return resourceManager.GetID(previewName);
+  const auto &rootNode = sceneAsset.nodes[0];
+  const TargetDescription desc{.width = PREVIEW_SIZE, .height = PREVIEW_SIZE};
+  const auto &framebuffer = BorrowFramebuffer();
+  const auto &renderbuffer = BorrowRenderbuffer(desc);
+  const auto &cameraBuffer = BorrowBuffer();
+  const auto &materialBuffer = BorrowBuffer();
+  const auto &transformBuffer = BorrowBuffer();
+  // FIXME: assets with the same name will share the same preview
+  const auto id = CreateTexture(previewName, desc);
+  texture = GetTexture(id);
+  Camera camera{};
+  camera.Frame(rootNode.bounds);
+  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderbuffer);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture->id, 0);
+  glViewport(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  shader->Use();
+  shader->SetCamera(camera, cameraBuffer);
+  shader->SetSkybox();
+  shader->SetLighting();
+  std::vector<glm::mat4> transforms;
+  transforms.reserve(sceneAsset.nodes.size());
+  for (const auto &node : sceneAsset.nodes) {
+    // NOTE: `nodes` array is created through depth-first traversal; in this loop, immediate parent transform will encode all other parents'
+    auto parentTransform = glm::mat4(1.f);
+    if (node.parent >= 0)
+      // NOTE: node indices should correspond to transform indices — no upper bound check is needed
+      parentTransform = transforms[node.parent];
+    transforms.emplace_back(parentTransform * node.transform);
+  }
+  for (const auto &mesh : sceneAsset.meshes) {
+    const auto &meshResourceId = mesh.resourceId;
+    const auto &meshResource = resourceManager.GetComponent<GLMesh>(meshResourceId);
+    const auto &material = sceneAsset.materials[mesh.material];
+    const auto &materialResourceId = material.resourceId;
+    const auto &materialResource = resourceManager.GetComponent<GLMaterial>(materialResourceId);
+    const auto &transform = transforms[mesh.parent]; // NOTE: `mesh.parent` refers to a node; multiple meshes might share the same parent node
+    shader->SetMaterial(*materialResource);
+    shader->SetMaterialFallback(*meshResource, materialResource->fallback, materialBuffer);
+    shader->SetTransform(*meshResource, transform, transformBuffer);
+    shader->Draw(*meshResource);
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  ReturnBuffer(cameraBuffer, materialBuffer, transformBuffer);
+  ReturnRenderbuffer(desc, renderbuffer);
+  ReturnFramebuffer(framebuffer);
+  return id;
+}
 } // namespace kuki

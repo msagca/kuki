@@ -47,11 +47,23 @@ auto EntityManager::AddComponent(const EntityID id, const ComponentType type) ->
   case ComponentType::Camera:
     AddComponent<Camera>(id);
     break;
+  case ComponentType::GLBuffer:
+    AddComponent<GLBuffer>(id);
+    break;
+  case ComponentType::GLComputeShader:
+    AddComponent<GLComputeShader>(id);
+    break;
+  case ComponentType::GLLitShader:
+    AddComponent<GLLitShader>(id);
+    break;
   case ComponentType::GLMaterial:
     AddComponent<GLMaterial>(id);
     break;
   case ComponentType::GLMesh:
     AddComponent<GLMesh>(id);
+    break;
+  case ComponentType::GLRenderTarget:
+    AddComponent<GLRenderTarget>(id);
     break;
   case ComponentType::GLSkybox:
     AddComponent<GLSkybox>(id);
@@ -59,13 +71,32 @@ auto EntityManager::AddComponent(const EntityID id, const ComponentType type) ->
   case ComponentType::GLTexture:
     AddComponent<GLTexture>(id);
     break;
+  case ComponentType::GLUnlitShader:
+    AddComponent<GLUnlitShader>(id);
+    break;
   case ComponentType::Light:
     AddComponent<Light>(id);
     break;
+  case ComponentType::MaterialHandle:
+    AddComponent<MaterialHandle>(id);
+    break;
+  case ComponentType::MeshHandle:
+    AddComponent<MeshHandle>(id);
+    break;
+  case ComponentType::SceneMaterialHandle:
+    AddComponent<SceneMaterialHandle>(id);
+    break;
+  case ComponentType::SceneMeshHandle:
+    AddComponent<SceneMeshHandle>(id);
+    break;
+  case ComponentType::SkyboxHandle:
+    AddComponent<SkyboxHandle>(id);
+    break;
+  case ComponentType::TextureHandle:
+    AddComponent<TextureHandle>(id);
+    break;
   case ComponentType::Transform:
     AddComponent<Transform>(id);
-    break;
-  default:
     break;
   }
 }
@@ -85,7 +116,7 @@ auto EntityManager::CopyFrom(const EntityManager &other, const EntityID otherId)
     return EntityID::Invalid;
   const auto id = Create(other.GetName(otherId));
   auto cloner = ComponentCloner(*this, id);
-  other.ForEachComponent(otherId, [&](const ComponentVariant component) {
+  other.ForEachComponent(otherId, [&](ConstComponentVariant component) {
     std::visit(cloner, component);
   });
   other.ForEachChild(otherId, [&](const EntityID otherChildId) {
@@ -117,62 +148,6 @@ auto EntityManager::Delete(const EntityID id) -> bool {
   });
   DeleteRecords(id);
   return true;
-}
-auto EntityManager::GetComponent(const EntityID id, const ComponentType type) -> ComponentVariant {
-  switch (type) {
-  case ComponentType::BoneData:
-    return GetComponent<BoneData>(id);
-  case ComponentType::Camera:
-    return GetComponent<Camera>(id);
-  case ComponentType::GLMaterial:
-    return GetComponent<GLMaterial>(id);
-  case ComponentType::GLMesh:
-    return GetComponent<GLMesh>(id);
-  case ComponentType::GLSkybox:
-    return GetComponent<GLSkybox>(id);
-  case ComponentType::GLTexture:
-    return GetComponent<GLTexture>(id);
-  case ComponentType::Light:
-    return GetComponent<Light>(id);
-  case ComponentType::Transform:
-    return GetComponent<Transform>(id);
-  case ComponentType::MaterialHandle:
-    return GetComponent<MaterialHandle>(id);
-  case ComponentType::MeshHandle:
-    return GetComponent<MeshHandle>(id);
-  case ComponentType::SkyboxHandle:
-    return GetComponent<SkyboxHandle>(id);
-  default: // invalid type
-    return std::monostate{};
-  }
-}
-auto EntityManager::GetComponent(const EntityID id, const ComponentType type) const -> const ComponentVariant {
-  switch (type) {
-  case ComponentType::BoneData:
-    return {const_cast<BoneData *>(GetComponent<BoneData>(id))};
-  case ComponentType::Camera:
-    return {const_cast<Camera *>(GetComponent<Camera>(id))};
-  case ComponentType::GLMaterial:
-    return {const_cast<GLMaterial *>(GetComponent<GLMaterial>(id))};
-  case ComponentType::GLMesh:
-    return {const_cast<GLMesh *>(GetComponent<GLMesh>(id))};
-  case ComponentType::GLSkybox:
-    return {const_cast<GLSkybox *>(GetComponent<GLSkybox>(id))};
-  case ComponentType::GLTexture:
-    return {const_cast<GLTexture *>(GetComponent<GLTexture>(id))};
-  case ComponentType::Light:
-    return {const_cast<Light *>(GetComponent<Light>(id))};
-  case ComponentType::Transform:
-    return {const_cast<Transform *>(GetComponent<Transform>(id))};
-  case ComponentType::MaterialHandle:
-    return {const_cast<MaterialHandle *>(GetComponent<MaterialHandle>(id))};
-  case ComponentType::MeshHandle:
-    return {const_cast<MeshHandle *>(GetComponent<MeshHandle>(id))};
-  case ComponentType::SkyboxHandle:
-    return {const_cast<SkyboxHandle *>(GetComponent<SkyboxHandle>(id))};
-  default: // invalid type
-    return std::monostate{};
-  }
 }
 auto EntityManager::GetComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
   std::vector<ComponentType> components;
@@ -256,16 +231,32 @@ auto EntityManager::RemoveComponent(const EntityID id, const ComponentType type)
     return RemoveComponent<BoneData>(id);
   case ComponentType::Camera:
     return RemoveComponent<Camera>(id);
+  case ComponentType::GLBuffer:
+    return RemoveComponent<GLBuffer>(id);
   case ComponentType::GLMaterial:
     return RemoveComponent<GLMaterial>(id);
   case ComponentType::GLMesh:
     return RemoveComponent<GLMesh>(id);
+  case ComponentType::GLRenderTarget:
+    return RemoveComponent<GLRenderTarget>(id);
   case ComponentType::GLSkybox:
     return RemoveComponent<GLSkybox>(id);
   case ComponentType::GLTexture:
     return RemoveComponent<GLTexture>(id);
   case ComponentType::Light:
     return RemoveComponent<Light>(id);
+  case ComponentType::MaterialHandle:
+    return RemoveComponent<MaterialHandle>(id);
+  case ComponentType::MeshHandle:
+    return RemoveComponent<MeshHandle>(id);
+  case ComponentType::SceneMaterialHandle:
+    return RemoveComponent<SceneMaterialHandle>(id);
+  case ComponentType::SceneMeshHandle:
+    return RemoveComponent<SceneMeshHandle>(id);
+  case ComponentType::SkyboxHandle:
+    return RemoveComponent<SkyboxHandle>(id);
+  case ComponentType::TextureHandle:
+    return RemoveComponent<TextureHandle>(id);
   case ComponentType::Transform:
     return RemoveComponent<Transform>(id);
   default:

@@ -1,6 +1,11 @@
 #pragma once
+#include <target_description.hpp>
 namespace kuki {
-struct RenderTarget {
+class RenderTarget {
+public:
   virtual ~RenderTarget() = default;
+  TargetDescription desc;
+protected:
+  RenderTarget() = default;
 };
 } // namespace kuki

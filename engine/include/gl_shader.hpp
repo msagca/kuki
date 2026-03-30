@@ -12,10 +12,10 @@
 #include <shader_asset.hpp>
 #include <span>
 namespace kuki {
-struct KUKI_ENGINE_API GLShader : public GLShaderBase {
-  GLShader();
+class KUKI_ENGINE_API GLShader : public GLShaderBase {
+public:
   virtual ~GLShader() = default;
-  MaterialType type{MaterialType::Unknown};
+  MaterialType type{MaterialType::Unlit};
   auto DrawInstanced(const GLMesh &, const unsigned int) -> void;
   auto SetBoneTransforms(const BoneData &) -> void;
   auto SetMaterial(const GLMaterial &) const -> void;
@@ -24,9 +24,15 @@ struct KUKI_ENGINE_API GLShader : public GLShaderBase {
   auto SetTransform(const GLMesh &, std::span<const glm::mat4>, const unsigned int) -> void;
   virtual auto Draw(const GLMesh &) -> void;
   virtual auto SetCamera(const Camera &, const unsigned int) -> void;
+  virtual auto SetLighting() -> void;
   virtual auto SetLighting(const Light &) -> void;
   virtual auto SetLighting(std::span<const Light>) -> void;
   virtual auto SetMaterialFallback(const GLMesh &, std::span<const MaterialFallback>, const unsigned int) -> void;
   virtual auto SetSkybox(const GLSkybox * = nullptr) -> void;
+protected:
+  GLShader() = default;
+  size_t materialCount{};
+  size_t transformCount{};
+  unsigned int cameraDirty{};
 };
 } // namespace kuki

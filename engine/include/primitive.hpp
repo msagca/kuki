@@ -19,19 +19,18 @@ struct Triangle {
   glm::vec3 v2{};
   glm::vec3 v3{};
 };
-/// @brief A container class for functions that construct primitive shapes
 class KUKI_ENGINE_API Primitive {
-private:
-  static std::vector<Triangle> CreateOctahedron();
-  static std::vector<Triangle> CreateIcosahedron();
-  static std::vector<Triangle> Subdivide(const std::vector<Triangle> &, unsigned int = 1);
 public:
+  static auto Cube() -> std::vector<Vertex>;
+  static auto Cylinder(unsigned int = 40) -> std::vector<Vertex>;
+  static auto Frame() -> std::vector<Vertex>;
+  static auto Plane() -> std::vector<Vertex>;
+  static auto Sphere(unsigned int = 4) -> std::vector<Vertex>;
   /// @brief Flip the winding order (clockwise <-> counter-clockwise) of faces in a mesh
   static void FlipWindingOrder(std::vector<Vertex> &);
-  static std::vector<Vertex> Cube();
-  static std::vector<Vertex> Cylinder(unsigned int = 40);
-  static std::vector<Vertex> Frame();
-  static std::vector<Vertex> Plane();
-  static std::vector<Vertex> Sphere(unsigned int = 4);
+private:
+  static auto CreateIcosahedron() -> std::vector<Triangle>;
+  static auto CreateOctahedron() -> std::vector<Triangle>;
+  static auto Subdivide(std::vector<Triangle> &, unsigned int = 1) -> void;
 };
 } // namespace kuki

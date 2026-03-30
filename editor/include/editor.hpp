@@ -29,8 +29,8 @@ enum class KeyBit : uint8_t {
 using KeyMask = std::bitset<static_cast<uint8_t>(KeyBit::Space) + 1>;
 struct EditorContext {
   AssetID selectedAssetID{AssetID::Invalid};
-  AssetType selectedAssetType{AssetType::Unknown};
-  ComponentType selectedComponentType{ComponentType::Unknown};
+  AssetType selectedAssetType{AssetType::Texture};
+  ComponentType selectedComponentType{ComponentType::Transform};
   EditorState state{EditorState::Normal};
   EntityID renamedEntityID{EntityID::Invalid};
   EntityID selectedEntityID{EntityID::Invalid};
@@ -54,6 +54,12 @@ private:
   auto Start() -> void override;
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
+  auto InitImGui() -> void;
+  auto InitLayout() -> void;
+  auto LoadDefaultAssets() -> void;
+  auto LoadDefaultScene() -> void;
+  auto UpdateIO() -> void;
+  auto UpdateView() -> void;
   auto DisplayAssetCategories() -> void;
   auto DisplayAssets() -> void;
   auto DisplayEntity(const EntityID) -> void;
@@ -62,11 +68,4 @@ private:
   auto DisplayProperties(const ComponentVariant &) -> void;
   auto DisplayScene() -> void;
   auto DrawManipulator(const float, const float) -> void;
-  auto InitImGui() -> void;
-  auto InitLayout() -> void;
-  auto LoadDefaultAssets() -> void;
-  auto LoadDefaultScene() -> void;
-  auto LoadDefaultShaderAssets() -> void;
-  auto UpdateIO() -> void;
-  auto UpdateView() -> void;
 };

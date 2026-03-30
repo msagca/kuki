@@ -1,3 +1,4 @@
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <glm/ext/scalar_constants.hpp>
@@ -9,25 +10,7 @@
 #include <vector>
 namespace kuki {
 static constexpr auto PI = glm::pi<float>();
-std::vector<Vertex> Primitive::Frame() {
-  return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
-    {{-1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
-    {{-1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
-    {{1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
-    {{1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
-    {{-1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
-    {{1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}}};
-}
-std::vector<Vertex> Primitive::Plane() {
-  return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
-    {{-1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
-    {{1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
-    {{-1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
-    {{-1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
-    {{1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
-    {{1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}}};
-}
-std::vector<Vertex> Primitive::Cube() {
+auto Primitive::Cube() -> std::vector<Vertex> {
   return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
     {{.5f, -.5f, -.5f}, {0.f, 0.f, -1.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}},
     {{-.5f, -.5f, -.5f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
@@ -66,30 +49,7 @@ std::vector<Vertex> Primitive::Cube() {
     {{.5f, .5f, .5f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
     {{-.5f, .5f, -.5f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}}};
 }
-std::vector<Vertex> Primitive::Sphere(unsigned int level) {
-  std::vector<Triangle> triangles = CreateIcosahedron();
-  triangles = Subdivide(triangles, level);
-  std::vector<Vertex> vertices(triangles.size() * 18);
-  for (const auto &t : triangles) {
-    glm::vec3 verts[3] = {t.v1, t.v2, t.v3};
-    for (const auto &v : verts) {
-      Vertex vertex{};
-      vertex.position = v * .5f;
-      vertex.normal = glm::normalize(v);
-      const auto theta = atan2(v.z, v.x);
-      const auto phi = acos(v.y / glm::length(v));
-      vertex.texture = glm::vec2((theta + PI) / (2.f * PI), phi / PI);
-      glm::vec3 tangent(-sin(theta), 0.f, cos(theta));
-      if (abs(v.y) > .999f)
-        tangent = glm::vec3(1.f, 0.f, 0.f);
-      tangent = glm::normalize(tangent - vertex.normal * glm::dot(tangent, vertex.normal));
-      vertex.tangent = tangent;
-      vertices.emplace_back(vertex);
-    }
-  }
-  return vertices;
-}
-std::vector<Vertex> Primitive::Cylinder(unsigned int segments) {
+auto Primitive::Cylinder(unsigned int segments) -> std::vector<Vertex> {
   std::vector<Vertex> vertices(segments * 36);
   std::vector<float> segmentData(segments * 4);
   const auto circ = 2 * PI / segments;
@@ -150,11 +110,53 @@ std::vector<Vertex> Primitive::Cylinder(unsigned int segments) {
   }
   return vertices;
 }
-std::vector<Triangle> Primitive::CreateOctahedron() {
-  const std::vector<glm::vec3> vertices{{1.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, -1.f, 0.f}, {0.f, 0.f, 1.f}, {0.f, 0.f, -1.f}};
-  return {{vertices[0], vertices[2], vertices[4]}, {vertices[0], vertices[4], vertices[3]}, {vertices[0], vertices[3], vertices[5]}, {vertices[0], vertices[5], vertices[2]}, {vertices[1], vertices[2], vertices[5]}, {vertices[1], vertices[5], vertices[3]}, {vertices[1], vertices[3], vertices[4]}, {vertices[1], vertices[4], vertices[2]}};
+auto Primitive::Frame() -> std::vector<Vertex> {
+  return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
+    {{-1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}}};
 }
-std::vector<Triangle> Primitive::CreateIcosahedron() {
+auto Primitive::Plane() -> std::vector<Vertex> {
+  return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
+    {{-1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{-1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{-1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
+    {{1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}}};
+}
+auto Primitive::Sphere(unsigned int level) -> std::vector<Vertex> {
+  std::vector<Triangle> triangles = CreateIcosahedron();
+  Subdivide(triangles, level);
+  std::vector<Vertex> vertices(triangles.size() * 18);
+  for (const auto &t : triangles) {
+    const std::array<glm::vec3, 3> tv{t.v1, t.v2, t.v3};
+    for (const auto &v : tv) {
+      Vertex vertex{};
+      vertex.position = v * .5f;
+      vertex.normal = glm::normalize(v);
+      const auto theta = atan2(v.z, v.x);
+      const auto phi = acos(v.y / glm::length(v));
+      vertex.texture = glm::vec2((theta + PI) / (2.f * PI), phi / PI);
+      glm::vec3 tangent(-sin(theta), 0.f, cos(theta));
+      if (abs(v.y) > .999f)
+        tangent = glm::vec3(1.f, 0.f, 0.f);
+      tangent = glm::normalize(tangent - vertex.normal * glm::dot(tangent, vertex.normal));
+      vertex.tangent = tangent;
+      vertices.emplace_back(vertex);
+    }
+  }
+  return vertices;
+}
+auto Primitive::FlipWindingOrder(std::vector<Vertex> &vertices) -> void {
+  for (auto i = 1; i < vertices.size(); i += 3)
+    // swap vertex #0 and vertex #1 of the triangle
+    std::swap(vertices[i - 1], vertices[i]);
+}
+auto Primitive::CreateIcosahedron() -> std::vector<Triangle> {
   const auto t = (1 + std::sqrt(5.f)) / 2;
   const auto r = 1 / std::sqrt(1 + t * t);
   std::vector<glm::vec3> vertices = {{-1.f, t, 0.f}, {1.f, t, 0.f}, {-1.f, -t, 0.f}, {1.f, -t, 0.f}, {0.f, -1.f, t}, {0.f, 1.f, t}, {0.f, -1.f, -t}, {0.f, 1.f, -t}, {t, 0.f, -1.f}, {t, 0.f, 1.f}, {-t, 0.f, -1.f}, {-t, 0.f, 1.f}};
@@ -162,11 +164,14 @@ std::vector<Triangle> Primitive::CreateIcosahedron() {
     v = glm::normalize(v * r);
   return {{vertices[0], vertices[11], vertices[5]}, {vertices[0], vertices[5], vertices[1]}, {vertices[0], vertices[1], vertices[7]}, {vertices[0], vertices[7], vertices[10]}, {vertices[0], vertices[10], vertices[11]}, {vertices[1], vertices[5], vertices[9]}, {vertices[5], vertices[11], vertices[4]}, {vertices[11], vertices[10], vertices[2]}, {vertices[10], vertices[7], vertices[6]}, {vertices[7], vertices[1], vertices[8]}, {vertices[3], vertices[9], vertices[4]}, {vertices[3], vertices[4], vertices[2]}, {vertices[3], vertices[2], vertices[6]}, {vertices[3], vertices[6], vertices[8]}, {vertices[3], vertices[8], vertices[9]}, {vertices[4], vertices[9], vertices[5]}, {vertices[2], vertices[4], vertices[11]}, {vertices[6], vertices[2], vertices[10]}, {vertices[8], vertices[6], vertices[7]}, {vertices[9], vertices[8], vertices[1]}};
 }
-std::vector<Triangle> Primitive::Subdivide(const std::vector<Triangle> &triangles, unsigned int level) {
-  std::vector<Triangle> result = triangles;
+auto Primitive::CreateOctahedron() -> std::vector<Triangle> {
+  const std::vector<glm::vec3> vertices{{1.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, -1.f, 0.f}, {0.f, 0.f, 1.f}, {0.f, 0.f, -1.f}};
+  return {{vertices[0], vertices[2], vertices[4]}, {vertices[0], vertices[4], vertices[3]}, {vertices[0], vertices[3], vertices[5]}, {vertices[0], vertices[5], vertices[2]}, {vertices[1], vertices[2], vertices[5]}, {vertices[1], vertices[5], vertices[3]}, {vertices[1], vertices[3], vertices[4]}, {vertices[1], vertices[4], vertices[2]}};
+}
+auto Primitive::Subdivide(std::vector<Triangle> &triangles, unsigned int level) -> void {
   for (auto i = 0; i < level; ++i) {
-    std::vector<Triangle> temp(result.size() * 4);
-    for (const auto &t : result) {
+    std::vector<Triangle> temp(triangles.size() * 4);
+    for (const auto &t : triangles) {
       const auto v12 = glm::normalize(t.v1 + t.v2);
       const auto v23 = glm::normalize(t.v2 + t.v3);
       const auto v31 = glm::normalize(t.v3 + t.v1);
@@ -175,13 +180,7 @@ std::vector<Triangle> Primitive::Subdivide(const std::vector<Triangle> &triangle
       temp.push_back({t.v3, v31, v23});
       temp.push_back({v12, v23, v31});
     }
-    result = temp;
+    triangles = temp;
   }
-  return result;
-}
-void Primitive::FlipWindingOrder(std::vector<Vertex> &vertices) {
-  for (auto i = 1; i < vertices.size(); i += 3)
-    // swap vertex #0 and vertex #1 of the triangle
-    std::swap(vertices[i - 1], vertices[i]);
 }
 } // namespace kuki

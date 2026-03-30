@@ -7,12 +7,8 @@
 #include <target_description.hpp>
 #include <unordered_map>
 namespace kuki {
-struct TargetBinding {
-  std::string name;
-  TargetDescription desc;
-};
 class Renderer;
-using PassFunc = std::function<void(Renderer &, std::span<std::string>, std::span<TargetBinding>)>;
+using PassFunc = std::function<void(Renderer &, std::span<std::string>, std::span<std::string>)>;
 class KUKI_ENGINE_API RenderGraph {
 public:
   auto AddInput(std::string) -> RenderGraph &;
@@ -22,23 +18,22 @@ public:
   auto Execute(Renderer &) -> void;
   auto GetFinalOutputName() -> std::string;
   auto GetInputs(const PassID) -> std::span<std::string>;
-  auto GetOutputs(const PassID) -> std::span<TargetBinding>;
+  auto GetOutputs(const PassID) -> std::span<std::string>;
+  auto ResizeTargets(Renderer &, const int, const int) -> void;
   auto BeginPass(auto &&) -> RenderGraph &;
   auto ForEachPass(auto &&) const -> void;
+  auto ForEachTarget(auto &&) const -> void;
 private:
-  bool dirty{false};
   PassID nextId{PassID::First};
   PassID passId{PassID::Invalid};
-  // passes
+  bool dirty{false};
   std::unordered_map<PassID, PassFunc> idToFunc;
-  std::unordered_map<PassID, std::vector<std::string>> idToInputs;
-  std::unordered_map<PassID, std::vector<TargetBinding>> idToOutputs;
-  std::unordered_map<std::string, TargetDescription> ioToDesc; // NOTE: assumes that each name maps to only one description
-  // graph
   std::unordered_map<PassID, std::vector<PassID>> idToPredecessors;
   std::unordered_map<PassID, std::vector<PassID>> idToSuccessors;
+  std::unordered_map<PassID, std::vector<std::string>> idToInputs;
+  std::unordered_map<PassID, std::vector<std::string>> idToOutputs;
+  std::unordered_map<std::string, TargetDescription> nameToDesc; // NOTE: assumes that each name maps to only one description
   std::vector<PassID> graphFlat;
-  /// @return `true` if there is a path between `src` and `dst`
   auto AreConnected(const PassID, const PassID) -> bool;
   auto CreateEdge(const PassID, const PassID) -> bool;
   /// @brief Turn the adjacency list into an array (using Kahn's algorithm) to optimize graph traversal
@@ -50,9 +45,12 @@ auto RenderGraph::BeginPass(auto &&func) -> RenderGraph & {
   return *this;
 }
 auto RenderGraph::ForEachPass(auto &&func) const -> void {
-  for (const auto &id : graphFlat) {
+  for (const auto &id : graphFlat)
     if (auto it = idToFunc.find(id); it != idToFunc.end())
       func(id, it->second);
-  }
+}
+auto RenderGraph::ForEachTarget(auto &&func) const -> void {
+  for (const auto &[name, desc] : nameToDesc)
+    func(name, desc);
 }
 } // namespace kuki

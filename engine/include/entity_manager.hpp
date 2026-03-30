@@ -32,8 +32,6 @@ public:
   auto CopyTo(const EntityID, EntityManager &) const -> EntityID;
   auto Create(std::string = "") -> EntityID;
   auto Delete(const EntityID) -> bool;
-  auto GetComponent(const EntityID, const ComponentType) -> ComponentVariant;
-  auto GetComponent(const EntityID, const ComponentType) const -> const ComponentVariant;
   auto GetComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetCount() const -> size_t;
   auto GetMissingComponentTypes(const EntityID) const -> std::vector<ComponentType>;
@@ -49,10 +47,10 @@ public:
   auto RemoveAllComponents(const EntityID) -> bool;
   auto Rename(const EntityID, std::string) -> bool;
   auto Update() -> void;
-  // templates
   auto ForEachChild(this auto &, const EntityID, auto &&) -> void;
   auto ForEachComponent(this auto &, const EntityID, auto &&) -> void;
   auto ForEachRoot(this auto &, auto &&) -> void;
+  auto GetComponent(this auto &self, const EntityID, const ComponentType) -> ConstBasedValue<decltype(self), ConstComponentVariant, ComponentVariant>;
   template <typename... T>
   auto AddComponent(const EntityID) -> decltype(auto);
   template <typename... T>
@@ -107,6 +105,48 @@ auto EntityManager::ForEachComponent(this auto &self, const EntityID id, auto &&
 auto EntityManager::ForEachRoot(this auto &self, auto &&func) -> void {
   for (const auto &id : self.rootEntities)
     func(id);
+}
+auto EntityManager::GetComponent(this auto &self, const EntityID id, const ComponentType type) -> ConstBasedValue<decltype(self), ConstComponentVariant, ComponentVariant> {
+  switch (type) {
+  case ComponentType::BoneData:
+    return self.template GetComponent<BoneData>(id);
+  case ComponentType::Camera:
+    return self.template GetComponent<Camera>(id);
+  case ComponentType::GLBuffer:
+    return self.template GetComponent<GLBuffer>(id);
+  case ComponentType::GLComputeShader:
+    return self.template GetComponent<GLComputeShader>(id);
+  case ComponentType::GLLitShader:
+    return self.template GetComponent<GLLitShader>(id);
+  case ComponentType::GLMaterial:
+    return self.template GetComponent<GLMaterial>(id);
+  case ComponentType::GLMesh:
+    return self.template GetComponent<GLMesh>(id);
+  case ComponentType::GLRenderTarget:
+    return self.template GetComponent<GLRenderTarget>(id);
+  case ComponentType::GLSkybox:
+    return self.template GetComponent<GLSkybox>(id);
+  case ComponentType::GLTexture:
+    return self.template GetComponent<GLTexture>(id);
+  case ComponentType::GLUnlitShader:
+    return self.template GetComponent<GLUnlitShader>(id);
+  case ComponentType::Light:
+    return self.template GetComponent<Light>(id);
+  case ComponentType::MaterialHandle:
+    return self.template GetComponent<MaterialHandle>(id);
+  case ComponentType::MeshHandle:
+    return self.template GetComponent<MeshHandle>(id);
+  case ComponentType::SceneMaterialHandle:
+    return self.template GetComponent<SceneMaterialHandle>(id);
+  case ComponentType::SceneMeshHandle:
+    return self.template GetComponent<SceneMeshHandle>(id);
+  case ComponentType::SkyboxHandle:
+    return self.template GetComponent<SkyboxHandle>(id);
+  case ComponentType::TextureHandle:
+    return self.template GetComponent<TextureHandle>(id);
+  case ComponentType::Transform:
+    return self.template GetComponent<Transform>(id);
+  }
 }
 template <typename... T>
 auto EntityManager::AddComponent(const EntityID id) -> decltype(auto) {

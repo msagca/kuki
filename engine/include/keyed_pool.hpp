@@ -4,9 +4,9 @@
 #include <vector>
 namespace kuki {
 template <IsHashable K, typename V>
-class Pool {
+class KeyedPool {
 public:
-  virtual ~Pool() = default;
+  virtual ~KeyedPool() = default;
   auto PreAllocate(const K &, const size_t) -> void;
   auto Request(const K &) -> V;
   template <std::convertible_to<V>... Vals>
@@ -14,28 +14,32 @@ public:
 protected:
   std::unordered_map<K, std::vector<V>> pool;
   virtual auto Allocate(const K &) -> V = 0;
-  virtual auto Reallocate(const K &, V &) -> void {}
+  virtual auto Reallocate(const K &, V &) -> void;
 };
 template <IsHashable K, typename V>
-auto Pool<K, V>::PreAllocate(const K &key, const size_t count) -> void {
+auto KeyedPool<K, V>::PreAllocate(const K &key, const size_t count) -> void {
   if (count == 0)
     return;
   pool[key].reserve(pool[key].size() + count);
   for (auto i = 0; i < count; ++i)
-    pool[key].push_back(Allocate(key));
+    pool[key].emplace_back(Allocate(key));
 }
 template <IsHashable K, typename V>
-auto Pool<K, V>::Request(const K &key) -> V {
+auto KeyedPool<K, V>::Request(const K &key) -> V {
   if (auto it = pool.find(key); it != pool.end() && !it->second.empty()) {
     auto val = std::move(it->second.back());
     it->second.pop_back();
+    if (it->second.empty())
+      pool.erase(it);
     return val;
   }
   return Allocate(key);
 }
 template <IsHashable K, typename V>
 template <std::convertible_to<V>... Vals>
-auto Pool<K, V>::Release(const K &key, Vals &&...vals) -> void {
+auto KeyedPool<K, V>::Release(const K &key, Vals &&...vals) -> void {
   (pool[key].push_back(std::forward<Vals>(vals)), ...);
 }
+template <IsHashable K, typename V>
+auto KeyedPool<K, V>::Reallocate(const K &, V &) -> void {}
 } // namespace kuki

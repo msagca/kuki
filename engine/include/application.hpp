@@ -1,4 +1,5 @@
 #pragma once
+#include "settings_manager.hpp"
 #include <application_description.hpp>
 #include <application_settings.hpp>
 #include <asset_manager.hpp>
@@ -10,8 +11,10 @@
 #include <kuki_engine_export.h>
 #include <memory>
 #include <primitive.hpp>
+#include <render_target.hpp>
 #include <scene.hpp>
 #include <scene_manager.hpp>
+#include <shader_asset.hpp>
 #include <system.hpp>
 #include <typeindex>
 #include <vector>
@@ -48,28 +51,33 @@ public:
   auto GetButton(int) const -> bool;
   auto GetButtonDown(int) const -> bool;
   auto GetButtonUp(int) const -> bool;
+  auto GetDescription() const -> const ApplicationDescription &;
   auto GetEntityComponent(const EntityID, const ComponentType) -> std::optional<ComponentVariant>;
   auto GetEntityComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetEntityCount() const -> size_t;
   auto GetEntityName(const EntityID) const -> std::string;
   auto GetFPS() const -> size_t;
-  auto GetDescription() const -> const ApplicationDescription &;
   auto GetKey(int) const -> bool;
   auto GetKeyDown(int) const -> bool;
   auto GetKeyUp(int) const -> bool;
   auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
-  auto GetMousePos() const -> glm::vec2;
+  auto GetMousePosition() const -> glm::vec2;
   auto GetName() const -> std::string;
   auto GetSettings() const -> const ApplicationSettings &;
   auto GetWASDKeys() const -> glm::vec2;
   auto InstantiateAsset(const AssetID) -> EntityID;
+  auto InstantiateAsset(const std::string &) -> EntityID;
   auto IsEntity(const EntityID) const -> bool;
+  auto LoadCompute(const std::filesystem::path &, std::string) -> void;
+  auto LoadPrimitive(const std::string &) -> void;
   auto LoadScene(const std::string &) -> bool;
-  auto RegisterInputAction(std::string, InputAction) -> void;
+  auto LoadShader(const std::filesystem::path &, const std::filesystem::path &, std::string, const MaterialType = MaterialType::Unlit) -> void;
+  auto PreviewAsset(const AssetID) -> RenderTarget *;
   auto RegisterInputAction(int, InputAction, bool = true) -> void;
+  auto RegisterInputAction(std::string, InputAction) -> void;
   auto RemoveEntityComponent(const EntityID, const ComponentType) -> bool;
   auto RenameEntity(const EntityID, std::string) -> bool;
-  auto UnloadAsset(const AssetID) -> bool;
+  auto SetResolution(const int, const int) -> void;
   auto UnregisterInputAction(const std::string &) -> void;
   auto UnregisterInputAction(int, bool = true) -> void;
   auto ForEachAsset(this auto &, const AssetType, auto &&) -> void;
@@ -109,20 +117,22 @@ public:
   auto RemoveEntityComponent(const EntityID) -> bool;
 protected:
   GLFWwindow *window{};
-  ApplicationDescription desc;
-  ApplicationSettings settings;
 private:
+  ApplicationDescription desc;
+  SettingsManager settingsManager;
   AssetManager assetManager;
   InputManager inputManager;
   SceneManager sceneManager;
   float deltaTime{};
+  // TODO: create a system manager
+  std::unordered_map<std::type_index, std::unique_ptr<System>> typeIndexToSystem;
+  auto CreateWindow() -> void;
+  auto GetExePath() -> std::filesystem::path;
+  auto PostShutdown() -> void;
+  auto PostUpdate() -> void;
   auto PreAwake() -> void;
   auto PreStart() -> void;
   auto PreUpdate() -> void;
-  auto LateUpdate() -> void;
-  auto LateShutdown() -> void;
-  auto CreateWindow() -> void;
-  auto GetExePath() -> std::filesystem::path;
   auto SetWindowIcon() -> void;
   static void CharCallback(GLFWwindow *, unsigned int);
   static void CursorPosCallback(GLFWwindow *, double, double);
@@ -131,8 +141,6 @@ private:
   static void KeyCallback(GLFWwindow *, int, int, int, int);
   static void MouseButtonCallback(GLFWwindow *, int, int, int);
   static void WindowCloseCallback(GLFWwindow *);
-  // TODO: create a system manager
-  std::unordered_map<std::type_index, std::unique_ptr<System>> typeIndexToSystem;
 };
 auto Application::ForEachAsset(this auto &self, const AssetType type, auto &&func) -> void {
   self.assetManager.ForEach(type, std::forward<decltype(func)>(func));

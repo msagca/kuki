@@ -39,4 +39,6 @@ template <typename S, typename T>
 using ConstCorrectPointer = std::conditional_t<std::is_const_v<std::remove_reference_t<S>>, const T *, T *>;
 template <typename S, typename T>
 using ConstCorrectValue = std::conditional_t<std::is_const_v<std::remove_reference_t<S>>, const T, T>;
+template <typename S, typename CT, typename T>
+using ConstBasedValue = std::conditional_t<std::is_const_v<std::remove_reference_t<S>>, CT, T>;
 } // namespace kuki

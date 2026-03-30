@@ -4,16 +4,23 @@ namespace kuki {
 enum class ComponentType : uint8_t {
   BoneData,
   Camera,
+  GLBuffer,
+  GLComputeShader,
+  GLLitShader,
   GLMaterial,
   GLMesh,
   GLSkybox,
+  GLRenderTarget,
   GLTexture,
+  GLUnlitShader,
   Light,
   MaterialHandle,
   MeshHandle,
+  SceneMaterialHandle,
+  SceneMeshHandle,
   SkyboxHandle,
-  Transform,
-  Unknown
+  TextureHandle,
+  Transform
 };
-using ComponentMask = std::bitset<static_cast<uint8_t>(ComponentType::Unknown) + 1>;
+using ComponentMask = std::bitset<static_cast<uint8_t>(ComponentType::Transform) + 1>;
 } // namespace kuki

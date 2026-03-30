@@ -12,67 +12,55 @@ using namespace kuki;
 CameraController::CameraController(Application &app, EntityID entityId)
   : app(app), entityId(entityId) {}
 auto CameraController::Update(const float deltaTime) -> void {
-  static auto firstEnter = true;
-  static glm::vec2 mousePos;
-  static glm::vec2 mouseLast;
-  auto positionDirty = false;
-  auto rotationDirty = false;
-  if (app.GetButtonDown(GLFWConst::MOUSE_BUTTON_RIGHT)) {
-    mousePos = app.GetMousePos();
-    if (firstEnter)
-      mouseLast = mousePos;
-    firstEnter = false;
-    glm::vec2 mouseDiff{};
-    mouseDiff.x = (mousePos.x - mouseLast.x) * mouseSensitivity;
-    mouseDiff.y = (mouseLast.y - mousePos.y) * mouseSensitivity; // NOTE: y is inverted because position (0,0) is at the top-left corner
-    mouseLast = mousePos;
-    if (mouselook)
-      rotationDirty = UpdateRotation(mouseDiff);
-  } else
-    firstEnter = true;
-  positionDirty = UpdatePosition(deltaTime);
+  // FIXME: this doesn't update the camera's rotation until a change is manually done through the UI
+  auto dirty = false;
+  dirty |= UpdatePosition(deltaTime);
+  dirty |= mouselook && UpdateRotation();
+  camera.dirty += dirty;
   auto cameraPtr = app.GetEntityComponent<Camera>(entityId);
   if (cameraPtr) {
-    // prioritize local changes over editor changes
-    if (positionDirty)
-      cameraPtr->position = camera.position;
-    if (rotationDirty)
-      cameraPtr->rotation = camera.rotation;
-    cameraPtr->aspectRatio = camera.aspectRatio; // aspect ratio is only allowed to be updated by the rendering system, not through the editor UI
-    camera = *cameraPtr; // reflect editor changes to the local copy
-  }
-  camera.Update(); // NOTE: local camera needs to be updated manually
+    if (cameraMissing || cameraPtr->dirty > camera.dirty)
+      camera = *cameraPtr;
+    else if (camera.dirty > cameraPtr->dirty)
+      *cameraPtr = camera;
+    // NOTE: if `dirty` wraps around, this will temporarily misbehave
+    cameraMissing = false;
+  } else
+    cameraMissing = true;
+  camera.Update(); // NOTE: local camera needs to be updated manually; the `RenderingSystem` manages those in the scene
 }
 auto CameraController::UpdatePosition(const float deltaTime) -> bool {
-  static constexpr auto MOVE_SPEED = 5.f;
   static constexpr auto MOVE_THRESHOLD = 1e-6f;
-  static constexpr auto BOOST_FACTOR_MAX = 10.f;
-  static constexpr auto BOOST_RAMP_UP_TIME = 3.f;
-  static constexpr auto BOOST_RAMP_DOWN_TIME = 1.f;
   auto input = app.GetWASDKeys();
   // FIXME: prevent movement if there is a key sequence in progress
   if (glm::length2(input) < MOVE_THRESHOLD)
     input = app.GetArrowKeys();
   if (glm::length2(input) < MOVE_THRESHOLD)
     return false;
-  static auto boostFactor = 1.f;
-  static auto boostTime = 0.f;
-  auto shift = app.GetKey(GLFWConst::KEY_LEFT_SHIFT);
+  const auto shift = app.GetKey(GLFWConst::KEY_LEFT_SHIFT);
   if (shift)
-    boostTime = std::min(boostTime + deltaTime, BOOST_RAMP_UP_TIME);
+    settings.boostTime = std::min(settings.boostTime + deltaTime, settings.boostRampUpTime);
   else
-    boostTime = std::max(0.f, boostTime - deltaTime * (BOOST_RAMP_UP_TIME / BOOST_RAMP_DOWN_TIME));
-  boostFactor = 1.f + (BOOST_FACTOR_MAX - 1.f) * (boostTime / BOOST_RAMP_UP_TIME);
-  auto velocity = MOVE_SPEED * boostFactor * deltaTime;
+    settings.boostTime = std::max(0.f, settings.boostTime - deltaTime * (settings.boostRampUpTime / settings.boostRampDownTime));
+  settings.moveBoost = 1.f + (settings.moveBoostMax - 1.f) * (settings.boostTime / settings.boostRampUpTime);
+  const auto velocity = settings.moveSpeed * settings.moveBoost * deltaTime;
   camera.position += (camera.forward * input.y + camera.right * input.x) * velocity;
   return true;
 }
-auto CameraController::UpdateRotation(glm::vec2 mouseDiff) -> bool {
+auto CameraController::UpdateRotation() -> bool {
   static constexpr auto MOVE_THRESHOLD = 1e-6f;
+  const auto &mousePos = app.GetMousePosition();
+  if (mouseEnter)
+    mouseLast = mousePos;
+  mouseEnter = false;
+  glm::vec2 mouseDiff{};
+  mouseDiff.x = (mousePos.x - mouseLast.x) * settings.mouseSensitivity;
+  mouseDiff.y = (mouseLast.y - mousePos.y) * settings.mouseSensitivity; // NOTE: y is inverted because (0,0) is the northwest corner
+  mouseLast = mousePos;
   if (glm::length2(mouseDiff) < MOVE_THRESHOLD)
     return false;
-  auto yaw = glm::angleAxis(-mouseDiff.x, glm::vec3(0.f, 1.f, 0.f));
-  auto pitch = glm::angleAxis(mouseDiff.y, glm::vec3(1.f, 0.f, 0.f));
+  const auto yaw = glm::angleAxis(-mouseDiff.x, glm::vec3(0.f, 1.f, 0.f));
+  const auto pitch = glm::angleAxis(mouseDiff.y, glm::vec3(1.f, 0.f, 0.f));
   camera.rotation = yaw * camera.rotation * pitch;
   return true;
 }

@@ -6,7 +6,7 @@
 namespace kuki {
 struct KUKI_ENGINE_API ShaderAsset final : public Asset {
   ShaderAsset(const AssetID = AssetID::Invalid, std::string = "");
-  MaterialType type{MaterialType::Unknown};
+  MaterialType type{MaterialType::Unlit};
   std::string text{};
   EntityID resourceId{};
 };

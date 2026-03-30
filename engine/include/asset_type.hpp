@@ -3,10 +3,12 @@
 #include <cstdint>
 namespace kuki {
 enum class AssetType : uint8_t {
+  Material,
+  Mesh,
   Scene,
   Shader,
   Skybox,
-  Unknown,
+  Texture
 };
-using AssetMask = std::bitset<static_cast<uint8_t>(AssetType::Unknown) + 1>;
+using AssetMask = std::bitset<static_cast<uint8_t>(AssetType::Texture) + 1>;
 } // namespace kuki

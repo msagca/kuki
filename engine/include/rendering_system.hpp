@@ -1,4 +1,5 @@
 #pragma once
+#include <application_settings.hpp>
 #include <asset_manager.hpp>
 #include <gl_renderer.hpp>
 #include <kuki_engine_export.h>
@@ -7,12 +8,14 @@
 #include <render_graph.hpp>
 #include <render_graph_builder.hpp>
 #include <scene_manager.hpp>
+#include <settings_manager.hpp>
 #include <shader_asset.hpp>
 #include <system.hpp>
+#include <target_description.hpp>
 namespace kuki {
 class KUKI_ENGINE_API RenderingSystem final : public System {
 public:
-  RenderingSystem(SceneManager &, AssetManager &);
+  RenderingSystem(SceneManager &, AssetManager &, SettingsManager &);
   ~RenderingSystem();
   auto Awake() -> void override;
   auto Start() -> void override;
@@ -23,29 +26,30 @@ public:
   auto LoadCompute(ShaderAsset &) -> void;
   auto LoadPrimitive(const std::string &) -> void;
   auto LoadShader(ShaderAsset &, ShaderAsset &) -> void;
-  template <IsAsset T>
-  auto PreviewAsset(T &) -> RenderTarget *;
+  auto PreviewAsset(const AssetID, int = 128) -> RenderTarget *;
 private:
+  SceneManager &sceneManager;
+  SettingsManager &settingsManager;
   Renderer *activeRenderer{};
   GLRenderer glRenderer;
   RenderGraphBuilder graphBuilder;
-  size_t fps{};
   std::unique_ptr<RenderGraph> renderGraph;
-  static auto ApplyAntiAliasing(Renderer &, std::span<std::string>, std::span<TargetBinding>) -> void;
-  static auto ApplyBloomEffect(Renderer &, std::span<std::string>, std::span<TargetBinding>) -> void;
-  static auto ApplyBlurEffect(Renderer &, std::span<std::string>, std::span<TargetBinding>) -> void;
-  static auto ApplyBrightPassFilter(Renderer &, std::span<std::string>, std::span<TargetBinding>) -> void;
-  static auto ApplyGammaCorrection(Renderer &, std::span<std::string>, std::span<TargetBinding>) -> void;
-  static auto ConvertCubemapToEquirectangularMap(Renderer &, const std::string &, const TargetBinding &) -> void;
-  static auto ConvertEquirectangularMapToCubemap(Renderer &, const std::string &, const TargetBinding &) -> void;
-  static auto CreateBRDF_LUT(Renderer &, const TargetBinding &) -> void;
-  static auto CreateIrradianceMap(Renderer &, const std::string &, const TargetBinding &) -> void;
-  static auto CreatePrefilterMap(Renderer &, const std::string &, const TargetBinding &) -> void;
-  static auto RenderScene(Renderer &, std::span<std::string>, std::span<TargetBinding>) -> void;
+  size_t fps{};
+  auto OnResolutionChanged(const ScreenResolution &) -> void;
+  auto OnSceneLoaded(Scene &) -> void;
+  static auto ApplyAntiAliasing(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
+  static auto ApplyBloomEffect(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
+  static auto ApplyBlurEffect(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
+  static auto ApplyBrightPassFilter(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
+  static auto ApplyGammaCorrection(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
+  static auto ConvertCubemapToEquirectangularMap(Renderer &, const std::string &, const std::string &, const TargetDescription &) -> void;
+  static auto ConvertEquirectangularMapToCubemap(Renderer &, const std::string &, const std::string &, const TargetDescription &) -> void;
+  static auto CreateBRDF_LUT(Renderer &, const std::string &, const TargetDescription &) -> void;
+  static auto CreateIrradianceMap(Renderer &, const std::string &, const std::string &, const TargetDescription &) -> void;
+  static auto CreatePrefilterMap(Renderer &, const std::string &, const std::string &, const TargetDescription &) -> void;
+  static auto RenderScene(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
   static auto DrawEntities(Renderer &) -> void;
   static auto DrawEntitiesInstanced(Renderer &, const GLMesh &, const GLMaterial &, const std::vector<MaterialFallback> &, const std::vector<glm::mat4> &) -> void;
   static auto DrawSkybox(Renderer &) -> void;
 };
-template <IsAsset T>
-auto RenderingSystem::PreviewAsset(T &) -> RenderTarget * {}
 } // namespace kuki

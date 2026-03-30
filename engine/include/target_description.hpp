@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <hash_utils.hpp>
-#include <utility>
 namespace kuki {
 enum class TargetFormat : uint8_t {
   R8,
@@ -17,15 +17,9 @@ enum class TargetFormat : uint8_t {
   SRGB8,
   Unknown
 };
-enum class TargetType : uint8_t {
-  Cubemap,
-  Texture2D,
-  Texture2DMulti,
-  Unknown
-};
 struct TargetDescription {
+  // TODO: add a type member to identify cubemaps
   TargetFormat format{TargetFormat::RGBA16};
-  TargetType target{TargetType::Texture2D};
   int width{1024};
   int height{1024};
   int samples{1};
@@ -39,7 +33,6 @@ struct hash<kuki::TargetDescription> {
   auto operator()(const kuki::TargetDescription &desc) const noexcept -> size_t {
     size_t h{};
     kuki::hash_combine(h, hash<int>{}(static_cast<int>(desc.format)));
-    kuki::hash_combine(h, hash<int>{}(static_cast<int>(desc.target)));
     kuki::hash_combine(h, hash<int>{}(desc.width));
     kuki::hash_combine(h, hash<int>{}(desc.height));
     kuki::hash_combine(h, hash<int>{}(desc.samples));

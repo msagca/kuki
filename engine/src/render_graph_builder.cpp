@@ -7,7 +7,13 @@ auto RenderGraphBuilder::AddInput(std::string name) -> RenderGraphBuilder & {
     renderGraph->AddInput(std::move(name));
   return *this;
 }
+auto RenderGraphBuilder::AddOutput(std::string name) -> RenderGraphBuilder & {
+  if (renderGraph)
+    renderGraph->AddOutput(std::move(name), descLast);
+  return *this;
+}
 auto RenderGraphBuilder::AddOutput(std::string name, TargetDescription desc) -> RenderGraphBuilder & {
+  descLast = desc;
   if (renderGraph)
     renderGraph->AddOutput(std::move(name), std::move(desc));
   return *this;

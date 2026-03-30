@@ -13,7 +13,6 @@
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <transform.hpp>
-#include <utility>
 namespace kuki {
 auto Camera::Frame(const BoundingBox &bounds, float distanceFactor) -> void {
   const auto center = (bounds.min + bounds.max) * .5f;
@@ -33,7 +32,7 @@ auto Camera::Frame(const BoundingBox &bounds, float distanceFactor) -> void {
     farPlane = distance + radius;
   UpdateTransform();
   UpdateFrustum();
-  dirty = true;
+  ++dirty;
 }
 auto Camera::GetTransform() const -> Transform {
   Transform transform;
@@ -48,7 +47,8 @@ auto Camera::IntersectsFrustum(const BoundingBox &bounds) const -> bool {
 auto Camera::SetTransform(const Transform &transform) -> void {
   position = transform.position;
   rotation = transform.rotation;
-  dirty = true;
+  Update();
+  ++dirty;
 }
 auto Camera::Update() -> void {
   UpdateBasis();

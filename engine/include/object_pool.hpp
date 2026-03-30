@@ -13,7 +13,7 @@ public:
 protected:
   std::vector<V> pool;
   virtual auto Allocate() -> V = 0;
-  virtual auto Reallocate(V &) -> void {}
+  virtual auto Reallocate(V &) -> void;
 };
 template <typename V>
 auto ObjectPool<V>::PreAllocate(const size_t count) -> void {
@@ -21,7 +21,7 @@ auto ObjectPool<V>::PreAllocate(const size_t count) -> void {
     return;
   pool.reserve(pool.size() + count);
   for (auto i = 0; i < count; ++i)
-    pool.push_back(Allocate());
+    pool.emplace_back(Allocate());
 }
 template <typename V>
 auto ObjectPool<V>::Request() -> V {
@@ -37,4 +37,6 @@ template <std::convertible_to<V>... Vals>
 auto ObjectPool<V>::Release(Vals &&...vals) -> void {
   (pool.push_back(std::forward<Vals>(vals)), ...);
 }
+template <typename V>
+auto ObjectPool<V>::Reallocate(V &) -> void {}
 } // namespace kuki

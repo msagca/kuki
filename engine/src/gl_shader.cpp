@@ -1,11 +1,10 @@
 #include <gl_shader.hpp>
-#include <glad/glad.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <shader_asset.hpp>
 #include <spdlog/spdlog.h>
+//
+#include <glad/glad.h>
 namespace kuki {
-GLShader::GLShader()
-  : GLShaderBase(std::in_place_type<GLShader>) {}
 auto GLShader::DrawInstanced(const GLMesh &mesh, const unsigned int count) -> void {
   if (count == 0)
     return;
@@ -29,8 +28,13 @@ auto GLShader::SetTransform(const GLMesh &mesh, const glm::mat4 &transform, cons
   SetTransform(mesh, transforms, buffer);
 }
 auto GLShader::SetTransform(const GLMesh &mesh, std::span<const glm::mat4> transforms, const unsigned int buffer) -> void {
-  auto bindingIndex = 1;
-  glNamedBufferData(buffer, transforms.size() * sizeof(glm::mat4), transforms.data(), GL_DYNAMIC_DRAW);
+  const auto bindingIndex = 1;
+  if (transformCount == transforms.size())
+    glNamedBufferSubData(buffer, 0, transformCount * sizeof(glm::mat4), transforms.data());
+  else {
+    transformCount = transforms.size();
+    glNamedBufferData(buffer, transformCount * sizeof(glm::mat4), transforms.data(), GL_DYNAMIC_DRAW);
+  }
   glVertexArrayVertexBuffer(mesh.vao, bindingIndex, buffer, 0, sizeof(glm::mat4));
   glVertexArrayBindingDivisor(mesh.vao, bindingIndex, 1);
   auto attribIndex = 4;
@@ -38,7 +42,7 @@ auto GLShader::SetTransform(const GLMesh &mesh, std::span<const glm::mat4> trans
     glVertexArrayAttribFormat(mesh.vao, attribIndex, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4) * i);
     glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
     glEnableVertexArrayAttrib(mesh.vao, attribIndex);
-    attribIndex++;
+    ++attribIndex;
   }
 }
 auto GLShader::Draw(const GLMesh &mesh) -> void {
@@ -49,14 +53,17 @@ auto GLShader::Draw(const GLMesh &mesh) -> void {
     glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
   glBindVertexArray(0);
 }
-auto GLShader::SetCamera(const Camera &camera, unsigned int ubo) -> void {
-  if (!camera.dirty)
+auto GLShader::SetCamera(const Camera &camera, const unsigned int buffer) -> void {
+  if (camera.dirty == cameraDirty)
     return;
-  camera.dirty = false;
-  auto bindingPoint = 0; // TODO: store binding point in shader
-  glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, ubo);
-  glNamedBufferSubData(ubo, 0, sizeof(CameraTransform), &camera.transform);
+  // NOTE: this assumes that enough memory was allocated for `buffer`
+  // FIXME: binding point might be different for some shaders
+  constexpr auto bindingPoint = 0;
+  glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, buffer);
+  glNamedBufferSubData(buffer, 0, sizeof(CameraTransform), &camera.transform);
+  cameraDirty = camera.dirty;
 }
+auto GLShader::SetLighting() -> void {}
 auto GLShader::SetLighting(const Light &light) -> void {}
 auto GLShader::SetLighting(std::span<const Light> lights) -> void {}
 auto GLShader::SetMaterialFallback(const GLMesh &mesh, std::span<const MaterialFallback> fallbacks, const unsigned int buffer) -> void {}

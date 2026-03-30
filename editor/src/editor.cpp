@@ -43,8 +43,10 @@ using namespace kuki;
 Editor::Editor()
   : Application({.name = "Kuki Editor", .iconPath = "image/kuki.ico"}) {}
 auto Editor::Awake() -> void {
+  InitImGui();
   RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
     cameraController->mouselook = true;
+    cameraController->mouseEnter = true;
     context.state = EditorState::Fly;
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     auto& io = ImGui::GetIO();
@@ -55,7 +57,6 @@ auto Editor::Awake() -> void {
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     auto& io = ImGui::GetIO();
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
-  InitImGui();
 }
 auto Editor::Start() -> void {
   LoadDefaultAssets();
@@ -72,6 +73,137 @@ auto Editor::Shutdown() -> void {
   ImGui_ImplGlfw_Shutdown();
   ImGui::DestroyContext();
 }
+auto Editor::InitImGui() -> void {
+  auto constexpr FONT_SIZE = 16.f;
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  auto &io = ImGui::GetIO();
+  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_DockingEnable;
+  auto fontPath = std::filesystem::path{GetDescription().path / "font/Inter-VariableFont_opsz,wght.ttf"}.string();
+  io.Fonts->AddFontFromFileTTF(fontPath.c_str(), FONT_SIZE);
+  auto &style = ImGui::GetStyle();
+  // style.ChildBorderSize = .0f;
+  style.ChildRounding = .0f;
+  // style.FrameBorderSize = .0f;
+  // style.FramePadding = ImVec2(.0f, .0f);
+  style.FrameRounding = .0f;
+  // style.ItemInnerSpacing = ImVec2(.0f, .0f);
+  // style.ItemSpacing = ImVec2(.0f, .0f);
+  // style.TabBorderSize = .0f;
+  // style.TabCloseButtonMinWidthSelected = .0f;
+  style.TabRounding = .0f;
+  // style.WindowBorderSize = .0f;
+  // style.WindowPadding = ImVec2(.0f, .0f);
+  style.WindowRounding = .0f;
+  ImGui_ImplGlfw_InitForOpenGL(window, true);
+  ImGui_ImplOpenGL3_Init();
+  ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
+  fileBrowser.SetTitle("Browse Files");
+}
+auto Editor::InitLayout() -> void {
+  // TODO: if an imgui.ini file exists, restore the layout from it
+  static bool firstRun = true;
+  if (!firstRun)
+    return;
+  firstRun = false;
+  auto viewport = ImGui::GetMainViewport();
+  const auto dockspaceId = ImGui::GetID("DockSpace");
+  const auto viewportSize = viewport->Size;
+  ImGui::DockBuilderRemoveNode(dockspaceId);
+  ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+  ImGui::DockBuilderSetNodeSize(dockspaceId, viewportSize);
+  auto mainId = dockspaceId;
+  ImGui::DockBuilderDockWindow("Scene", mainId);
+  auto rightId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Right, .3f, nullptr, &mainId);
+  ImGui::DockBuilderDockWindow("Hierarchy", rightId);
+  const auto rightBottomId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Down, .5f, nullptr, &rightId);
+  ImGui::DockBuilderDockWindow("Properties", rightBottomId);
+  auto bottomId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Down, .3f, nullptr, &mainId);
+  ImGui::DockBuilderDockWindow("Assets", bottomId);
+  const auto bottomLeftId = ImGui::DockBuilderSplitNode(bottomId, ImGuiDir_Left, .2f, nullptr, &bottomId);
+  ImGui::DockBuilderDockWindow("Categories", bottomLeftId);
+  ImGui::DockBuilderFinish(dockspaceId);
+}
+auto Editor::LoadDefaultAssets() -> void {
+  LoadPrimitive("Cube");
+  LoadPrimitive("CubeInverted");
+  LoadPrimitive("Cylinder");
+  LoadPrimitive("Frame");
+  LoadPrimitive("Plane");
+  LoadPrimitive("Sphere");
+  const auto &desc = GetDescription();
+  LoadCompute(desc.path / "shader/brdf_lut.comp", "BRDF_LUT");
+  LoadCompute(desc.path / "shader/cubemap_equirect.comp", "CubemapEquirect");
+  LoadCompute(desc.path / "shader/equirect_cubemap.comp", "EquirectCubemap");
+  LoadCompute(desc.path / "shader/irradiance.comp", "IrradianceMap");
+  LoadCompute(desc.path / "shader/prefilter.comp", "PrefilterMap");
+  LoadShader(desc.path / "shader/lit.vert", desc.path / "shader/lit.frag", "Lit", MaterialType::Lit);
+  LoadShader(desc.path / "shader/lit_skinned.vert", desc.path / "shader/lit.frag", "LitSkinned", MaterialType::LitSkinned);
+  LoadShader(desc.path / "shader/unlit.vert", desc.path / "shader/unlit.frag", "Unlit");
+  LoadShader(desc.path / "shader/skybox.vert", desc.path / "shader/skybox.frag", "Skybox");
+  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/bloom.frag", "Bloom");
+  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/blur.frag", "Blur");
+  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/bright_pass.frag", "BrightPass");
+  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/gamma_correction.frag", "GammaCorrect");
+}
+auto Editor::LoadDefaultScene() -> void {
+  const auto sceneName = "Main";
+  CreateScene(sceneName);
+  auto entityId = CreateEntity("Camera");
+  AddEntityComponent<Camera>(entityId);
+  cameraController = std::make_unique<CameraController>(*this, entityId);
+  entityId = CreateEntity("Skybox");
+  AddEntityComponent<GLSkybox>(entityId);
+  LoadScene(sceneName);
+  InstantiateAsset("Cube");
+}
+auto Editor::UpdateIO() -> void {
+  static auto stateOld = EditorState::Normal;
+  if (context.state != stateOld) {
+    stateOld = context.state;
+    if (context.state == EditorState::Rename)
+      DisableKeys();
+    else
+      EnableKeys();
+    if (context.state != EditorState::Normal) {
+      context.keyState.reset();
+      context.pressState.reset();
+      context.releaseState.reset();
+      return;
+    }
+  }
+  const auto &io = ImGui::GetIO();
+  context.keyState.set(static_cast<uint8_t>(KeyBit::Alt), io.KeyAlt);
+  context.keyState.set(static_cast<uint8_t>(KeyBit::Ctrl), io.KeyCtrl);
+  context.keyState.set(static_cast<uint8_t>(KeyBit::Shift), io.KeyShift);
+  context.pressState.set(static_cast<uint8_t>(KeyBit::Backspace), ImGui::IsKeyPressed(ImGuiKey_Backspace));
+  context.pressState.set(static_cast<uint8_t>(KeyBit::Delete), ImGui::IsKeyPressed(ImGuiKey_Delete));
+  context.pressState.set(static_cast<uint8_t>(KeyBit::Enter), ImGui::IsKeyPressed(ImGuiKey_Enter));
+  context.pressState.set(static_cast<uint8_t>(KeyBit::Escape), ImGui::IsKeyPressed(ImGuiKey_Escape));
+  context.pressState.set(static_cast<uint8_t>(KeyBit::F), ImGui::IsKeyPressed(ImGuiKey_F));
+  context.pressState.set(static_cast<uint8_t>(KeyBit::Space), ImGui::IsKeyPressed(ImGuiKey_Space));
+  context.releaseState.set(static_cast<uint8_t>(KeyBit::Backspace), ImGui::IsKeyReleased(ImGuiKey_Backspace));
+  context.releaseState.set(static_cast<uint8_t>(KeyBit::Delete), ImGui::IsKeyReleased(ImGuiKey_Delete));
+  context.releaseState.set(static_cast<uint8_t>(KeyBit::Enter), ImGui::IsKeyReleased(ImGuiKey_Enter));
+  context.releaseState.set(static_cast<uint8_t>(KeyBit::Escape), ImGui::IsKeyReleased(ImGuiKey_Escape));
+  context.releaseState.set(static_cast<uint8_t>(KeyBit::F), ImGui::IsKeyPressed(ImGuiKey_F));
+  context.releaseState.set(static_cast<uint8_t>(KeyBit::Space), ImGui::IsKeyReleased(ImGuiKey_Space));
+}
+auto Editor::UpdateView() -> void {
+  ImGui_ImplOpenGL3_NewFrame();
+  ImGui_ImplGlfw_NewFrame();
+  ImGui::NewFrame();
+  ImGuizmo::BeginFrame();
+  ImGui::DockSpaceOverViewport(ImGui::GetID("DockSpace"));
+  InitLayout();
+  DisplayAssetCategories();
+  DisplayAssets();
+  DisplayHierarchy();
+  DisplayProperties();
+  DisplayScene();
+  ImGui::Render();
+  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
 auto Editor::DisplayAssetCategories() -> void {
   ImGui::Begin("Categories");
   ForEachAssetType([this](const AssetType type, const std::string name) {
@@ -82,6 +214,7 @@ auto Editor::DisplayAssetCategories() -> void {
 }
 auto Editor::DisplayAssets() -> void {
   static constexpr auto POPUP_WINDOW_FLAGS = ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight;
+  static constexpr auto PREVIEW_SIZE = 128;
   ImGui::Begin("Assets");
   const auto clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
   const auto windowHovered = ImGui::IsWindowHovered();
@@ -91,7 +224,7 @@ auto Editor::DisplayAssets() -> void {
   const auto escapePressed = context.pressState.test(static_cast<uint8_t>(KeyBit::Escape));
   const auto clearSelection = (windowHovered && !itemsHovered) && (clicked || backspacePressed || deletePressed || escapePressed);
   if (context.state == EditorState::Normal && clearSelection) {
-    context.selectedAssets.clear();
+    // context.selectedAssets.clear();
     context.selectedAssetID = AssetID::Invalid;
   }
   ForEachAsset(context.selectedAssetType, [this](const AssetID id, const std::string &name) {
@@ -99,6 +232,14 @@ auto Editor::DisplayAssets() -> void {
     const auto selected = context.selectedAssetID == id;
     if (ImGui::Selectable(name.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick))
       context.selectedAssetID = id;
+    if (ImGui::IsItemHovered()) {
+      const auto texture = static_cast<GLTexture *>(PreviewAsset(id));
+      if (texture) {
+        ImGui::BeginTooltip();
+        ImGui::Image(texture->id, ImVec2(PREVIEW_SIZE, PREVIEW_SIZE));
+        ImGui::EndTooltip();
+      }
+    }
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
       ImGui::SetDragDropPayload("##SpawnPayload", &id, sizeof(AssetID));
       ImGui::Text("%s", name.c_str());
@@ -269,8 +410,6 @@ auto Editor::DisplayProperties() -> void {
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove")) {
         RemoveEntityComponent(context.selectedEntityID, componentType);
-        if (context.selectedComponentType == componentType)
-          context.selectedComponentType = ComponentType::Unknown;
         removed = true;
       }
       ImGui::EndPopup();
@@ -312,11 +451,13 @@ auto Editor::DisplayScene() -> void {
     const auto sceneTarget = static_cast<GLRenderTarget *>(renderingSystem->GetTarget());
     if (sceneTarget && sceneTarget->texture > 0) {
       const auto &settings = GetSettings();
-      const auto contentRegion = ImGui::GetContentRegionAvail();
-      const auto scaleFactor = std::max(contentRegion.x / settings.width, contentRegion.y / settings.height);
-      const auto drawWidth = settings.width * scaleFactor;
-      const auto drawHeight = settings.height * scaleFactor;
-      ImGui::Image(sceneTarget->texture, ImVec2(drawWidth, drawHeight), UV0, UV1);
+      ImGui::Image(sceneTarget->texture, ImVec2(settings.res.width, settings.res.height), UV0, UV1);
+      DrawManipulator(settings.res.width, settings.res.height);
+      const auto &contentRegion = ImGui::GetContentRegionAvail();
+      const auto &sceneWidth = static_cast<int>(contentRegion.x);
+      const auto &sceneHeight = static_cast<int>(contentRegion.y);
+      // FIXME: this is called many times while resizing the window
+      SetResolution(sceneWidth, sceneHeight);
     }
   }
   if (ImGui::BeginDragDropTarget()) {
@@ -333,9 +474,10 @@ auto Editor::DisplayScene() -> void {
   }
   ImGui::End();
 }
-auto Editor::DrawManipulator(float width, float height) -> void {
+auto Editor::DrawManipulator(const float width, const float height) -> void {
   if (!context.selectedEntityID)
     return;
+  const auto &settings = GetSettings();
   const auto windowPos = ImGui::GetWindowPos();
   ImGuizmo::SetRect(windowPos.x, windowPos.y, width, height);
   ImGuizmo::SetOrthographic(cameraController->camera.type == CameraType::Orthographic);
@@ -357,7 +499,7 @@ auto Editor::DrawManipulator(float width, float height) -> void {
     }
   } else
     transform = *transformComp;
-  ImGuizmo::SetDrawlist();
+  ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
   if (!ImGuizmo::Manipulate(glm::value_ptr(cameraController->camera.transform.view), glm::value_ptr(cameraController->camera.transform.projection), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(transform.local)))
     return;
   glm::vec3 rotation;
@@ -369,151 +511,4 @@ auto Editor::DrawManipulator(float width, float height) -> void {
     lightComp->SetTransform(transform);
   else
     *transformComp = transform;
-}
-auto Editor::InitImGui() -> void {
-  auto constexpr FONT_SIZE = 16.f;
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  auto &io = ImGui::GetIO();
-  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_DockingEnable;
-  auto fontPath = std::filesystem::path{desc.path / "font/Inter-VariableFont_opsz,wght.ttf"}.string();
-  io.Fonts->AddFontFromFileTTF(fontPath.c_str(), FONT_SIZE);
-  auto &style = ImGui::GetStyle();
-  // style.ChildBorderSize = .0f;
-  style.ChildRounding = .0f;
-  // style.FrameBorderSize = .0f;
-  // style.FramePadding = ImVec2(.0f, .0f);
-  style.FrameRounding = .0f;
-  // style.ItemInnerSpacing = ImVec2(.0f, .0f);
-  // style.ItemSpacing = ImVec2(.0f, .0f);
-  // style.TabBorderSize = .0f;
-  // style.TabCloseButtonMinWidthSelected = .0f;
-  style.TabRounding = .0f;
-  // style.WindowBorderSize = .0f;
-  // style.WindowPadding = ImVec2(.0f, .0f);
-  style.WindowRounding = .0f;
-  ImGui_ImplGlfw_InitForOpenGL(window, true);
-  ImGui_ImplOpenGL3_Init();
-  ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
-  fileBrowser.SetTitle("Browse Files");
-}
-auto Editor::InitLayout() -> void {
-  // TODO: if an imgui.ini file exists, restore the layout from it
-  static bool firstRun = true;
-  if (!firstRun)
-    return;
-  firstRun = false;
-  auto viewport = ImGui::GetMainViewport();
-  const auto dockspaceId = ImGui::GetID("DockSpace");
-  const auto viewportSize = viewport->Size;
-  ImGui::DockBuilderRemoveNode(dockspaceId);
-  ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
-  ImGui::DockBuilderSetNodeSize(dockspaceId, viewportSize);
-  auto mainId = dockspaceId;
-  ImGui::DockBuilderDockWindow("Scene", mainId);
-  auto rightId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Right, .3f, nullptr, &mainId);
-  ImGui::DockBuilderDockWindow("Hierarchy", rightId);
-  const auto rightBottomId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Down, .5f, nullptr, &rightId);
-  ImGui::DockBuilderDockWindow("Properties", rightBottomId);
-  auto bottomId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Down, .3f, nullptr, &mainId);
-  ImGui::DockBuilderDockWindow("Assets", bottomId);
-  const auto bottomLeftId = ImGui::DockBuilderSplitNode(bottomId, ImGuiDir_Left, .2f, nullptr, &bottomId);
-  ImGui::DockBuilderDockWindow("Categories", bottomLeftId);
-  ImGui::DockBuilderFinish(dockspaceId);
-}
-auto Editor::LoadDefaultAssets() -> void {
-  LoadDefaultShaderAssets();
-}
-auto Editor::LoadDefaultScene() -> void {
-  const auto sceneName = "Main";
-  CreateScene(sceneName);
-  auto entityId = CreateEntity("Camera");
-  AddEntityComponent<Camera>(entityId);
-  cameraController = std::make_unique<CameraController>(*this, entityId);
-  entityId = CreateEntity("Skybox");
-  AddEntityComponent<GLSkybox>(entityId);
-  LoadScene(sceneName);
-}
-auto Editor::LoadDefaultShaderAssets() -> void {
-  auto renderingSystem = GetSystem<RenderingSystem>();
-  if (!renderingSystem)
-    return;
-  const auto LoadShader = [&](const std::filesystem::path &vert, const std::filesystem::path &frag, std::string name, const MaterialType type = MaterialType::Unknown) {
-    const auto vertId = LoadAsset<ShaderAsset>(vert, name);
-    const auto fragId = LoadAsset<ShaderAsset>(frag, std::move(name));
-    auto vertAsset = GetAsset<ShaderAsset>(vertId);
-    auto fragAsset = GetAsset<ShaderAsset>(fragId);
-    if (vertAsset && fragAsset) {
-      if (type != MaterialType::Unknown)
-        fragAsset->type = type;
-      renderingSystem->LoadShader(*vertAsset, *fragAsset);
-    }
-  };
-  const auto LoadCompute = [&](const std::filesystem::path &comp, std::string name) {
-    const auto compId = LoadAsset<ShaderAsset>(comp, std::move(name));
-    const auto compAsset = GetAsset<ShaderAsset>(compId);
-    if (compAsset)
-      renderingSystem->LoadCompute(*compAsset);
-  };
-  const auto &desc = GetDescription();
-  LoadCompute(desc.path / "shader/brdf_lut.comp", "BRDF_LUT");
-  LoadCompute(desc.path / "shader/cubemap_equirect.comp", "CubemapEquirect");
-  LoadCompute(desc.path / "shader/equirect_cubemap.comp", "EquirectCubemap");
-  LoadCompute(desc.path / "shader/irradiance.comp", "IrradianceMap");
-  LoadCompute(desc.path / "shader/prefilter.comp", "PrefilterMap");
-  LoadShader(desc.path / "shader/lit.vert", desc.path / "shader/lit.frag", "Lit", MaterialType::Lit);
-  LoadShader(desc.path / "shader/lit_skinned.vert", desc.path / "shader/lit.frag", "LitSkinned", MaterialType::LitSkinned);
-  LoadShader(desc.path / "shader/unlit.vert", desc.path / "shader/unlit.frag", "Unlit", MaterialType::Unlit);
-  LoadShader(desc.path / "shader/skybox.vert", desc.path / "shader/skybox.frag", "Skybox");
-  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/bloom.frag", "Bloom");
-  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/blur.frag", "Blur");
-  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/bright_pass.frag", "BrightPass");
-  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/gamma_correction.frag", "GammaCorrect");
-}
-auto Editor::UpdateIO() -> void {
-  static auto stateOld = EditorState::Normal;
-  if (context.state != stateOld) {
-    stateOld = context.state;
-    if (context.state == EditorState::Rename)
-      DisableKeys();
-    else
-      EnableKeys();
-    if (context.state != EditorState::Normal) {
-      context.keyState.reset();
-      context.pressState.reset();
-      context.releaseState.reset();
-      return;
-    }
-  }
-  const auto &io = ImGui::GetIO();
-  context.keyState.set(static_cast<uint8_t>(KeyBit::Alt), io.KeyAlt);
-  context.keyState.set(static_cast<uint8_t>(KeyBit::Ctrl), io.KeyCtrl);
-  context.keyState.set(static_cast<uint8_t>(KeyBit::Shift), io.KeyShift);
-  context.pressState.set(static_cast<uint8_t>(KeyBit::Backspace), ImGui::IsKeyPressed(ImGuiKey_Backspace));
-  context.pressState.set(static_cast<uint8_t>(KeyBit::Delete), ImGui::IsKeyPressed(ImGuiKey_Delete));
-  context.pressState.set(static_cast<uint8_t>(KeyBit::Enter), ImGui::IsKeyPressed(ImGuiKey_Enter));
-  context.pressState.set(static_cast<uint8_t>(KeyBit::Escape), ImGui::IsKeyPressed(ImGuiKey_Escape));
-  context.pressState.set(static_cast<uint8_t>(KeyBit::F), ImGui::IsKeyPressed(ImGuiKey_F));
-  context.pressState.set(static_cast<uint8_t>(KeyBit::Space), ImGui::IsKeyPressed(ImGuiKey_Space));
-  context.releaseState.set(static_cast<uint8_t>(KeyBit::Backspace), ImGui::IsKeyReleased(ImGuiKey_Backspace));
-  context.releaseState.set(static_cast<uint8_t>(KeyBit::Delete), ImGui::IsKeyReleased(ImGuiKey_Delete));
-  context.releaseState.set(static_cast<uint8_t>(KeyBit::Enter), ImGui::IsKeyReleased(ImGuiKey_Enter));
-  context.releaseState.set(static_cast<uint8_t>(KeyBit::Escape), ImGui::IsKeyReleased(ImGuiKey_Escape));
-  context.releaseState.set(static_cast<uint8_t>(KeyBit::F), ImGui::IsKeyPressed(ImGuiKey_F));
-  context.releaseState.set(static_cast<uint8_t>(KeyBit::Space), ImGui::IsKeyReleased(ImGuiKey_Space));
-}
-auto Editor::UpdateView() -> void {
-  ImGui_ImplOpenGL3_NewFrame();
-  ImGui_ImplGlfw_NewFrame();
-  ImGui::NewFrame();
-  ImGuizmo::BeginFrame();
-  ImGui::DockSpaceOverViewport(ImGui::GetID("DockSpace"));
-  InitLayout();
-  DisplayAssetCategories();
-  DisplayAssets();
-  DisplayHierarchy();
-  DisplayProperties();
-  DisplayScene();
-  ImGui::Render();
-  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

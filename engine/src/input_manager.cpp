@@ -39,8 +39,8 @@ glm::vec2 InputManager::GetArrow() const {
   arrow.x = right ? (left ? 0.f : 1.f) : (left ? -1.f : 0.f);
   return arrow;
 }
-glm::vec2 InputManager::GetMousePos() const {
-  return mousePos;
+glm::vec2 InputManager::GetMousePosition() const {
+  return mousePosition;
 }
 double InputManager::GetInactivityTime() const {
   return glfwGetTime() - lastInputTime;
@@ -112,8 +112,8 @@ void InputManager::CursorPosCallback(GLFWwindow *window, double xpos, double ypo
   if (!buttonsEnabled)
     return;
   lastInputTime = glfwGetTime();
-  mousePos.x = xpos;
-  mousePos.y = ypos;
+  mousePosition.x = xpos;
+  mousePosition.y = ypos;
 }
 bool InputManager::RegisterAction(std::string_view trigger, InputAction action) {
   const auto result = keymap.Insert(trigger, action);
@@ -166,30 +166,24 @@ bool InputManager::UnregisterAction(int trigger, bool press) {
 }
 void InputManager::EnableKeys() {
   keysEnabled = true;
-  spdlog::info("Keys are enabled.");
 }
 void InputManager::DisableKeys() {
   keysEnabled = false;
-  spdlog::info("Keys are disabled.");
 }
 void InputManager::EnableButtons() {
   buttonsEnabled = true;
-  spdlog::info("Buttons are enabled.");
 }
 void InputManager::DisableButtons() {
   buttonsEnabled = false;
-  spdlog::info("Buttons are disabled.");
 }
 void InputManager::EnableAll() {
   keysEnabled = true;
   buttonsEnabled = true;
-  spdlog::info("Inputs are enabled.");
 }
 void InputManager::DisableAll() {
   keysEnabled = false;
   buttonsEnabled = false;
   keyseq.clear();
-  spdlog::info("Inputs are disabled.");
 }
 unsigned char InputManager::GLFWInputToIndex(int key) {
   if (key >= GLFW_KEY_SPACE && key <= GLFW_KEY_GRAVE_ACCENT)

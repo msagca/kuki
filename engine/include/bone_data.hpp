@@ -1,7 +1,7 @@
 #pragma once
 #include <kuki_engine_export.h>
 namespace kuki {
-struct KUKI_ENGINE_API BoneData {
+struct BoneData {
   int boneSSBO{};
   int boneCount{};
 };

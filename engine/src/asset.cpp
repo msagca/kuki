@@ -1,22 +1,33 @@
 #include <asset.hpp>
 #include <asset_metadata.hpp>
+#include <material_asset.hpp>
+#include <mesh_asset.hpp>
 #include <scene_asset.hpp>
 #include <shader_asset.hpp>
 #include <skybox_asset.hpp>
+#include <texture_asset.hpp>
 namespace kuki {
 const std::unordered_map<AssetType, std::string> Asset::typeToName = {
+  {AssetType::Material, "Material"},
+  {AssetType::Mesh, "Mesh"},
   {AssetType::Scene, "Scene"},
   {AssetType::Shader, "Shader"},
   {AssetType::Skybox, "Skybox"},
-  {AssetType::Unknown, "Unknown"}};
+  {AssetType::Texture, "Texture"}};
 const std::unordered_map<AssetType, std::type_index> Asset::typeToTypeIndex = {
+  {AssetType::Material, typeid(MaterialAsset)},
+  {AssetType::Mesh, typeid(MeshAsset)},
   {AssetType::Scene, typeid(SceneAsset)},
   {AssetType::Shader, typeid(ShaderAsset)},
-  {AssetType::Skybox, typeid(SkyboxAsset)}};
+  {AssetType::Skybox, typeid(SkyboxAsset)},
+  {AssetType::Texture, typeid(TextureAsset)}};
 const std::unordered_map<std::type_index, AssetType> Asset::typeIndexToType = {
+  {typeid(MaterialAsset), AssetType::Material},
+  {typeid(MeshAsset), AssetType::Mesh},
   {typeid(SceneAsset), AssetType::Scene},
   {typeid(ShaderAsset), AssetType::Shader},
-  {typeid(SkyboxAsset), AssetType::Skybox}};
+  {typeid(SkyboxAsset), AssetType::Skybox},
+  {typeid(TextureAsset), AssetType::Texture}};
 auto Asset::GetName() const -> const std::string & {
   return name;
 }
@@ -38,12 +49,12 @@ auto Asset::GetMask(const AssetType type) -> AssetMask {
 auto Asset::GetType(const std::type_index typeIndex) -> AssetType {
   if (auto it = typeIndexToType.find(typeIndex); it != typeIndexToType.end())
     return it->second;
-  return AssetType::Unknown;
+  return AssetType::Texture;
 }
 auto Asset::GetTypeIndex(const AssetType type) -> std::type_index {
   if (auto it = typeToTypeIndex.find(type); it != typeToTypeIndex.end())
     return it->second;
-  return typeid(AssetType::Unknown);
+  return typeid(AssetType::Texture);
 }
 auto Asset::GetTypeName(const AssetType type) -> std::string {
   return typeToName.at(type);

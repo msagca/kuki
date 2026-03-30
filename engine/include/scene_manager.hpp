@@ -14,10 +14,7 @@ enum class SceneStatus : uint8_t {
 };
 class KUKI_ENGINE_API SceneManager {
 public:
-  Event<Scene &> OnSceneActivated;
-  Event<Scene &> OnSceneDeactivated;
   Event<Scene &> OnSceneLoaded;
-  Event<Scene &> OnSceneUnloaded;
   auto Activate(const std::string &) -> bool;
   auto Create(std::string) -> SceneID;
   auto Delete(const std::string &) -> bool;
@@ -28,7 +25,7 @@ public:
   // TODO: implement LoadAsync
   auto Rename(const std::string &, std::string) -> bool;
   auto Unload(const std::string &) -> bool;
-  auto Get(this auto &self, const std::string &) -> ConstCorrectPointer<decltype(self), Scene>;
+  auto Get(this auto &self, const std::string & = "") -> ConstCorrectPointer<decltype(self), Scene>;
   auto GetActive(this auto &self) -> ConstCorrectPointer<decltype(self), Scene>;
 private:
   SceneID activeScene{};
@@ -42,6 +39,11 @@ private:
   auto Unload(const SceneID) -> bool;
 };
 auto SceneManager::Get(this auto &self, const std::string &name) -> ConstCorrectPointer<decltype(self), Scene> {
+  if (name.empty())
+    return self.GetActive();
+  if (auto it = self.nameToId.find(name); it != self.nameToId.end())
+    if (auto it2 = self.idToScene.find(it->second); it2 != self.idToScene.end())
+      return it2->second.get();
   return nullptr;
 }
 auto SceneManager::GetActive(this auto &self) -> ConstCorrectPointer<decltype(self), Scene> {

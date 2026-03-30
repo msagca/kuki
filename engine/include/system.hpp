@@ -3,7 +3,7 @@
 #include <kuki_engine_export.h>
 #include <scene.hpp>
 namespace kuki {
-class KUKI_ENGINE_API System {
+class System {
 public:
   virtual ~System() = default;
   virtual auto Awake() -> void {};

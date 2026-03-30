@@ -6,7 +6,6 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <utility>
 namespace kuki {
 struct ShaderUniform {
   int location{};
@@ -34,17 +33,13 @@ public:
   auto SetUniform(const std::string &, const int, const int *) const -> void;
   auto SetUniform(const std::string &, const unsigned int) const -> void;
   auto Use() const -> void;
-  static auto Compile(const char *, const int) -> unsigned int;
+  static auto Compile(const char *, const int, const std::string & = "") -> unsigned int;
   static auto GetTextureType(const unsigned int) -> unsigned int;
   static auto IsSamplerType(const unsigned int) -> bool;
 protected:
-  template <typename T>
-  explicit GLShaderBase(std::in_place_type_t<T>);
+  GLShaderBase() = default;
   std::unordered_map<std::string, ShaderUniform> nameToUniform;
   std::unordered_map<std::string, std::vector<int>> nameToTextureUnit;
   std::unordered_set<int> cachedLocations;
 };
-template <typename T>
-GLShaderBase::GLShaderBase(std::in_place_type_t<T> tag)
-  : Shader(tag) {}
 } // namespace kuki

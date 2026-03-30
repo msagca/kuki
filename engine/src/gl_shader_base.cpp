@@ -106,14 +106,14 @@ auto GLShaderBase::SetUniform(const std::string &name, const unsigned int value)
 void GLShaderBase::Use() const {
   glUseProgram(id);
 }
-auto GLShaderBase::Compile(const char *text, const int type) -> unsigned int {
+auto GLShaderBase::Compile(const char *text, const int type, const std::string &name) -> unsigned int {
   auto id = glCreateShader(type);
   glShaderSource(id, 1, &text, nullptr);
   glCompileShader(id);
   int success;
   glGetShaderiv(id, GL_COMPILE_STATUS, &success);
   if (!success)
-    spdlog::error("Failed to compile shader.");
+    spdlog::error("Failed to compile shader: {}", name);
   return id;
 }
 auto GLShaderBase::GetTextureType(const unsigned int samplerType) -> unsigned int {

@@ -9,7 +9,9 @@ public:
   using Handler = std::function<void(T...)>;
   auto Emit(T...) -> void;
   auto Subscribe(auto &&) -> size_t;
-  auto Unsubscribe(size_t) -> void;
+  auto Unsubscribe(const size_t) -> void;
+  auto operator+=(auto &&) -> size_t;
+  auto operator-=(const size_t) -> Event &;
 private:
   size_t nextId{0};
   std::mutex mutex;
@@ -37,8 +39,17 @@ auto Event<T...>::Subscribe(auto &&handler) -> size_t {
   return id;
 }
 template <typename... T>
-auto Event<T...>::Unsubscribe(size_t id) -> void {
+auto Event<T...>::Unsubscribe(const size_t id) -> void {
   std::lock_guard lock(mutex);
   handlers.erase(id);
+}
+template <typename... T>
+auto Event<T...>::operator+=(auto &&handler) -> size_t {
+  return Subscribe(std::forward<decltype(handler)>(handler));
+}
+template <typename... T>
+auto Event<T...>::operator-=(const size_t id) -> Event & {
+  Unsubscribe(id);
+  return *this;
 }
 } // namespace kuki

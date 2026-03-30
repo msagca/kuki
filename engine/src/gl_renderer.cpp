@@ -16,6 +16,8 @@
 #include <render_target.hpp>
 #include <renderer.hpp>
 #include <scene.hpp>
+#include <scene_asset.hpp>
+#include <skybox_asset.hpp>
 #include <skybox_handle.hpp>
 #include <target_description.hpp>
 //
@@ -23,8 +25,8 @@
 namespace kuki {
 GLRenderer::GLRenderer(SceneManager &sceneManager, AssetManager &assetManager)
   : Renderer(std::in_place_type<GLRenderer>), sceneManager(sceneManager), assetManager(assetManager) {}
-auto GLRenderer::BorrowBuffer(const BufferDescription &desc) -> unsigned int {
-  return bufferPool.Request(desc);
+auto GLRenderer::BorrowBuffer(const int &size) -> unsigned int {
+  return bufferPool.Request(size);
 }
 auto GLRenderer::BorrowFramebuffer() -> unsigned int {
   return framebufferPool.Request();
@@ -38,35 +40,40 @@ auto GLRenderer::BorrowTexture(const TargetDescription &desc) -> unsigned int {
 auto GLRenderer::Clear() -> void {
   resourceManager.Clear();
 }
-auto GLRenderer::CreateBuffer(std::string name, const BufferDescription &desc) -> GLBuffer * {
+auto GLRenderer::CreateBuffer(std::string name, const int &size) -> EntityID {
   if (auto id = resourceManager.GetID(name); id)
-    return resourceManager.GetComponent<GLBuffer>(id);
-  const auto resourceId = resourceManager.Create(name);
-  auto buffer = resourceManager.AddComponent<GLBuffer>(resourceId);
-  buffer->id = BorrowBuffer(desc);
-  return buffer;
+    return id;
+  const auto &id = resourceManager.Create(name);
+  auto buffer = resourceManager.AddComponent<GLBuffer>(id);
+  buffer->id = BorrowBuffer(size);
+  return id;
 }
-auto GLRenderer::CreateTarget(std::string name, const TargetDescription &desc) -> GLRenderTarget * {
+auto GLRenderer::CreateTarget(std::string name, const TargetDescription &desc) -> EntityID {
   if (auto id = resourceManager.GetID(name); id)
-    return resourceManager.GetComponent<GLRenderTarget>(id);
-  const auto resourceId = resourceManager.Create(name);
-  auto target = resourceManager.AddComponent<GLRenderTarget>(resourceId);
-  target->framebuffer = BorrowFramebuffer();
-  target->renderbuffer = BorrowRenderbuffer(desc);
-  target->texture = BorrowTexture(desc);
-  glBindFramebuffer(GL_FRAMEBUFFER, target->framebuffer);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, target->renderbuffer);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target->texture, 0);
+    return id;
+  const auto &id = resourceManager.Create(name);
+  auto renderTarget = resourceManager.AddComponent<GLRenderTarget>(id);
+  renderTarget->framebuffer = BorrowFramebuffer();
+  renderTarget->renderbuffer = BorrowRenderbuffer(desc);
+  renderTarget->texture = BorrowTexture(desc);
+  renderTarget->desc = desc;
+  glBindFramebuffer(GL_FRAMEBUFFER, renderTarget->framebuffer);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderTarget->renderbuffer);
+  const auto textureTarget = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textureTarget, renderTarget->texture, 0);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  return target;
+  return id;
 }
-auto GLRenderer::CreateTexture(std::string name, const TargetDescription &desc) -> GLTexture * {
+auto GLRenderer::CreateTexture(std::string name, const TargetDescription &desc) -> EntityID {
   if (auto id = resourceManager.GetID(name); id)
-    return resourceManager.GetComponent<GLTexture>(id);
-  const auto resourceId = resourceManager.Create(name);
-  auto texture = resourceManager.AddComponent<GLTexture>(resourceId);
+    return id;
+  const auto &id = resourceManager.Create(name);
+  auto texture = resourceManager.AddComponent<GLTexture>(id);
   texture->id = BorrowTexture(desc);
-  return texture;
+  return id;
+}
+auto GLRenderer::GetBuffer(const EntityID id) -> GLBuffer * {
+  return resourceManager.GetComponent<GLBuffer>(id);
 }
 auto GLRenderer::GetBuffer(const std::string &name) -> GLBuffer * {
   return resourceManager.GetComponent<GLBuffer>(name);
@@ -90,10 +97,8 @@ auto GLRenderer::GetShader(const MaterialType type) -> GLShader * {
   case MaterialType::Lit:
   case MaterialType::LitSkinned:
     return resourceManager.GetAny<GLLitShader>();
-  case MaterialType::Unlit:
-    return resourceManager.GetAny<GLUnlitShader>();
   default:
-    return resourceManager.GetAny<GLShader>();
+    return resourceManager.GetAny<GLUnlitShader>();
   }
 }
 auto GLRenderer::GetShader(const std::string &name, const MaterialType type) -> GLShader * {
@@ -101,31 +106,45 @@ auto GLRenderer::GetShader(const std::string &name, const MaterialType type) -> 
   case MaterialType::Lit:
   case MaterialType::LitSkinned:
     return resourceManager.GetComponent<GLLitShader>(name);
-  case MaterialType::Unlit:
-    return resourceManager.GetComponent<GLUnlitShader>(name);
   default:
-    return resourceManager.GetComponent<GLShader>(name);
+    return resourceManager.GetComponent<GLUnlitShader>(name);
   }
+}
+auto GLRenderer::GetTarget(const EntityID id) -> GLRenderTarget * {
+  return resourceManager.GetComponent<GLRenderTarget>(id);
 }
 auto GLRenderer::GetTarget(const std::string &name) -> GLRenderTarget * {
   return resourceManager.GetComponent<GLRenderTarget>(name);
 }
+auto GLRenderer::GetTexture(const EntityID id) -> GLTexture * {
+  return resourceManager.GetComponent<GLTexture>(id);
+}
 auto GLRenderer::GetTexture(const std::string &name) -> GLTexture * {
   return resourceManager.GetComponent<GLTexture>(name);
 }
-auto GLRenderer::GetTargetCopy(const std::string &name) -> GLRenderTarget {
-  auto target = resourceManager.GetComponent<GLRenderTarget>(name);
-  if (target)
-    return *target;
-  return {};
+auto GLRenderer::LoadAsset(const AssetID id) -> EntityID {
+  auto asset = assetManager.Get(id);
+  if (!asset)
+    return EntityID::Invalid;
+  if (asset->Is<MaterialAsset>())
+    return LoadAsset<MaterialAsset>(*asset->As<MaterialAsset>());
+  else if (asset->Is<MeshAsset>())
+    return LoadAsset<MeshAsset>(*asset->As<MeshAsset>());
+  else if (asset->Is<SceneAsset>())
+    return LoadAsset<SceneAsset>(*asset->As<SceneAsset>());
+  else if (asset->Is<SkyboxAsset>())
+    return LoadAsset<SkyboxAsset>(*asset->As<SkyboxAsset>());
+  else if (asset->Is<TextureAsset>())
+    return LoadAsset<TextureAsset>(*asset->As<TextureAsset>());
+  return EntityID::Invalid;
 }
-auto GLRenderer::LoadCompute(ShaderAsset &compute) -> GLComputeShader * {
+auto GLRenderer::LoadCompute(ShaderAsset &compute) -> EntityID {
   LoadAsset<ShaderAsset>(compute);
-  return resourceManager.GetComponent<GLComputeShader>(compute.resourceId);
+  return compute.resourceId;
 }
-auto GLRenderer::LoadPrimitive(const std::string &name) -> GLMesh * {
+auto GLRenderer::LoadPrimitive(const std::string &name) -> EntityID {
   if (resourceManager.IsEntity(name))
-    return resourceManager.GetComponent<GLMesh>(name);
+    return resourceManager.GetID(name);
   std::vector<Vertex> vertices;
   if (name == "Cube")
     vertices = std::move(Primitive::Cube());
@@ -140,23 +159,18 @@ auto GLRenderer::LoadPrimitive(const std::string &name) -> GLMesh * {
     vertices = std::move(Primitive::Cylinder());
   else if (name == "Sphere")
     vertices = std::move(Primitive::Sphere());
-  else
-    return nullptr;
-  const auto resourceId = resourceManager.Create(name);
-  auto mesh = resourceManager.AddComponent<GLMesh>(resourceId);
+  else {
+    spdlog::warn("Unknown primitive: {}", name);
+    return EntityID::Invalid;
+  }
+  spdlog::info("Loading primitive: {}", name);
+  const auto id = resourceManager.Create(name);
+  auto mesh = resourceManager.AddComponent<GLMesh>(id);
   CreateVertexBuffer(*mesh, vertices);
-  CalculateBounds(*mesh, vertices);
-  return mesh;
+  return id;
 }
-auto GLRenderer::LoadShader(ShaderAsset &vert, ShaderAsset &frag) -> GLShader * {
-  LoadAsset<ShaderAsset>(vert, frag);
-  return resourceManager.GetComponent<GLShader>(frag.resourceId);
-}
-auto GLRenderer::Reset() -> void {
-  glClearColor(0.f, 0.f, 0.f, 0.f);
-}
-auto GLRenderer::UpdateScene(Scene &scene) -> void {
-  scene.ForEachEntity<MeshHandle, MaterialHandle>([&](const EntityID, MeshHandle *meshHandle, MaterialHandle *materialHandle) {
+auto GLRenderer::LoadScene(Scene &scene) -> void {
+  scene.ForEachEntity<SceneMeshHandle, SceneMaterialHandle>([&](const EntityID id, SceneMeshHandle *meshHandle, SceneMaterialHandle *materialHandle) {
     if (meshHandle->resourceId && materialHandle->resourceId)
       return;
     auto sceneAsset = assetManager.Get<SceneAsset>(meshHandle->sceneAssetId);
@@ -166,21 +180,59 @@ auto GLRenderer::UpdateScene(Scene &scene) -> void {
       meshHandle->resourceId = LoadSceneMesh(*sceneAsset, meshHandle->meshIndex);
     if (!materialHandle->resourceId)
       materialHandle->resourceId = LoadSceneMaterial(*sceneAsset, materialHandle->materialIndex);
-  });
-  scene.ForEachEntity<MeshHandle, MaterialHandle>([&](const EntityID id, MeshHandle *meshHandle, MaterialHandle *materialHandle) {
     auto [mesh, material] = scene.AddEntityComponent<GLMesh, GLMaterial>(id);
     *mesh = *resourceManager.GetComponent<GLMesh>(meshHandle->resourceId);
     *material = *resourceManager.GetComponent<GLMaterial>(materialHandle->resourceId);
-    // FIXME: no need to re-assign if the component already exists
+  });
+  scene.ForEachEntity<MeshHandle, MaterialHandle>([&](const EntityID id, MeshHandle *meshHandle, MaterialHandle *materialHandle) {
+    if (meshHandle->resourceId && materialHandle->resourceId)
+      return;
+    auto meshAsset = assetManager.Get<MeshAsset>(meshHandle->assetId);
+    auto materialAsset = assetManager.Get<MaterialAsset>(materialHandle->assetId);
+    if (!meshAsset || !materialAsset)
+      return;
+    if (!meshHandle->resourceId)
+      meshHandle->resourceId = LoadAsset<MeshAsset>(*meshAsset);
+    if (!materialHandle->resourceId)
+      materialHandle->resourceId = LoadAsset<MaterialAsset>(*materialAsset);
+    auto [mesh, material] = scene.AddEntityComponent<GLMesh, GLMaterial>(id);
+    *mesh = *resourceManager.GetComponent<GLMesh>(meshHandle->resourceId);
+    *material = *resourceManager.GetComponent<GLMaterial>(materialHandle->resourceId);
   });
 }
-auto GLRenderer::CalculateBounds(GLMesh &mesh, const std::vector<Vertex> &vertices) -> void {
-  mesh.bounds.min = glm::vec3(std::numeric_limits<float>::max());
-  mesh.bounds.max = glm::vec3(std::numeric_limits<float>::lowest());
-  for (const auto &vertex : vertices) {
-    mesh.bounds.min = glm::min(mesh.bounds.min, vertex.position);
-    mesh.bounds.max = glm::max(mesh.bounds.max, vertex.position);
-  }
+auto GLRenderer::LoadShader(ShaderAsset &vert, ShaderAsset &frag) -> EntityID {
+  LoadAsset<ShaderAsset>(vert, frag);
+  return frag.resourceId;
+}
+auto GLRenderer::PreviewAsset(const AssetID id) -> EntityID {
+  if (!assetManager.IsRegistered(id))
+    return EntityID::Invalid;
+  LoadAsset(id);
+  auto asset = assetManager.Get(id);
+  if (asset->Is<SceneAsset>())
+    return PreviewAsset<SceneAsset>(*asset->As<SceneAsset>());
+  else if (asset->Is<SkyboxAsset>())
+    return PreviewAsset<SkyboxAsset>(*asset->As<SkyboxAsset>());
+  return EntityID::Invalid;
+}
+auto GLRenderer::Reset() -> void {
+  glClearColor(0.f, 0.f, 0.f, 0.f);
+}
+auto GLRenderer::UpdateTarget(const std::string &name, const TargetDescription &desc) -> void {
+  const auto &id = resourceManager.GetID(name);
+  if (!id)
+    return;
+  auto target = resourceManager.GetComponent<GLRenderTarget>(id);
+  if (!target)
+    return;
+  target->desc = desc;
+  texturePool.Reallocate(desc, target->texture);
+  renderbufferPool.Reallocate(desc, target->renderbuffer);
+  glBindFramebuffer(GL_FRAMEBUFFER, target->framebuffer);
+  const auto textureTarget = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textureTarget, target->texture, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, target->renderbuffer);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 auto GLRenderer::CreateIndexBuffer(GLMesh &mesh, const std::vector<unsigned int> &indices) -> void {
   mesh.indexCount = indices.size();
@@ -224,6 +276,77 @@ auto GLRenderer::CreateVertexBuffer(GLMesh &mesh, const std::vector<Vertex> &ver
     glVertexArrayAttribFormat(mesh.vao, attribIndex, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneWeights));
     glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
     glEnableVertexArrayAttrib(mesh.vao, attribIndex);
+  }
+}
+auto GLRenderer::LoadMesh(GLMesh &glMesh, const Mesh &mesh) -> void {
+  CreateVertexBuffer(glMesh, mesh.vertices);
+  if (mesh.indices.size() > 0)
+    CreateIndexBuffer(glMesh, mesh.indices);
+}
+auto GLRenderer::LoadTexture(GLTexture &glTexture, const Texture &texture) -> void {
+  glTexture.desc.width = texture.width;
+  glTexture.desc.height = texture.height;
+  glTexture.content = texture.content;
+  const auto isHDR = texture.color == ColorSpace::HDR;
+  const auto isSRGB = texture.color == ColorSpace::sRGB;
+  GLenum internalFormat, format;
+  switch (texture.channels) {
+  case 1:
+    internalFormat = GL_R8;
+    format = GL_RED;
+    break;
+  case 2:
+    internalFormat = GL_RG8;
+    format = GL_RG;
+    break;
+  case 3:
+    if (isHDR)
+      internalFormat = GL_RGB16F;
+    else if (isSRGB)
+      internalFormat = GL_SRGB8;
+    else
+      internalFormat = GL_RGB8;
+    format = GL_RGB;
+    break;
+  case 4:
+    if (isHDR)
+      internalFormat = GL_RGBA16F;
+    else if (isSRGB)
+      internalFormat = GL_SRGB8_ALPHA8;
+    else
+      internalFormat = GL_RGBA8;
+    format = GL_RGBA;
+    break;
+  default:
+    spdlog::warn("Unsupported number of channels: {}", texture.channels);
+    return;
+  }
+  glTexture.desc.format = GLFormatToTarget(internalFormat);
+  glCreateTextures(GL_TEXTURE_2D, 1, &glTexture.id);
+  auto mipmaps = 1;
+  if (isSRGB)
+    mipmaps = std::log2(std::max(texture.width, texture.height)) + 1;
+  const auto type = isHDR ? GL_FLOAT : GL_UNSIGNED_BYTE;
+  glTextureStorage2D(glTexture.id, mipmaps, internalFormat, texture.width, texture.height);
+  glTextureSubImage2D(glTexture.id, 0, 0, 0, texture.width, texture.height, format, type, texture.data.data());
+  switch (texture.type) {
+  case TextureType::UV2D:
+  case TextureType::Equirectangular:
+    glTextureParameteri(glTexture.id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(glTexture.id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(glTexture.id, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    break;
+  default:
+    glTextureParameteri(glTexture.id, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTextureParameteri(glTexture.id, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    if (texture.channels == 1) {
+      glTextureParameteri(glTexture.id, GL_TEXTURE_SWIZZLE_G, GL_RED);
+      glTextureParameteri(glTexture.id, GL_TEXTURE_SWIZZLE_B, GL_RED);
+      glTextureParameteri(glTexture.id, GL_TEXTURE_SWIZZLE_A, GL_ONE);
+    }
+    glTextureParameteri(glTexture.id, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glGenerateTextureMipmap(glTexture.id);
+    break;
   }
 }
 auto GLRenderer::LoadSceneMaterial(SceneAsset &sceneAsset, const size_t materialIndex) -> EntityID {
@@ -282,13 +405,10 @@ auto GLRenderer::LoadSceneMesh(SceneAsset &sceneAsset, const size_t meshIndex) -
   auto &sceneMesh = sceneAsset.meshes[meshIndex];
   if (sceneMesh.resourceId)
     return sceneMesh.resourceId;
-  const auto resourceId = resourceManager.Create(sceneMesh.name);
+  const auto &resourceId = resourceManager.Create(sceneMesh.name);
   sceneMesh.resourceId = resourceId;
-  auto mesh = resourceManager.AddComponent<GLMesh>(resourceId);
-  CreateVertexBuffer(*mesh, sceneMesh.vertices);
-  if (sceneMesh.indices.size() > 0)
-    CreateIndexBuffer(*mesh, sceneMesh.indices);
-  CalculateBounds(*mesh, sceneMesh.vertices);
+  auto glMesh = resourceManager.AddComponent<GLMesh>(resourceId);
+  LoadMesh(*glMesh, sceneMesh.mesh);
   const auto &materialIndex = sceneMesh.material;
   LoadSceneMaterial(sceneAsset, materialIndex);
   return resourceId;
@@ -299,73 +419,11 @@ auto GLRenderer::LoadSceneTexture(SceneAsset &sceneAsset, const size_t textureIn
   auto &sceneTexture = sceneAsset.textures[textureIndex];
   if (sceneTexture.resourceId)
     return resourceManager.GetComponent<GLTexture>(sceneTexture.resourceId);
-  const auto resourceId = resourceManager.Create(sceneTexture.name);
+  const auto &resourceId = resourceManager.Create(sceneTexture.name);
   sceneTexture.resourceId = resourceId;
-  auto texture = resourceManager.AddComponent<GLTexture>(resourceId);
-  texture->desc.width = sceneTexture.width;
-  texture->desc.height = sceneTexture.height;
-  texture->content = sceneTexture.content;
-  const auto isHDR = sceneTexture.color == ColorSpace::HDR;
-  const auto isSRGB = sceneTexture.color == ColorSpace::sRGB;
-  GLenum internalFormat, format;
-  switch (sceneTexture.channels) {
-  case 1:
-    internalFormat = GL_R8;
-    format = GL_RED;
-    break;
-  case 2:
-    internalFormat = GL_RG8;
-    format = GL_RG;
-    break;
-  case 3:
-    if (isHDR)
-      internalFormat = GL_RGB16F;
-    else if (isSRGB)
-      internalFormat = GL_SRGB8;
-    else
-      internalFormat = GL_RGB8;
-    format = GL_RGB;
-    break;
-  case 4:
-    if (isHDR)
-      internalFormat = GL_RGBA16F;
-    else if (isSRGB)
-      internalFormat = GL_SRGB8_ALPHA8;
-    else
-      internalFormat = GL_RGBA8;
-    format = GL_RGBA;
-    break;
-  default:
-    break;
-  }
-  texture->desc.format = GLFormatToTarget(internalFormat);
-  glCreateTextures(GL_TEXTURE_2D, 1, &texture->id);
-  auto mipmaps = 1;
-  if (isSRGB)
-    mipmaps = std::log2(std::max(sceneTexture.width, sceneTexture.height)) + 1;
-  const auto type = isHDR ? GL_FLOAT : GL_UNSIGNED_BYTE;
-  glTextureStorage2D(texture->id, mipmaps, internalFormat, sceneTexture.width, sceneTexture.height);
-  glTextureSubImage2D(texture->id, 0, 0, 0, sceneTexture.width, sceneTexture.height, format, type, sceneTexture.data.data());
-  switch (sceneTexture.type) {
-  case TextureType::UV2D:
-  case TextureType::Equirectangular:
-    glTextureParameteri(texture->id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTextureParameteri(texture->id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTextureParameteri(texture->id, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    break;
-  default:
-    glTextureParameteri(texture->id, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTextureParameteri(texture->id, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    if (sceneTexture.channels == 1) {
-      glTextureParameteri(texture->id, GL_TEXTURE_SWIZZLE_G, GL_RED);
-      glTextureParameteri(texture->id, GL_TEXTURE_SWIZZLE_B, GL_RED);
-      glTextureParameteri(texture->id, GL_TEXTURE_SWIZZLE_A, GL_ONE);
-    }
-    glTextureParameteri(texture->id, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glGenerateTextureMipmap(texture->id);
-    break;
-  }
-  return texture;
+  auto glTexture = resourceManager.AddComponent<GLTexture>(resourceId);
+  LoadTexture(*glTexture, sceneTexture.texture);
+  return glTexture;
 }
 auto GLRenderer::GLFormatToTarget(const unsigned int format) -> TargetFormat {
   switch (format) {
@@ -389,62 +447,34 @@ auto GLRenderer::GLFormatToTarget(const unsigned int format) -> TargetFormat {
     return TargetFormat::RGBA16;
   case GL_RGBA32F:
     return TargetFormat::RGBA32;
-  case GL_SRGB8:
-    return TargetFormat::SRGB8;
   default:
     return TargetFormat::Unknown;
   }
 }
-auto GLRenderer::GLTypeToTarget(const unsigned int target) -> TargetType {
-  switch (target) {
-  case GL_TEXTURE_2D:
-    return TargetType::Texture2D;
-  case GL_TEXTURE_2D_MULTISAMPLE:
-    return TargetType::Texture2DMulti;
-  case GL_TEXTURE_CUBE_MAP:
-    return TargetType::Cubemap;
-  default:
-    return TargetType::Unknown;
-  }
-}
-auto GLRenderer::TargetFormatToGL(const TargetFormat &format) -> unsigned int {
+auto GLRenderer::TargetFormatToGL(const TargetFormat &format) -> GLFormat {
   switch (format) {
   case TargetFormat::R8:
-    return GL_R8;
+    return {GL_R, GL_R8};
   case TargetFormat::RG8:
-    return GL_RG8;
+    return {GL_RG, GL_RG8};
   case TargetFormat::RGB8:
-    return GL_RGB8;
+    return {GL_RGB, GL_RGB8};
   case TargetFormat::R16:
-    return GL_R16F;
+    return {GL_R, GL_R16F};
   case TargetFormat::RG16:
-    return GL_RG16F;
+    return {GL_RG, GL_RG16F};
   case TargetFormat::RGB16:
-    return GL_RGB16F;
+    return {GL_RGB, GL_RGB16F};
   case TargetFormat::RGB32:
-    return GL_RGB32F;
+    return {GL_RGB, GL_RGB32F};
   case TargetFormat::RGBA8:
-    return GL_RGBA8;
+    return {GL_RGBA, GL_RGBA8};
   case TargetFormat::RGBA16:
-    return GL_RGBA16F;
+    return {GL_RGBA, GL_RGBA16F};
   case TargetFormat::RGBA32:
-    return GL_RGBA32F;
-  case TargetFormat::SRGB8:
-    return GL_SRGB8;
+    return {GL_RGBA, GL_RGBA32F};
   default:
-    return 0;
-  }
-}
-auto GLRenderer::TargetTypeToGL(const TargetType &type) -> unsigned int {
-  switch (type) {
-  case TargetType::Texture2D:
-    return GL_TEXTURE_2D;
-  case TargetType::Texture2DMulti:
-    return GL_TEXTURE_2D_MULTISAMPLE;
-  case TargetType::Cubemap:
-    return GL_TEXTURE_CUBE_MAP;
-  default:
-    return 0;
+    return {};
   }
 }
 } // namespace kuki

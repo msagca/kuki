@@ -1,5 +1,4 @@
 #pragma once
-#include <buffer_description.hpp>
 #include <buffer_object.hpp>
 #include <material_type.hpp>
 #include <render_target.hpp>
@@ -13,27 +12,33 @@ namespace kuki {
 class Renderer {
 public:
   virtual ~Renderer() = default;
-  template <typename T>
-  auto As(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
-  template <typename T>
-  auto Is() const -> bool;
-  virtual auto CreateBuffer(std::string, const BufferDescription &) -> BufferObject * = 0;
-  virtual auto CreateTarget(std::string, const TargetDescription &) -> RenderTarget * = 0;
-  virtual auto CreateTexture(std::string, const TargetDescription &) -> RenderTarget * = 0;
+  virtual auto Clear() -> void = 0;
+  virtual auto CreateBuffer(std::string, const int & = 0) -> EntityID = 0;
+  virtual auto CreateTarget(std::string, const TargetDescription &) -> EntityID = 0;
+  virtual auto CreateTexture(std::string, const TargetDescription &) -> EntityID = 0;
+  virtual auto GetBuffer(const EntityID) -> BufferObject * = 0;
   virtual auto GetBuffer(const std::string &) -> BufferObject * = 0;
   virtual auto GetCompute(const std::string &) -> Shader * = 0;
   virtual auto GetPrimitive(const std::string &) -> BufferObject * = 0;
   virtual auto GetScene(const std::string & = "") -> Scene * = 0;
   virtual auto GetShader(const MaterialType) -> Shader * = 0;
   virtual auto GetShader(const std::string &, const MaterialType) -> Shader * = 0;
+  virtual auto GetTarget(const EntityID) -> RenderTarget * = 0;
   virtual auto GetTarget(const std::string &) -> RenderTarget * = 0;
+  virtual auto GetTexture(const EntityID) -> RenderTarget * = 0;
   virtual auto GetTexture(const std::string &) -> RenderTarget * = 0;
-  virtual auto LoadCompute(ShaderAsset &) -> Shader * = 0;
-  virtual auto LoadPrimitive(const std::string &) -> BufferObject * = 0;
-  virtual auto LoadShader(ShaderAsset &, ShaderAsset &) -> Shader * = 0;
-  virtual auto UpdateScene(Scene &) -> void = 0;
-  virtual auto Clear() -> void = 0;
+  virtual auto LoadAsset(const AssetID) -> EntityID = 0;
+  virtual auto LoadCompute(ShaderAsset &) -> EntityID = 0;
+  virtual auto LoadPrimitive(const std::string &) -> EntityID = 0;
+  virtual auto LoadScene(Scene &) -> void = 0;
+  virtual auto LoadShader(ShaderAsset &, ShaderAsset &) -> EntityID = 0;
+  virtual auto PreviewAsset(const AssetID) -> EntityID = 0;
   virtual auto Reset() -> void = 0;
+  virtual auto UpdateTarget(const std::string &, const TargetDescription &) -> void = 0;
+  template <typename T>
+  auto As(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
+  template <typename T>
+  auto Is() const -> bool;
 protected:
   template <typename T>
   Renderer(std::in_place_type_t<T>);

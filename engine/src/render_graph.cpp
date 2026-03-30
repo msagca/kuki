@@ -17,15 +17,14 @@ auto RenderGraph::AddInput(std::string name) -> RenderGraph & {
 }
 auto RenderGraph::AddOutput(std::string name, TargetDescription desc) -> RenderGraph & {
   if (passId) {
-    if (auto it = ioToDesc.find(name); it != ioToDesc.end()) {
+    if (auto it = nameToDesc.find(name); it != nameToDesc.end()) {
       if (desc != it->second)
         return *this;
     } else
-      ioToDesc.insert_or_assign(name, std::move(desc));
+      nameToDesc.insert_or_assign(name, std::move(desc));
     auto &outputs = idToOutputs[passId];
-    if (auto it = std::find_if(outputs.begin(), outputs.end(), [&name](const TargetBinding &rb) { return rb.name == name; }); it == outputs.end())
-      // TODO: do something if the same name is provided with a different description
-      outputs.emplace_back(name, desc);
+    if (auto it = std::find(outputs.begin(), outputs.end(), name); it == outputs.end())
+      outputs.emplace_back(std::move(name));
   }
   return *this;
 }
@@ -44,12 +43,12 @@ auto RenderGraph::Compile() -> void {
         inputToIDs[in].push_back(id);
   for (const auto &[id, outputs] : idToOutputs)
     for (const auto &out : outputs)
-      if (auto it = outputsToIDs.find(out.name); it != outputsToIDs.end()) {
+      if (auto it = outputsToIDs.find(out); it != outputsToIDs.end()) {
         auto &ids = it->second;
         if (auto it2 = std::find(ids.begin(), ids.end(), id); it2 == ids.end())
           ids.push_back(id);
       } else
-        outputsToIDs[out.name].push_back(id);
+        outputsToIDs[out].push_back(id);
   for (const auto &[in, dstIDs] : inputToIDs)
     if (auto it = outputsToIDs.find(in); it != outputsToIDs.end()) {
       const auto &srcIDs = it->second;
@@ -69,6 +68,9 @@ auto RenderGraph::Execute(Renderer &renderer) -> void {
   if (dirty)
     Compile();
   renderer.Reset();
+  ForEachTarget([&](const std::string &name, const TargetDescription &desc) {
+    renderer.CreateTarget(name, desc);
+  });
   ForEachPass([&](const PassID id, const PassFunc &func) {
     auto inputs = GetInputs(id);
     auto outputs = GetOutputs(id);
@@ -83,7 +85,7 @@ auto RenderGraph::GetFinalOutputName() -> std::string {
   if (auto it = idToOutputs.find(id); it != idToOutputs.end()) {
     const auto &outputs = it->second;
     if (!outputs.empty())
-      return outputs[0].name;
+      return outputs[0];
   }
   return "";
 }
@@ -92,10 +94,20 @@ auto RenderGraph::GetInputs(const PassID id) -> std::span<std::string> {
     return it->second;
   return {};
 }
-auto RenderGraph::GetOutputs(const PassID id) -> std::span<TargetBinding> {
+auto RenderGraph::GetOutputs(const PassID id) -> std::span<std::string> {
   if (auto it = idToOutputs.find(id); it != idToOutputs.end())
     return it->second;
   return {};
+}
+auto RenderGraph::ResizeTargets(Renderer &renderer, const int width, const int height) -> void {
+  if (width < 0 || height < 0)
+    return;
+  for (auto &[name, desc] : nameToDesc)
+    if (desc.width != width || desc.height != height) {
+      desc.width = width;
+      desc.height = height;
+      renderer.UpdateTarget(name, desc);
+    }
 }
 auto RenderGraph::AreConnected(const PassID src, const PassID dst) -> bool {
   if (src == dst)

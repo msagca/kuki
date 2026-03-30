@@ -32,7 +32,7 @@ public:
   // templates
   auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;
   auto ForEachRootEntity(this auto &, auto &&) -> void;
-  auto GetActiveCamera(this auto &self) -> ConstCorrectPointer<decltype(self), Camera>;
+  auto GetActiveCamera(this auto &) -> decltype(auto);
   template <typename... T>
   auto AddEntityComponent(const EntityID) -> decltype(auto);
   template <typename... T>
@@ -58,7 +58,7 @@ auto Scene::ForEachChildEntity(this auto &self, const EntityID id, auto &&func) 
 auto Scene::ForEachRootEntity(this auto &self, auto &&func) -> void {
   self.entityManager.ForEachRoot(std::forward<decltype(func)>(func));
 }
-auto Scene::GetActiveCamera(this auto &self) -> ConstCorrectPointer<decltype(self), Camera> {
+auto Scene::GetActiveCamera(this auto &self) -> decltype(auto) {
   return self.entityManager.template GetAny<Camera>();
 }
 template <typename... T>

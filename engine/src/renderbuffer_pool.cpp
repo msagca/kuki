@@ -1,4 +1,3 @@
-#include <pool.hpp>
 #include <renderbuffer_pool.hpp>
 //
 #include <glad/glad.h>
@@ -6,16 +5,16 @@ namespace kuki {
 RenderbufferPool::~RenderbufferPool() {
   Clear();
 }
-auto RenderbufferPool::Clear() -> void {
-  for (const auto &[params, renderbuffers] : pool)
-    for (auto id : renderbuffers)
-      glDeleteRenderbuffers(1, &id);
-}
 auto RenderbufferPool::Allocate(const TargetDescription &desc) -> unsigned int {
   unsigned int renderbuffer;
   glGenRenderbuffers(1, &renderbuffer);
   Reallocate(desc, renderbuffer);
   return renderbuffer;
+}
+auto RenderbufferPool::Clear() -> void {
+  for (const auto &[params, renderbuffers] : pool)
+    for (const auto &id : renderbuffers)
+      glDeleteRenderbuffers(1, &id);
 }
 auto RenderbufferPool::Reallocate(const TargetDescription &desc, unsigned int &renderbuffer) -> void {
   if (renderbuffer == 0)

@@ -7,9 +7,12 @@
 #include <filesystem>
 #include <glad/glad.h>
 #include <id.hpp>
+#include <memory>
+#include <physics_system.hpp>
 #include <primitive.hpp>
 #include <rendering_system.hpp>
 #include <scene.hpp>
+#include <shader_asset.hpp>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string>
@@ -31,7 +34,7 @@ auto Application::Start() -> void {}
 auto Application::Update(const float) -> void {}
 auto Application::Shutdown() -> void {}
 auto Application::Run() -> void {
-  // NOTE: Pre/Late* functions are not exposed to child classes
+  // NOTE: Pre/Post* functions are not exposed to child classes
   PreAwake();
   Awake();
   PreStart();
@@ -39,14 +42,15 @@ auto Application::Run() -> void {
   while (Status()) {
     PreUpdate();
     Update(deltaTime);
-    LateUpdate();
+    PostUpdate();
   }
   Shutdown();
-  LateShutdown();
+  PostShutdown();
 }
 auto Application::PreAwake() -> void {
   CreateWindow();
-  CreateSystem<RenderingSystem>(sceneManager, assetManager);
+  CreateSystem<PhysicsSystem>(sceneManager);
+  CreateSystem<RenderingSystem>(sceneManager, assetManager, settingsManager);
   for (auto &[_, system] : typeIndexToSystem)
     system->Awake();
 }
@@ -63,11 +67,11 @@ auto Application::PreUpdate() -> void {
   for (auto &[_, system] : typeIndexToSystem)
     system->Update(deltaTime);
 };
-auto Application::LateUpdate() -> void {
+auto Application::PostUpdate() -> void {
   glfwSwapBuffers(window);
   glfwPollEvents();
 }
-auto Application::LateShutdown() -> void {
+auto Application::PostShutdown() -> void {
   for (auto &[_, system] : typeIndexToSystem)
     system->Shutdown();
   typeIndexToSystem.clear();
@@ -87,7 +91,8 @@ auto Application::CreateWindow() -> void {
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_SAMPLES, 4);
-  window = glfwCreateWindow(settings.width, settings.height, desc.name.c_str(), nullptr, nullptr);
+  const auto &settings = GetSettings();
+  window = glfwCreateWindow(settings.res.width, settings.res.height, desc.name.c_str(), nullptr, nullptr);
   if (!window) {
     spdlog::error("Failed to create GLFW window.");
     glfwTerminate();
@@ -117,7 +122,7 @@ auto Application::CreateWindow() -> void {
   glfwSetCharCallback(window, CharCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetWindowCloseCallback(window, WindowCloseCallback);
-  glViewport(0, 0, settings.width, settings.height);
+  glViewport(0, 0, settings.res.width, settings.res.height);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glCullFace(GL_BACK);
   glEnable(GL_BLEND);
@@ -247,14 +252,14 @@ auto Application::GetMissingEntityComponents(const EntityID id) const -> std::ve
     return scene->GetMissingEntityComponents(id);
   return {};
 }
-auto Application::GetMousePos() const -> glm::vec2 {
-  return inputManager.GetMousePos();
+auto Application::GetMousePosition() const -> glm::vec2 {
+  return inputManager.GetMousePosition();
 };
 auto Application::GetName() const -> std::string {
   return desc.name;
 }
 auto Application::GetSettings() const -> const ApplicationSettings & {
-  return settings;
+  return settingsManager.GetSettings();
 }
 auto Application::GetWASDKeys() const -> glm::vec2 {
   return inputManager.GetWASD();
@@ -264,13 +269,75 @@ auto Application::InstantiateAsset(const AssetID id) -> EntityID {
     return assetManager.Instantiate(id, *scene);
   return EntityID::Invalid;
 }
+auto Application::InstantiateAsset(const std::string &name) -> EntityID {
+  if (auto scene = GetActiveScene(); scene)
+    return assetManager.Instantiate(name, *scene);
+  return EntityID::Invalid;
+}
 auto Application::IsEntity(const EntityID id) const -> bool {
   if (auto scene = GetActiveScene(); scene)
     return scene->IsEntity(id);
   return false;
 }
+auto Application::LoadCompute(const std::filesystem::path &comp, std::string name) -> void {
+  auto renderingSystem = GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return;
+  const auto compId = LoadAsset<ShaderAsset>(comp, std::move(name));
+  const auto compAsset = GetAsset<ShaderAsset>(compId);
+  if (compAsset)
+    renderingSystem->LoadCompute(*compAsset);
+}
 auto Application::LoadScene(const std::string &name) -> bool {
   return sceneManager.Load(name);
+}
+auto Application::LoadShader(const std::filesystem::path &vert, const std::filesystem::path &frag, std::string name, const MaterialType type) -> void {
+  auto renderingSystem = GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return;
+  const auto vertId = LoadAsset<ShaderAsset>(vert, name);
+  const auto fragId = LoadAsset<ShaderAsset>(frag, std::move(name));
+  auto vertAsset = GetAsset<ShaderAsset>(vertId);
+  auto fragAsset = GetAsset<ShaderAsset>(fragId);
+  if (vertAsset && fragAsset) {
+    fragAsset->type = type;
+    renderingSystem->LoadShader(*vertAsset, *fragAsset);
+  }
+}
+auto Application::LoadPrimitive(const std::string &name) -> void {
+  if (assetManager.GetID(name))
+    return;
+  auto meshAsset = std::make_unique<MeshAsset>(AssetID::Generate(), name);
+  if (name == "Cube")
+    meshAsset->mesh.vertices = std::move(Primitive::Cube());
+  else if (name == "CubeInverted") {
+    meshAsset->mesh.vertices = std::move(Primitive::Cube());
+    Primitive::FlipWindingOrder(meshAsset->mesh.vertices);
+  } else if (name == "Frame")
+    meshAsset->mesh.vertices = std::move(Primitive::Frame());
+  else if (name == "Plane")
+    meshAsset->mesh.vertices = std::move(Primitive::Plane());
+  else if (name == "Cylinder")
+    meshAsset->mesh.vertices = std::move(Primitive::Cylinder());
+  else if (name == "Sphere")
+    meshAsset->mesh.vertices = std::move(Primitive::Sphere());
+  else {
+    spdlog::warn("Unknown primitive: {}", name);
+    return;
+  }
+  if (!assetManager.GetID("DefaultLit")) {
+    auto defaultLit = std::make_unique<MaterialAsset>(AssetID::Generate(), "DefaultLit");
+    defaultLit->type = MaterialType::Lit;
+    assetManager.Add<MaterialAsset>(std::move(defaultLit));
+  }
+  meshAsset->material = assetManager.GetID("DefaultLit");
+  assetManager.Add<MeshAsset>(std::move(meshAsset));
+}
+auto Application::PreviewAsset(const AssetID id) -> RenderTarget * {
+  auto renderingSystem = GetSystem<RenderingSystem>();
+  if (!renderingSystem)
+    return nullptr;
+  return renderingSystem->PreviewAsset(id);
 }
 auto Application::RegisterInputAction(std::string trigger, InputAction action) -> void {
   inputManager.RegisterAction(std::move(trigger), action);
@@ -288,8 +355,8 @@ auto Application::RenameEntity(const EntityID id, std::string name) -> bool {
     return scene->RenameEntity(id, name);
   return false;
 }
-auto Application::UnloadAsset(const AssetID id) -> bool {
-  return assetManager.Unload(id);
+auto Application::SetResolution(const int width, const int height) -> void {
+  settingsManager.SetResolution(width, height);
 }
 auto Application::UnregisterInputAction(const std::string &trigger) -> void {
   inputManager.UnregisterAction(trigger);

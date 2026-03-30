@@ -15,7 +15,7 @@ struct AssetMetadata {
   AssetID id{};
   std::string name{};
   std::filesystem::path path{};
-  AssetType type{AssetType::Unknown};
+  AssetType type{AssetType::Texture};
   AssetStatus status{AssetStatus::Unregistered};
 };
 } // namespace kuki

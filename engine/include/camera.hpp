@@ -22,7 +22,7 @@ struct KUKI_ENGINE_API Camera {
   /// @brief Local transform matrix of the camera
   glm::mat4 local{1.0f};
   CameraTransform transform;
-  mutable bool dirty{true};
+  mutable unsigned int dirty{};
   Frustum frustum{};
   float fov{45.0f};
   float aspectRatio{1.0f};

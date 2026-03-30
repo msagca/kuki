@@ -9,6 +9,10 @@ auto GLLitShader::SetCamera(const Camera &camera, const unsigned int ubo) -> voi
   GLShader::SetCamera(camera, ubo);
   SetUniform("viewPos", camera.position);
 }
+auto GLLitShader::SetLighting() -> void {
+  SetUniform("pointCount", 0);
+  SetUniform("hasDirLight", false);
+}
 auto GLLitShader::SetLighting(const Light &light) -> void {
   std::span<const Light> lights(&light, 1);
   SetLighting(lights);
@@ -24,7 +28,7 @@ auto GLLitShader::SetLighting(std::span<const Light> lights) -> void {
       SetUniform("dirLight.specular", light.specular);
       dirExists = true;
     } else if (light.type == LightType::Point) {
-      auto offset = pointIndex * 7;
+      const auto offset = pointIndex * 7;
       SetUniform(nameToUniform["pointLights[0].position"].location + offset, light.vector);
       SetUniform(nameToUniform["pointLights[0].ambient"].location + offset, light.ambient);
       SetUniform(nameToUniform["pointLights[0].diffuse"].location + offset, light.diffuse);
@@ -32,41 +36,46 @@ auto GLLitShader::SetLighting(std::span<const Light> lights) -> void {
       SetUniform(nameToUniform["pointLights[0].constant"].location + offset, light.constant);
       SetUniform(nameToUniform["pointLights[0].linear"].location + offset, light.linear);
       SetUniform(nameToUniform["pointLights[0].quadratic"].location + offset, light.quadratic);
-      pointIndex++;
+      ++pointIndex;
     }
   SetUniform("pointCount", pointIndex);
   SetUniform("hasDirLight", dirExists);
 }
 auto GLLitShader::SetMaterialFallback(const GLMesh &mesh, std::span<const MaterialFallback> fallbacks, const unsigned int buffer) -> void {
-  auto bindingIndex = 2;
+  const auto bindingIndex = 2;
   auto attribIndex = 8;
-  glNamedBufferData(buffer, fallbacks.size() * sizeof(MaterialFallback), fallbacks.data(), GL_DYNAMIC_DRAW);
+  if (materialCount == fallbacks.size())
+    glNamedBufferSubData(buffer, 0, materialCount * sizeof(MaterialFallback), fallbacks.data());
+  else {
+    materialCount = fallbacks.size();
+    glNamedBufferData(buffer, materialCount * sizeof(MaterialFallback), fallbacks.data(), GL_DYNAMIC_DRAW);
+  }
   glVertexArrayVertexBuffer(mesh.vao, bindingIndex, buffer, 0, sizeof(MaterialFallback));
   glVertexArrayBindingDivisor(mesh.vao, bindingIndex, 1);
   glVertexArrayAttribFormat(mesh.vao, attribIndex, 4, GL_FLOAT, GL_FALSE, offsetof(MaterialFallback, albedo));
   glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vao, attribIndex);
-  attribIndex++;
+  ++attribIndex;
   glVertexArrayAttribFormat(mesh.vao, attribIndex, 4, GL_FLOAT, GL_FALSE, offsetof(MaterialFallback, specular));
   glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vao, attribIndex);
-  attribIndex++;
+  ++attribIndex;
   glVertexArrayAttribFormat(mesh.vao, attribIndex, 4, GL_FLOAT, GL_FALSE, offsetof(MaterialFallback, emissive));
   glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vao, attribIndex);
-  attribIndex++;
+  ++attribIndex;
   glVertexArrayAttribFormat(mesh.vao, attribIndex, 1, GL_FLOAT, GL_FALSE, offsetof(MaterialFallback, metalness));
   glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vao, attribIndex);
-  attribIndex++;
+  ++attribIndex;
   glVertexArrayAttribFormat(mesh.vao, attribIndex, 1, GL_FLOAT, GL_FALSE, offsetof(MaterialFallback, occlusion));
   glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vao, attribIndex);
-  attribIndex++;
+  ++attribIndex;
   glVertexArrayAttribFormat(mesh.vao, attribIndex, 1, GL_FLOAT, GL_FALSE, offsetof(MaterialFallback, roughness));
   glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vao, attribIndex);
-  attribIndex++;
+  ++attribIndex;
   glVertexArrayAttribIFormat(mesh.vao, attribIndex, 1, GL_INT, offsetof(MaterialFallback, textureMask));
   glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
   glEnableVertexArrayAttrib(mesh.vao, attribIndex);

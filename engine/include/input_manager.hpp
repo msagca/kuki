@@ -10,7 +10,7 @@ namespace kuki {
 class KUKI_ENGINE_API InputManager {
 private:
   double lastInputTime{};
-  glm::vec2 mousePos{};
+  glm::vec2 mousePosition{};
   std::bitset<256> inputState{0};
   std::bitset<256> pressState{0};
   std::bitset<256> releaseState{0};
@@ -37,7 +37,7 @@ public:
   glm::vec2 GetWASD() const;
   /// @brief Get the vertical (Up-Down) and horizontal (Left-Right) input respectively as a 2D vector
   glm::vec2 GetArrow() const;
-  glm::vec2 GetMousePos() const;
+  glm::vec2 GetMousePosition() const;
   /// @return Time passed since last user input
   double GetInactivityTime() const;
   /// @brief Register an action that is triggered by the given character sequence

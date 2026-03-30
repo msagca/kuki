@@ -1,14 +1,15 @@
 #pragma once
-#include <buffer_description.hpp>
+#include <keyed_pool.hpp>
 #include <kuki_engine_export.h>
-#include <pool.hpp>
 namespace kuki {
-class KUKI_ENGINE_API BufferPool final : public Pool<BufferDescription, unsigned int> {
+class KUKI_ENGINE_API BufferPool final : public KeyedPool<int, unsigned int> {
 public:
   ~BufferPool() override;
   auto Clear() -> void;
+  auto Reallocate(const int &, unsigned int &) -> void override;
 protected:
-  auto Allocate(const BufferDescription &) -> unsigned int override;
-  auto Reallocate(const BufferDescription &, unsigned int &) -> void override;
+  /// @param size Buffer size in bytes
+  /// @return id Buffer ID
+  auto Allocate(const int & = 0) -> unsigned int override;
 };
 } // namespace kuki

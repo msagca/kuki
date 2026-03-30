@@ -1,6 +1,9 @@
 #pragma once
 namespace kuki {
-struct BufferObject {
+class BufferObject {
+public:
   virtual ~BufferObject() = default;
+protected:
+  BufferObject() = default;
 };
 } // namespace kuki
