@@ -27,11 +27,8 @@ public:
   virtual auto GetTarget(const std::string &) -> RenderTarget * = 0;
   virtual auto GetTexture(const EntityID) -> RenderTarget * = 0;
   virtual auto GetTexture(const std::string &) -> RenderTarget * = 0;
-  virtual auto LoadAsset(const AssetID) -> EntityID = 0;
-  virtual auto LoadCompute(ShaderAsset &) -> EntityID = 0;
-  virtual auto LoadPrimitive(const std::string &) -> EntityID = 0;
+  virtual auto LoadAsset(const AssetID) -> void = 0;
   virtual auto LoadScene(Scene &) -> void = 0;
-  virtual auto LoadShader(ShaderAsset &, ShaderAsset &) -> EntityID = 0;
   virtual auto PreviewAsset(const AssetID) -> EntityID = 0;
   virtual auto Reset() -> void = 0;
   virtual auto UpdateTarget(const std::string &, const TargetDescription &) -> void = 0;

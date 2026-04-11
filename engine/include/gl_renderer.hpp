@@ -29,12 +29,13 @@
 #include <target_description.hpp>
 #include <texture_asset.hpp>
 #include <texture_pool.hpp>
+#include "shader_type.hpp"
 //
 #include <glad/glad.h>
 namespace kuki {
 struct GLFormat {
-  unsigned int external;
-  unsigned int internal;
+  int external;
+  int internal;
 };
 class KUKI_ENGINE_API GLRenderer final : public Renderer {
 public:
@@ -64,11 +65,8 @@ public:
   auto GetTarget(const std::string &) -> GLRenderTarget * override;
   auto GetTexture(const EntityID) -> GLTexture * override;
   auto GetTexture(const std::string &) -> GLTexture * override;
-  auto LoadAsset(const AssetID) -> EntityID override;
-  auto LoadCompute(ShaderAsset &) -> EntityID override;
-  auto LoadPrimitive(const std::string &) -> EntityID override;
+  auto LoadAsset(const AssetID) -> void override;
   auto LoadScene(Scene &) -> void override;
-  auto LoadShader(ShaderAsset &, ShaderAsset &) -> EntityID override;
   auto PreviewAsset(const AssetID) -> EntityID override;
   auto Reset() -> void override;
   auto UpdateTarget(const std::string &, const TargetDescription &) -> void override;
@@ -77,9 +75,7 @@ public:
   template <typename T>
   auto GetComponent(this auto &, const std::string & = "") -> decltype(auto);
   template <IsAsset T>
-  auto LoadAsset(T &) -> EntityID;
-  template <IsAsset T>
-  auto LoadAsset(T &, T &) -> EntityID;
+  auto LoadAsset(T &) -> void;
   template <IsAsset T>
   auto PreviewAsset(T &) -> EntityID;
   template <AreUnsignedInt... Vals>
@@ -133,14 +129,12 @@ auto GLRenderer::ReturnTexture(const TargetDescription &desc, Vals &&...vals) ->
   texturePool.Release(desc, vals...);
 }
 template <IsAsset T>
-auto GLRenderer::LoadAsset(T &) -> EntityID {
-  return EntityID::Invalid;
-}
+auto GLRenderer::LoadAsset(T &) -> void {}
 template <>
-inline auto GLRenderer::LoadAsset<MaterialAsset>(MaterialAsset &materialAsset) -> EntityID {
+inline auto GLRenderer::LoadAsset<MaterialAsset>(MaterialAsset &materialAsset) -> void {
+  if (resourceManager.IsEntity(materialAsset.resourceId))
+    return;
   const auto &name = materialAsset.GetName();
-  if (resourceManager.IsEntity(name))
-    return resourceManager.GetID(name);
   const auto id = resourceManager.Create(name);
   materialAsset.resourceId = id;
   auto glMaterial = resourceManager.AddComponent<GLMaterial>(id);
@@ -148,108 +142,163 @@ inline auto GLRenderer::LoadAsset<MaterialAsset>(MaterialAsset &materialAsset) -
   glMaterial->type = materialAsset.type;
   for (const auto &id : materialAsset.textures)
     LoadAsset(id);
-  return id;
+  spdlog::info("[OpenGL] loaded material: {}", name);
 }
 template <>
-inline auto GLRenderer::LoadAsset<MeshAsset>(MeshAsset &meshAsset) -> EntityID {
+inline auto GLRenderer::LoadAsset<MeshAsset>(MeshAsset &meshAsset) -> void {
+  if (resourceManager.IsEntity(meshAsset.resourceId))
+    return;
   const auto &name = meshAsset.GetName();
-  if (resourceManager.IsEntity(name))
-    return resourceManager.GetID(name);
   const auto id = resourceManager.Create(name);
   meshAsset.resourceId = id;
   auto glMesh = resourceManager.AddComponent<GLMesh>(id);
   LoadMesh(*glMesh, meshAsset.mesh);
   LoadAsset(meshAsset.material);
-  return id;
+  spdlog::info("[OpenGL] loaded mesh: {}", name);
 }
 template <>
-inline auto GLRenderer::LoadAsset<SceneAsset>(SceneAsset &sceneAsset) -> EntityID {
+inline auto GLRenderer::LoadAsset<SceneAsset>(SceneAsset &sceneAsset) -> void {
   // NOTE: materials and textures are loaded in the process if they are referenced by any mesh
   for (auto i = 0; i < sceneAsset.meshes.size(); ++i)
     LoadSceneMesh(sceneAsset, i);
-  return EntityID::Invalid; // TODO: decide which ID to return
+  spdlog::info("[OpenGL] loaded model: {}", sceneAsset.GetName());
 }
 template <>
-inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &compAsset) -> EntityID {
-  const auto &name = compAsset.GetName();
-  if (resourceManager.IsEntity(name))
-    return EntityID::Invalid;
-  const auto id = resourceManager.Create(name);
-  compAsset.resourceId = id;
-  auto compute = resourceManager.AddComponent<GLComputeShader>(id);
-  auto compId = GLShaderBase::Compile(compAsset.text.data(), GL_COMPUTE_SHADER);
-  const auto programId = glCreateProgram();
-  compute->id = programId;
-  glAttachShader(programId, compId);
-  glLinkProgram(programId);
-  glDeleteShader(compId);
-  int success;
-  glGetProgramiv(programId, GL_LINK_STATUS, &success);
-  if (success)
-    compute->CacheLocations();
-  return id;
+inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &shaderAsset) -> void {
+  if (resourceManager.IsEntity(shaderAsset.resourceId))
+    return;
+  const auto &name = shaderAsset.GetName();
+  if (shaderAsset.shaderType == ShaderType::Compute) {
+    auto &compShader = shaderAsset;
+    const auto id = resourceManager.Create(name);
+    compShader.resourceId = id;
+    auto compute = resourceManager.AddComponent<GLComputeShader>(id);
+    auto compId = GLShaderBase::Compile(compShader.text.data(), GL_COMPUTE_SHADER);
+    const auto programId = glCreateProgram();
+    compute->id = programId;
+    glAttachShader(programId, compId);
+    glLinkProgram(programId);
+    glDeleteShader(compId);
+    int success;
+    glGetProgramiv(programId, GL_LINK_STATUS, &success);
+    if (success) {
+      compute->CacheLocations();
+      spdlog::info("[OpenGL] created compute: {}", name);
+    } else
+      spdlog::error("[OpenGL] failed to create compute: {}", name);
+  } else if (shaderAsset.shaderType == ShaderType::Fragment) {
+    auto &fragShader = shaderAsset;
+    auto vertAsset = assetManager.Get(fragShader.vertexShader);
+    if (!vertAsset)
+      spdlog::error("Vertex shader for the following fragment shader could not be found: {}", name);
+    auto vertShader = vertAsset->As<ShaderAsset>();
+    const auto &vertName = vertShader->GetName();
+    if (!vertShader)
+      spdlog::error("Asset is not a shader: {}", vertName);
+    const auto id = resourceManager.Create(name);
+    vertShader->resourceId = id;
+    fragShader.resourceId = id;
+    GLShader *shader{};
+    switch (fragShader.materialType) {
+    case MaterialType::Lit:
+    case MaterialType::LitSkinned:
+      shader = resourceManager.AddComponent<GLLitShader>(id);
+      break;
+    default:
+      shader = resourceManager.AddComponent<GLUnlitShader>(id);
+      break;
+    }
+    const auto vertId = GLShaderBase::Compile(vertShader->text.data(), GL_VERTEX_SHADER, vertName);
+    const auto fragId = GLShaderBase::Compile(fragShader.text.data(), GL_FRAGMENT_SHADER, name);
+    const auto programId = glCreateProgram();
+    shader->id = programId;
+    glAttachShader(programId, vertId);
+    glAttachShader(programId, fragId);
+    glLinkProgram(programId);
+    glDeleteShader(vertId);
+    glDeleteShader(fragId);
+    int success;
+    glGetProgramiv(programId, GL_LINK_STATUS, &success);
+    if (success) {
+      shader->CacheLocations();
+      spdlog::info("[OpenGL] created shader: {}", name);
+    } else
+      spdlog::error("[OpenGL] failed to create shader: {}", name);
+  }
 }
 template <>
-inline auto GLRenderer::LoadAsset<SkyboxAsset>(SkyboxAsset &skyboxAsset) -> EntityID {
-  if (!skyboxAsset.id || skyboxAsset.resourceId)
-    return EntityID::Invalid;
+inline auto GLRenderer::LoadAsset<SkyboxAsset>(SkyboxAsset &skyboxAsset) -> void {
+  if (resourceManager.IsEntity(skyboxAsset.resourceId))
+    return;
   const auto id = resourceManager.Create(skyboxAsset.GetName());
   skyboxAsset.resourceId = id;
   auto skybox = resourceManager.AddComponent<GLSkybox>(id);
   // TODO: dispatch computes to create irradiance/prefilter maps
-  return id;
+  spdlog::info("[OpenGL] loaded skybox: {}", skyboxAsset.GetName());
 }
 template <>
-inline auto GLRenderer::LoadAsset<TextureAsset>(TextureAsset &textureAsset) -> EntityID {
+inline auto GLRenderer::LoadAsset<TextureAsset>(TextureAsset &textureAsset) -> void {
+  if (resourceManager.IsEntity(textureAsset.resourceId))
+    return;
   const auto &name = textureAsset.GetName();
-  if (resourceManager.IsEntity(name))
-    return EntityID::Invalid;
   const auto id = resourceManager.Create(name);
   textureAsset.resourceId = id;
   auto glTexture = resourceManager.AddComponent<GLTexture>(id);
   LoadTexture(*glTexture, textureAsset.texture);
-  return id;
-}
-template <IsAsset T>
-auto GLRenderer::LoadAsset(T &, T &) -> EntityID {
-  return EntityID::Invalid;
-}
-template <>
-inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &vertAsset, ShaderAsset &fragAsset) -> EntityID {
-  const auto &name = fragAsset.GetName();
-  if (resourceManager.IsEntity(name))
-    return EntityID::Invalid;
-  const auto &id = resourceManager.Create(name);
-  vertAsset.resourceId = id;
-  fragAsset.resourceId = id;
-  GLShader *shader{};
-  switch (fragAsset.type) {
-  case MaterialType::Lit:
-  case MaterialType::LitSkinned:
-    shader = resourceManager.AddComponent<GLLitShader>(id);
-    break;
-  default:
-    shader = resourceManager.AddComponent<GLUnlitShader>(id);
-    break;
-  }
-  const auto &vertId = GLShaderBase::Compile(vertAsset.text.data(), GL_VERTEX_SHADER, vertAsset.GetName());
-  const auto &fragId = GLShaderBase::Compile(fragAsset.text.data(), GL_FRAGMENT_SHADER, fragAsset.GetName());
-  const auto &programId = glCreateProgram();
-  shader->id = programId;
-  glAttachShader(programId, vertId);
-  glAttachShader(programId, fragId);
-  glLinkProgram(programId);
-  glDeleteShader(vertId);
-  glDeleteShader(fragId);
-  int success;
-  glGetProgramiv(programId, GL_LINK_STATUS, &success);
-  if (success)
-    shader->CacheLocations();
-  return id;
+  spdlog::info("[OpenGL] loaded texture: {}", name);
 }
 template <IsAsset T>
 auto GLRenderer::PreviewAsset(T &) -> EntityID {
   return EntityID::Invalid;
+}
+template <>
+inline auto GLRenderer::PreviewAsset<MeshAsset>(MeshAsset &meshAsset) -> EntityID {
+  constexpr unsigned int PREVIEW_SIZE = 128; // TODO: make this configurable
+  auto shader = GetShader(MaterialType::Lit);
+  if (!shader)
+    return EntityID::Invalid;
+  const auto previewName = std::format("{}Preview", meshAsset.GetName());
+  auto texture = resourceManager.GetComponent<GLTexture>(previewName);
+  if (texture)
+    return resourceManager.GetID(previewName);
+  const auto mesh = resourceManager.GetComponent<GLMesh>(meshAsset.resourceId);
+  if (!mesh)
+    return EntityID::Invalid;
+  const auto materialAsset = assetManager.Get<MaterialAsset>(meshAsset.material);
+  if (!materialAsset)
+    return EntityID::Invalid;
+  const auto material = resourceManager.GetComponent<GLMaterial>(materialAsset->resourceId);
+  if (!material)
+    return EntityID::Invalid;
+  const TargetDescription desc{.width = PREVIEW_SIZE, .height = PREVIEW_SIZE};
+  const auto framebuffer = BorrowFramebuffer();
+  const auto renderbuffer = BorrowRenderbuffer(desc);
+  const auto cameraBuffer = BorrowBuffer();
+  const auto materialBuffer = BorrowBuffer();
+  const auto transformBuffer = BorrowBuffer();
+  const auto id = CreateTexture(previewName, desc);
+  texture = GetTexture(id);
+  Camera camera{};
+  camera.Frame(meshAsset.bounds);
+  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderbuffer);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture->id, 0);
+  glViewport(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  shader->Use();
+  shader->SetCamera(camera, cameraBuffer);
+  shader->SetSkybox();
+  shader->SetLighting();
+  shader->SetMaterial(*material);
+  shader->SetMaterialFallback(*mesh, material->fallback, materialBuffer);
+  shader->SetTransform(*mesh, glm::mat4(1.f), transformBuffer);
+  shader->Draw(*mesh);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  ReturnBuffer(cameraBuffer, materialBuffer, transformBuffer);
+  ReturnRenderbuffer(desc, renderbuffer);
+  ReturnFramebuffer(framebuffer);
+  spdlog::info("[OpenGL] created preview for asset: {}", meshAsset.GetName());
+  return id;
 }
 template <>
 inline auto GLRenderer::PreviewAsset<SceneAsset>(SceneAsset &sceneAsset) -> EntityID {
@@ -265,11 +314,11 @@ inline auto GLRenderer::PreviewAsset<SceneAsset>(SceneAsset &sceneAsset) -> Enti
     return resourceManager.GetID(previewName);
   const auto &rootNode = sceneAsset.nodes[0];
   const TargetDescription desc{.width = PREVIEW_SIZE, .height = PREVIEW_SIZE};
-  const auto &framebuffer = BorrowFramebuffer();
-  const auto &renderbuffer = BorrowRenderbuffer(desc);
-  const auto &cameraBuffer = BorrowBuffer();
-  const auto &materialBuffer = BorrowBuffer();
-  const auto &transformBuffer = BorrowBuffer();
+  const auto framebuffer = BorrowFramebuffer();
+  const auto renderbuffer = BorrowRenderbuffer(desc);
+  const auto cameraBuffer = BorrowBuffer();
+  const auto materialBuffer = BorrowBuffer();
+  const auto transformBuffer = BorrowBuffer();
   // FIXME: assets with the same name will share the same preview
   const auto id = CreateTexture(previewName, desc);
   texture = GetTexture(id);
@@ -294,22 +343,25 @@ inline auto GLRenderer::PreviewAsset<SceneAsset>(SceneAsset &sceneAsset) -> Enti
       parentTransform = transforms[node.parent];
     transforms.emplace_back(parentTransform * node.transform);
   }
-  for (const auto &mesh : sceneAsset.meshes) {
-    const auto &meshResourceId = mesh.resourceId;
-    const auto &meshResource = resourceManager.GetComponent<GLMesh>(meshResourceId);
-    const auto &material = sceneAsset.materials[mesh.material];
-    const auto &materialResourceId = material.resourceId;
-    const auto &materialResource = resourceManager.GetComponent<GLMaterial>(materialResourceId);
-    const auto &transform = transforms[mesh.parent]; // NOTE: `mesh.parent` refers to a node; multiple meshes might share the same parent node
-    shader->SetMaterial(*materialResource);
-    shader->SetMaterialFallback(*meshResource, materialResource->fallback, materialBuffer);
-    shader->SetTransform(*meshResource, transform, transformBuffer);
-    shader->Draw(*meshResource);
+  for (const auto &sceneMesh : sceneAsset.meshes) {
+    const auto mesh = resourceManager.GetComponent<GLMesh>(sceneMesh.resourceId);
+    if (!mesh)
+      continue;
+    const auto &sceneMaterial = sceneAsset.materials[sceneMesh.material];
+    const auto material = resourceManager.GetComponent<GLMaterial>(sceneMaterial.resourceId);
+    if (!material)
+      continue;
+    const auto &transform = transforms[sceneMesh.parent]; // NOTE: `mesh.parent` refers to a node; multiple meshes might share the same parent node
+    shader->SetMaterial(*material);
+    shader->SetMaterialFallback(*mesh, material->fallback, materialBuffer);
+    shader->SetTransform(*mesh, transform, transformBuffer);
+    shader->Draw(*mesh);
   }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   ReturnBuffer(cameraBuffer, materialBuffer, transformBuffer);
   ReturnRenderbuffer(desc, renderbuffer);
   ReturnFramebuffer(framebuffer);
+  spdlog::info("[OpenGL] created preview for asset: {}", sceneAsset.GetName());
   return id;
 }
 } // namespace kuki

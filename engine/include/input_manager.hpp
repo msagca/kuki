@@ -8,58 +8,41 @@
 struct GLFWwindow;
 namespace kuki {
 class KUKI_ENGINE_API InputManager {
+public:
+  auto CharCallback(GLFWwindow *, unsigned int) -> void;
+  auto CursorPosCallback(GLFWwindow *, double, double) -> void;
+  auto DisableAll() -> void;
+  auto DisableButtons() -> void;
+  auto DisableKeys() -> void;
+  auto EnableAll() -> void;
+  auto EnableButtons() -> void;
+  auto EnableKeys() -> void;
+  auto GetArrowKeys() const -> glm::vec2;
+  auto GetInactivityTime() const -> double;
+  auto GetMousePosition() const -> glm::vec2;
+  auto GetState(int) const -> bool;
+  auto GetWASD() const -> glm::vec2;
+  auto IsPressed(int) const -> bool;
+  auto IsReleased(int) const -> bool;
+  auto KeyCallback(GLFWwindow *, int, int, int, int) -> void;
+  auto MouseButtonCallback(GLFWwindow *, int, int, int) -> void;
+  auto RegisterAction(int, InputAction, bool = true) -> void;
+  auto RegisterAction(const std::string &, InputAction) -> void;
 private:
+  Trie<ActionNode> keymap;
+  bool buttonsEnabled{true};
+  bool keysEnabled{true};
   double lastInputTime{};
   glm::vec2 mousePosition{};
   std::bitset<256> inputState{0};
   std::bitset<256> pressState{0};
   std::bitset<256> releaseState{0};
-  std::unordered_map<unsigned char, InputAction> pressActions;
-  std::unordered_map<unsigned char, InputAction> releaseActions;
+  std::unordered_multimap<unsigned char, InputAction> pressActions;
+  std::unordered_multimap<unsigned char, InputAction> releaseActions;
   std::vector<unsigned char> keyseq;
-  Trie<ActionNode> keymap;
-  bool keysEnabled{true};
-  bool buttonsEnabled{true};
-  bool SequenceInProgress() const;
-  void FireAction(unsigned char);
-  /// @return An index for the given GLFW key or button
-  static unsigned char GLFWInputToIndex(int);
-  /// @return A string representation for the given GLFW key or button
-  static std::string GLFWKeyToString(int);
-public:
-  /// @return true if the key/button is pressed or repeated, false otherwise
-  bool GetState(int) const;
-  /// @return true if the key/button is pressed, false otherwise
-  bool IsPressed(int) const;
-  /// @return true if the key/button is released, false otherwise
-  bool IsReleased(int) const;
-  /// @brief Get the vertical (W-S) and horizontal (A-D) input respectively as a 2D vector
-  glm::vec2 GetWASD() const;
-  /// @brief Get the vertical (Up-Down) and horizontal (Left-Right) input respectively as a 2D vector
-  glm::vec2 GetArrow() const;
-  glm::vec2 GetMousePosition() const;
-  /// @return Time passed since last user input
-  double GetInactivityTime() const;
-  /// @brief Register an action that is triggered by the given character sequence
-  /// @return true if both the trigger and action are valid and there is no collision, false otherwise
-  bool RegisterAction(std::string_view, InputAction);
-  /// @brief Register an action that is triggered by the given key/button, overwrite any existing action
-  void RegisterAction(int, InputAction, bool = true);
-  /// @brief Unregister the action associated with the given character sequence
-  /// @return true if a mapping was found and removed, false otherwise
-  bool UnregisterAction(std::string_view);
-  /// @brief Unregister the action associated with the given key/button
-  /// @return true if a mapping was found and removed, false otherwise
-  bool UnregisterAction(int, bool = true);
-  void EnableKeys();
-  void DisableKeys();
-  void EnableButtons();
-  void DisableButtons();
-  void EnableAll();
-  void DisableAll();
-  void CharCallback(GLFWwindow *, unsigned int);
-  void KeyCallback(GLFWwindow *, int, int, int, int);
-  void MouseButtonCallback(GLFWwindow *, int, int, int);
-  void CursorPosCallback(GLFWwindow *, double, double);
+  auto FireAction(unsigned char) -> void;
+  auto SequenceInProgress() const -> bool;
+  static auto GLFWInputToIndex(int) -> unsigned char;
+  static auto GLFWKeyToString(int) -> std::string;
 };
 } // namespace kuki

@@ -1,6 +1,5 @@
 *.a
 *.cap
-*.cmake
 *.dir/
 *.dll
 *.dylib

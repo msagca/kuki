@@ -24,11 +24,11 @@
 #include <imgui_internal.h>
 #include <light.hpp>
 #include <material_type.hpp>
-#include <memory>
 #include <primitive.hpp>
 #include <property_displayer.hpp>
 #include <rendering_system.hpp>
 #include <shader_asset.hpp>
+#include <shader_type.hpp>
 #include <spdlog/logger.h>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -42,29 +42,14 @@
 using namespace kuki;
 Editor::Editor()
   : Application({.name = "Kuki Editor", .iconPath = "image/kuki.ico"}) {}
-auto Editor::Awake() -> void {
-  InitImGui();
-  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
-    cameraController->mouselook = true;
-    cameraController->mouseEnter = true;
-    context.state = EditorState::Fly;
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    auto& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NoMouse; });
-  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
-    cameraController->mouselook = false;
-    context.state = EditorState::Normal;
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    auto& io = ImGui::GetIO();
-    io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
-}
 auto Editor::Start() -> void {
+  InitImGui();
   LoadDefaultAssets();
   LoadDefaultScene();
+  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {context.state = EditorState::Fly; glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); auto &io = ImGui::GetIO(); io.ConfigFlags |= ImGuiConfigFlags_NoMouse; });
+  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {context.state = EditorState::Normal; glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); auto &io = ImGui::GetIO(); io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
 }
 auto Editor::Update(const float deltaTime) -> void {
-  // TODO: create a scripting system to manage this
-  cameraController->Update(deltaTime);
   UpdateIO();
   UpdateView();
 }
@@ -125,33 +110,57 @@ auto Editor::InitLayout() -> void {
   ImGui::DockBuilderFinish(dockspaceId);
 }
 auto Editor::LoadDefaultAssets() -> void {
-  LoadPrimitive("Cube");
-  LoadPrimitive("CubeInverted");
-  LoadPrimitive("Cylinder");
-  LoadPrimitive("Frame");
-  LoadPrimitive("Plane");
-  LoadPrimitive("Sphere");
   const auto &desc = GetDescription();
-  LoadCompute(desc.path / "shader/brdf_lut.comp", "BRDF_LUT");
-  LoadCompute(desc.path / "shader/cubemap_equirect.comp", "CubemapEquirect");
-  LoadCompute(desc.path / "shader/equirect_cubemap.comp", "EquirectCubemap");
-  LoadCompute(desc.path / "shader/irradiance.comp", "IrradianceMap");
-  LoadCompute(desc.path / "shader/prefilter.comp", "PrefilterMap");
-  LoadShader(desc.path / "shader/lit.vert", desc.path / "shader/lit.frag", "Lit", MaterialType::Lit);
-  LoadShader(desc.path / "shader/lit_skinned.vert", desc.path / "shader/lit.frag", "LitSkinned", MaterialType::LitSkinned);
-  LoadShader(desc.path / "shader/unlit.vert", desc.path / "shader/unlit.frag", "Unlit");
-  LoadShader(desc.path / "shader/skybox.vert", desc.path / "shader/skybox.frag", "Skybox");
-  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/bloom.frag", "Bloom");
-  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/blur.frag", "Blur");
-  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/bright_pass.frag", "BrightPass");
-  LoadShader(desc.path / "shader/standard_m.vert", desc.path / "shader/gamma_correction.frag", "GammaCorrect");
+  // TODO: make LoadAsset<T> accept arbitrary arguments (e.g., shader type) to declutter this function
+  // LoadAsset<ShaderAsset>(desc.path / "shader/standard_mvp.vert", "StandardMVP");
+  auto vertId = LoadAsset<ShaderAsset>(desc.path / "shader/standard_m.vert", "Standard");
+  GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
+  auto fragId = LoadAsset<ShaderAsset>(desc.path / "shader/bloom.frag", "Bloom");
+  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  fragId = LoadAsset<ShaderAsset>(desc.path / "shader/blur.frag", "Blur");
+  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  fragId = LoadAsset<ShaderAsset>(desc.path / "shader/bright_pass.frag", "BrightPass");
+  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  fragId = LoadAsset<ShaderAsset>(desc.path / "shader/gamma_correction.frag", "GammaCorrect");
+  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  vertId = LoadAsset<ShaderAsset>(desc.path / "shader/lit.vert", "Lit");
+  GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
+  fragId = LoadAsset<ShaderAsset>(desc.path / "shader/lit.frag", "Lit");
+  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  vertId = LoadAsset<ShaderAsset>(desc.path / "shader/lit_skinned.vert", "LitSkinned");
+  GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
+  fragId = LoadAsset<ShaderAsset>(desc.path / "shader/lit.frag", "LitSkinned");
+  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  vertId = LoadAsset<ShaderAsset>(desc.path / "shader/skybox.vert", "Skybox");
+  GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
+  fragId = LoadAsset<ShaderAsset>(desc.path / "shader/skybox.frag", "Skybox");
+  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  vertId = LoadAsset<ShaderAsset>(desc.path / "shader/unlit.vert", "Unlit");
+  GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
+  fragId = LoadAsset<ShaderAsset>(desc.path / "shader/unlit.frag", "Unlit");
+  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  auto compId = LoadAsset<ShaderAsset>(desc.path / "shader/brdf_lut.comp", "BRDF_LUT");
+  GetAsset(compId)->As<ShaderAsset>()->shaderType = ShaderType::Compute;
+  compId = LoadAsset<ShaderAsset>(desc.path / "shader/cubemap_equirect.comp", "CubemapEquirect");
+  GetAsset(compId)->As<ShaderAsset>()->shaderType = ShaderType::Compute;
+  compId = LoadAsset<ShaderAsset>(desc.path / "shader/equirect_cubemap.comp", "EquirectCubemap");
+  GetAsset(compId)->As<ShaderAsset>()->shaderType = ShaderType::Compute;
+  compId = LoadAsset<ShaderAsset>(desc.path / "shader/irradiance.comp", "IrradianceMap");
+  GetAsset(compId)->As<ShaderAsset>()->shaderType = ShaderType::Compute;
+  compId = LoadAsset<ShaderAsset>(desc.path / "shader/prefilter.comp", "PrefilterMap");
+  GetAsset(compId)->As<ShaderAsset>()->shaderType = ShaderType::Compute;
 }
 auto Editor::LoadDefaultScene() -> void {
   const auto sceneName = "Main";
   CreateScene(sceneName);
   auto entityId = CreateEntity("Camera");
-  AddEntityComponent<Camera>(entityId);
-  cameraController = std::make_unique<CameraController>(*this, entityId);
+  context.cameraEntity = entityId;
+  auto camera = AddEntityComponent<Camera>(entityId);
+  camera->position = {3.2f, 1.4f, 2.2f};
+  camera->rotation = glm::quat(glm::radians(glm::vec3(-24.f, 52.f, .0f)));
+  ++camera->dirty;
+  auto script = AddEntityComponent<CameraController>(entityId);
+  script->entityId = entityId;
   entityId = CreateEntity("Skybox");
   AddEntityComponent<GLSkybox>(entityId);
   LoadScene(sceneName);
@@ -206,7 +215,7 @@ auto Editor::UpdateView() -> void {
 }
 auto Editor::DisplayAssetCategories() -> void {
   ImGui::Begin("Categories");
-  ForEachAssetType([this](const AssetType type, const std::string name) {
+  ForEachAssetType([this](const AssetType type, const std::string &name) {
     if (ImGui::Selectable(name.c_str(), context.selectedAssetType == type))
       context.selectedAssetType = type;
   });
@@ -398,9 +407,9 @@ auto Editor::DisplayProperties() -> void {
   if (!context.selectedEntityID)
     return;
   ImGui::Begin("Properties");
-  auto components = GetEntityComponentTypes(context.selectedEntityID);
-  for (auto i = 0; i < components.size(); ++i) {
-    const auto componentType = components[i];
+  auto componentTypes = GetEntityComponentTypes(context.selectedEntityID);
+  for (auto i = 0; i < componentTypes.size(); ++i) {
+    const auto componentType = componentTypes[i];
     const auto isSelected = context.selectedComponentType == componentType;
     ImGui::PushID(static_cast<int>(i));
     const auto name = Component::GetTypeName(componentType);
@@ -416,7 +425,8 @@ auto Editor::DisplayProperties() -> void {
     }
     if (!removed) {
       auto componentOpt = GetEntityComponent(context.selectedEntityID, componentType);
-      DisplayProperties(componentOpt.value());
+      if (componentOpt.has_value())
+        DisplayProperties(componentOpt.value());
     }
     ImGui::PopID();
     if (removed) {
@@ -454,8 +464,8 @@ auto Editor::DisplayScene() -> void {
       ImGui::Image(sceneTarget->texture, ImVec2(settings.res.width, settings.res.height), UV0, UV1);
       DrawManipulator(settings.res.width, settings.res.height);
       const auto &contentRegion = ImGui::GetContentRegionAvail();
-      const auto &sceneWidth = static_cast<int>(contentRegion.x);
-      const auto &sceneHeight = static_cast<int>(contentRegion.y);
+      const auto sceneWidth = static_cast<int>(contentRegion.x);
+      const auto sceneHeight = static_cast<int>(contentRegion.y);
       // FIXME: this is called many times while resizing the window
       SetResolution(sceneWidth, sceneHeight);
     }
@@ -477,10 +487,13 @@ auto Editor::DisplayScene() -> void {
 auto Editor::DrawManipulator(const float width, const float height) -> void {
   if (!context.selectedEntityID)
     return;
+  auto cameraController = GetEntityComponent<CameraController>(context.cameraEntity);
+  if (!cameraController)
+    return;
   const auto &settings = GetSettings();
   const auto windowPos = ImGui::GetWindowPos();
   ImGuizmo::SetRect(windowPos.x, windowPos.y, width, height);
-  ImGuizmo::SetOrthographic(cameraController->camera.type == CameraType::Orthographic);
+  ImGuizmo::SetOrthographic(cameraController->GetType() == CameraType::Orthographic);
   // TODO: for a multi-select, position the gizmo at the center of the selection, and apply manipulations to all entities
   Transform transform;
   auto transformComp = GetEntityComponent<Transform>(context.selectedEntityID);
@@ -500,7 +513,7 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
   } else
     transform = *transformComp;
   ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-  if (!ImGuizmo::Manipulate(glm::value_ptr(cameraController->camera.transform.view), glm::value_ptr(cameraController->camera.transform.projection), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(transform.local)))
+  if (!ImGuizmo::Manipulate(glm::value_ptr(cameraController->GetView()), glm::value_ptr(cameraController->GetView()), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(transform.local)))
     return;
   glm::vec3 rotation;
   ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform.local), glm::value_ptr(transform.position), glm::value_ptr(rotation), glm::value_ptr(transform.scale));

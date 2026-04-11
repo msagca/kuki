@@ -18,8 +18,6 @@
 #include <vector>
 namespace kuki {
 auto EntityManager::AddChild(const EntityID parent, const EntityID child, bool keepWorld) -> bool {
-  if (!parent)
-    return false;
   if (idToMask.find(parent) == idToMask.end() || idToMask.find(child) == idToMask.end())
     return false;
   if (idToChildren.find(parent) == idToChildren.end())
@@ -28,10 +26,10 @@ auto EntityManager::AddChild(const EntityID parent, const EntityID child, bool k
   auto transformManager = GetManager<Transform>();
   auto childTransform = transformManager->Get(child);
   if (!childTransform)
-    childTransform = &transformManager->Add(child);
+    childTransform = transformManager->Add(child);
   auto parentTransform = transformManager->Get(parent);
   if (!parentTransform)
-    parentTransform = &transformManager->Add(parent);
+    parentTransform = transformManager->Add(parent);
   childTransform->parent = parent;
   childTransform->Reparent(parentTransform, keepWorld);
   idToChildren[parent].insert(child);
@@ -89,6 +87,10 @@ auto EntityManager::AddComponent(const EntityID id, const ComponentType type) ->
   case ComponentType::SceneMeshHandle:
     AddComponent<SceneMeshHandle>(id);
     break;
+  case ComponentType::Script:
+    // NOTE: scripts cannot be added via `AddComponent(id, type)`; call `AddComponent<T>(id)` instead with a derived type
+    // TODO: if the user wants to add a script through the editor, display a dropdown of concrete script types that can be added
+    break;
   case ComponentType::SkyboxHandle:
     AddComponent<SkyboxHandle>(id);
     break;
@@ -112,7 +114,7 @@ auto EntityManager::Clear() -> void {
   typeIndexToManager.clear();
 }
 auto EntityManager::CopyFrom(const EntityManager &other, const EntityID otherId) -> EntityID {
-  if (!other.IsEntity(otherId))
+  if (!otherId || !other.IsEntity(otherId))
     return EntityID::Invalid;
   const auto id = Create(other.GetName(otherId));
   auto cloner = ComponentCloner(*this, id);
@@ -208,12 +210,12 @@ auto EntityManager::IsEntity(const std::string &name) const -> bool {
   return false;
 }
 auto EntityManager::RemoveChild(const EntityID parent, const EntityID child) -> bool {
-  auto it = idToChildren.find(parent);
-  if (it == idToChildren.end())
+  if (auto it = idToChildren.find(parent); it != idToChildren.end()) {
+    it->second.erase(child);
+    if (it->second.empty())
+      idToChildren.erase(it->first);
+  } else
     return false;
-  it->second.erase(child);
-  if (it->second.empty())
-    idToChildren.erase(it->first);
   auto transformManager = GetManager<Transform>();
   auto childTransform = transformManager->Get(child);
   if (childTransform) {
@@ -305,10 +307,6 @@ auto EntityManager::Rename(const EntityID id, std::string nameNew) -> bool {
     return true;
   }
   return false;
-}
-auto EntityManager::Update() -> void {
-  for (auto &[_, manager] : typeIndexToManager)
-    manager->Update();
 }
 auto EntityManager::DeleteRecords(const EntityID id) -> void {
   if (auto it = idToName.find(id); it != idToName.end()) {

@@ -17,11 +17,8 @@ set(FONT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/font")
 file(GLOB_RECURSE TTF_SOURCES CONFIGURE_DEPENDS "${FONT_SOURCE_DIR}/*.ttf")
 set(FONT_SOURCES ${TTF_SOURCES})
 add_executable(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
-if(ENABLE_LINTING AND CLANG_TIDY_EXE)
-  set_target_properties(
-    ${PROJECT_NAME}
-    PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE};-checks=*"
-  )
+if(KUKI_ENABLE_LINTING AND CLANG_TIDY_EXE)
+  enable_clang_tidy(${PROJECT_NAME})
 endif()
 target_include_directories(
   ${PROJECT_NAME}

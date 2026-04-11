@@ -12,7 +12,7 @@ struct UUID {
   explicit UUID(T);
   static const UUID Invalid;
   static UUID Generate();
-  bool operator==(const UUID &) const noexcept = default;
+  bool operator==(const UUID &) const = default;
   explicit operator bool() const;
   explicit operator int() const;
 };
@@ -20,7 +20,7 @@ struct KUKI_ENGINE_API UUID128 {
   uint64_t high{0};
   uint64_t low{0};
   UUID128() = default;
-  explicit UUID128(uint64_t, uint64_t);
+  explicit UUID128(uint64_t, uint64_t) noexcept;
   static const UUID128 Invalid;
   static UUID128 Generate();
   bool operator==(const UUID128 &) const = default;

@@ -2,16 +2,14 @@
 #include <scene_manager.hpp>
 #include <system.hpp>
 namespace kuki {
-class KUKI_ENGINE_API PhysicsSystem final : public System {
+class KUKI_ENGINE_API ScriptingSystem final : public System {
 public:
-  PhysicsSystem(SceneManager &);
-  ~PhysicsSystem();
+  ScriptingSystem(Application &);
+  ~ScriptingSystem();
   auto Start() -> void override;
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
 private:
-  SceneManager &sceneManager;
-  const float simulationTimestep;
-  float timeAccumulated{};
+  Application &app;
 };
 } // namespace kuki

@@ -22,7 +22,7 @@ auto Scene::CopyEntityTo(const EntityID id, EntityManager &otherManager) const -
   return entityManager.CopyTo(id, otherManager);
 }
 auto Scene::CreateEntity(std::string name) -> EntityID {
-  return entityManager.Create(name);
+  return entityManager.Create(std::move(name));
 }
 auto Scene::DeleteEntities() -> void {
   entityManager.Clear();
@@ -57,7 +57,7 @@ auto Scene::IsEntity(const EntityID id) const -> bool {
 auto Scene::RemoveEntityComponent(const EntityID id, const ComponentType type) -> bool {
   return entityManager.RemoveComponent(id, type);
 }
-auto Scene::RenameEntity(const EntityID id, const std::string &name) -> bool {
-  return entityManager.Rename(id, name);
+auto Scene::RenameEntity(const EntityID id, std::string name) -> bool {
+  return entityManager.Rename(id, std::move(name));
 }
 } // namespace kuki

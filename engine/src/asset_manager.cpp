@@ -16,6 +16,51 @@
 #include <stb_image.h>
 #include <texture_asset.hpp>
 namespace kuki {
+const std::unordered_map<std::type_index, AssetType> AssetManager::typeIndexToAssetType = {
+  {typeid(MaterialAsset), AssetType::Material},
+  {typeid(MeshAsset), AssetType::Mesh},
+  {typeid(SceneAsset), AssetType::Scene},
+  {typeid(ShaderAsset), AssetType::Shader},
+  {typeid(SkyboxAsset), AssetType::Skybox},
+  {typeid(TextureAsset), AssetType::Texture}};
+auto AssetManager::GetID(const std::string &name) const -> AssetID {
+  auto ids = nameToId.equal_range(name);
+  if (auto it = ids.first; it != ids.second)
+    return it->second;
+  return AssetID::Invalid;
+}
+auto AssetManager::GetName(const AssetID id) const -> std::string {
+  if (auto it = idToMetadata.find(id); it != idToMetadata.end())
+    return it->second.name;
+  return "";
+}
+auto AssetManager::GetPath(const AssetID id) const -> std::filesystem::path {
+  if (auto it = idToMetadata.find(id); it != idToMetadata.end())
+    return it->second.path;
+  return std::filesystem::path{};
+}
+auto AssetManager::GetStatus(const AssetID id) const -> AssetStatus {
+  if (auto it = idToMetadata.find(id); it != idToMetadata.end())
+    return it->second.status;
+  return AssetStatus::Unregistered;
+}
+auto AssetManager::GetType(const AssetID id) const -> AssetType {
+  if (auto it = idToMetadata.find(id); it != idToMetadata.end())
+    return it->second.type;
+  return AssetType::Texture;
+}
+auto AssetManager::IsRegistered(const AssetID id) const -> bool {
+  return idToMetadata.contains(id);
+}
+auto AssetManager::SetStatus(const AssetID id, const AssetStatus status) -> bool {
+  if (status == AssetStatus::Unregistered)
+    return false;
+  if (auto it = idToMetadata.find(id); it != idToMetadata.end()) {
+    it->second.status = status;
+    return true;
+  }
+  return false;
+}
 auto AssetManager::CreatePrefab(const AssetID assetId) -> EntityID {
   if (auto it = idToAsset.find(assetId); it != idToAsset.end()) {
     if (auto it2 = idToPrefabId.find(assetId); it2 != idToPrefabId.end())
@@ -52,46 +97,20 @@ auto AssetManager::CreatePrefab(const AssetID assetId) -> EntityID {
   }
   return EntityID::Invalid;
 }
-auto AssetManager::GetID(const std::string &name) const -> AssetID {
-  return assetDb.GetID(name);
-}
-auto AssetManager::GetName(const AssetID id) const -> std::string {
-  return assetDb.GetName(id);
-}
-auto AssetManager::GetPath(const AssetID id) const -> std::filesystem::path {
-  return assetDb.GetPath(id);
-}
 auto AssetManager::GetPrefabID(const AssetID id) const -> EntityID {
   if (auto it = idToPrefabId.find(id); it != idToPrefabId.end())
     return it->second;
   return EntityID::Invalid;
 }
 auto AssetManager::Instantiate(const AssetID id, Scene &scene) -> EntityID {
-  const auto &prefabId = CreatePrefab(id);
+  const auto prefabId = CreatePrefab(id);
   if (!prefabId)
     return EntityID::Invalid;
   return scene.CopyEntityFrom(prefabManager, prefabId);
 }
 auto AssetManager::Instantiate(const std::string &name, Scene &scene) -> EntityID {
-  const auto &assetId = GetID(name);
+  const auto assetId = GetID(name);
   return Instantiate(assetId, scene);
-}
-auto AssetManager::IsRegistered(const AssetID id) const -> bool {
-  return assetDb.IsRegistered(id);
-}
-auto AssetManager::Unload(const AssetID id) -> bool {
-  // TODO: release GPU resources if applicable
-  assetDb.SetStatus(id, AssetStatus::Registered);
-  if (auto it = idToAsset.find(id); it != idToAsset.end()) {
-    const auto type = it->second.get()->GetTypeIndex();
-    if (auto it2 = typeIndexToAssetSet.find(type); it2 != typeIndexToAssetSet.end())
-      it2->second.erase(id);
-  }
-  if (auto it = idToPrefabId.find(id); it != idToPrefabId.end()) {
-    prefabManager.Delete(it->second);
-    idToPrefabId.erase(it);
-  }
-  return idToAsset.erase(id);
 }
 auto AssetManager::Update() -> void {
   for (auto it = idToFuture.begin(); it != idToFuture.end();)
@@ -134,7 +153,7 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const SceneAsset &sce
   const auto &node = sceneAsset.nodes[nodeIndex];
   if (prefabManager.IsEntity(node.name))
     return prefabManager.GetID(node.name);
-  const auto &prefabId = prefabManager.Create(node.name);
+  const auto prefabId = prefabManager.Create(node.name);
   auto transform = prefabManager.AddComponent<Transform>(prefabId);
   transform->world = node.transform;
   if (node.bounds) {
@@ -147,7 +166,7 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const SceneAsset &sce
     auto meshHandle = prefabManager.AddComponent<SceneMeshHandle>(nodeId);
     meshHandle->sceneAssetId = assetId;
     meshHandle->meshIndex = meshIndex;
-    const auto &materialIndex = sceneAsset.meshes[meshIndex].material;
+    const auto materialIndex = sceneAsset.meshes[meshIndex].material;
     if (materialIndex < 0 || materialIndex >= sceneAsset.materials.size())
       return;
     auto materialHandle = prefabManager.AddComponent<SceneMaterialHandle>(nodeId);
@@ -155,36 +174,36 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const SceneAsset &sce
     materialHandle->materialIndex = materialIndex;
     const auto &material = sceneAsset.materials[materialIndex];
     for (auto i = 0; i < material.textures.size(); ++i) {
-      const auto &textureIndex = material.textures[i];
+      const auto textureIndex = material.textures[i];
       materialHandle->textureIndices.push_back(textureIndex);
     }
   };
   if (node.meshes.size() > 1) // create a child entity for each mesh
     for (auto i = 0; i < node.meshes.size(); ++i) {
-      const auto &childId = prefabManager.Create();
+      const auto childId = prefabManager.Create();
       auto childTransform = prefabManager.AddComponent<Transform>(childId);
       childTransform->world = node.transform;
       prefabManager.AddChild(prefabId, childId);
-      const auto &meshIndex = node.meshes[i];
+      const auto meshIndex = node.meshes[i];
       AddComponentHandles(childId, meshIndex);
     }
   else if (node.meshes.size() == 1) { // attach mesh and material components to this node
-    const auto &meshIndex = node.meshes[0];
+    const auto meshIndex = node.meshes[0];
     AddComponentHandles(prefabId, meshIndex);
   }
   for (auto i = 0; i < node.children.size(); ++i) {
-    const auto &childIndex = node.children[i];
-    const auto &childId = CreateNodePrefab(assetId, sceneAsset, childIndex, prefabId);
+    const auto childIndex = node.children[i];
+    const auto childId = CreateNodePrefab(assetId, sceneAsset, childIndex, prefabId);
     prefabManager.AddChild(prefabId, childId);
   }
   return prefabId;
 }
 auto AssetManager::Load(std::unique_ptr<Asset> asset) -> void {
   const auto typeIndex = asset->GetTypeIndex();
-  const auto &id = asset->id;
+  const auto id = asset->id;
   typeIndexToAssetSet[typeIndex].insert(id);
   idToAsset.insert_or_assign(id, std::move(asset));
-  assetDb.SetStatus(id, AssetStatus::Loaded);
+  SetStatus(id, AssetStatus::Loaded);
 }
 auto AssetManager::LoadMaterial(const aiMaterial &aiMaterial, SceneAsset &scene, const std::filesystem::path &path) -> unsigned int {
   const unsigned int index = scene.materials.size();
@@ -202,9 +221,7 @@ auto AssetManager::LoadMaterial(const aiMaterial &aiMaterial, SceneAsset &scene,
     material.fallback.occlusion = value;
   if (aiMaterial.Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS)
     material.fallback.emissive = {color.r, color.g, color.b, color.a};
-  if (aiMaterial.Get(AI_MATKEY_METALLIC_FACTOR, value) == AI_SUCCESS)
-    material.fallback.metalness = value;
-  else if (aiMaterial.Get(AI_MATKEY_REFLECTIVITY, value) == AI_SUCCESS)
+  if (aiMaterial.Get(AI_MATKEY_METALLIC_FACTOR, value) == AI_SUCCESS || aiMaterial.Get(AI_MATKEY_REFLECTIVITY, value) == AI_SUCCESS)
     material.fallback.metalness = value;
   if (aiMaterial.Get(AI_MATKEY_ROUGHNESS_FACTOR, value) == AI_SUCCESS)
     material.fallback.roughness = value;
@@ -219,7 +236,6 @@ auto AssetManager::LoadMaterial(const aiMaterial &aiMaterial, SceneAsset &scene,
     LoadTexture(aiMaterial, aiTextureType_NORMALS, material, scene, path);
     LoadTexture(aiMaterial, aiTextureType_SPECULAR, material, scene, path);
   }
-  spdlog::info("Loaded material: {}", path.string());
   return index;
 }
 auto AssetManager::LoadMesh(const aiMesh &aiMesh, SceneAsset &scene, BoundingBox &bounds, unsigned int parent) -> unsigned int {
@@ -327,14 +343,9 @@ auto AssetManager::LoadTexture(const aiMaterial &aiMaterial, const aiTextureType
       const auto size = sceneTexture.texture.width * sceneTexture.texture.height * sceneTexture.texture.channels;
       sceneTexture.texture.data.assign(data, data + size);
       stbi_image_free(data);
-      spdlog::info("Loaded texture: {}", path.string());
       material.textures.push_back(index);
       scene.textures.push_back(sceneTexture);
     }
   }
-}
-auto AssetManager::Unregister(const AssetID id) -> bool {
-  assetDb.Unregister(id);
-  return Unload(id);
 }
 } // namespace kuki

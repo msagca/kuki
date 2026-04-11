@@ -20,7 +20,7 @@ A hobby game engine project that I'm working on to learn about game engine archi
 - [Ninja](https://ninja-build.org)
 - [X.Org](https://www.x.org)
 
-On Debian-based systems (e.g., [Ubuntu](https://ubuntu.com)), you can install the prerequisites using the following commands:
+On [Debian](https://www.debian.org)-based systems (e.g., [Ubuntu](https://ubuntu.com)), you can install the prerequisites using the following commands:
 
 ```bash
 sudo apt update

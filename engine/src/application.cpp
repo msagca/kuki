@@ -1,17 +1,20 @@
 #include <application.hpp>
 #include <application_description.hpp>
+#include <array>
 #include <camera.hpp>
 #include <chrono>
 #include <concepts.hpp>
 #include <entity_manager.hpp>
 #include <filesystem>
-#include <glad/glad.h>
+#include <ico.h>
 #include <id.hpp>
+#include <kaitai/kaitaistream.h>
 #include <memory>
 #include <physics_system.hpp>
 #include <primitive.hpp>
 #include <rendering_system.hpp>
 #include <scene.hpp>
+#include <scripting_system.hpp>
 #include <shader_asset.hpp>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
@@ -21,57 +24,59 @@
 #include <vector>
 //
 #include <GLFW/glfw3.h>
+#include <glad/glad.h>
 namespace kuki {
 Application::Application(ApplicationDescription desc)
   : desc(std::move(desc)) {
   this->desc.path = GetExePath();
 }
-Application::~Application() {
-  Shutdown();
-}
-auto Application::Awake() -> void {}
+Application::~Application() {}
 auto Application::Start() -> void {}
 auto Application::Update(const float) -> void {}
 auto Application::Shutdown() -> void {}
 auto Application::Run() -> void {
-  // NOTE: Pre/Post* functions are not exposed to child classes
-  PreAwake();
-  Awake();
   PreStart();
   Start();
+  PostStart();
   while (Status()) {
     PreUpdate();
     Update(deltaTime);
     PostUpdate();
   }
+  PreShutdown();
   Shutdown();
-  PostShutdown();
-}
-auto Application::PreAwake() -> void {
-  CreateWindow();
-  CreateSystem<PhysicsSystem>(sceneManager);
-  CreateSystem<RenderingSystem>(sceneManager, assetManager, settingsManager);
-  for (auto &[_, system] : typeIndexToSystem)
-    system->Awake();
 }
 auto Application::PreStart() -> void {
-  for (auto &[_, system] : typeIndexToSystem)
-    system->Start();
+  if (!CreateWindow())
+    return;
+  LoadPrimitiveAssets();
+  CreateSystem<PhysicsSystem>(sceneManager);
+  CreateSystem<RenderingSystem>(sceneManager, assetManager, settingsManager);
+  CreateSystem<ScriptingSystem>(*this);
+  // FIXME: start systems in a specific order based on their dependencies
+  for (auto &[typeIndex, system] : typeIndexToSystem)
+    if (typeIndex != std::type_index(typeid(ScriptingSystem)))
+      system->Start();
+};
+auto Application::PostStart() -> void {
+  const auto typeIndex = std::type_index(typeid(ScriptingSystem));
+  if (auto it = typeIndexToSystem.find(typeIndex); it != typeIndexToSystem.end())
+    it->second->Start();
 };
 auto Application::PreUpdate() -> void {
   const auto timeNow = std::chrono::high_resolution_clock::now();
   static auto timeLast = timeNow;
   deltaTime = std::chrono::duration<float>(timeNow - timeLast).count();
   timeLast = timeNow;
+  glfwPollEvents();
   assetManager.Update();
   for (auto &[_, system] : typeIndexToSystem)
     system->Update(deltaTime);
 };
 auto Application::PostUpdate() -> void {
   glfwSwapBuffers(window);
-  glfwPollEvents();
 }
-auto Application::PostShutdown() -> void {
+auto Application::PreShutdown() -> void {
   for (auto &[_, system] : typeIndexToSystem)
     system->Shutdown();
   typeIndexToSystem.clear();
@@ -79,38 +84,37 @@ auto Application::PostShutdown() -> void {
   glfwTerminate();
 };
 auto Application::Status() -> bool {
-  return !glfwWindowShouldClose(window);
+  return window && !glfwWindowShouldClose(window);
 };
-auto Application::CreateWindow() -> void {
+auto Application::CreateWindow() -> bool {
   static constexpr auto GL_MAJOR = 4;
   static constexpr auto GL_MINOR = 6;
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GL_MAJOR);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GL_MINOR);
   glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
-  glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_SAMPLES, 4);
   const auto &settings = GetSettings();
   window = glfwCreateWindow(settings.res.width, settings.res.height, desc.name.c_str(), nullptr, nullptr);
   if (!window) {
-    spdlog::error("Failed to create GLFW window.");
+    spdlog::error("[App] failed to create window.");
     glfwTerminate();
-    return;
+    return false;
   }
   glfwMakeContextCurrent(window);
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    spdlog::error("Failed to initialize GLAD.");
-    return;
+    spdlog::error("[App] failed to initialize GLAD.");
+    return false;
   }
   auto version = reinterpret_cast<const char *>(glGetString(GL_VERSION));
-  spdlog::info("OpenGL version: {}", version);
+  spdlog::info("[OpenGL] version: {}", version);
   int major, minor;
   glGetIntegerv(GL_MAJOR_VERSION, &major);
   glGetIntegerv(GL_MINOR_VERSION, &minor);
   if (major < GL_MAJOR || (major == GL_MAJOR && minor < GL_MINOR)) {
-    spdlog::error("OpenGL {}.{} or higher is required.", GL_MAJOR, GL_MINOR);
-    return;
+    spdlog::error("[OpenG] version {}.{} or higher is required.", GL_MAJOR, GL_MINOR);
+    return false;
   }
   SetWindowIcon();
   glfwSwapInterval(0);
@@ -135,6 +139,7 @@ auto Application::CreateWindow() -> void {
   glFrontFace(GL_CCW);
   glDebugMessageCallback(DebugMessageCallback, nullptr);
   glfwMaximizeWindow(window);
+  return true;
 }
 auto Application::ActivateScene(const std::string &name) -> bool {
   return sceneManager.Activate(name);
@@ -167,6 +172,9 @@ auto Application::DeleteEntity(const EntityID id) -> void {
 auto Application::DeleteScene(const std::string &name) -> bool {
   return sceneManager.Delete(name);
 }
+auto Application::DeltaTime() const -> float {
+  return deltaTime;
+}
 auto Application::DisableButtons() -> void {
   inputManager.DisableButtons();
 }
@@ -196,7 +204,7 @@ auto Application::EntityHasParent(const EntityID id) const -> bool {
   return false;
 }
 auto Application::GetArrowKeys() const -> glm::vec2 {
-  return inputManager.GetArrow();
+  return inputManager.GetArrowKeys();
 };
 auto Application::GetAssetName(const AssetID id) const -> std::string {
   return assetManager.GetName(id);
@@ -279,30 +287,8 @@ auto Application::IsEntity(const EntityID id) const -> bool {
     return scene->IsEntity(id);
   return false;
 }
-auto Application::LoadCompute(const std::filesystem::path &comp, std::string name) -> void {
-  auto renderingSystem = GetSystem<RenderingSystem>();
-  if (!renderingSystem)
-    return;
-  const auto compId = LoadAsset<ShaderAsset>(comp, std::move(name));
-  const auto compAsset = GetAsset<ShaderAsset>(compId);
-  if (compAsset)
-    renderingSystem->LoadCompute(*compAsset);
-}
 auto Application::LoadScene(const std::string &name) -> bool {
   return sceneManager.Load(name);
-}
-auto Application::LoadShader(const std::filesystem::path &vert, const std::filesystem::path &frag, std::string name, const MaterialType type) -> void {
-  auto renderingSystem = GetSystem<RenderingSystem>();
-  if (!renderingSystem)
-    return;
-  const auto vertId = LoadAsset<ShaderAsset>(vert, name);
-  const auto fragId = LoadAsset<ShaderAsset>(frag, std::move(name));
-  auto vertAsset = GetAsset<ShaderAsset>(vertId);
-  auto fragAsset = GetAsset<ShaderAsset>(fragId);
-  if (vertAsset && fragAsset) {
-    fragAsset->type = type;
-    renderingSystem->LoadShader(*vertAsset, *fragAsset);
-  }
 }
 auto Application::LoadPrimitive(const std::string &name) -> void {
   if (assetManager.GetID(name))
@@ -322,9 +308,10 @@ auto Application::LoadPrimitive(const std::string &name) -> void {
   else if (name == "Sphere")
     meshAsset->mesh.vertices = std::move(Primitive::Sphere());
   else {
-    spdlog::warn("Unknown primitive: {}", name);
+    spdlog::warn("[App] unknown primitive: {}", name);
     return;
   }
+  meshAsset->bounds = BoundingBox::Calculate(meshAsset->mesh.vertices);
   if (!assetManager.GetID("DefaultLit")) {
     auto defaultLit = std::make_unique<MaterialAsset>(AssetID::Generate(), "DefaultLit");
     defaultLit->type = MaterialType::Lit;
@@ -339,11 +326,11 @@ auto Application::PreviewAsset(const AssetID id) -> RenderTarget * {
     return nullptr;
   return renderingSystem->PreviewAsset(id);
 }
-auto Application::RegisterInputAction(std::string trigger, InputAction action) -> void {
-  inputManager.RegisterAction(std::move(trigger), action);
+auto Application::RegisterInputAction(const std::string &trigger, InputAction action) -> void {
+  inputManager.RegisterAction(trigger, std::move(action));
 }
 auto Application::RegisterInputAction(int trigger, InputAction action, bool press) -> void {
-  inputManager.RegisterAction(trigger, action, press);
+  inputManager.RegisterAction(trigger, std::move(action), press);
 }
 auto Application::RemoveEntityComponent(const EntityID id, const ComponentType type) -> bool {
   if (auto scene = GetActiveScene(); scene)
@@ -352,17 +339,11 @@ auto Application::RemoveEntityComponent(const EntityID id, const ComponentType t
 }
 auto Application::RenameEntity(const EntityID id, std::string name) -> bool {
   if (auto scene = GetActiveScene(); scene)
-    return scene->RenameEntity(id, name);
+    return scene->RenameEntity(id, std::move(name));
   return false;
 }
 auto Application::SetResolution(const int width, const int height) -> void {
   settingsManager.SetResolution(width, height);
-}
-auto Application::UnregisterInputAction(const std::string &trigger) -> void {
-  inputManager.UnregisterAction(trigger);
-}
-auto Application::UnregisterInputAction(int trigger, bool press) -> void {
-  inputManager.UnregisterAction(trigger, press);
 }
 auto Application::GetExePath() -> std::filesystem::path {
   int length = wai_getExecutablePath(nullptr, 0, nullptr);
@@ -370,21 +351,67 @@ auto Application::GetExePath() -> std::filesystem::path {
   wai_getExecutablePath(path.data(), length, nullptr);
   return std::filesystem::path(path).parent_path();
 }
+auto Application::LoadPrimitiveAssets() -> void {
+  LoadPrimitive("Cube");
+  LoadPrimitive("CubeInverted");
+  LoadPrimitive("Cylinder");
+  LoadPrimitive("Frame");
+  LoadPrimitive("Plane");
+  LoadPrimitive("Sphere");
+}
 auto Application::SetWindowIcon() -> void {
-  // TODO: add .ico support
   if (desc.iconPath.empty())
     return;
-  int width, height, channels;
-  const auto iconPath = (desc.path / desc.iconPath).string();
-  if (auto data = stbi_load(iconPath.c_str(), &width, &height, &channels, 4); data) {
-    GLFWimage images[1]{};
-    images[0].width = width;
-    images[0].height = height;
-    images[0].pixels = data;
-    glfwSetWindowIcon(window, 1, images);
-    stbi_image_free(data);
-  } else
-    spdlog::error("Failed to load app icon: {}", iconPath);
+  const auto path = (desc.path / desc.iconPath).string();
+  const auto ext = desc.iconPath.extension();
+  if (ext == ".ico") {
+    std::ifstream is(path, std::ifstream::binary);
+    kaitai::kstream ks(&is);
+    ico_t data(&ks);
+    if (data.num_images() == 0) {
+      spdlog::error("[App] failed to load icon: {}", path);
+      return;
+    }
+    auto iMax = 0;
+    for (int i = 0, wMax = 0; i < data.num_images(); ++i)
+      if (auto w = data.images()->at(i)->width(); w > wMax) {
+        iMax = i;
+        wMax = w;
+      }
+    auto &imgPtr = data.images()->at(iMax);
+    auto &&imgStr = imgPtr->img();
+    auto &&pixels = reinterpret_cast<unsigned char *>(imgStr.data());
+    if (imgPtr->is_png()) {
+      int width, height, channels;
+      if (auto data = stbi_load_from_memory(pixels, imgStr.size(), &width, &height, &channels, 4); data) {
+        std::array<GLFWimage, 1> images{width, height, data};
+        glfwSetWindowIcon(window, 1, images.data());
+        stbi_image_free(data);
+        spdlog::info("[App] loaded icon: {}", path);
+      } else
+        spdlog::error("[App] failed to load icon: {}", path);
+    } else {
+      pixels += 40; // skip the DIP (BMP) header
+      const auto width = imgPtr->width();
+      const auto height = imgPtr->height();
+      const auto rowSize = width * 4;
+      auto data = std::make_unique<unsigned char[]>(width * height * 4);
+      for (auto y = 0; y < height; ++y) // flip the image
+        memcpy(&data[y * rowSize], &pixels[(height - 1 - y) * rowSize], rowSize);
+      std::array<GLFWimage, 1> images{width, height, data.release()};
+      glfwSetWindowIcon(window, 1, images.data());
+      spdlog::info("[App] loaded icon: {}", path);
+    }
+  } else {
+    int width, height, channels;
+    if (auto data = stbi_load(path.c_str(), &width, &height, &channels, 4); data) {
+      std::array<GLFWimage, 1> images{width, height, data};
+      glfwSetWindowIcon(window, 1, images.data());
+      stbi_image_free(data);
+      spdlog::info("[App] loaded icon: {}", path);
+    } else
+      spdlog::error("[App] failed to load icon: {}", path);
+  }
 }
 auto Application::CharCallback(GLFWwindow *window, unsigned int codepoint) -> void {
   if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance)
@@ -401,62 +428,62 @@ auto Application::DebugMessageCallback(unsigned int source, unsigned int type, u
     sourceStr = "API";
     break;
   case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
-    sourceStr = "Window System";
+    sourceStr = "window system";
     break;
   case GL_DEBUG_SOURCE_SHADER_COMPILER:
-    sourceStr = "Shader Compiler";
+    sourceStr = "shader compiler";
     break;
   case GL_DEBUG_SOURCE_THIRD_PARTY:
-    sourceStr = "Third Party";
+    sourceStr = "third party";
     break;
   case GL_DEBUG_SOURCE_APPLICATION:
-    sourceStr = "Application";
+    sourceStr = "application";
     break;
-  case GL_DEBUG_SOURCE_OTHER:
-    sourceStr = "Other";
+  default:
+    sourceStr = "other";
     break;
   }
   switch (type) {
   case GL_DEBUG_TYPE_ERROR:
-    typeStr = "Error";
+    typeStr = "error";
     break;
   case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
-    typeStr = "Deprecated Behavior";
+    typeStr = "deprecated behavior";
     break;
   case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
-    typeStr = "Undefined Behavior";
+    typeStr = "undefined behavior";
     break;
   case GL_DEBUG_TYPE_PORTABILITY:
-    typeStr = "Portability";
+    typeStr = "portability";
     break;
   case GL_DEBUG_TYPE_PERFORMANCE:
-    typeStr = "Performance";
+    typeStr = "performance";
     break;
   case GL_DEBUG_TYPE_MARKER:
-    typeStr = "Marker";
+    typeStr = "marker";
     break;
   case GL_DEBUG_TYPE_PUSH_GROUP:
-    typeStr = "Push Group";
+    typeStr = "push group";
     break;
   case GL_DEBUG_TYPE_POP_GROUP:
-    typeStr = "Pop Group";
+    typeStr = "pop group";
     break;
-  case GL_DEBUG_TYPE_OTHER:
-    typeStr = "Other";
+  default:
+    typeStr = "other";
     break;
   }
   switch (severity) {
   case GL_DEBUG_SEVERITY_HIGH:
-    spdlog::error("OpenGL {} {}: {}", sourceStr, typeStr, message);
+    spdlog::error("[OpenGL] {} {}: {}", sourceStr, typeStr, message);
     break;
   case GL_DEBUG_SEVERITY_MEDIUM:
-    spdlog::warn("OpenGL {} {}: {}", sourceStr, typeStr, message);
+    spdlog::warn("[OpenGL] {} {}: {}", sourceStr, typeStr, message);
     break;
   case GL_DEBUG_SEVERITY_LOW:
-    spdlog::info("OpenGL {} {}: {}", sourceStr, typeStr, message);
+    spdlog::info("[OpenGL] {} {}: {}", sourceStr, typeStr, message);
     break;
   default:
-    spdlog::debug("OpenGL {} {}: {}", sourceStr, typeStr, message);
+    spdlog::debug("[OpenGL] {} {}: {}", sourceStr, typeStr, message);
   }
 }
 auto Application::FramebufferSizeCallback(GLFWwindow *window, int width, int height) -> void {

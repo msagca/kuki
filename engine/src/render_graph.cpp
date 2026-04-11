@@ -11,7 +11,7 @@ auto RenderGraph::AddInput(std::string name) -> RenderGraph & {
   if (passId) {
     auto &inputs = idToInputs[passId];
     if (auto it = std::find(inputs.begin(), inputs.end(), name); it == inputs.end())
-      inputs.emplace_back(name);
+      inputs.emplace_back(std::move(name));
   }
   return *this;
 }
@@ -21,7 +21,7 @@ auto RenderGraph::AddOutput(std::string name, TargetDescription desc) -> RenderG
       if (desc != it->second)
         return *this;
     } else
-      nameToDesc.insert_or_assign(name, std::move(desc));
+      nameToDesc.insert_or_assign(name, desc);
     auto &outputs = idToOutputs[passId];
     if (auto it = std::find(outputs.begin(), outputs.end(), name); it == outputs.end())
       outputs.emplace_back(std::move(name));
@@ -81,7 +81,7 @@ auto RenderGraph::GetFinalOutputName() -> std::string {
   if (graphFlat.empty())
     return "";
   const auto index = graphFlat.size() - 1;
-  const auto &id = graphFlat[index];
+  const auto id = graphFlat[index];
   if (auto it = idToOutputs.find(id); it != idToOutputs.end()) {
     const auto &outputs = it->second;
     if (!outputs.empty())

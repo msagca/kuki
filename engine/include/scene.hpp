@@ -28,7 +28,7 @@ public:
   auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
   auto IsEntity(const EntityID) const -> bool;
   auto RemoveEntityComponent(const EntityID, const ComponentType) -> bool;
-  auto RenameEntity(const EntityID, const std::string &) -> bool;
+  auto RenameEntity(const EntityID, std::string) -> bool;
   // templates
   auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;
   auto ForEachRootEntity(this auto &, auto &&) -> void;
@@ -41,6 +41,8 @@ public:
   auto ForEachEntity(this auto &, auto &&) -> void;
   template <typename... T>
   auto ForFirstEntity(this auto &, auto &&) -> void;
+  template <typename T>
+  auto GetAnyComponent(this auto &) -> decltype(auto);
   template <typename... T>
   auto GetEntityComponent(this auto &, const EntityID) -> decltype(auto);
   template <typename... T>
@@ -76,6 +78,10 @@ auto Scene::ForEachEntity(this auto &self, auto &&func) -> void {
 template <typename... T>
 auto Scene::ForFirstEntity(this auto &self, auto &&func) -> void {
   self.entityManager.template ForFirst<T...>(std::forward<decltype(func)>(func));
+}
+template <typename T>
+auto Scene::GetAnyComponent(this auto &self) -> decltype(auto) {
+  return self.entityManager.template GetAny<T>();
 }
 template <typename... T>
 auto Scene::GetEntityComponent(this auto &self, const EntityID id) -> decltype(auto) {

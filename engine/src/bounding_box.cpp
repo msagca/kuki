@@ -19,4 +19,20 @@ BoundingBox BoundingBox::GetWorldBounds(const glm::mat4 &transform) const {
 BoundingBox::operator bool() const {
   return glm::all(glm::greaterThan(max - min, glm::vec3(glm::epsilon<float>())));
 }
+auto BoundingBox::Calculate(std::span<const glm::vec3> vertices) -> BoundingBox {
+  BoundingBox bounds{};
+  for (const auto &v : vertices) {
+    bounds.min = glm::min(bounds.min, v);
+    bounds.max = glm::max(bounds.max, v);
+  }
+  return bounds;
+}
+auto BoundingBox::Calculate(std::span<const Vertex> vertices) -> BoundingBox {
+  BoundingBox bounds{};
+  for (const auto &v : vertices) {
+    bounds.min = glm::min(bounds.min, v.position);
+    bounds.max = glm::max(bounds.max, v.position);
+  }
+  return bounds;
+}
 } // namespace kuki

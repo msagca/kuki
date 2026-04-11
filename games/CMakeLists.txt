@@ -10,6 +10,9 @@ file(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 add_executable(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
+if(KUKI_ENABLE_LINTING AND CLANG_TIDY_EXE)
+  enable_clang_tidy(${PROJECT_NAME})
+endif()
 target_include_directories(
   ${PROJECT_NAME}
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"

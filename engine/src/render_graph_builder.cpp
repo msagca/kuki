@@ -15,7 +15,7 @@ auto RenderGraphBuilder::AddOutput(std::string name) -> RenderGraphBuilder & {
 auto RenderGraphBuilder::AddOutput(std::string name, TargetDescription desc) -> RenderGraphBuilder & {
   descLast = desc;
   if (renderGraph)
-    renderGraph->AddOutput(std::move(name), std::move(desc));
+    renderGraph->AddOutput(std::move(name), desc);
   return *this;
 }
 auto RenderGraphBuilder::BeginGraph() -> RenderGraphBuilder & {

@@ -28,12 +28,13 @@ enum class KeyBit : uint8_t {
 };
 using KeyMask = std::bitset<static_cast<uint8_t>(KeyBit::Space) + 1>;
 struct EditorContext {
-  AssetID selectedAssetID{AssetID::Invalid};
+  AssetID selectedAssetID{};
   AssetType selectedAssetType{AssetType::Texture};
   ComponentType selectedComponentType{ComponentType::Transform};
   EditorState state{EditorState::Normal};
-  EntityID renamedEntityID{EntityID::Invalid};
-  EntityID selectedEntityID{EntityID::Invalid};
+  EntityID cameraEntity{};
+  EntityID renamedEntityID{};
+  EntityID selectedEntityID;
   KeyMask keyState{};
   KeyMask pressState{};
   KeyMask releaseState{};
@@ -48,9 +49,7 @@ public:
   EditorContext context{};
 private:
   ImGui::FileBrowser fileBrowser{};
-  std::unique_ptr<CameraController> cameraController{};
   std::vector<EntityID> displayedEntities{};
-  auto Awake() -> void override;
   auto Start() -> void override;
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;

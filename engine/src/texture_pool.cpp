@@ -22,7 +22,7 @@ auto TexturePool::Clear() -> void {
 auto TexturePool::Reallocate(const TargetDescription &desc, unsigned int &texture) -> void {
   if (texture == 0)
     return;
-  const auto &format = GLRenderer::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   const auto target = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
   // TODO: handle cubemaps
   glBindTexture(target, texture);

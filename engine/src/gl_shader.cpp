@@ -56,12 +56,12 @@ auto GLShader::Draw(const GLMesh &mesh) -> void {
 auto GLShader::SetCamera(const Camera &camera, const unsigned int buffer) -> void {
   if (camera.dirty == cameraDirty)
     return;
+  cameraDirty = camera.dirty;
   // NOTE: this assumes that enough memory was allocated for `buffer`
   // FIXME: binding point might be different for some shaders
   constexpr auto bindingPoint = 0;
   glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, buffer);
   glNamedBufferSubData(buffer, 0, sizeof(CameraTransform), &camera.transform);
-  cameraDirty = camera.dirty;
 }
 auto GLShader::SetLighting() -> void {}
 auto GLShader::SetLighting(const Light &light) -> void {}

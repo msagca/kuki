@@ -17,6 +17,5 @@ auto SettingsManager::SetResolution(int width, int height) -> void {
   settings.res.height = height;
   // TODO: maybe defer this to the next frame
   OnResolutionChanged.Emit(settings.res);
-  spdlog::info("Resolution changed: {}:{}", settings.res.width, settings.res.height);
 }
 } // namespace kuki

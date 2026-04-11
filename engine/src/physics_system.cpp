@@ -3,10 +3,7 @@
 namespace kuki {
 PhysicsSystem::PhysicsSystem(SceneManager &sceneManager)
   : System(std::in_place_type<PhysicsSystem>), sceneManager(sceneManager), simulationTimestep(1.f / 100) {}
-PhysicsSystem::~PhysicsSystem() {
-  Shutdown();
-}
-auto PhysicsSystem::Awake() -> void {}
+PhysicsSystem::~PhysicsSystem() {}
 auto PhysicsSystem::Start() -> void {
   timeAccumulated = 0.f;
 }

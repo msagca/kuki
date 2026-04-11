@@ -46,7 +46,7 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
     return;
   static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
   auto dirty = false;
-  static auto &types = kuki::EnumTraits<kuki::CameraType>::GetNames();
+  static auto types = kuki::EnumTraits<kuki::CameraType>::GetNames();
   auto type = static_cast<int>(camera->type);
   if (ImGui::Combo("Type", &type, types.data(), types.size())) {
     camera->type = static_cast<kuki::CameraType>(type);
@@ -56,14 +56,13 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   auto rotationDegrees = glm::degrees(glm::eulerAngles(rotationQuat));
   if (ImGui::DragFloat3("Rotation", glm::value_ptr(rotationDegrees), .1f)) {
     for (auto i = 0; i < 3; ++i) {
-      auto &angle = rotationDegrees[i];
+      auto angle = rotationDegrees[i];
       while (angle > 180.f)
         angle -= 360.f;
       while (angle < -180.f)
         angle += 360.f;
     }
-    auto rotationRadians = glm::radians(rotationDegrees);
-    camera->rotation = glm::quat(rotationRadians);
+    camera->rotation = glm::quat(glm::radians(rotationDegrees));
     dirty = true;
   }
   if (camera->type == kuki::CameraType::Perspective) {
@@ -239,7 +238,7 @@ template <>
 inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> void {
   if (!light)
     return;
-  static auto &types = kuki::EnumTraits<kuki::LightType>::GetNames();
+  static auto types = kuki::EnumTraits<kuki::LightType>::GetNames();
   auto type = static_cast<int>(light->type);
   if (ImGui::Combo("Type", &type, types.data(), types.size()))
     light->type = static_cast<kuki::LightType>(type);
@@ -301,6 +300,12 @@ inline auto PropertyDisplayer::operator()<kuki::SceneMeshHandle>(kuki::SceneMesh
   ImGui::InputScalar("Mesh Index", ImGuiDataType_U64, &meshIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
+inline auto PropertyDisplayer::operator()<kuki::Script>(kuki::Script *script) -> void {
+  if (!script)
+    return;
+  script->Display();
+}
+template <>
 inline auto PropertyDisplayer::operator()<kuki::SkyboxHandle>(kuki::SkyboxHandle *handle) -> void {
   if (!handle)
     return;
@@ -322,7 +327,7 @@ inline auto PropertyDisplayer::operator()<kuki::Transform>(kuki::Transform *tran
   auto rotationDegrees = glm::degrees(glm::eulerAngles(rotationQuat));
   if (ImGui::DragFloat3("Rotation", glm::value_ptr(rotationDegrees), .1f)) {
     for (auto i = 0; i < 3; ++i) {
-      auto &angle = rotationDegrees[i];
+      auto angle = rotationDegrees[i];
       while (angle > 180.f)
         angle -= 360.f;
       while (angle < -180.f)

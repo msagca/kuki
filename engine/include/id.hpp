@@ -14,6 +14,7 @@ public:
   auto ToString() const -> std::string;
   auto operator++() -> ID &;
   auto operator++(int) -> ID;
+  auto operator+=(long long) -> ID &;
   auto operator<(const ID &) const noexcept -> bool = default;
   auto operator==(const ID &) const noexcept -> bool = default;
   explicit operator bool() const;
@@ -23,7 +24,7 @@ public:
   explicit operator const void *() const;
   explicit operator void *();
 private:
-  long long value{-1};
+  long long value{Invalid};
 };
 template <typename T>
 ID<T>::ID(long long value)
@@ -48,6 +49,11 @@ auto ID<T>::operator++(int) -> ID<T> {
   return temp;
 }
 template <typename T>
+auto ID<T>::operator+=(long long increment) -> ID<T> & {
+  value += increment;
+  return *this;
+}
+template <typename T>
 ID<T>::operator bool() const {
   return *this != Invalid;
 }
@@ -69,6 +75,7 @@ ID<T>::operator long long() const {
 }
 using AssetID = UUID<UUID128>;
 using EntityID = ID<class Entity>;
+using GenCount = ID<class Generation>;
 using PassID = ID<class Pass>;
 using SceneID = ID<class Scene>;
 } // namespace kuki

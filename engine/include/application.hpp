@@ -1,5 +1,4 @@
 #pragma once
-#include "settings_manager.hpp"
 #include <application_description.hpp>
 #include <application_settings.hpp>
 #include <asset_manager.hpp>
@@ -14,6 +13,7 @@
 #include <render_target.hpp>
 #include <scene.hpp>
 #include <scene_manager.hpp>
+#include <settings_manager.hpp>
 #include <shader_asset.hpp>
 #include <system.hpp>
 #include <typeindex>
@@ -24,12 +24,18 @@ class KUKI_ENGINE_API Application {
 public:
   Application(ApplicationDescription = {});
   virtual ~Application();
+  /// @brief Executes the lifecycle functions (e.g., `Start`, `Update`, etc.)
   auto Run() -> void;
-  virtual auto Awake() -> void;
+  /// @brief User defined one-time initializations
   virtual auto Start() -> void;
+  /// @brief User defined per-frame updates
   virtual auto Update(const float) -> void;
+  /// @brief User defined clean-up procedures
   virtual auto Shutdown() -> void;
+  /// @return `true` if the app should keep running
   virtual auto Status() -> bool;
+  // TODO: clean up this API, or expose them through different APIs based on category
+  // FIXME: don't expose Add/Remove and ForEach calls through the same API, underlying structures should not be resized/reallocated during iteration
   auto ActivateScene(const std::string &) -> bool;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
   auto AddEntityComponent(const EntityID, const ComponentType) -> void;
@@ -38,6 +44,7 @@ public:
   auto DeleteEntities() -> void;
   auto DeleteEntity(const EntityID) -> void;
   auto DeleteScene(const std::string &) -> bool;
+  auto DeltaTime() const -> float;
   auto DisableButtons() -> void;
   auto DisableInputs() -> void;
   auto DisableKeys() -> void;
@@ -68,18 +75,14 @@ public:
   auto InstantiateAsset(const AssetID) -> EntityID;
   auto InstantiateAsset(const std::string &) -> EntityID;
   auto IsEntity(const EntityID) const -> bool;
-  auto LoadCompute(const std::filesystem::path &, std::string) -> void;
   auto LoadPrimitive(const std::string &) -> void;
   auto LoadScene(const std::string &) -> bool;
-  auto LoadShader(const std::filesystem::path &, const std::filesystem::path &, std::string, const MaterialType = MaterialType::Unlit) -> void;
   auto PreviewAsset(const AssetID) -> RenderTarget *;
   auto RegisterInputAction(int, InputAction, bool = true) -> void;
-  auto RegisterInputAction(std::string, InputAction) -> void;
+  auto RegisterInputAction(const std::string &, InputAction) -> void;
   auto RemoveEntityComponent(const EntityID, const ComponentType) -> bool;
   auto RenameEntity(const EntityID, std::string) -> bool;
   auto SetResolution(const int, const int) -> void;
-  auto UnregisterInputAction(const std::string &) -> void;
-  auto UnregisterInputAction(int, bool = true) -> void;
   auto ForEachAsset(this auto &, const AssetType, auto &&) -> void;
   auto ForEachAssetPerType(this auto &, auto &&) -> void;
   auto ForEachAssetType(this auto &, auto &&) -> void;
@@ -103,6 +106,8 @@ public:
   auto ForEachEntity(this auto &, auto &&) -> void;
   template <typename... T>
   auto ForFirstEntity(this auto &, auto &&) -> void;
+  template <typename T>
+  auto GetAnyComponent(this auto &) -> decltype(auto);
   template <IsAsset T>
   auto GetAsset(const AssetID) -> decltype(auto);
   template <typename... T>
@@ -126,13 +131,19 @@ private:
   float deltaTime{};
   // TODO: create a system manager
   std::unordered_map<std::type_index, std::unique_ptr<System>> typeIndexToSystem;
-  auto CreateWindow() -> void;
+  auto CreateWindow() -> bool;
   auto GetExePath() -> std::filesystem::path;
-  auto PostShutdown() -> void;
-  auto PostUpdate() -> void;
-  auto PreAwake() -> void;
+  auto LoadPrimitiveAssets() -> void;
+  /// @brief Creates and starts systems
   auto PreStart() -> void;
+  /// @brief Starts the scripting system
+  auto PostStart() -> void;
+  /// @brief Runs system updates, calculates `deltaTime`
   auto PreUpdate() -> void;
+  /// @brief Displays the rendered frame
+  auto PostUpdate() -> void;
+  /// @brief Shuts down systems, destroys app window
+  auto PreShutdown() -> void;
   auto SetWindowIcon() -> void;
   static void CharCallback(GLFWwindow *, unsigned int);
   static void CursorPosCallback(GLFWwindow *, double, double);
@@ -182,7 +193,7 @@ auto Application::AddEntityComponent(const EntityID id) -> decltype(auto) {
     using C = std::tuple_element_t<0, std::tuple<T...>>;
     return static_cast<C *>(nullptr);
   } else
-    return std::tuple(static_cast<T *>(nullptr)...);
+    return std::tuple(AddEntityComponent<T>(id)...);
 }
 template <IsSystem T, typename... Args>
 auto Application::CreateSystem(Args &&...args) -> T * {
@@ -217,19 +228,37 @@ auto Application::ForFirstEntity(this auto &self, auto &&func) -> void {
   if (auto scene = self.GetActiveScene(); scene)
     scene->template ForFirstEntity<T...>(std::forward<decltype(func)>(func));
 }
+template <typename T>
+auto Application::GetAnyComponent(this auto &self) -> decltype(auto) {
+  if (auto scene = self.GetActiveScene(); scene)
+    return scene->template GetAnyComponent<T>();
+  return ConstCorrectPointer<decltype(self), T>(nullptr);
+}
 template <IsAsset T>
 auto Application::GetAsset(const AssetID id) -> decltype(auto) {
   return assetManager.Get<T>(id);
 }
 template <typename... T>
 auto Application::GetEntityComponent(this auto &self, const EntityID id) -> decltype(auto) {
-  if (auto scene = self.GetActiveScene(); scene)
-    return scene->template GetEntityComponent<T...>(id);
   if constexpr (sizeof...(T) == 1) {
     using C = std::tuple_element_t<0, std::tuple<T...>>;
-    return static_cast<ConstCorrectPointer<decltype(self), C>>(nullptr);
-  } else
-    return std::tuple(static_cast<ConstCorrectPointer<decltype(self), T>>(nullptr)...);
+    if constexpr (std::is_same_v<Script, C>) {
+      if (auto scene = self.GetActiveScene(); scene)
+        return scene->template GetEntityComponent<T...>(id);
+      else
+        return std::vector<ConstCorrectPointer<decltype(self), C>>();
+    } else {
+      if (auto scene = self.GetActiveScene(); scene)
+        return scene->template GetEntityComponent<T...>(id);
+      else
+        return static_cast<ConstCorrectPointer<decltype(self), C>>(nullptr);
+    }
+  } else {
+    if (auto scene = self.GetActiveScene(); scene)
+      return scene->template GetEntityComponent<T...>(id);
+    else
+      return std::tuple(self.template GetEntityComponent<T>(id)...);
+  }
 }
 template <IsSystem T>
 auto Application::GetSystem(this auto &self) -> decltype(auto) {

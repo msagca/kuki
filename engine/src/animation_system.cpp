@@ -4,10 +4,7 @@
 namespace kuki {
 AnimationSystem::AnimationSystem()
   : System(std::in_place_type<AnimationSystem>) {}
-AnimationSystem::~AnimationSystem() {
-  Shutdown();
-}
-void AnimationSystem::Awake() {}
+AnimationSystem::~AnimationSystem() {}
 void AnimationSystem::Start() {}
 void AnimationSystem::Update(const float) {}
 void AnimationSystem::Shutdown() {}

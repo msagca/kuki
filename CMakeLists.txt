@@ -23,6 +23,22 @@ if(BUILD_SHARED_LIBS)
   )
 endif()
 find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+function(enable_clang_tidy target)
+  set(
+    CLANG_TIDY_CHECKS
+    "bugprone-*,performance-*,portability-*,clang-analyzer-*,-bugprone-narrowing-conversions,-bugprone-easily-swappable-parameters"
+  )
+  set(
+    CLANG_TIDY_OPTS
+    ${CLANG_TIDY_EXE}
+    -checks=${CLANG_TIDY_CHECKS}
+    -header-filter=^${CMAKE_CURRENT_SOURCE_DIR}/include/.*
+  )
+  set_target_properties(
+    ${target}
+    PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_OPTS}"
+  )
+endfunction()
 project(Kuki VERSION 1.0.0)
 string(TOUPPER ${PROJECT_NAME} PROJECT_NAME_UPPER)
 include(GNUInstallDirs)
@@ -31,34 +47,30 @@ option(${PROJECT_NAME_UPPER}_BUILD_GAMES "Build game samples" OFF)
 option(${PROJECT_NAME_UPPER}_ENABLE_LINTING "Enable linting" OFF)
 # third party libraries
 ## assimp
-set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
-set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF)
-set(ASSIMP_BUILD_ASSIMP_VIEW OFF)
-set(ASSIMP_BUILD_GLTF_IMPORTER ON)
-set(ASSIMP_BUILD_TESTS OFF)
-set(ASSIMP_INJECT_DEBUG_POSTFIX OFF)
-set(ASSIMP_INSTALL OFF)
-set(ASSIMP_INSTALL_PDB OFF)
-set(ASSIMP_WARNINGS_AS_ERRORS OFF)
+set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF CACHE BOOL "")
+set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE BOOL "")
+set(ASSIMP_BUILD_ASSIMP_VIEW OFF CACHE BOOL "")
+set(ASSIMP_BUILD_FBX_IMPORTER ON CACHE BOOL "")
+set(ASSIMP_BUILD_GLTF_IMPORTER ON CACHE BOOL "")
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "")
+set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "")
+set(ASSIMP_INSTALL OFF CACHE BOOL "")
+set(ASSIMP_INSTALL_PDB OFF CACHE BOOL "")
+set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/assimp")
 ## opengl
 find_package(OpenGL REQUIRED)
 ## glad
-add_library(glad "${CMAKE_CURRENT_SOURCE_DIR}/external/glad/src/glad.c")
-target_include_directories(
-  glad
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/glad/include"
-)
-target_link_libraries(glad PUBLIC OpenGL::GL)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glad")
 ## glfw
-set(GLFW_BUILD_DOCS OFF)
-set(GLFW_BUILD_EXAMPLES OFF)
-set(GLFW_BUILD_TESTS OFF)
-set(GLFW_BUILD_WAYLAND OFF)
-set(GLFW_INSTALL OFF)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "")
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "")
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "")
+set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "")
+set(GLFW_INSTALL OFF CACHE BOOL "")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glfw")
 ## glm
-set(GLM_BUILD_INSTALL OFF)
+set(GLM_BUILD_INSTALL OFF CACHE BOOL "")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glm")
 ## imgui
 set(
@@ -98,8 +110,16 @@ target_include_directories(
 target_link_libraries(imguizmo PUBLIC imgui)
 ## json
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/json")
+## kaitai-struct (C++ runtime)
+set(BUILD_TESTS OFF CACHE BOOL "")
+if(WIN32)
+  set(STRING_ENCODING_TYPE WIN32API CACHE STRING "")
+endif()
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/kaitai-struct")
+## kaitai-image
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/kaitai-image")
 ## spdlog
-set(SPDLOG_INSTALL OFF)
+set(SPDLOG_INSTALL OFF CACHE BOOL "")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog")
 ## stb
 add_library(stb INTERFACE)
@@ -131,7 +151,7 @@ target_include_directories(
 add_subdirectory(engine)
 add_subdirectory(editor)
 if(${PROJECT_NAME_UPPER}_BUILD_TESTS)
-  set(INSTALL_GTEST OFF)
+  set(INSTALL_GTEST OFF CACHE BOOL "")
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/googletest")
   add_subdirectory(tests)
 endif()

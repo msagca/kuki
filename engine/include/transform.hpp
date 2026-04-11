@@ -12,7 +12,7 @@ struct KUKI_ENGINE_API Transform {
   EntityID parent{EntityID::Invalid};
   glm::mat4 local{1.0f};
   glm::mat4 world{1.0f};
-  // TODO: currently, the only consumer of this dirty flag is the rendering system; consider replacing it with a generational counter later
+  // TODO: currently, the only consumer of this dirty flag is the rendering system; consider replacing it with a generation counter later
   bool dirty{true};
   Transform &operator=(const Transform &);
   /// @param parent Parent transform (can be `nullptr`)

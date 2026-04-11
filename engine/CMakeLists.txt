@@ -16,10 +16,7 @@ file(GLOB_RECURSE VERT_SOURCES CONFIGURE_DEPENDS "${SHADER_SOURCE_DIR}/*.vert")
 set(SHADER_SOURCES ${COMP_SOURCES} ${FRAG_SOURCES} ${VERT_SOURCES})
 add_library(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
 if(KUKI_ENABLE_LINTING AND CLANG_TIDY_EXE)
-  set_target_properties(
-    ${PROJECT_NAME}
-    PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE};-checks=*"
-  )
+  enable_clang_tidy(${PROJECT_NAME})
 endif()
 include(GenerateExportHeader)
 generate_export_header(
@@ -39,6 +36,8 @@ target_link_libraries(
     glad
     glfw
     glm
+    kaitai_image
+    kaitai_struct_cpp_stl_runtime
     nlohmann_json
     spdlog
     stb

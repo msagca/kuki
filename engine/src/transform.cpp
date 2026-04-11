@@ -7,7 +7,6 @@
 #include <iostream>
 #include <ostream>
 #include <transform.hpp>
-#include <utility>
 namespace kuki {
 auto Transform::operator=(const Transform &other) -> Transform & {
   // NOTE: this override does not copy the parent ID
@@ -48,7 +47,7 @@ auto operator<<(std::ostream &os, const glm::mat4 &m) -> std::ostream & {
     os << "| ";
     for (auto col = 0; col < 4; ++col)
       os << m[col][row] << " ";
-    os << "|" << std::endl;
+    os << "|\n";
   }
   return os;
 }

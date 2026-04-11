@@ -18,6 +18,7 @@ enum class ComponentType : uint8_t {
   MeshHandle,
   SceneMaterialHandle,
   SceneMeshHandle,
+  Script,
   SkyboxHandle,
   TextureHandle,
   Transform

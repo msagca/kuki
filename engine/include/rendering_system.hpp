@@ -17,17 +17,15 @@ class KUKI_ENGINE_API RenderingSystem final : public System {
 public:
   RenderingSystem(SceneManager &, AssetManager &, SettingsManager &);
   ~RenderingSystem();
-  auto Awake() -> void override;
   auto Start() -> void override;
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
   auto GetFPS() const -> size_t;
   auto GetTarget(std::string = "") -> RenderTarget *;
-  auto LoadCompute(ShaderAsset &) -> void;
-  auto LoadPrimitive(const std::string &) -> void;
-  auto LoadShader(ShaderAsset &, ShaderAsset &) -> void;
+  auto LoadAsset(const AssetID) -> void;
   auto PreviewAsset(const AssetID, int = 128) -> RenderTarget *;
 private:
+  AssetManager &assetManager;
   SceneManager &sceneManager;
   SettingsManager &settingsManager;
   Renderer *activeRenderer{};

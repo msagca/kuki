@@ -6,7 +6,7 @@
 namespace kuki {
 auto SceneManager::Activate(const std::string &name) -> bool {
   if (auto it = nameToId.find(name); it != nameToId.end()) {
-    const auto &id = it->second;
+    const auto id = it->second;
     if (activeScene == id)
       return true;
     Load(id);
@@ -17,6 +17,7 @@ auto SceneManager::Activate(const std::string &name) -> bool {
             Deactivate(activeScene);
           it2->second = SceneStatus::Active;
           activeScene = id;
+          spdlog::info("[SceneManager] activated scene: {}", idToName[activeScene]);
           return true;
         }
   }
@@ -32,11 +33,12 @@ auto SceneManager::Create(std::string name) -> SceneID {
   idToStatus[id] = SceneStatus::Registered;
   if (!activeScene)
     activeScene = id;
+  spdlog::info("[SceneManager] created scene: {}", idToName[id]);
   return id;
 }
 auto SceneManager::Delete(const std::string &name) -> bool {
   if (auto it = nameToId.find(name); it != nameToId.end()) {
-    const auto &id = it->second;
+    const auto id = it->second;
     Unload(id);
     if (auto it2 = idToScene.find(id); it2 != idToScene.end()) {
       idToScene.erase(it2);
@@ -54,7 +56,7 @@ auto SceneManager::GetName(const SceneID id) const -> std::string {
 }
 auto SceneManager::GetStatus(const std::string &name) const -> SceneStatus {
   if (auto it = nameToId.find(name); it != nameToId.end()) {
-    const auto &id = it->second;
+    const auto id = it->second;
     if (auto it2 = idToStatus.find(id); it2 != idToStatus.end())
       return it2->second;
   }
@@ -70,12 +72,13 @@ auto SceneManager::Load(const std::string &name) -> bool {
 }
 auto SceneManager::Rename(const std::string &nameOld, std::string nameNew) -> bool {
   if (auto it = nameToId.find(nameOld); it != nameToId.end()) {
-    const auto &id = it->second;
+    const auto id = it->second;
     if (nameToId.contains(nameNew))
       return false;
     nameToId.erase(it);
     nameToId[nameNew] = id;
     idToName[id] = std::move(nameNew);
+    spdlog::info("[SceneManager] renamed scene: {} -> {}", nameOld, idToName[id]);
     return true;
   }
   return false;
@@ -91,6 +94,8 @@ auto SceneManager::Deactivate(const SceneID id) -> bool {
       if (auto it2 = idToScene.find(id); it2 != idToScene.end()) {
         it->second = SceneStatus::Loaded;
         activeScene = SceneID::Invalid;
+        if (auto it3 = idToName.find(id); it3 != idToName.end())
+          spdlog::info("[SceneManager] deactivated scene: {}", it3->second);
         return true;
       }
   return false;
@@ -100,9 +105,9 @@ auto SceneManager::Load(const SceneID id) -> bool {
     if (it->second == SceneStatus::Registered)
       if (auto it2 = idToScene.find(id); it2 != idToScene.end()) {
         it->second = SceneStatus::Loaded;
-        OnSceneLoaded.Emit(*it2->second);
         if (auto it3 = idToName.find(id); it3 != idToName.end())
-          spdlog::info("Scene loaded: {}", it3->second);
+          spdlog::info("[SceneManaged] loaded scene: {}", it3->second);
+        OnSceneLoaded.Emit(*it2->second);
         return true;
       }
   return false;
@@ -113,6 +118,8 @@ auto SceneManager::Unload(const SceneID id) -> bool {
     if (it->second == SceneStatus::Loaded)
       if (auto it2 = idToScene.find(id); it2 != idToScene.end()) {
         it->second = SceneStatus::Registered;
+        if (auto it3 = idToName.find(id); it3 != idToName.end())
+          spdlog::info("[SceneManaged] unloaded scene: {}", it3->second);
         return true;
       }
   return false;

@@ -3,7 +3,7 @@
 #include <random>
 #include <uuid.hpp>
 namespace kuki {
-UUID128::UUID128(uint64_t high, uint64_t low)
+UUID128::UUID128(uint64_t high, uint64_t low) noexcept
   : high(high), low(low) {}
 const UUID128 UUID128::Invalid{0, 0};
 UUID128 UUID128::Generate() {

@@ -23,6 +23,9 @@
 [submodule "external/json"]
 	path = external/json
 	url = https://github.com/nlohmann/json
+[submodule "external/kaitai-struct"]
+	path = external/kaitai-struct
+	url = https://github.com/kaitai-io/kaitai_struct_cpp_stl_runtime.git
 [submodule "external/spdlog"]
 	path = external/spdlog
 	url = https://github.com/gabime/spdlog

@@ -31,25 +31,17 @@
 #include <glad/glad.h>
 namespace kuki {
 RenderingSystem::RenderingSystem(SceneManager &sceneManager, AssetManager &assetManager, SettingsManager &settingsManager)
-  : System(std::in_place_type<RenderingSystem>), sceneManager(sceneManager), settingsManager(settingsManager), glRenderer(sceneManager, assetManager) {}
-RenderingSystem::~RenderingSystem() {
-  Shutdown();
-}
-auto RenderingSystem::Awake() -> void {
+  : System(std::in_place_type<RenderingSystem>), sceneManager(sceneManager), assetManager(assetManager), settingsManager(settingsManager), glRenderer(sceneManager, assetManager) {}
+RenderingSystem::~RenderingSystem() {}
+auto RenderingSystem::Start() -> void {
   activeRenderer = &glRenderer;
-  LoadPrimitive("Cube");
-  LoadPrimitive("CubeInverted");
-  LoadPrimitive("Cylinder");
-  LoadPrimitive("Frame");
-  LoadPrimitive("Plane");
-  LoadPrimitive("Sphere");
   sceneManager.OnSceneLoaded += [this](Scene &scene) { OnSceneLoaded(scene); };
   settingsManager.OnResolutionChanged += [this](const ScreenResolution &res) { OnResolutionChanged(res); };
   const auto &res = settingsManager.GetResolution();
   renderGraph = graphBuilder
                   .BeginGraph()
                   .BeginPass(RenderScene)
-                  // NOTE: subsequent outputs will use this description if nothing is provided
+                  // NOTE: subsequent outputs will use this description unless overridden
                   .AddOutput("SceneMulti", {.width = res.width, .height = res.height, .samples = 4})
                   .EndPass()
                   .BeginPass(ApplyAntiAliasing)
@@ -74,10 +66,16 @@ auto RenderingSystem::Awake() -> void {
                   .AddOutput("SceneSRGB")
                   .EndPass()
                   .EndGraph();
+  // TODO: move these to somewhere more appropriate
+  assetManager.ForEach<MeshAsset>([this](const AssetID id, const std::string &) {
+    activeRenderer->LoadAsset(id);
+  });
+  assetManager.ForEach<MaterialAsset>([this](const AssetID id, const std::string &) {
+    activeRenderer->LoadAsset(id);
+  });
   if (renderGraph)
     renderGraph->Compile();
 }
-auto RenderingSystem::Start() -> void {}
 auto RenderingSystem::Update(float deltaTime) -> void {
   static std::queue<float> times;
   static auto accumulatedTime = 0.f;
@@ -89,6 +87,10 @@ auto RenderingSystem::Update(float deltaTime) -> void {
     times.pop();
   }
   fps = times.size();
+  // TODO: move this to somewhere more appropriate
+  assetManager.ForEach<ShaderAsset>([this](const AssetID id, const std::string &) {
+    activeRenderer->LoadAsset(id);
+  });
   auto scene = sceneManager.GetActive();
   if (!scene)
     return;
@@ -112,20 +114,12 @@ auto RenderingSystem::GetTarget(std::string name) -> RenderTarget * {
     name = renderGraph->GetFinalOutputName();
   return activeRenderer->GetTarget(name);
 }
-auto RenderingSystem::LoadCompute(ShaderAsset &comp) -> void {
+auto RenderingSystem::LoadAsset(const AssetID id) -> void {
   if (activeRenderer)
-    activeRenderer->LoadCompute(comp);
-}
-auto RenderingSystem::LoadPrimitive(const std::string &name) -> void {
-  if (activeRenderer)
-    activeRenderer->LoadPrimitive(name);
-}
-auto RenderingSystem::LoadShader(ShaderAsset &vert, ShaderAsset &frag) -> void {
-  if (activeRenderer)
-    activeRenderer->LoadShader(vert, frag);
+    activeRenderer->LoadAsset(id);
 }
 auto RenderingSystem::PreviewAsset(const AssetID assetId, int size) -> RenderTarget * {
-  const auto &resourceId = activeRenderer->PreviewAsset(assetId);
+  const auto resourceId = activeRenderer->PreviewAsset(assetId);
   return activeRenderer->GetTexture(resourceId);
 }
 auto RenderingSystem::OnResolutionChanged(const ScreenResolution &res) -> void {
@@ -157,6 +151,7 @@ auto RenderingSystem::OnSceneLoaded(Scene &scene) -> void {
     return;
   glRenderer->LoadScene(scene);
   glViewport(0, 0, res.width, res.height);
+  spdlog::info("[OpenGL] loaded scene: {}", sceneManager.GetName(scene.id));
 }
 auto RenderingSystem::ApplyAntiAliasing(Renderer &renderer, std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   if (inputs.size() != 1 || outputs.size() != 1)
@@ -315,7 +310,7 @@ auto RenderingSystem::ConvertCubemapToEquirectangularMap(Renderer &renderer, con
   compute->Use();
   compute->SetTexture("cubemap", in->texture);
   compute->SetUniform("size", static_cast<unsigned int>(desc.width));
-  const auto &format = GLRenderer::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   glBindImageTexture(0, out->texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
   const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
   const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
@@ -332,7 +327,7 @@ auto RenderingSystem::ConvertEquirectangularMapToCubemap(Renderer &renderer, con
   const auto out = glRenderer->GetTarget(output);
   if (!in || !out)
     return;
-  const auto &format = GLRenderer::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
   compute->SetTexture("equirect", in->texture);
@@ -354,7 +349,7 @@ auto RenderingSystem::CreateBRDF_LUT(Renderer &renderer, const std::string &outp
   const auto out = glRenderer->GetTarget(output);
   if (!out)
     return;
-  const auto &format = GLRenderer::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
   glBindImageTexture(0, out->texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, format.internal);
@@ -373,7 +368,7 @@ auto RenderingSystem::CreateIrradianceMap(Renderer &renderer, const std::string 
   const auto out = glRenderer->GetTarget(output);
   if (!in || !out)
     return;
-  const auto &format = GLRenderer::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
   compute->SetTexture("cubemap", in->texture);
@@ -394,7 +389,7 @@ auto RenderingSystem::CreatePrefilterMap(Renderer &renderer, const std::string &
   const auto out = glRenderer->GetTarget(output);
   if (!in || !out)
     return;
-  const auto &format = GLRenderer::TargetFormatToGL(desc.format);
+  const auto format = GLRenderer::TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
   compute->SetTexture("cubemap", in->texture);
@@ -462,9 +457,9 @@ auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, const GLMesh &me
   auto shader = glRenderer->GetShader(material.type);
   if (!shader)
     return;
-  const auto &materialBufferId = glRenderer->CreateBuffer("MaterialBuffer");
-  const auto &transformBufferId = glRenderer->CreateBuffer("TransformBuffer");
-  const auto &cameraBufferId = glRenderer->CreateBuffer("CameraBuffer", sizeof(CameraTransform));
+  const auto materialBufferId = glRenderer->CreateBuffer("MaterialBuffer");
+  const auto transformBufferId = glRenderer->CreateBuffer("TransformBuffer");
+  const auto cameraBufferId = glRenderer->CreateBuffer("CameraBuffer", sizeof(CameraTransform));
   const auto materialBuffer = glRenderer->GetBuffer(materialBufferId);
   const auto transformBuffer = glRenderer->GetBuffer(transformBufferId);
   const auto cameraBuffer = glRenderer->GetBuffer(cameraBufferId);
@@ -505,7 +500,7 @@ auto RenderingSystem::DrawSkybox(Renderer &renderer) -> void {
   const auto mesh = glRenderer->GetPrimitive("CubeInverted");
   if (!mesh)
     return;
-  const auto &cameraBufferId = glRenderer->CreateBuffer("CameraBuffer", sizeof(CameraTransform));
+  const auto cameraBufferId = glRenderer->CreateBuffer("CameraBuffer", sizeof(CameraTransform));
   const auto cameraBuffer = glRenderer->GetBuffer(cameraBufferId);
   if (!cameraBuffer)
     return;

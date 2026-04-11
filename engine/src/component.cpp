@@ -14,6 +14,7 @@
 #include <light.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
+#include <script.hpp>
 #include <skybox_handle.hpp>
 #include <typeindex>
 #include <unordered_map>
@@ -35,6 +36,7 @@ const std::unordered_map<std::type_index, ComponentType> Component::indexToType 
   {typeid(MeshHandle), ComponentType::MeshHandle},
   {typeid(SceneMaterialHandle), ComponentType::SceneMaterialHandle},
   {typeid(SceneMeshHandle), ComponentType::SceneMeshHandle},
+  {typeid(Script), ComponentType::Script},
   {typeid(SkyboxHandle), ComponentType::SkyboxHandle},
   {typeid(TextureHandle), ComponentType::TextureHandle},
   {typeid(Transform), ComponentType::Transform}};
@@ -55,6 +57,7 @@ const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex 
   {ComponentType::MeshHandle, typeid(SceneMeshHandle)},
   {ComponentType::SceneMaterialHandle, typeid(SceneMaterialHandle)},
   {ComponentType::SceneMeshHandle, typeid(SceneMeshHandle)},
+  {ComponentType::Script, typeid(Script)},
   {ComponentType::SkyboxHandle, typeid(SkyboxHandle)},
   {ComponentType::TextureHandle, typeid(TextureHandle)},
   {ComponentType::Transform, typeid(Transform)}};
@@ -75,6 +78,7 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::MeshHandle, "MeshHandle"},
   {ComponentType::SceneMaterialHandle, "SceneMaterialHandle"},
   {ComponentType::SceneMeshHandle, "SceneMeshHandle"},
+  {ComponentType::Script, "Script"},
   {ComponentType::SkyboxHandle, "SkyboxHandle"},
   {ComponentType::TextureHandle, "TextureHandle"},
   {ComponentType::Transform, "Transform"}};
