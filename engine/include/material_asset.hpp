@@ -11,6 +11,5 @@ struct KUKI_ENGINE_API MaterialAsset final : public Asset {
   MaterialFallback fallback;
   MaterialType type{MaterialType::Unlit};
   std::vector<AssetID> textures;
-  EntityID resourceId{};
 };
 } // namespace kuki

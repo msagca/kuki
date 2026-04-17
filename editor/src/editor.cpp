@@ -124,13 +124,17 @@ auto Editor::LoadDefaultAssets() -> void {
   fragId = LoadAsset<ShaderAsset>(desc.path / "shader/gamma_correction.frag", "GammaCorrect");
   GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
   vertId = LoadAsset<ShaderAsset>(desc.path / "shader/lit.vert", "Lit");
-  GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
+  auto shader = GetAsset(vertId)->As<ShaderAsset>();
+  shader->shaderType = ShaderType::Vertex;
+  shader->materialType = MaterialType::Lit;
   fragId = LoadAsset<ShaderAsset>(desc.path / "shader/lit.frag", "Lit");
-  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
-  vertId = LoadAsset<ShaderAsset>(desc.path / "shader/lit_skinned.vert", "LitSkinned");
-  GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
-  fragId = LoadAsset<ShaderAsset>(desc.path / "shader/lit.frag", "LitSkinned");
-  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  shader = GetAsset(fragId)->As<ShaderAsset>();
+  shader->vertexShader = vertId;
+  shader->materialType = MaterialType::Lit;
+  //vertId = LoadAsset<ShaderAsset>(desc.path / "shader/lit_skinned.vert", "LitSkinned");
+  //GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
+  //fragId = LoadAsset<ShaderAsset>(desc.path / "shader/lit.frag", "LitSkinned");
+  //GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
   vertId = LoadAsset<ShaderAsset>(desc.path / "shader/skybox.vert", "Skybox");
   GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
   fragId = LoadAsset<ShaderAsset>(desc.path / "shader/skybox.frag", "Skybox");
@@ -362,7 +366,9 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
   }
   if (nodeOpen) {
     ForEachChildEntity(id, [&](const EntityID childId) {
+      ImGui::PushID(static_cast<int>(childId));
       DisplayEntity(childId);
+      ImGui::PopID();
     });
     ImGui::TreePop();
   }
@@ -513,7 +519,7 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
   } else
     transform = *transformComp;
   ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-  if (!ImGuizmo::Manipulate(glm::value_ptr(cameraController->GetView()), glm::value_ptr(cameraController->GetView()), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(transform.local)))
+  if (!ImGuizmo::Manipulate(glm::value_ptr(cameraController->GetView()), glm::value_ptr(cameraController->GetProjection()), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(transform.local)))
     return;
   glm::vec3 rotation;
   ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform.local), glm::value_ptr(transform.position), glm::value_ptr(rotation), glm::value_ptr(transform.scale));

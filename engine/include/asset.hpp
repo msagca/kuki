@@ -11,6 +11,8 @@ class KUKI_ENGINE_API Asset {
 public:
   virtual ~Asset() = default;
   const AssetID id;
+  EntityID previewId{};
+  EntityID resourceId{};
   static auto GetMask(const AssetType) -> AssetMask;
   static auto GetType(const std::type_index) -> AssetType;
   static auto GetTypeIndex(const AssetType) -> std::type_index;

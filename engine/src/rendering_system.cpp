@@ -119,8 +119,7 @@ auto RenderingSystem::LoadAsset(const AssetID id) -> void {
     activeRenderer->LoadAsset(id);
 }
 auto RenderingSystem::PreviewAsset(const AssetID assetId, int size) -> RenderTarget * {
-  const auto resourceId = activeRenderer->PreviewAsset(assetId);
-  return activeRenderer->GetTexture(resourceId);
+  return activeRenderer->PreviewAsset(assetId);
 }
 auto RenderingSystem::OnResolutionChanged(const ScreenResolution &res) -> void {
   auto scene = sceneManager.GetActive();
@@ -467,18 +466,16 @@ auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, const GLMesh &me
     return;
   shader->Use();
   shader->SetCamera(*camera, cameraBuffer->id);
-  if (material.type == MaterialType::Lit) {
-    const GLSkybox *skybox{};
-    scene->ForFirstEntity<GLSkybox>([&](const EntityID, const GLSkybox *skyboxComp) {
-      skybox = skyboxComp;
-    });
-    shader->SetSkybox(skybox);
-    std::vector<Light> lights;
-    scene->ForEachEntity<Light>([&](EntityID, const Light *light) {
-      lights.push_back(*light);
-    });
-    shader->SetLighting(lights);
-  }
+  const GLSkybox *skybox{nullptr};
+  scene->ForFirstEntity<GLSkybox>([&](const EntityID, const GLSkybox *skyboxComp) {
+    skybox = skyboxComp;
+  });
+  shader->SetSkybox(skybox);
+  std::vector<Light> lights;
+  scene->ForEachEntity<Light>([&](EntityID, const Light *light) {
+    lights.push_back(*light);
+  });
+  shader->SetLighting(lights);
   shader->SetMaterial(material);
   shader->SetMaterialFallback(mesh, fallbacks, materialBuffer->id);
   shader->SetTransform(mesh, transforms, transformBuffer->id);

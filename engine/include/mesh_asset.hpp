@@ -12,6 +12,5 @@ struct KUKI_ENGINE_API MeshAsset final : public Asset {
   Mesh mesh;
   AssetID material{};
   BoundingBox bounds{};
-  EntityID resourceId{};
 };
 } // namespace kuki

@@ -7,6 +7,7 @@
 #include <glfw_constants.hpp>
 #include <glm/detail/type_vec2.hpp>
 #include <glm/ext/vector_float2.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/norm.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <id.hpp>
@@ -23,9 +24,9 @@ auto CameraController::CloneTo(EntityManager &entityManager, const EntityID id) 
 auto CameraController::Display() const -> void {
   // TODO: make these configurable
   if (ImGui::CollapsingHeader("Camera Controller")) {
-    ImGui::Text("Move: WASD or Arrow Keys");
-    ImGui::Text("Boost: Hold Shift");
-    ImGui::Text("Look: Hold Right Mouse Button and Move Mouse");
+    ImGui::Text("Use WASD or arrow keys to move");
+    ImGui::Text("Hold shift to boost move speed");
+    ImGui::Text("Hold right mouse button to look around");
   }
 }
 auto CameraController::GetProjection() const -> const glm::mat4 & {
@@ -81,9 +82,9 @@ auto CameraController::UpdatePosition(Application &app) -> bool {
   return true;
 }
 auto CameraController::UpdateRotation(Application &app) -> bool {
+  static constexpr auto DELTA = .9999f;
   static constexpr auto EPSILON = 1e-6f;
   static constexpr auto WORLD_UP = glm::vec3(0.f, 1.f, 0.f);
-  static constexpr auto WORLD_RIGHT = glm::vec3(1.f, 0.f, 0.f);
   const auto mousePos = app.GetMousePosition();
   if (mouseEnter)
     mouseLast = mousePos;
@@ -94,11 +95,12 @@ auto CameraController::UpdateRotation(Application &app) -> bool {
   mouseLast = mousePos;
   if (glm::length2(mouseDiff) < EPSILON)
     return false;
-  const auto yaw = glm::angleAxis(-mouseDiff.x, WORLD_UP);
-  const auto rotation = yaw * camera.rotation;
-  const auto right = glm::normalize(rotation * WORLD_RIGHT);
+  const auto yaw = glm::angleAxis(-mouseDiff.x, WORLD_UP); // NOTE: x diff is inverted because positive rotation is counter-clockwise when looking in the direction of the axis
+  const auto right = glm::normalize(glm::cross(camera.forward, WORLD_UP));
   const auto pitch = glm::angleAxis(mouseDiff.y, right);
-  camera.rotation = glm::normalize(pitch * rotation);
-  // TODO: remove roll if non-zero (e.g., set via UI)
+  camera.rotation = glm::normalize(pitch * yaw * camera.rotation);
+  const auto forward = glm::normalize(camera.rotation * glm::vec3(0.f, 0.f, -1.f));
+  if (glm::abs(glm::dot(forward, WORLD_UP)) < DELTA)
+    camera.rotation = glm::quatLookAt(forward, WORLD_UP); // remove roll
   return true;
 }

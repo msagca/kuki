@@ -139,15 +139,18 @@ auto EntityManager::GetComponent(this auto &self, const EntityID id, const Compo
     return self.template GetComponent<SceneMaterialHandle>(id);
   case ComponentType::SceneMeshHandle:
     return self.template GetComponent<SceneMeshHandle>(id);
-    // TODO: decide what to return here
-  // case ComponentType::Script:
-  //   return self.template GetComponent<Script>(id);
+  case ComponentType::Script: {
+    auto scripts = self.template GetComponent<Script>(id);
+    if (scripts.empty())
+      return {};
+    else // TODO: decide what to return here
+      return scripts[0];
+  }
   case ComponentType::SkyboxHandle:
     return self.template GetComponent<SkyboxHandle>(id);
   case ComponentType::TextureHandle:
     return self.template GetComponent<TextureHandle>(id);
-  // case ComponentType::Transform:
-  default:
+  default: // case ComponentType::Transform:
     return self.template GetComponent<Transform>(id);
   }
 }
@@ -235,7 +238,7 @@ auto EntityManager::ForFirst(this auto &self, auto &&func) -> void {
   ComponentMask mask;
   (mask.set(Component::GetBit(typeid(T))), ...);
   for (const auto &[m, s] : self.maskToIdSet)
-    if ((mask & m) == mask) {
+    if ((mask & m) == mask && !s.empty()) {
       id = *s.begin();
       break;
     }

@@ -49,7 +49,7 @@ cd kuki
 - Configure and build the project
 
 ```bash
-cmake --workflow --preset Release
+cmake --workflow Release
 ```
 
 > If it fails due to missing dependencies, refer to the error messages to install the required packages. Then, run the command again.

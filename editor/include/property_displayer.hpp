@@ -46,7 +46,7 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
     return;
   static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
   auto dirty = false;
-  static auto types = kuki::EnumTraits<kuki::CameraType>::GetNames();
+  static auto &types = kuki::EnumTraits<kuki::CameraType>::GetNames();
   auto type = static_cast<int>(camera->type);
   if (ImGui::Combo("Type", &type, types.data(), types.size())) {
     camera->type = static_cast<kuki::CameraType>(type);
@@ -168,6 +168,10 @@ inline auto PropertyDisplayer::operator()<kuki::GLMaterial>(kuki::GLMaterial *ma
     remaining -= DrawTextureTile(e.id, e.tex, e.label, [&SelectProperty, &e] { SelectProperty(e.prop); });
     firstOnLine = false;
   }
+  static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
+  auto type = static_cast<int>(material->type);
+  if (ImGui::Combo("Type", &type, types.data(), types.size()))
+    material->type = static_cast<kuki::MaterialType>(type);
   auto albedoColor = material->fallback.albedo;
   if (ImGui::ColorEdit4("Albedo Color", glm::value_ptr(albedoColor)))
     material->fallback.albedo = albedoColor;
@@ -238,7 +242,7 @@ template <>
 inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> void {
   if (!light)
     return;
-  static auto types = kuki::EnumTraits<kuki::LightType>::GetNames();
+  static auto &types = kuki::EnumTraits<kuki::LightType>::GetNames();
   auto type = static_cast<int>(light->type);
   if (ImGui::Combo("Type", &type, types.data(), types.size()))
     light->type = static_cast<kuki::LightType>(type);

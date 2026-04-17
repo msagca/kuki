@@ -129,8 +129,6 @@ auto AssetManager::AssimpToGlmMat4(const aiMatrix4x4 &m) -> glm::mat4 {
 }
 auto AssetManager::AssimpTexToContent(const aiTextureType t) -> TextureContent {
   switch (t) {
-  case aiTextureType_DIFFUSE:
-    return TextureContent::Albedo;
   case aiTextureType_NORMALS:
     return TextureContent::Normal;
   case aiTextureType_METALNESS:
@@ -144,18 +142,17 @@ auto AssetManager::AssimpTexToContent(const aiTextureType t) -> TextureContent {
   case aiTextureType_EMISSIVE:
     return TextureContent::Emissive;
   default:
-    return TextureContent::Unknown;
+    return TextureContent::Albedo;
   }
 }
-auto AssetManager::CreateNodePrefab(const AssetID assetId, const SceneAsset &sceneAsset, const int nodeIndex, const EntityID parentPrefab) -> EntityID {
+auto AssetManager::CreateNodePrefab(const AssetID assetId, const SceneAsset &sceneAsset, const int nodeIndex) -> EntityID {
   if (nodeIndex >= sceneAsset.nodes.size())
     return EntityID::Invalid;
   const auto &node = sceneAsset.nodes[nodeIndex];
-  if (prefabManager.IsEntity(node.name))
-    return prefabManager.GetID(node.name);
-  const auto prefabId = prefabManager.Create(node.name);
+  const auto name = node.name;
+  const auto prefabId = prefabManager.Create(name);
   auto transform = prefabManager.AddComponent<Transform>(prefabId);
-  transform->world = node.transform;
+  transform->local = node.transform;
   if (node.bounds) {
     auto bounds = prefabManager.AddComponent<BoundingBox>(prefabId);
     *bounds = node.bounds;
@@ -193,7 +190,7 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const SceneAsset &sce
   }
   for (auto i = 0; i < node.children.size(); ++i) {
     const auto childIndex = node.children[i];
-    const auto childId = CreateNodePrefab(assetId, sceneAsset, childIndex, prefabId);
+    const auto childId = CreateNodePrefab(assetId, sceneAsset, childIndex);
     prefabManager.AddChild(prefabId, childId);
   }
   return prefabId;
@@ -205,10 +202,23 @@ auto AssetManager::Load(std::unique_ptr<Asset> asset) -> void {
   idToAsset.insert_or_assign(id, std::move(asset));
   SetStatus(id, AssetStatus::Loaded);
 }
-auto AssetManager::LoadMaterial(const aiMaterial &aiMaterial, SceneAsset &scene, const std::filesystem::path &path) -> unsigned int {
+auto AssetManager::LoadMaterial(std::unordered_map<std::string, unsigned int> &visited, const aiMaterial &aiMaterial, SceneAsset &scene, const std::filesystem::path &path) -> unsigned int {
+  const auto aiName = aiMaterial.GetName();
+  const auto name = aiName.Empty() ? path.lexically_normal().string() : aiName.C_Str();
+  if (auto it = visited.find(name); it != visited.end())
+    return it->second;
   const unsigned int index = scene.materials.size();
+  visited.insert({name, index});
   scene.materials.emplace_back();
   auto &material = scene.materials.back();
+  material.name = name;
+  int shadingModel;
+  if (aiMaterial.Get(AI_MATKEY_SHADING_MODEL, shadingModel) == AI_SUCCESS) {
+    if (shadingModel == aiShadingMode_NoShading)
+      material.type = MaterialType::Unlit;
+    else
+      material.type = MaterialType::Lit;
+  }
   aiColor4D color;
   float value;
   if (aiMaterial.Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS)
@@ -228,13 +238,13 @@ auto AssetManager::LoadMaterial(const aiMaterial &aiMaterial, SceneAsset &scene,
   else if (aiMaterial.Get(AI_MATKEY_SHININESS, value) == AI_SUCCESS)
     material.fallback.roughness = std::sqrt(2.f / (value + 2.f));
   if (!path.empty()) {
-    LoadTexture(aiMaterial, aiTextureType_AMBIENT_OCCLUSION, material, scene, path);
-    LoadTexture(aiMaterial, aiTextureType_DIFFUSE, material, scene, path);
-    LoadTexture(aiMaterial, aiTextureType_DIFFUSE_ROUGHNESS, material, scene, path);
-    LoadTexture(aiMaterial, aiTextureType_EMISSIVE, material, scene, path);
-    LoadTexture(aiMaterial, aiTextureType_METALNESS, material, scene, path);
-    LoadTexture(aiMaterial, aiTextureType_NORMALS, material, scene, path);
-    LoadTexture(aiMaterial, aiTextureType_SPECULAR, material, scene, path);
+    LoadTexture(visited, aiMaterial, aiTextureType_AMBIENT_OCCLUSION, material, scene, path);
+    LoadTexture(visited, aiMaterial, aiTextureType_DIFFUSE, material, scene, path);
+    LoadTexture(visited, aiMaterial, aiTextureType_DIFFUSE_ROUGHNESS, material, scene, path);
+    LoadTexture(visited, aiMaterial, aiTextureType_EMISSIVE, material, scene, path);
+    LoadTexture(visited, aiMaterial, aiTextureType_METALNESS, material, scene, path);
+    LoadTexture(visited, aiMaterial, aiTextureType_NORMALS, material, scene, path);
+    LoadTexture(visited, aiMaterial, aiTextureType_SPECULAR, material, scene, path);
   }
   return index;
 }
@@ -242,6 +252,7 @@ auto AssetManager::LoadMesh(const aiMesh &aiMesh, SceneAsset &scene, BoundingBox
   const unsigned int index = scene.meshes.size();
   scene.meshes.emplace_back();
   auto &sceneMesh = scene.meshes.back();
+  sceneMesh.name = aiMesh.mName.C_Str();
   sceneMesh.parent = parent;
   for (auto i = 0; i < aiMesh.mNumVertices; ++i) {
     sceneMesh.mesh.vertices.emplace_back();
@@ -295,55 +306,63 @@ auto AssetManager::LoadMesh(const aiMesh &aiMesh, SceneAsset &scene, BoundingBox
   }
   return index;
 }
-auto AssetManager::LoadNode(const aiNode &aiNode, const aiScene &aiScene, SceneAsset &scene, const std::filesystem::path &path, int parent) -> unsigned int {
+auto AssetManager::LoadNode(std::unordered_map<std::string, unsigned int> &visited, const aiNode &aiNode, const aiScene &aiScene, SceneAsset &scene, const std::filesystem::path &path, int parent) -> unsigned int {
   const unsigned int index = scene.nodes.size();
   scene.nodes.emplace_back();
-  auto &node = scene.nodes.back();
-  node.name = aiNode.mName.C_Str();
-  node.transform = AssimpToGlmMat4(aiNode.mTransformation);
-  node.parent = parent;
+  scene.nodes[index].name = aiNode.mName.C_Str();
+  scene.nodes[index].transform = AssimpToGlmMat4(aiNode.mTransformation);
+  scene.nodes[index].parent = parent;
   for (auto i = 0; i < aiNode.mNumMeshes; ++i) {
     const auto meshId = aiNode.mMeshes[i];
     const auto aiMesh = aiScene.mMeshes[meshId];
-    const auto meshIndex = LoadMesh(*aiMesh, scene, node.bounds, index);
-    node.meshes.push_back(meshIndex);
+    const auto meshIndex = LoadMesh(*aiMesh, scene, scene.nodes[index].bounds, index);
+    scene.nodes[index].meshes.push_back(meshIndex);
     auto &mesh = scene.meshes.back();
     const auto matId = aiMesh->mMaterialIndex;
     if (matId >= 0 && matId < aiScene.mNumMaterials) {
       const auto aiMaterial = aiScene.mMaterials[matId];
-      const auto materialIndex = LoadMaterial(*aiMaterial, scene, path);
+      const auto materialIndex = LoadMaterial(visited, *aiMaterial, scene, path);
       mesh.material = materialIndex;
     }
   }
   for (auto i = 0; i < aiNode.mNumChildren; ++i) {
-    const auto childIndex = LoadNode(*aiNode.mChildren[i], aiScene, scene, path, index);
-    node.children.push_back(childIndex);
+    const auto childIndex = LoadNode(visited, *aiNode.mChildren[i], aiScene, scene, path, index);
+    scene.nodes[index].children.push_back(childIndex);
     const auto &childNode = scene.nodes[childIndex];
-    node.bounds.min = glm::min(node.bounds.min, childNode.bounds.min);
-    node.bounds.max = glm::max(node.bounds.max, childNode.bounds.max);
+    auto &curNode = scene.nodes[index];
+    curNode.bounds.min = glm::min(curNode.bounds.min, childNode.bounds.min);
+    curNode.bounds.max = glm::max(curNode.bounds.max, childNode.bounds.max);
   }
   if (aiNode.mNumMeshes == 0 && aiNode.mNumChildren == 0)
-    node.bounds = {.min = glm::vec3(.0f), .max = glm::vec3(.0f)};
-  else if (node.parent >= 0) {
-    const auto &parentNode = scene.nodes[parent];
-    node.bounds = node.bounds.GetWorldBounds(parentNode.transform);
-  }
+    scene.nodes[index].bounds = {.min = glm::vec3(.0f), .max = glm::vec3(.0f)};
+  else if (parent >= 0)
+    scene.nodes[index].bounds = scene.nodes[index].bounds.GetWorldBounds(scene.nodes[parent].transform * scene.nodes[index].transform);
   return index;
 }
-auto AssetManager::LoadTexture(const aiMaterial &aiMaterial, const aiTextureType aiTextureType, SceneMaterial &material, SceneAsset &scene, const std::filesystem::path &path) -> void {
+auto AssetManager::LoadTexture(std::unordered_map<std::string, unsigned int> &visited, const aiMaterial &aiMaterial, const aiTextureType aiTextureType, SceneMaterial &material, SceneAsset &scene, const std::filesystem::path &path) -> void {
   const auto count = aiMaterial.GetTextureCount(aiTextureType);
+  const auto content = AssimpTexToContent(aiTextureType);
   for (auto i = 0; i < count; ++i) {
     const unsigned int index = scene.textures.size();
-    SceneTexture sceneTexture{};
-    sceneTexture.texture.content = AssimpTexToContent(aiTextureType);
     aiString texPath;
     aiMaterial.GetTexture(aiTextureType, i, &texPath);
-    const auto fullPath = (path / texPath.C_Str()).string();
-    if (auto data = stbi_load(fullPath.c_str(), &sceneTexture.texture.width, &sceneTexture.texture.height, &sceneTexture.texture.channels, 0); data) {
+    const auto fullPath = path / texPath.C_Str();
+    const auto pathNormStr = fullPath.lexically_normal().string();
+    if (auto it = visited.find(pathNormStr); it != visited.end()) {
+      material.textures.push_back(it->second);
+      material.fallback.textureMask.set(static_cast<int>(content));
+      continue;
+    }
+    visited.insert({pathNormStr, index});
+    SceneTexture sceneTexture{};
+    sceneTexture.name = pathNormStr;
+    sceneTexture.texture.content = content;
+    if (auto data = stbi_load(pathNormStr.c_str(), &sceneTexture.texture.width, &sceneTexture.texture.height, &sceneTexture.texture.channels, 0); data) {
       const auto size = sceneTexture.texture.width * sceneTexture.texture.height * sceneTexture.texture.channels;
       sceneTexture.texture.data.assign(data, data + size);
       stbi_image_free(data);
       material.textures.push_back(index);
+      material.fallback.textureMask.set(static_cast<int>(sceneTexture.texture.content));
       scene.textures.push_back(sceneTexture);
     }
   }

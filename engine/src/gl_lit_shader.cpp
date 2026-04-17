@@ -10,7 +10,7 @@ auto GLLitShader::SetCamera(const Camera &camera, const unsigned int ubo) -> voi
   SetUniform("viewPos", camera.position);
 }
 auto GLLitShader::SetLighting() -> void {
-  SetUniform("pointCount", 0);
+  SetUniform("pointCount", 0u);
   SetUniform("hasDirLight", false);
 }
 auto GLLitShader::SetLighting(const Light &light) -> void {

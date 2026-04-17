@@ -11,6 +11,5 @@ struct KUKI_ENGINE_API ShaderAsset final : public Asset {
   MaterialType materialType{MaterialType::Unlit};
   AssetID vertexShader{AssetID::Invalid};
   std::string text{};
-  EntityID resourceId{};
 };
 } // namespace kuki

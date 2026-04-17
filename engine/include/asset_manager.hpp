@@ -84,12 +84,12 @@ private:
   static auto AssimpTexToContent(const aiTextureType) -> TextureContent;
   template <IsAsset T>
   static auto GetAssetType() -> AssetType;
-  auto CreateNodePrefab(const AssetID, const SceneAsset &, const int = 0, const EntityID = EntityID::Invalid) -> EntityID;
+  auto CreateNodePrefab(const AssetID, const SceneAsset &, const int = 0) -> EntityID;
   auto Load(std::unique_ptr<Asset>) -> void;
-  auto LoadMaterial(const aiMaterial &, SceneAsset &, const std::filesystem::path & = {}) -> unsigned int;
+  auto LoadMaterial(std::unordered_map<std::string, unsigned int> &, const aiMaterial &, SceneAsset &, const std::filesystem::path & = {}) -> unsigned int;
   auto LoadMesh(const aiMesh &, SceneAsset &, BoundingBox &, unsigned int) -> unsigned int;
-  auto LoadNode(const aiNode &, const aiScene &, SceneAsset &, const std::filesystem::path & = {}, int = -1) -> unsigned int;
-  auto LoadTexture(const aiMaterial &, const aiTextureType, SceneMaterial &, SceneAsset &, const std::filesystem::path &) -> void;
+  auto LoadNode(std::unordered_map<std::string, unsigned int> &, const aiNode &, const aiScene &, SceneAsset &, const std::filesystem::path & = {}, int = -1) -> unsigned int;
+  auto LoadTexture(std::unordered_map<std::string, unsigned int> &, const aiMaterial &, const aiTextureType, SceneMaterial &, SceneAsset &, const std::filesystem::path &) -> void;
   auto Unregister(const AssetID) -> bool;
   template <IsAsset T>
   auto CreatePrefab(const AssetID) -> EntityID;
@@ -257,6 +257,7 @@ auto AssetManager::Load(const AssetID id, std::string name) -> std::unique_ptr<A
     auto path = GetPath(id);
     if (path.empty())
       return nullptr;
+    name = name.empty() ? path.filename().stem().string() : std::move(name);
     auto asset = Load<T>(id, path, std::move(name));
     Load(std::move(asset));
   }
@@ -272,6 +273,7 @@ auto AssetManager::LoadAsync(const AssetID id, std::string name) -> std::future<
       auto path = GetPath(id);
       if (path.empty())
         return {};
+      name = name.empty() ? path.filename().stem().string() : std::move(name);
       auto future = std::async(std::launch::async, [=, this]() {
         return Load<T>(id, path, std::move(name));
       });
@@ -340,8 +342,9 @@ auto AssetManager::Load(const AssetID, const std::filesystem::path &, std::strin
 }
 template <>
 inline auto AssetManager::Load<SceneAsset>(const AssetID id, const std::filesystem::path &path, std::string name) -> std::unique_ptr<Asset> {
+  const auto pathNormStr = path.lexically_normal().string();
   Assimp::Importer importer;
-  const auto aiScene = importer.ReadFile(path.string(), aiProcess_CalcTangentSpace | aiProcess_GlobalScale | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_Triangulate);
+  const auto aiScene = importer.ReadFile(pathNormStr, aiProcess_CalcTangentSpace | aiProcess_GlobalScale | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_Triangulate);
   if (!aiScene) {
     spdlog::error("[AssetManager] {}", importer.GetErrorString());
     return nullptr;
@@ -349,55 +352,58 @@ inline auto AssetManager::Load<SceneAsset>(const AssetID id, const std::filesyst
   if (!aiScene->mRootNode)
     return nullptr;
   auto scene = std::make_unique<SceneAsset>(id, std::move(name));
-  LoadNode(*aiScene->mRootNode, *aiScene, *scene.get());
-  spdlog::info("[AssetManager] loaded model: {}", path.string());
+  std::unordered_map<std::string, unsigned int> visited;
+  LoadNode(visited, *aiScene->mRootNode, *aiScene, *scene.get(), path.parent_path());
+  spdlog::info("[AssetManager] loaded model: {}", pathNormStr);
   return scene;
 }
 template <>
 inline auto AssetManager::Load<ShaderAsset>(const AssetID id, const std::filesystem::path &path, std::string name) -> std::unique_ptr<Asset> {
+  const auto pathNormStr = path.lexically_normal().string();
   auto shader = std::make_unique<ShaderAsset>(id, std::move(name));
   std::ifstream fs(path);
   if (!fs) {
-    spdlog::error("[AssetManager] failed to open shader file: {}", path.string());
+    spdlog::error("[AssetManager] failed to open shader file: {}", pathNormStr);
     return shader;
   }
   std::stringstream ss;
   ss << fs.rdbuf();
   if (fs.fail()) {
-    spdlog::error("[AssetManager] failed to read shader file: {}", path.string());
+    spdlog::error("[AssetManager] failed to read shader file: {}", pathNormStr);
     return shader;
   }
   fs.close();
   shader->text = ss.str();
-  spdlog::info("[AssetManager] loaded shader: {}", path.string());
+  spdlog::info("[AssetManager] loaded shader: {}", pathNormStr);
   return shader;
 }
 template <>
 inline auto AssetManager::Load<SkyboxAsset>(const AssetID id, const std::filesystem::path &path, std::string name) -> std::unique_ptr<Asset> {
+  const auto pathNormStr = path.lexically_normal().string();
   auto skybox = std::make_unique<SkyboxAsset>(id, std::move(name));
   const auto ext = path.extension().string();
   if (ext == ".exr") {
     float *data = nullptr;
     const char *errMsg = nullptr;
-    auto result = LoadEXR(&data, &skybox->width, &skybox->height, path.string().c_str(), &errMsg);
+    auto result = LoadEXR(&data, &skybox->width, &skybox->height, pathNormStr.c_str(), &errMsg);
     if (result != TINYEXR_SUCCESS) {
       if (errMsg) {
         spdlog::error("[AssetManager] {}", errMsg);
         FreeEXRErrorMessage(errMsg);
       } else
-        spdlog::error("[AssetManager] failed to load image: {}", path.string());
+        spdlog::error("[AssetManager] failed to load image: {}", pathNormStr);
     } else if (data) {
       skybox->channels = 4;
       const auto size = skybox->width * skybox->height * skybox->channels;
       skybox->data.assign(data, data + size);
       free(data);
-      spdlog::info("[AssetManager] loaded skybox: {}", path.string());
+      spdlog::info("[AssetManager] loaded skybox: {}", pathNormStr);
     }
   } else if (auto data = stbi_loadf(path.string().c_str(), &skybox->width, &skybox->height, &skybox->channels, 0); data) {
     const auto size = skybox->width * skybox->height * skybox->channels;
     skybox->data.assign(data, data + size);
     stbi_image_free(data);
-    spdlog::info("[AssetManager] loaded skybox: {}", path.string());
+    spdlog::info("[AssetManager] loaded skybox: {}", pathNormStr);
   }
   return skybox;
 }

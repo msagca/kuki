@@ -13,9 +13,12 @@ class Renderer {
 public:
   virtual ~Renderer() = default;
   virtual auto Clear() -> void = 0;
-  virtual auto CreateBuffer(std::string, const int & = 0) -> EntityID = 0;
-  virtual auto CreateTarget(std::string, const TargetDescription &) -> EntityID = 0;
-  virtual auto CreateTexture(std::string, const TargetDescription &) -> EntityID = 0;
+  virtual auto CreateBuffer(const int & = 0, const std::string & = "") -> EntityID = 0;
+  virtual auto CreateBuffer(const std::string &, const int & = 0) -> EntityID = 0;
+  virtual auto CreateTarget(const TargetDescription &, const std::string & = "") -> EntityID = 0;
+  virtual auto CreateTarget(const std::string &, const TargetDescription &) -> EntityID = 0;
+  virtual auto CreateTexture(const TargetDescription &, const std::string & = "") -> EntityID = 0;
+  virtual auto CreateTexture(const std::string &, const TargetDescription &) -> EntityID = 0;
   virtual auto GetBuffer(const EntityID) -> BufferObject * = 0;
   virtual auto GetBuffer(const std::string &) -> BufferObject * = 0;
   virtual auto GetCompute(const std::string &) -> Shader * = 0;
@@ -29,7 +32,7 @@ public:
   virtual auto GetTexture(const std::string &) -> RenderTarget * = 0;
   virtual auto LoadAsset(const AssetID) -> void = 0;
   virtual auto LoadScene(Scene &) -> void = 0;
-  virtual auto PreviewAsset(const AssetID) -> EntityID = 0;
+  virtual auto PreviewAsset(const AssetID) -> RenderTarget * = 0;
   virtual auto Reset() -> void = 0;
   virtual auto UpdateTarget(const std::string &, const TargetDescription &) -> void = 0;
   template <typename T>

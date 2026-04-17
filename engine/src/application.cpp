@@ -295,18 +295,18 @@ auto Application::LoadPrimitive(const std::string &name) -> void {
     return;
   auto meshAsset = std::make_unique<MeshAsset>(AssetID::Generate(), name);
   if (name == "Cube")
-    meshAsset->mesh.vertices = std::move(Primitive::Cube());
+    meshAsset->mesh.vertices = Primitive::Cube();
   else if (name == "CubeInverted") {
-    meshAsset->mesh.vertices = std::move(Primitive::Cube());
+    meshAsset->mesh.vertices = Primitive::Cube();
     Primitive::FlipWindingOrder(meshAsset->mesh.vertices);
   } else if (name == "Frame")
-    meshAsset->mesh.vertices = std::move(Primitive::Frame());
+    meshAsset->mesh.vertices = Primitive::Frame();
   else if (name == "Plane")
-    meshAsset->mesh.vertices = std::move(Primitive::Plane());
+    meshAsset->mesh.vertices = Primitive::Plane();
   else if (name == "Cylinder")
-    meshAsset->mesh.vertices = std::move(Primitive::Cylinder());
+    meshAsset->mesh.vertices = Primitive::Cylinder();
   else if (name == "Sphere")
-    meshAsset->mesh.vertices = std::move(Primitive::Sphere());
+    meshAsset->mesh.vertices = Primitive::Sphere();
   else {
     spdlog::warn("[App] unknown primitive: {}", name);
     return;
@@ -317,6 +317,7 @@ auto Application::LoadPrimitive(const std::string &name) -> void {
     defaultLit->type = MaterialType::Lit;
     assetManager.Add<MaterialAsset>(std::move(defaultLit));
   }
+  // FIXME: this is fragile, use IDs instead of names
   meshAsset->material = assetManager.GetID("DefaultLit");
   assetManager.Add<MeshAsset>(std::move(meshAsset));
 }

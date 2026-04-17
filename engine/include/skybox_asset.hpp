@@ -8,6 +8,5 @@ struct KUKI_ENGINE_API SkyboxAsset final : public Asset {
   int height{1024};
   int channels{3};
   std::vector<float> data{};
-  EntityID resourceId{};
 };
 } // namespace kuki

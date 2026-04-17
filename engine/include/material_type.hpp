@@ -3,7 +3,6 @@
 namespace kuki {
 enum class MaterialType : uint8_t {
   Lit,
-  LitSkinned,
   Unlit
 };
 enum class MaterialProperty : uint8_t {

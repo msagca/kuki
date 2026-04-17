@@ -26,26 +26,21 @@ jobs:
         with:
           submodules: recursive
           lfs: true
-      - name: Install required packages
+      - name: Install prerequisites
         if: runner.os == 'Linux'
         run: |
           sudo apt update
           sudo apt install -y build-essential clang cmake libgl1-mesa-dev ninja-build xorg-dev
-      - uses: ilammy/msvc-dev-cmd@v1
-        if: runner.os == 'Windows'
-      - name: Install Ninja build
+      - name: Install prerequisites
         if: runner.os == 'Windows'
         run: winget install ninja-build.ninja nsis --accept-source-agreements --disable-interactivity
       - uses: actions/cache@v5
         with:
           path: build
           key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt','**/CMakePresets.json') }}
-          restore-keys: |
-            ${{ runner.os }}-cmake-
-      - name: CMake configure
-        run: cmake -G "Ninja" --preset Release -DKUKI_BUILD_TESTS=ON
+          restore-keys: ${{ runner.os }}-cmake-
       - name: CMake build
-        run: cmake --build --preset Release
+        run: cmake --workflow Release -DKUKI_BUILD_TESTS=ON
       - name: CTest
         run: ctest --preset Release --output-on-failure
       - name: CPack

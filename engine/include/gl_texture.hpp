@@ -6,7 +6,7 @@
 namespace kuki {
 struct KUKI_ENGINE_API GLTexture final : public RenderTarget {
   unsigned int id{};
-  TextureContent content{TextureContent::Unknown};
+  TextureContent content{TextureContent::Albedo};
   TargetDescription desc{};
   explicit operator bool() const;
 };

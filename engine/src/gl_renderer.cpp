@@ -40,18 +40,20 @@ auto GLRenderer::BorrowTexture(const TargetDescription &desc) -> unsigned int {
 auto GLRenderer::Clear() -> void {
   resourceManager.Clear();
 }
-auto GLRenderer::CreateBuffer(std::string name, const int &size) -> EntityID {
-  if (auto id = resourceManager.GetID(name); id)
-    return id;
+auto GLRenderer::CreateBuffer(const int &size, const std::string &name) -> EntityID {
   const auto id = resourceManager.Create(name);
   auto buffer = resourceManager.AddComponent<GLBuffer>(id);
   buffer->id = BorrowBuffer(size);
+  return id;
+}
+auto GLRenderer::CreateBuffer(const std::string &name, const int &size) -> EntityID {
+  if (auto id = resourceManager.GetID(name); id)
+    return id;
+  const auto id = CreateBuffer(size, name);
   spdlog::info("[OpenGL] created buffer: {}", name);
   return id;
 }
-auto GLRenderer::CreateTarget(std::string name, const TargetDescription &desc) -> EntityID {
-  if (auto id = resourceManager.GetID(name); id)
-    return id;
+auto GLRenderer::CreateTarget(const TargetDescription &desc, const std::string &name) -> EntityID {
   const auto id = resourceManager.Create(name);
   auto renderTarget = resourceManager.AddComponent<GLRenderTarget>(id);
   renderTarget->framebuffer = BorrowFramebuffer();
@@ -63,15 +65,25 @@ auto GLRenderer::CreateTarget(std::string name, const TargetDescription &desc) -
   const auto textureTarget = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textureTarget, renderTarget->texture, 0);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  return id;
+}
+auto GLRenderer::CreateTarget(const std::string &name, const TargetDescription &desc) -> EntityID {
+  if (auto id = resourceManager.GetID(name); id)
+    return id;
+  const auto id = CreateTarget(desc, name);
   spdlog::info("[OpenGL] created render target: {}", name);
   return id;
 }
-auto GLRenderer::CreateTexture(std::string name, const TargetDescription &desc) -> EntityID {
-  if (auto id = resourceManager.GetID(name); id)
-    return id;
-  const auto id = resourceManager.Create(name);
+auto GLRenderer::CreateTexture(const TargetDescription &desc, const std::string &name) -> EntityID {
+  const auto id = resourceManager.Create(std::move(name));
   auto texture = resourceManager.AddComponent<GLTexture>(id);
   texture->id = BorrowTexture(desc);
+  return id;
+}
+auto GLRenderer::CreateTexture(const std::string &name, const TargetDescription &desc) -> EntityID {
+  if (auto id = resourceManager.GetID(name); id)
+    return id;
+  const auto id = CreateTexture(desc, name);
   spdlog::info("[OpenGL] created texture: {}", name);
   return id;
 }
@@ -98,7 +110,6 @@ auto GLRenderer::GetScene(const std::string &name) -> Scene * {
 auto GLRenderer::GetShader(const MaterialType type) -> GLShader * {
   switch (type) {
   case MaterialType::Lit:
-  case MaterialType::LitSkinned:
     return resourceManager.GetAny<GLLitShader>();
   default:
     return resourceManager.GetAny<GLUnlitShader>();
@@ -107,7 +118,6 @@ auto GLRenderer::GetShader(const MaterialType type) -> GLShader * {
 auto GLRenderer::GetShader(const std::string &name, const MaterialType type) -> GLShader * {
   switch (type) {
   case MaterialType::Lit:
-  case MaterialType::LitSkinned:
     return resourceManager.GetComponent<GLLitShader>(name);
   default:
     return resourceManager.GetComponent<GLUnlitShader>(name);
@@ -177,9 +187,9 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
     *material = *resourceManager.GetComponent<GLMaterial>(materialHandle->resourceId);
   });
 }
-auto GLRenderer::PreviewAsset(const AssetID id) -> EntityID {
+auto GLRenderer::PreviewAsset(const AssetID id) -> GLTexture * {
   if (!assetManager.IsRegistered(id))
-    return EntityID::Invalid;
+    return nullptr;
   LoadAsset(id);
   auto asset = assetManager.Get(id);
   if (asset->Is<MeshAsset>())
@@ -188,7 +198,7 @@ auto GLRenderer::PreviewAsset(const AssetID id) -> EntityID {
     return PreviewAsset<SceneAsset>(*asset->As<SceneAsset>());
   else if (asset->Is<SkyboxAsset>())
     return PreviewAsset<SkyboxAsset>(*asset->As<SkyboxAsset>());
-  return EntityID::Invalid;
+  return nullptr;
 }
 auto GLRenderer::Reset() -> void {
   glClearColor(0.f, 0.f, 0.f, 0.f);
@@ -334,16 +344,13 @@ auto GLRenderer::LoadSceneMaterial(SceneAsset &sceneAsset, const size_t material
   sceneMaterial.resourceId = resourceId;
   auto material = resourceManager.AddComponent<GLMaterial>(resourceId);
   material->fallback = sceneMaterial.fallback;
+  material->type = sceneMaterial.type;
   for (auto i = 0; i < sceneMaterial.textures.size(); ++i) {
     const auto textureIndex = sceneMaterial.textures[i];
     const auto texture = LoadSceneTexture(sceneAsset, textureIndex);
     if (!texture)
       continue;
     switch (texture->content) {
-    case TextureContent::Albedo:
-      material->textures.albedo = texture->id;
-      material->fallback.textureMask.set(static_cast<int>(TextureContent::Albedo));
-      break;
     case TextureContent::Emissive:
       material->textures.emissive = texture->id;
       material->fallback.textureMask.set(static_cast<int>(TextureContent::Emissive));
@@ -369,9 +376,12 @@ auto GLRenderer::LoadSceneMaterial(SceneAsset &sceneAsset, const size_t material
       material->fallback.textureMask.set(static_cast<int>(TextureContent::Specular));
       break;
     default:
+      material->textures.albedo = texture->id;
+      material->fallback.textureMask.set(static_cast<int>(TextureContent::Albedo));
       break;
     }
   }
+  spdlog::info("[OpenGL] loaded material: {}", sceneMaterial.name);
   return resourceId;
 }
 auto GLRenderer::LoadSceneMesh(SceneAsset &sceneAsset, const size_t meshIndex) -> EntityID {
@@ -386,6 +396,7 @@ auto GLRenderer::LoadSceneMesh(SceneAsset &sceneAsset, const size_t meshIndex) -
   LoadMesh(*glMesh, sceneMesh.mesh);
   const auto materialIndex = sceneMesh.material;
   LoadSceneMaterial(sceneAsset, materialIndex);
+  spdlog::info("[OpenGL] loaded mesh: {}", sceneMesh.name);
   return resourceId;
 }
 auto GLRenderer::LoadSceneTexture(SceneAsset &sceneAsset, const size_t textureIndex) -> GLTexture * {
@@ -398,6 +409,7 @@ auto GLRenderer::LoadSceneTexture(SceneAsset &sceneAsset, const size_t textureIn
   sceneTexture.resourceId = resourceId;
   auto glTexture = resourceManager.AddComponent<GLTexture>(resourceId);
   LoadTexture(*glTexture, sceneTexture.texture);
+  spdlog::info("[OpenGL] loaded texture: {}", sceneTexture.name);
   return glTexture;
 }
 auto GLRenderer::GLFormatToTarget(const unsigned int format) -> TargetFormat {
