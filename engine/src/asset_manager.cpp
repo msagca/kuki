@@ -315,6 +315,7 @@ auto AssetManager::LoadNode(std::unordered_map<std::string, unsigned int> &visit
   for (auto i = 0; i < aiNode.mNumMeshes; ++i) {
     const auto meshId = aiNode.mMeshes[i];
     const auto aiMesh = aiScene.mMeshes[meshId];
+    // TODO: keep track of loaded meshes and reuse the indices
     const auto meshIndex = LoadMesh(*aiMesh, scene, scene.nodes[index].bounds, index);
     scene.nodes[index].meshes.push_back(meshIndex);
     auto &mesh = scene.meshes.back();
@@ -329,14 +330,12 @@ auto AssetManager::LoadNode(std::unordered_map<std::string, unsigned int> &visit
     const auto childIndex = LoadNode(visited, *aiNode.mChildren[i], aiScene, scene, path, index);
     scene.nodes[index].children.push_back(childIndex);
     const auto &childNode = scene.nodes[childIndex];
-    auto &curNode = scene.nodes[index];
-    curNode.bounds.min = glm::min(curNode.bounds.min, childNode.bounds.min);
-    curNode.bounds.max = glm::max(curNode.bounds.max, childNode.bounds.max);
+    auto &node = scene.nodes[index];
+    node.bounds.min = glm::min(node.bounds.min, childNode.bounds.min);
+    node.bounds.max = glm::max(node.bounds.max, childNode.bounds.max);
   }
   if (aiNode.mNumMeshes == 0 && aiNode.mNumChildren == 0)
     scene.nodes[index].bounds = {.min = glm::vec3(.0f), .max = glm::vec3(.0f)};
-  else if (parent >= 0)
-    scene.nodes[index].bounds = scene.nodes[index].bounds.GetWorldBounds(scene.nodes[parent].transform * scene.nodes[index].transform);
   return index;
 }
 auto AssetManager::LoadTexture(std::unordered_map<std::string, unsigned int> &visited, const aiMaterial &aiMaterial, const aiTextureType aiTextureType, SceneMaterial &material, SceneAsset &scene, const std::filesystem::path &path) -> void {

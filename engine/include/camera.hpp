@@ -19,7 +19,6 @@ struct KUKI_ENGINE_API Camera {
   glm::vec3 forward{.0f, .0f, -1.f};
   glm::vec3 up{.0f, 1.f, .0f};
   glm::vec3 right{1.f, .0f, .0f};
-  /// @brief Local transform matrix of the camera
   glm::mat4 local{1.f};
   CameraTransform transform;
   mutable GenCount dirty{};
@@ -29,10 +28,7 @@ struct KUKI_ENGINE_API Camera {
   float nearPlane{.1f};
   float farPlane{100.f};
   float orthoSize{2.f};
-  /// @brief Position the camera to fully capture the given subject
-  /// @param bounds `BoundingBox` of the subject's mesh
-  /// @param distanceFactor Zoom out amount in `float`
-  auto Frame(const BoundingBox &, float = 1.1f) -> void;
+  auto Frame(const BoundingBox &, glm::vec3 = {0.f, 0.f, 0.f}, glm::vec3 = {.26f, .52f, 0.f}, float = 1.1f) -> void;
   auto GetTransform() const -> Transform;
   auto IntersectsFrustum(const BoundingBox &) const -> bool;
   auto SetTransform(const Transform &) -> void;

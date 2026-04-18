@@ -109,6 +109,8 @@ auto EntityManager::GetComponent(this auto &self, const EntityID id, const Compo
   switch (type) {
   case ComponentType::BoneData:
     return self.template GetComponent<BoneData>(id);
+  case ComponentType::BoundingBox:
+    return self.template GetComponent<BoundingBox>(id);
   case ComponentType::Camera:
     return self.template GetComponent<Camera>(id);
   case ComponentType::GLBuffer:

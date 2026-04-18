@@ -3,6 +3,7 @@
 namespace kuki {
 enum class ComponentType : uint8_t {
   BoneData,
+  BoundingBox,
   Camera,
   GLBuffer,
   GLComputeShader,

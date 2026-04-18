@@ -31,6 +31,6 @@ auto GLMaterial::operator==(const GLMaterial &other) const -> bool {
       return false;
     return true;
   };
-  return SameTexture(textures.albedo, other.textures.albedo, TextureContent::Albedo) && SameTexture(textures.normal, other.textures.normal, TextureContent::Normal) && SameTexture(textures.metalness, other.textures.metalness, TextureContent::Metalness) && SameTexture(textures.occlusion, other.textures.occlusion, TextureContent::Occlusion) && SameTexture(textures.roughness, other.textures.roughness, TextureContent::Roughness) && SameTexture(textures.specular, other.textures.specular, TextureContent::Specular) && SameTexture(textures.emissive, other.textures.emissive, TextureContent::Emissive);
+  return type == other.type && SameTexture(textures.albedo, other.textures.albedo, TextureContent::Albedo) && SameTexture(textures.normal, other.textures.normal, TextureContent::Normal) && SameTexture(textures.metalness, other.textures.metalness, TextureContent::Metalness) && SameTexture(textures.occlusion, other.textures.occlusion, TextureContent::Occlusion) && SameTexture(textures.roughness, other.textures.roughness, TextureContent::Roughness) && SameTexture(textures.specular, other.textures.specular, TextureContent::Specular) && SameTexture(textures.emissive, other.textures.emissive, TextureContent::Emissive);
 }
 } // namespace kuki

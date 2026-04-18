@@ -3,7 +3,6 @@
 #include <gl_skybox.hpp>
 namespace kuki {
 struct KUKI_ENGINE_API GLLitShader final : public GLShader {
-  auto Draw(const GLMesh &) -> void override;
   auto SetCamera(const Camera &, const unsigned int) -> void override;
   auto SetLighting() -> void override;
   auto SetLighting(const Light &) -> void override;

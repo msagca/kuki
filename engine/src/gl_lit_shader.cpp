@@ -2,9 +2,6 @@
 #include <gl_skybox.hpp>
 #include <glad/glad.h>
 namespace kuki {
-auto GLLitShader::Draw(const GLMesh &mesh) -> void {
-  DrawInstanced(mesh, 1);
-}
 auto GLLitShader::SetCamera(const Camera &camera, const unsigned int ubo) -> void {
   GLShader::SetCamera(camera, ubo);
   SetUniform("viewPos", camera.position);

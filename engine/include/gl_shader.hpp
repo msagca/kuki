@@ -16,13 +16,12 @@ class KUKI_ENGINE_API GLShader : public GLShaderBase {
 public:
   virtual ~GLShader() = default;
   MaterialType type{MaterialType::Unlit};
-  auto DrawInstanced(const GLMesh &, const unsigned int) -> void;
+  auto Draw(const GLMesh &, const unsigned int = 1) -> void;
   auto SetBoneTransforms(const BoneData &) -> void;
   auto SetMaterial(const GLMaterial &) const -> void;
   auto SetMaterialFallback(const GLMesh &, const MaterialFallback &, const unsigned int) -> void;
   auto SetTransform(const GLMesh &, const glm::mat4 &, const unsigned int) -> void;
   auto SetTransform(const GLMesh &, std::span<const glm::mat4>, const unsigned int) -> void;
-  virtual auto Draw(const GLMesh &) -> void;
   virtual auto SetCamera(const Camera &, const unsigned int) -> void;
   virtual auto SetLighting() -> void;
   virtual auto SetLighting(const Light &) -> void;

@@ -39,6 +39,7 @@ public:
   auto ActivateScene(const std::string &) -> bool;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
   auto AddEntityComponent(const EntityID, const ComponentType) -> void;
+  auto AlignView(const EntityID) -> void;
   auto CreateEntity(std::string = "") -> EntityID;
   auto CreateScene(std::string = "") -> SceneID;
   auto DeleteEntities() -> void;

@@ -299,6 +299,8 @@ inline auto AssetManager::CreatePrefab<MeshAsset>(const AssetID assetId) -> Enti
     const auto name = GetName(assetId);
     const auto prefabId = prefabManager.Create(name);
     prefabManager.AddComponent<Transform>(prefabId);
+    auto bounds = prefabManager.AddComponent<BoundingBox>(prefabId);
+    *bounds = meshAsset->bounds;
     auto meshHandle = prefabManager.AddComponent<MeshHandle>(prefabId);
     meshHandle->assetId = assetId;
     auto materialHandle = prefabManager.AddComponent<MaterialHandle>(prefabId);

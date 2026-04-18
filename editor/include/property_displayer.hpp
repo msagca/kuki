@@ -317,6 +317,13 @@ inline auto PropertyDisplayer::operator()<kuki::SkyboxHandle>(kuki::SkyboxHandle
   ImGui::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
+inline auto PropertyDisplayer::operator()<kuki::TextureHandle>(kuki::TextureHandle *handle) -> void {
+  if (!handle)
+    return;
+  auto assetId = handle->assetId;
+  ImGui::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+}
+template <>
 inline auto PropertyDisplayer::operator()<kuki::Transform>(kuki::Transform *transform) -> void {
   if (!transform)
     return;
@@ -360,11 +367,4 @@ inline auto PropertyDisplayer::operator()<kuki::Transform>(kuki::Transform *tran
     ImGui::Checkbox("Uniform", &uniformMode);
   }
   transform->dirty |= dirty;
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::TextureHandle>(kuki::TextureHandle *handle) -> void {
-  if (!handle)
-    return;
-  auto assetId = handle->assetId;
-  ImGui::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }

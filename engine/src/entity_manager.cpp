@@ -42,6 +42,9 @@ auto EntityManager::AddComponent(const EntityID id, const ComponentType type) ->
   case ComponentType::BoneData:
     AddComponent<BoneData>(id);
     break;
+  case ComponentType::BoundingBox:
+    AddComponent<BoundingBox>(id);
+    break;
   case ComponentType::Camera:
     AddComponent<Camera>(id);
     break;
@@ -231,6 +234,8 @@ auto EntityManager::RemoveComponent(const EntityID id, const ComponentType type)
   switch (type) {
   case ComponentType::BoneData:
     return RemoveComponent<BoneData>(id);
+  case ComponentType::BoundingBox:
+    return RemoveComponent<BoundingBox>(id);
   case ComponentType::Camera:
     return RemoveComponent<Camera>(id);
   case ComponentType::GLBuffer:

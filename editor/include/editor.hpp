@@ -24,9 +24,10 @@ enum class KeyBit : uint8_t {
   Escape,
   F,
   Shift,
-  Space
+  Space,
+  V
 };
-using KeyMask = std::bitset<static_cast<uint8_t>(KeyBit::Space) + 1>;
+using KeyMask = std::bitset<static_cast<uint8_t>(KeyBit::V) + 1>;
 struct EditorContext {
   AssetID selectedAssetID{};
   AssetType selectedAssetType{AssetType::Texture};

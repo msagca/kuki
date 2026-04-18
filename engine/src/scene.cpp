@@ -1,4 +1,5 @@
 #include <asset_manager.hpp>
+#include <bounding_box.hpp>
 #include <camera.hpp>
 #include <component.hpp>
 #include <entity_manager.hpp>
@@ -9,6 +10,18 @@
 namespace kuki {
 Scene::Scene(const SceneID id)
   : id(id) {}
+auto Scene::AlignView(const EntityID id) -> void {
+  constexpr auto ORIENTATION = glm::vec3{0.f};
+  constexpr auto DISTANCE_FACTOR = 2.f;
+  auto camera = GetActiveCamera();
+  if (!camera)
+    return;
+  const auto [bounds, transform] = entityManager.GetComponent<BoundingBox, Transform>(id);
+  if (!bounds || !transform)
+    return;
+  // TODO: update the bounds when an entity's transform changes
+  camera->Frame(bounds->GetWorldBounds(transform->world), transform->position, ORIENTATION, DISTANCE_FACTOR);
+}
 auto Scene::AddChildEntity(const EntityID parent, const EntityID child) -> bool {
   return entityManager.AddChild(parent, child);
 }

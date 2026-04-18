@@ -479,7 +479,7 @@ auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, const GLMesh &me
   shader->SetMaterial(material);
   shader->SetMaterialFallback(mesh, fallbacks, materialBuffer->id);
   shader->SetTransform(mesh, transforms, transformBuffer->id);
-  shader->DrawInstanced(mesh, transforms.size());
+  shader->Draw(mesh, transforms.size());
 }
 auto RenderingSystem::DrawSkybox(Renderer &renderer) -> void {
   auto glRenderer = renderer.As<GLRenderer>();

@@ -35,6 +35,7 @@ struct hash<kuki::GLMaterial> {
     kuki::hash_combine(h, hash<int>{}(material.textures.specular));
     kuki::hash_combine(h, hash<int>{}(material.textures.emissive));
     kuki::hash_combine(h, hash<size_t>{}(material.fallback.textureMask.to_ullong()));
+    kuki::hash_combine(h, hash<int>{}(static_cast<int>(material.type)));
     return h;
   }
 };

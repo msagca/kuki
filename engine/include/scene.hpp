@@ -12,6 +12,7 @@ class KUKI_ENGINE_API Scene {
 public:
   Scene(const SceneID);
   const SceneID id;
+  auto AlignView(const EntityID) -> void;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
   auto AddEntityComponent(const EntityID, const ComponentType) -> void;
   auto CopyEntityFrom(const EntityManager &, const EntityID) -> EntityID;

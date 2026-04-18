@@ -153,6 +153,12 @@ auto Application::AddEntityComponent(const EntityID id, const ComponentType type
   if (auto scene = GetActiveScene(); scene)
     return scene->AddEntityComponent(id, type);
 }
+auto Application::AlignView(const EntityID id) -> void {
+  auto scene = sceneManager.GetActive();
+  if (!scene)
+    return;
+  scene->AlignView(id);
+}
 auto Application::CreateEntity(std::string name) -> EntityID {
   if (auto scene = GetActiveScene(); scene)
     return scene->CreateEntity(std::move(name));

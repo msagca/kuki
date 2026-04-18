@@ -1,9 +1,6 @@
 #include <gl_unlit_shader.hpp>
 #include <glad/glad.h>
 namespace kuki {
-auto GLUnlitShader::Draw(const GLMesh &mesh) -> void {
-  DrawInstanced(mesh, 1);
-}
 auto GLUnlitShader::SetMaterialFallback(const GLMesh &mesh, std::span<const MaterialFallback> fallbacks, const unsigned int buffer) -> void {
   const auto bindingIndex = 2;
   auto attribIndex = 8;

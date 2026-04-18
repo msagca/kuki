@@ -195,12 +195,14 @@ auto Editor::UpdateIO() -> void {
   context.pressState.set(static_cast<uint8_t>(KeyBit::Escape), ImGui::IsKeyPressed(ImGuiKey_Escape));
   context.pressState.set(static_cast<uint8_t>(KeyBit::F), ImGui::IsKeyPressed(ImGuiKey_F));
   context.pressState.set(static_cast<uint8_t>(KeyBit::Space), ImGui::IsKeyPressed(ImGuiKey_Space));
+  context.pressState.set(static_cast<uint8_t>(KeyBit::V), ImGui::IsKeyPressed(ImGuiKey_V));
   context.releaseState.set(static_cast<uint8_t>(KeyBit::Backspace), ImGui::IsKeyReleased(ImGuiKey_Backspace));
   context.releaseState.set(static_cast<uint8_t>(KeyBit::Delete), ImGui::IsKeyReleased(ImGuiKey_Delete));
   context.releaseState.set(static_cast<uint8_t>(KeyBit::Enter), ImGui::IsKeyReleased(ImGuiKey_Enter));
   context.releaseState.set(static_cast<uint8_t>(KeyBit::Escape), ImGui::IsKeyReleased(ImGuiKey_Escape));
-  context.releaseState.set(static_cast<uint8_t>(KeyBit::F), ImGui::IsKeyPressed(ImGuiKey_F));
+  context.releaseState.set(static_cast<uint8_t>(KeyBit::F), ImGui::IsKeyReleased(ImGuiKey_F));
   context.releaseState.set(static_cast<uint8_t>(KeyBit::Space), ImGui::IsKeyReleased(ImGuiKey_Space));
+  context.releaseState.set(static_cast<uint8_t>(KeyBit::V), ImGui::IsKeyReleased(ImGuiKey_V));
 }
 auto Editor::UpdateView() -> void {
   ImGui_ImplOpenGL3_NewFrame();
@@ -384,13 +386,13 @@ auto Editor::DisplayHierarchy() -> void {
   const auto escapePressed = context.pressState.test(static_cast<uint8_t>(KeyBit::Escape));
   const auto clearSelection = (windowHovered && !itemsHovered) && (clicked || backspacePressed || deletePressed || escapePressed);
   if (context.state == EditorState::Normal) {
+    if (deletePressed)
+      for (const auto &entityId : context.selectedEntities)
+        DeleteEntity(entityId);
     if (clearSelection) {
       context.selectedEntities.clear();
       context.selectedEntityID = EntityID::Invalid;
     }
-    if (deletePressed)
-      for (const auto &entityId : context.selectedEntities)
-        DeleteEntity(entityId);
   }
   displayedEntities.clear();
   ForEachRootEntity([this](const EntityID id) {
@@ -416,11 +418,9 @@ auto Editor::DisplayProperties() -> void {
   auto componentTypes = GetEntityComponentTypes(context.selectedEntityID);
   for (auto i = 0; i < componentTypes.size(); ++i) {
     const auto componentType = componentTypes[i];
-    const auto isSelected = context.selectedComponentType == componentType;
     ImGui::PushID(static_cast<int>(i));
     const auto name = Component::GetTypeName(componentType);
-    if (ImGui::Selectable(name.c_str(), isSelected))
-      context.selectedComponentType = componentType;
+    ImGui::Selectable(name.c_str());
     auto removed = false;
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove")) {
@@ -460,8 +460,13 @@ auto Editor::DisplayScene() -> void {
   static constexpr ImVec2 UV1(1.f, 0.f);
   ImGui::Begin("Scene", nullptr, SCENE_WINDOW_FLAGS);
   const auto fPressed = context.pressState.test(static_cast<uint8_t>(KeyBit::F));
-  if (context.state == EditorState::Normal && fPressed)
-    context.showFPS = !context.showFPS;
+  const auto vPressed = context.pressState.test(static_cast<uint8_t>(KeyBit::V));
+  if (context.state == EditorState::Normal) {
+    if (vPressed)
+      AlignView(context.selectedEntityID);
+    if (fPressed)
+      context.showFPS = !context.showFPS;
+  }
   auto renderingSystem = GetSystem<RenderingSystem>();
   if (renderingSystem) {
     const auto sceneTarget = static_cast<GLRenderTarget *>(renderingSystem->GetTarget());

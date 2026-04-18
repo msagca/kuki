@@ -16,10 +16,9 @@ template <typename T>
 auto ComponentCloner::operator()(const T *other) -> void {
   if (!entityId || !other)
     return;
-  if constexpr (std::is_same_v<Script, T>) {
-    auto otherScript = other->template As<Script>();
-    otherScript->CloneTo(entityManager, entityId);
-  } else {
+  if constexpr (std::is_base_of_v<Script, T>)
+    other->CloneTo(entityManager, entityId);
+  else {
     auto component = entityManager.AddComponent<T>(entityId);
     *component = *other;
   }

@@ -98,8 +98,8 @@ private:
   TexturePool texturePool;
   static auto CreateIndexBuffer(GLMesh &, const std::vector<unsigned int> &) -> void;
   static auto CreateVertexBuffer(GLMesh &, const std::vector<Vertex> &, bool = false) -> void;
-  auto LoadMesh(GLMesh &, const Mesh &) -> void;
-  auto LoadTexture(GLTexture &, const Texture &) -> void;
+  auto LoadMesh(GLMesh &, Mesh &) -> void;
+  auto LoadTexture(GLTexture &, Texture &) -> void;
   auto LoadSceneMaterial(SceneAsset &, size_t) -> EntityID;
   auto LoadSceneMesh(SceneAsset &, const size_t) -> EntityID;
   auto LoadSceneTexture(SceneAsset &, size_t) -> GLTexture *;

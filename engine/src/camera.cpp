@@ -14,18 +14,14 @@
 #include <glm/gtx/quaternion.hpp>
 #include <transform.hpp>
 namespace kuki {
-auto Camera::Frame(const BoundingBox &bounds, float distanceFactor) -> void {
-  const auto center = (bounds.min + bounds.max) * .5f;
+auto Camera::Frame(const BoundingBox &bounds, glm::vec3 center, glm::vec3 angle, float distanceFactor) -> void {
   const auto dimensions = bounds.max - bounds.min;
   const auto radius = glm::length(dimensions) * .5f;
   const auto fovVertical = glm::radians(fov);
   const float fovHorizontal = 2.f * atan(tan(fovVertical * .5f) * aspectRatio);
   const auto fovMin = glm::min(fovVertical, fovHorizontal);
   const float distance = (radius / tan(fovMin * .5f)) * distanceFactor;
-  auto pitch = glm::radians(-15.f);
-  auto yaw = glm::radians(30.f);
-  // capture the scene from an angle
-  rotation = glm::yawPitchRoll(yaw, pitch, 0.f);
+  rotation = glm::quat(angle);
   UpdateBasis();
   position = center - forward * distance;
   if (distance + radius > farPlane)

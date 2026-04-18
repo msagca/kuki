@@ -164,8 +164,14 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
     if (!materialHandle->resourceId)
       materialHandle->resourceId = LoadSceneMaterial(*sceneAsset, materialHandle->materialIndex);
     auto [mesh, material] = scene.AddEntityComponent<GLMesh, GLMaterial>(id);
-    *mesh = *resourceManager.GetComponent<GLMesh>(meshHandle->resourceId);
-    *material = *resourceManager.GetComponent<GLMaterial>(materialHandle->resourceId);
+    if (!mesh || !material)
+      return;
+    auto mesh_ = resourceManager.GetComponent<GLMesh>(meshHandle->resourceId);
+    auto material_ = resourceManager.GetComponent<GLMaterial>(materialHandle->resourceId);
+    if (!mesh_ || !material_)
+      return;
+    *mesh = *mesh_;
+    *material = *material_;
   });
   scene.ForEachEntity<MeshHandle, MaterialHandle>([&](const EntityID id, MeshHandle *meshHandle, MaterialHandle *materialHandle) {
     if (meshHandle->resourceId && materialHandle->resourceId)
@@ -183,8 +189,14 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
       materialHandle->resourceId = materialAsset->resourceId;
     }
     auto [mesh, material] = scene.AddEntityComponent<GLMesh, GLMaterial>(id);
-    *mesh = *resourceManager.GetComponent<GLMesh>(meshHandle->resourceId);
-    *material = *resourceManager.GetComponent<GLMaterial>(materialHandle->resourceId);
+    if (!mesh || !material)
+      return;
+    auto mesh_ = resourceManager.GetComponent<GLMesh>(meshHandle->resourceId);
+    auto material_ = resourceManager.GetComponent<GLMaterial>(materialHandle->resourceId);
+    if (!mesh_ || !material_)
+      return;
+    *mesh = *mesh_;
+    *material = *material_;
   });
 }
 auto GLRenderer::PreviewAsset(const AssetID id) -> GLTexture * {
@@ -263,12 +275,14 @@ auto GLRenderer::CreateVertexBuffer(GLMesh &mesh, const std::vector<Vertex> &ver
     glEnableVertexArrayAttrib(mesh.vao, attribIndex);
   }
 }
-auto GLRenderer::LoadMesh(GLMesh &glMesh, const Mesh &mesh) -> void {
+auto GLRenderer::LoadMesh(GLMesh &glMesh, Mesh &mesh) -> void {
   CreateVertexBuffer(glMesh, mesh.vertices);
   if (mesh.indices.size() > 0)
     CreateIndexBuffer(glMesh, mesh.indices);
+  mesh.vertices = {};
+  mesh.indices = {};
 }
-auto GLRenderer::LoadTexture(GLTexture &glTexture, const Texture &texture) -> void {
+auto GLRenderer::LoadTexture(GLTexture &glTexture, Texture &texture) -> void {
   glTexture.desc.width = texture.width;
   glTexture.desc.height = texture.height;
   glTexture.content = texture.content;
@@ -333,6 +347,7 @@ auto GLRenderer::LoadTexture(GLTexture &glTexture, const Texture &texture) -> vo
     glGenerateTextureMipmap(glTexture.id);
     break;
   }
+  texture.data = {};
 }
 auto GLRenderer::LoadSceneMaterial(SceneAsset &sceneAsset, const size_t materialIndex) -> EntityID {
   if (materialIndex >= sceneAsset.materials.size())

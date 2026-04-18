@@ -21,6 +21,7 @@
 namespace kuki {
 const std::unordered_map<std::type_index, ComponentType> Component::indexToType = {
   {typeid(BoneData), ComponentType::BoneData},
+  {typeid(BoundingBox), ComponentType::BoundingBox},
   {typeid(Camera), ComponentType::Camera},
   {typeid(GLBuffer), ComponentType::GLBuffer},
   {typeid(GLComputeShader), ComponentType::GLComputeShader},
@@ -42,6 +43,7 @@ const std::unordered_map<std::type_index, ComponentType> Component::indexToType 
   {typeid(Transform), ComponentType::Transform}};
 const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex = {
   {ComponentType::BoneData, typeid(BoneData)},
+  {ComponentType::BoundingBox, typeid(BoundingBox)},
   {ComponentType::Camera, typeid(Camera)},
   {ComponentType::GLBuffer, typeid(GLBuffer)},
   {ComponentType::GLComputeShader, typeid(GLComputeShader)},
@@ -63,6 +65,7 @@ const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex 
   {ComponentType::Transform, typeid(Transform)}};
 const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::BoneData, "BoneData"},
+  {ComponentType::BoundingBox, "BoundingBox"},
   {ComponentType::Camera, "Camera"},
   {ComponentType::GLBuffer, "GLBuffer"},
   {ComponentType::GLComputeShader, "GLComputeShader"},

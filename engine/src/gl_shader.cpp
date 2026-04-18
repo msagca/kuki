@@ -5,14 +5,21 @@
 //
 #include <glad/glad.h>
 namespace kuki {
-auto GLShader::DrawInstanced(const GLMesh &mesh, const unsigned int count) -> void {
+auto GLShader::Draw(const GLMesh &mesh, const unsigned int count) -> void {
   if (count == 0)
     return;
   glBindVertexArray(mesh.vao);
-  if (mesh.indexCount > 0)
-    glDrawElementsInstanced(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0, count);
-  else
-    glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, count);
+  if (count == 1) {
+    if (mesh.indexCount > 0)
+      glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);
+    else
+      glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
+  } else {
+    if (mesh.indexCount > 0)
+      glDrawElementsInstanced(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0, count);
+    else
+      glDrawArraysInstanced(GL_TRIANGLES, 0, mesh.vertexCount, count);
+  }
   glBindVertexArray(0);
 }
 auto GLShader::SetBoneTransforms(const BoneData &boneData) -> void {}
@@ -44,14 +51,6 @@ auto GLShader::SetTransform(const GLMesh &mesh, std::span<const glm::mat4> trans
     glEnableVertexArrayAttrib(mesh.vao, attribIndex);
     ++attribIndex;
   }
-}
-auto GLShader::Draw(const GLMesh &mesh) -> void {
-  glBindVertexArray(mesh.vao);
-  if (mesh.indexCount > 0)
-    glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, 0);
-  else
-    glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
-  glBindVertexArray(0);
 }
 auto GLShader::SetCamera(const Camera &camera, const unsigned int buffer) -> void {
   if (camera.dirty == cameraDirty)
