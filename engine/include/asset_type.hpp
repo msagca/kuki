@@ -7,7 +7,6 @@ enum class AssetType : uint8_t {
   Mesh,
   Scene,
   Shader,
-  Skybox,
   Texture
 };
 using AssetMask = std::bitset<static_cast<uint8_t>(AssetType::Texture) + 1>;

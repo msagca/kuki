@@ -40,11 +40,6 @@ private:
   static auto ApplyBlurEffect(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
   static auto ApplyBrightPassFilter(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
   static auto ApplyGammaCorrection(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
-  static auto ConvertCubemapToEquirectangularMap(Renderer &, const std::string &, const std::string &, const TargetDescription &) -> void;
-  static auto ConvertEquirectangularMapToCubemap(Renderer &, const std::string &, const std::string &, const TargetDescription &) -> void;
-  static auto CreateBRDF_LUT(Renderer &, const std::string &, const TargetDescription &) -> void;
-  static auto CreateIrradianceMap(Renderer &, const std::string &, const std::string &, const TargetDescription &) -> void;
-  static auto CreatePrefilterMap(Renderer &, const std::string &, const std::string &, const TargetDescription &) -> void;
   static auto RenderScene(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
   static auto DrawEntities(Renderer &) -> void;
   static auto DrawEntitiesInstanced(Renderer &, const GLMesh &, const GLMaterial &, const std::vector<MaterialFallback> &, const std::vector<glm::mat4> &) -> void;

@@ -9,6 +9,7 @@ enum class TextureContent : uint8_t {
   Normal,
   Occlusion,
   Roughness,
+  Skybox,
   Specular
 };
 using TextureMask = std::bitset<static_cast<uint8_t>(TextureContent::Specular) + 1>;

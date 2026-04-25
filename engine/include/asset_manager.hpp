@@ -6,6 +6,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <bounding_box.hpp>
+#include <color.hpp>
 #include <concepts.hpp>
 #include <entity_manager.hpp>
 #include <filesystem>
@@ -20,7 +21,6 @@
 #include <scene.hpp>
 #include <scene_asset.hpp>
 #include <shader_asset.hpp>
-#include <skybox_asset.hpp>
 #include <skybox_handle.hpp>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
@@ -61,6 +61,10 @@ public:
   auto Get(this auto &self, const AssetID) -> ConstCorrectPointer<decltype(self), T>;
   template <IsAsset T>
   auto Get(this auto &self, const std::string &) -> ConstCorrectPointer<decltype(self), T>;
+  template <typename... T>
+  auto GetComponent(this auto &self, const AssetID) -> decltype(auto);
+  template <typename... T>
+  auto GetComponent(this auto &self, const EntityID) -> decltype(auto);
   template <IsAsset T>
   auto Load(const std::filesystem::path &, std::string = "") -> AssetID;
   template <IsAsset T>
@@ -232,6 +236,15 @@ auto AssetManager::Get(this auto &self, const std::string &name) -> ConstCorrect
         return self.template Get<T>(id);
   return nullptr;
 }
+template <typename... T>
+auto AssetManager::GetComponent(this auto &self, const AssetID assetId) -> decltype(auto) {
+  const auto prefabId = self.GetPrefabID(assetId);
+  return self.prefabManager.template GetComponent<T...>(prefabId);
+}
+template <typename... T>
+auto AssetManager::GetComponent(this auto &self, const EntityID id) -> decltype(auto) {
+  return self.prefabManager.template GetComponent<T...>(id);
+}
 template <IsAsset T>
 auto AssetManager::Load(const std::filesystem::path &path, std::string name) -> AssetID {
   const auto id = Register<T>(path, name);
@@ -317,17 +330,6 @@ inline auto AssetManager::CreatePrefab<SceneAsset>(const AssetID assetId) -> Ent
   return EntityID::Invalid;
 }
 template <>
-inline auto AssetManager::CreatePrefab<SkyboxAsset>(const AssetID assetId) -> EntityID {
-  if (auto skyboxAsset = Get<SkyboxAsset>(assetId); skyboxAsset) {
-    const auto name = GetName(assetId);
-    const auto prefabId = prefabManager.Create(name);
-    auto skyboxHandle = prefabManager.AddComponent<SkyboxHandle>(prefabId);
-    skyboxHandle->assetId = assetId;
-    return prefabId;
-  }
-  return EntityID::Invalid;
-}
-template <>
 inline auto AssetManager::CreatePrefab<TextureAsset>(const AssetID assetId) -> EntityID {
   if (auto textureAsset = Get<TextureAsset>(assetId); textureAsset) {
     const auto name = GetName(assetId);
@@ -380,33 +382,56 @@ inline auto AssetManager::Load<ShaderAsset>(const AssetID id, const std::filesys
   return shader;
 }
 template <>
-inline auto AssetManager::Load<SkyboxAsset>(const AssetID id, const std::filesystem::path &path, std::string name) -> std::unique_ptr<Asset> {
+inline auto AssetManager::Load<TextureAsset>(const AssetID id, const std::filesystem::path &path, std::string name) -> std::unique_ptr<Asset> {
+  // TODO: try to make this more concise
   const auto pathNormStr = path.lexically_normal().string();
-  auto skybox = std::make_unique<SkyboxAsset>(id, std::move(name));
+  auto textureAsset = std::make_unique<TextureAsset>(id, std::move(name));
   const auto ext = path.extension().string();
   if (ext == ".exr") {
     float *data = nullptr;
     const char *errMsg = nullptr;
-    auto result = LoadEXR(&data, &skybox->width, &skybox->height, pathNormStr.c_str(), &errMsg);
+    auto result = LoadEXR(&data, &textureAsset->texture.width, &textureAsset->texture.height, pathNormStr.c_str(), &errMsg);
     if (result != TINYEXR_SUCCESS) {
       if (errMsg) {
         spdlog::error("[AssetManager] {}", errMsg);
         FreeEXRErrorMessage(errMsg);
       } else
-        spdlog::error("[AssetManager] failed to load image: {}", pathNormStr);
+        spdlog::error("[AssetManager] failed to load texture: {}", pathNormStr);
     } else if (data) {
-      skybox->channels = 4;
-      const auto size = skybox->width * skybox->height * skybox->channels;
-      skybox->data.assign(data, data + size);
+      textureAsset->texture.channels = 4;
+      const auto size = textureAsset->texture.width * textureAsset->texture.height * textureAsset->texture.channels;
+      textureAsset->texture.data = std::vector<float>();
+      if (auto textureData = std::get_if<std::vector<float>>(&textureAsset->texture.data))
+        textureData->assign(data, data + size);
+      textureAsset->texture.range = ColorRange::HDR;
+      textureAsset->texture.content = TextureContent::Skybox;
       free(data);
-      spdlog::info("[AssetManager] loaded skybox: {}", pathNormStr);
+      spdlog::info("[AssetManager] loaded texture: {}", pathNormStr);
     }
-  } else if (auto data = stbi_loadf(path.string().c_str(), &skybox->width, &skybox->height, &skybox->channels, 0); data) {
-    const auto size = skybox->width * skybox->height * skybox->channels;
-    skybox->data.assign(data, data + size);
-    stbi_image_free(data);
-    spdlog::info("[AssetManager] loaded skybox: {}", pathNormStr);
+  } else if (ext == ".hdr") {
+    if (auto data = stbi_loadf(path.string().c_str(), &textureAsset->texture.width, &textureAsset->texture.height, &textureAsset->texture.channels, 0); data) {
+      const auto size = textureAsset->texture.width * textureAsset->texture.height * textureAsset->texture.channels;
+      textureAsset->texture.data = std::vector<float>();
+      if (auto textureData = std::get_if<std::vector<float>>(&textureAsset->texture.data))
+        textureData->assign(data, data + size);
+      textureAsset->texture.range = ColorRange::HDR;
+      textureAsset->texture.content = TextureContent::Skybox;
+      stbi_image_free(data);
+      spdlog::info("[AssetManager] loaded texture: {}", pathNormStr);
+    } else
+      spdlog::error("[AssetManager] failed to load texture: {}", pathNormStr);
+  } else {
+    if (auto data = stbi_load(path.string().c_str(), &textureAsset->texture.width, &textureAsset->texture.height, &textureAsset->texture.channels, 0); data) {
+      const auto size = textureAsset->texture.width * textureAsset->texture.height * textureAsset->texture.channels;
+      textureAsset->texture.data = std::vector<unsigned char>();
+      if (auto textureData = std::get_if<std::vector<unsigned char>>(&textureAsset->texture.data))
+        textureData->assign(data, data + size);
+      textureAsset->texture.range = ColorRange::LDR;
+      stbi_image_free(data);
+      spdlog::info("[AssetManager] loaded texture: {}", pathNormStr);
+    } else
+      spdlog::error("[AssetManager] failed to load texture: {}", pathNormStr);
   }
-  return skybox;
+  return textureAsset;
 }
 } // namespace kuki

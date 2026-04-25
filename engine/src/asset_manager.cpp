@@ -12,7 +12,6 @@
 #include <mesh_asset.hpp>
 #include <mesh_handle.hpp>
 #include <scene_asset.hpp>
-#include <skybox_asset.hpp>
 #include <stb_image.h>
 #include <texture_asset.hpp>
 namespace kuki {
@@ -21,7 +20,6 @@ const std::unordered_map<std::type_index, AssetType> AssetManager::typeIndexToAs
   {typeid(MeshAsset), AssetType::Mesh},
   {typeid(SceneAsset), AssetType::Scene},
   {typeid(ShaderAsset), AssetType::Shader},
-  {typeid(SkyboxAsset), AssetType::Skybox},
   {typeid(TextureAsset), AssetType::Texture}};
 auto AssetManager::GetID(const std::string &name) const -> AssetID {
   auto ids = nameToId.equal_range(name);
@@ -80,9 +78,6 @@ auto AssetManager::CreatePrefab(const AssetID assetId) -> EntityID {
       break;
     case AssetType::Shader:
       prefabId = CreatePrefab<ShaderAsset>(assetId);
-      break;
-    case AssetType::Skybox:
-      prefabId = CreatePrefab<SkyboxAsset>(assetId);
       break;
     case AssetType::Texture:
       prefabId = CreatePrefab<TextureAsset>(assetId);
@@ -358,7 +353,9 @@ auto AssetManager::LoadTexture(std::unordered_map<std::string, unsigned int> &vi
     sceneTexture.texture.content = content;
     if (auto data = stbi_load(pathNormStr.c_str(), &sceneTexture.texture.width, &sceneTexture.texture.height, &sceneTexture.texture.channels, 0); data) {
       const auto size = sceneTexture.texture.width * sceneTexture.texture.height * sceneTexture.texture.channels;
-      sceneTexture.texture.data.assign(data, data + size);
+      sceneTexture.texture.data = std::vector<unsigned char>();
+      if (auto textureData = std::get_if<std::vector<unsigned char>>(&sceneTexture.texture.data))
+        textureData->assign(data, data + size);
       stbi_image_free(data);
       material.textures.push_back(index);
       material.fallback.textureMask.set(static_cast<int>(sceneTexture.texture.content));

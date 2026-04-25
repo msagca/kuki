@@ -1,12 +1,11 @@
 #pragma once
-#include <glm/ext/vector_uint3.hpp>
 #include <target_description.hpp>
 namespace kuki {
 struct GLSkybox {
-  int skybox{};
-  int irradiance{};
-  int prefilter{};
-  int brdf{};
   TargetDescription desc{};
+  unsigned int brdf{};
+  unsigned int irradiance{};
+  unsigned int prefilter{};
+  unsigned int skybox{};
 };
 } // namespace kuki

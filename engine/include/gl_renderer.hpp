@@ -27,11 +27,10 @@
 #include <scene_asset.hpp>
 #include <scene_manager.hpp>
 #include <shader_type.hpp>
-#include <skybox_asset.hpp>
 #include <target_description.hpp>
 #include <texture_asset.hpp>
+#include <texture_content.hpp>
 #include <texture_pool.hpp>
-#include "texture_content.hpp"
 //
 #include <glad/glad.h>
 namespace kuki {
@@ -98,11 +97,16 @@ private:
   TexturePool texturePool;
   static auto CreateIndexBuffer(GLMesh &, const std::vector<unsigned int> &) -> void;
   static auto CreateVertexBuffer(GLMesh &, const std::vector<Vertex> &, bool = false) -> void;
-  auto LoadMesh(GLMesh &, Mesh &) -> void;
-  auto LoadTexture(GLTexture &, Texture &) -> void;
-  auto LoadSceneMaterial(SceneAsset &, size_t) -> EntityID;
+  auto ConvertCubemapToEquirectangularMap(const TargetDescription &, const unsigned int) -> unsigned int;
+  auto ConvertEquirectangularMapToCubemap(const TargetDescription &, const unsigned int) -> unsigned int;
+  auto CreateBRDF_LUT(const TargetDescription &) -> unsigned int;
+  auto CreateIrradianceMap(const TargetDescription &, const unsigned int) -> unsigned int;
+  auto CreatePrefilterMap(const TargetDescription &, const unsigned int) -> unsigned int;
+  auto LoadMesh(Mesh &) -> GLMesh;
+  auto LoadSceneMaterial(SceneAsset &, const size_t) -> EntityID;
   auto LoadSceneMesh(SceneAsset &, const size_t) -> EntityID;
-  auto LoadSceneTexture(SceneAsset &, size_t) -> GLTexture *;
+  auto LoadSceneTexture(SceneAsset &, const size_t) -> GLTexture *;
+  auto LoadTexture(Texture &) -> GLTexture;
 };
 template <typename T>
 auto GLRenderer::GetComponent(this auto &self, const EntityID id) -> decltype(auto) {
@@ -180,7 +184,7 @@ inline auto GLRenderer::LoadAsset<MeshAsset>(MeshAsset &meshAsset) -> void {
   const auto id = resourceManager.Create(name);
   meshAsset.resourceId = id;
   auto glMesh = resourceManager.AddComponent<GLMesh>(id);
-  LoadMesh(*glMesh, meshAsset.mesh);
+  *glMesh = LoadMesh(meshAsset.mesh);
   LoadAsset(meshAsset.material);
   spdlog::info("[OpenGL] loaded mesh: {}", name);
 }
@@ -260,17 +264,6 @@ inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &shaderAsset) -> void
   }
 }
 template <>
-inline auto GLRenderer::LoadAsset<SkyboxAsset>(SkyboxAsset &skyboxAsset) -> void {
-  if (resourceManager.IsEntity(skyboxAsset.resourceId))
-    return;
-  const auto &name = skyboxAsset.GetName();
-  const auto id = resourceManager.Create(name);
-  skyboxAsset.resourceId = id;
-  auto skybox = resourceManager.AddComponent<GLSkybox>(id);
-  // TODO: dispatch computes to create irradiance/prefilter maps
-  spdlog::info("[OpenGL] loaded skybox: {}", name);
-}
-template <>
 inline auto GLRenderer::LoadAsset<TextureAsset>(TextureAsset &textureAsset) -> void {
   if (resourceManager.IsEntity(textureAsset.resourceId))
     return;
@@ -278,7 +271,14 @@ inline auto GLRenderer::LoadAsset<TextureAsset>(TextureAsset &textureAsset) -> v
   const auto id = resourceManager.Create(name);
   textureAsset.resourceId = id;
   auto glTexture = resourceManager.AddComponent<GLTexture>(id);
-  LoadTexture(*glTexture, textureAsset.texture);
+  *glTexture = LoadTexture(textureAsset.texture);
+  if (textureAsset.texture.content == TextureContent::Skybox) {
+    auto glSkybox = resourceManager.AddComponent<GLSkybox>(id);
+    glSkybox->skybox = ConvertEquirectangularMapToCubemap({.format = TargetFormat::RGBA32, .type = TargetType::Cubemap, .width = 1024, .height = 1024}, glTexture->id);
+    glSkybox->irradiance = CreateIrradianceMap({.format = TargetFormat::RGBA32, .type = TargetType::Cubemap, .width = 32, .height = 32}, glSkybox->skybox);
+    glSkybox->prefilter = CreatePrefilterMap({.format = TargetFormat::RGBA32, .type = TargetType::Cubemap, .width = 128, .height = 128, .mipmaps = 7}, glSkybox->skybox);
+    glSkybox->brdf = CreateBRDF_LUT({.format = TargetFormat::RG16, .width = 512, .height = 512});
+  }
   spdlog::info("[OpenGL] loaded texture: {}", name);
 }
 template <IsAsset T>

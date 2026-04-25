@@ -1,8 +1,10 @@
 #include <application.hpp>
 #include <application_description.hpp>
 #include <array>
+#include <asset_type.hpp>
 #include <camera.hpp>
 #include <chrono>
+#include <component_type.hpp>
 #include <concepts.hpp>
 #include <entity_manager.hpp>
 #include <filesystem>
@@ -418,6 +420,22 @@ auto Application::SetWindowIcon() -> void {
       spdlog::info("[App] loaded icon: {}", path);
     } else
       spdlog::error("[App] failed to load icon: {}", path);
+  }
+}
+auto Application::ComponentToAssetType(const ComponentType compType) -> AssetType {
+  switch (compType) {
+  case ComponentType::GLSkybox:
+  case ComponentType::GLTexture:
+    return AssetType::Texture;
+  case ComponentType::GLMaterial:
+    return AssetType::Material;
+  case ComponentType::GLMesh:
+    return AssetType::Mesh;
+  case ComponentType::GLLitShader:
+  case ComponentType::GLUnlitShader:
+    return AssetType::Shader;
+  default:
+    return AssetType::Scene;
   }
 }
 auto Application::CharCallback(GLFWwindow *window, unsigned int codepoint) -> void {

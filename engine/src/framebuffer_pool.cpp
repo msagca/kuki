@@ -2,9 +2,6 @@
 //
 #include <glad/glad.h>
 namespace kuki {
-FramebufferPool::~FramebufferPool() {
-  Clear();
-}
 auto FramebufferPool::Allocate() -> unsigned int {
   unsigned int framebuffer;
   glGenFramebuffers(1, &framebuffer);

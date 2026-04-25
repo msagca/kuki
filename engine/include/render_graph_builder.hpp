@@ -16,18 +16,12 @@ public:
   auto EndGraph() -> std::unique_ptr<RenderGraph>;
   auto EndPass() -> RenderGraphBuilder &;
   auto BeginPass(auto &&) -> RenderGraphBuilder &;
-  template <typename F>
-  auto SetFunc(F &&) -> RenderGraphBuilder &;
 private:
   std::unique_ptr<RenderGraph> renderGraph;
   TargetDescription descLast;
 };
 auto RenderGraphBuilder::BeginPass(auto &&func) -> RenderGraphBuilder & {
   renderGraph->BeginPass(std::forward<decltype(func)>(func));
-  return *this;
-}
-template <typename F>
-auto RenderGraphBuilder::SetFunc(F &&func) -> RenderGraphBuilder & {
   return *this;
 }
 } // namespace kuki

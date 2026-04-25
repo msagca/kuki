@@ -4,7 +4,6 @@
 namespace kuki {
 class KUKI_ENGINE_API BufferPool final : public KeyedPool<int, unsigned int> {
 public:
-  ~BufferPool() override;
   auto Clear() -> void;
   auto Reallocate(const int &, unsigned int &) -> void override;
 protected:

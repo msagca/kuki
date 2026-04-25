@@ -39,13 +39,8 @@ jobs:
           path: build
           key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt','**/CMakePresets.json') }}
           restore-keys: ${{ runner.os }}-cmake-
-      - name: CMake build
-        run: cmake --workflow Package
-      - name: CTest
-        run: ctest --preset Package --output-on-failure
-      - name: CPack
-        if: startsWith(github.ref, 'refs/tags/')
-        run: cpack -G ${{ matrix.cpack_generator }} --preset Package
+      - name: CMake configure, build, test
+        run: cmake --workflow Debug
       - uses: actions/upload-artifact@v7
         if: startsWith(github.ref, 'refs/tags/')
         with:

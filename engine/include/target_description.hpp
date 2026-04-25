@@ -17,9 +17,14 @@ enum class TargetFormat : uint8_t {
   SRGB8,
   Unknown
 };
+enum class TargetType : uint8_t {
+  Cubemap,
+  Texture2D,
+  Texture2DMulti
+};
 struct TargetDescription {
-  // TODO: add a type member to identify cubemaps
   TargetFormat format{TargetFormat::RGBA16};
+  TargetType type{TargetType::Texture2D};
   int width{1024};
   int height{1024};
   int samples{1};
@@ -33,6 +38,7 @@ struct hash<kuki::TargetDescription> {
   auto operator()(const kuki::TargetDescription &desc) const noexcept -> size_t {
     size_t h{};
     kuki::hash_combine(h, hash<int>{}(static_cast<int>(desc.format)));
+    kuki::hash_combine(h, hash<int>{}(static_cast<int>(desc.type)));
     kuki::hash_combine(h, hash<int>{}(desc.width));
     kuki::hash_combine(h, hash<int>{}(desc.height));
     kuki::hash_combine(h, hash<int>{}(desc.samples));

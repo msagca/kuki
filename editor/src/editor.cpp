@@ -46,8 +46,8 @@ auto Editor::Start() -> void {
   InitImGui();
   LoadDefaultAssets();
   LoadDefaultScene();
-  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {context.state = EditorState::Fly; glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); auto &io = ImGui::GetIO(); io.ConfigFlags |= ImGuiConfigFlags_NoMouse; });
-  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {context.state = EditorState::Normal; glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); auto &io = ImGui::GetIO(); io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
+  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); auto &io = ImGui::GetIO(); io.ConfigFlags |= ImGuiConfigFlags_NoMouse; });
+  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() { glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); auto &io = ImGui::GetIO(); io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
 }
 auto Editor::Update(const float deltaTime) -> void {
   UpdateIO();
@@ -238,27 +238,19 @@ auto Editor::DisplayAssets() -> void {
   const auto deletePressed = context.pressState.test(static_cast<uint8_t>(KeyBit::Delete));
   const auto escapePressed = context.pressState.test(static_cast<uint8_t>(KeyBit::Escape));
   const auto clearSelection = (windowHovered && !itemsHovered) && (clicked || backspacePressed || deletePressed || escapePressed);
-  if (context.state == EditorState::Normal && clearSelection) {
-    // context.selectedAssets.clear();
-    context.selectedAssetID = AssetID::Invalid;
-  }
   ForEachAsset(context.selectedAssetType, [this](const AssetID id, const std::string &name) {
     ImGui::PushID(static_cast<int>(id));
-    const auto selected = context.selectedAssetID == id;
-    if (ImGui::Selectable(name.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick))
-      context.selectedAssetID = id;
+    ImGui::Selectable(name.c_str(), false);
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+      ImGui::SetDragDropPayload("##SpawnPayload", &id, sizeof(AssetID));
+      ImGui::EndDragDropSource();
+    }
     if (ImGui::IsItemHovered()) {
       const auto texture = static_cast<GLTexture *>(PreviewAsset(id));
-      if (texture) {
-        ImGui::BeginTooltip();
+      if (texture && ImGui::BeginTooltip()) {
         ImGui::Image(texture->id, ImVec2(PREVIEW_SIZE, PREVIEW_SIZE));
         ImGui::EndTooltip();
       }
-    }
-    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-      ImGui::SetDragDropPayload("##SpawnPayload", &id, sizeof(AssetID));
-      ImGui::Text("%s", name.c_str());
-      ImGui::EndDragDropSource();
     }
     ImGui::PopID();
   });
@@ -281,7 +273,7 @@ auto Editor::DisplayAssets() -> void {
       else if (ext == ".gltf")
         LoadAssetAsync<SceneAsset>(filepath);
       else if (ext == ".hdr" || ext == ".exr")
-        LoadAssetAsync<SkyboxAsset>(filepath);
+        LoadAssetAsync<TextureAsset>(filepath);
     }
     fileBrowser.ClearSelected();
   }
@@ -297,7 +289,7 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
   if (context.selectedEntities.contains(id))
     nodeFlags |= ImGuiTreeNodeFlags_Selected;
-  if (context.state == EditorState::Rename && context.renamedEntityID == id) {
+  if (context.state == EditorState::Rename && context.renamedEntityId == id) {
     ImGui::AlignTextToFramePadding();
     ImGui::PushItemWidth(-1);
     ImGui::SetKeyboardFocusHere();
@@ -309,7 +301,7 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
     }
     if (renamed || ImGui::IsItemDeactivated()) {
       context.state = EditorState::Normal;
-      context.renamedEntityID = EntityID::Invalid;
+      context.renamedEntityId = EntityID::Invalid;
     }
     ImGui::PopItemWidth();
     return;
@@ -329,7 +321,7 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
   if (context.state == EditorState::Normal) {
     if (clicked) {
       if (shiftHeld) {
-        auto it1 = std::find(displayedEntities.begin(), displayedEntities.end(), context.selectedEntityID);
+        auto it1 = std::find(displayedEntities.begin(), displayedEntities.end(), context.selectedEntityId);
         auto it2 = std::find(displayedEntities.begin(), displayedEntities.end(), id);
         if (it1 != displayedEntities.end() && it2 != displayedEntities.end()) {
           if (it1 > it2)
@@ -345,26 +337,26 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
       } else if (ctrlHeld) {
         if (context.selectedEntities.contains(id)) {
           context.selectedEntities.erase(id);
-          context.selectedEntityID = EntityID::Invalid;
+          context.selectedEntityId = EntityID::Invalid;
         } else
           context.selectedEntities.insert(id);
       } else {
         context.selectedEntities.clear();
         context.selectedEntities.insert(id);
       }
-      context.selectedEntityID = id;
+      context.selectedEntityId = id;
     } else if (focused && (shiftHeld || ctrlHeld)) {
       context.selectedEntities.insert(id);
-      context.selectedEntityID = id;
+      context.selectedEntityId = id;
     } else if (focused && (enterPressed || spacePressed)) {
       context.selectedEntities.clear();
-      context.selectedEntityID = id;
+      context.selectedEntityId = id;
     }
   }
   if (hovered && doubleClicked) {
     strncpy(newName, entityNameCStr, NAME_LENGTH);
     context.state = EditorState::Rename;
-    context.renamedEntityID = id;
+    context.renamedEntityId = id;
   }
   if (nodeOpen) {
     ForEachChildEntity(id, [&](const EntityID childId) {
@@ -391,7 +383,7 @@ auto Editor::DisplayHierarchy() -> void {
         DeleteEntity(entityId);
     if (clearSelection) {
       context.selectedEntities.clear();
-      context.selectedEntityID = EntityID::Invalid;
+      context.selectedEntityId = EntityID::Invalid;
     }
   }
   displayedEntities.clear();
@@ -412,10 +404,10 @@ auto Editor::DisplayHierarchy() -> void {
 }
 auto Editor::DisplayProperties() -> void {
   static constexpr auto POPUP_WINDOW_FLAGS = ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight;
-  if (!context.selectedEntityID)
+  if (!context.selectedEntityId)
     return;
   ImGui::Begin("Properties");
-  auto componentTypes = GetEntityComponentTypes(context.selectedEntityID);
+  auto componentTypes = GetEntityComponentTypes(context.selectedEntityId);
   for (auto i = 0; i < componentTypes.size(); ++i) {
     const auto componentType = componentTypes[i];
     ImGui::PushID(static_cast<int>(i));
@@ -424,13 +416,13 @@ auto Editor::DisplayProperties() -> void {
     auto removed = false;
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove")) {
-        RemoveEntityComponent(context.selectedEntityID, componentType);
+        RemoveEntityComponent(context.selectedEntityId, componentType);
         removed = true;
       }
       ImGui::EndPopup();
     }
     if (!removed) {
-      auto componentOpt = GetEntityComponent(context.selectedEntityID, componentType);
+      auto componentOpt = GetEntityComponent(context.selectedEntityId, componentType);
       if (componentOpt.has_value())
         DisplayProperties(componentOpt.value());
     }
@@ -441,17 +433,17 @@ auto Editor::DisplayProperties() -> void {
     }
   }
   if (ImGui::BeginPopupContextWindow("AddComponent", POPUP_WINDOW_FLAGS)) {
-    auto availableComponents = GetMissingEntityComponents(context.selectedEntityID);
+    auto availableComponents = GetMissingEntityComponents(context.selectedEntityId);
     for (const auto &compType : availableComponents)
       if (ImGui::MenuItem(Component::GetTypeName(compType).c_str())) {
-        AddEntityComponent(context.selectedEntityID, compType);
+        AddEntityComponent(context.selectedEntityId, compType);
       }
     ImGui::EndPopup();
   }
   ImGui::End();
 }
 auto Editor::DisplayProperties(const ComponentVariant &variant) -> void {
-  PropertyDisplayer displayer(*this);
+  PropertyDisplayer displayer;
   std::visit(displayer, variant);
 }
 auto Editor::DisplayScene() -> void {
@@ -463,7 +455,7 @@ auto Editor::DisplayScene() -> void {
   const auto vPressed = context.pressState.test(static_cast<uint8_t>(KeyBit::V));
   if (context.state == EditorState::Normal) {
     if (vPressed)
-      AlignView(context.selectedEntityID);
+      AlignView(context.selectedEntityId);
     if (fPressed)
       context.showFPS = !context.showFPS;
   }
@@ -496,7 +488,7 @@ auto Editor::DisplayScene() -> void {
   ImGui::End();
 }
 auto Editor::DrawManipulator(const float width, const float height) -> void {
-  if (!context.selectedEntityID)
+  if (!context.selectedEntityId)
     return;
   auto cameraController = GetEntityComponent<CameraController>(context.cameraEntity);
   if (!cameraController)
@@ -507,15 +499,15 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
   ImGuizmo::SetOrthographic(cameraController->GetType() == CameraType::Orthographic);
   // TODO: for a multi-select, position the gizmo at the center of the selection, and apply manipulations to all entities
   Transform transform;
-  auto transformComp = GetEntityComponent<Transform>(context.selectedEntityID);
+  auto transformComp = GetEntityComponent<Transform>(context.selectedEntityId);
   Camera *cameraComp = nullptr;
   Light *lightComp = nullptr;
   if (!transformComp) {
-    cameraComp = GetEntityComponent<Camera>(context.selectedEntityID);
+    cameraComp = GetEntityComponent<Camera>(context.selectedEntityId);
     if (cameraComp)
       transform = cameraComp->GetTransform();
     else {
-      lightComp = GetEntityComponent<Light>(context.selectedEntityID);
+      lightComp = GetEntityComponent<Light>(context.selectedEntityId);
       if (lightComp)
         transform = lightComp->GetTransform();
       else

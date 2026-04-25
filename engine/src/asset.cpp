@@ -4,7 +4,6 @@
 #include <mesh_asset.hpp>
 #include <scene_asset.hpp>
 #include <shader_asset.hpp>
-#include <skybox_asset.hpp>
 #include <texture_asset.hpp>
 namespace kuki {
 const std::unordered_map<AssetType, std::string> Asset::typeToName = {
@@ -12,21 +11,18 @@ const std::unordered_map<AssetType, std::string> Asset::typeToName = {
   {AssetType::Mesh, "Mesh"},
   {AssetType::Scene, "Scene"},
   {AssetType::Shader, "Shader"},
-  {AssetType::Skybox, "Skybox"},
   {AssetType::Texture, "Texture"}};
 const std::unordered_map<AssetType, std::type_index> Asset::typeToTypeIndex = {
   {AssetType::Material, typeid(MaterialAsset)},
   {AssetType::Mesh, typeid(MeshAsset)},
   {AssetType::Scene, typeid(SceneAsset)},
   {AssetType::Shader, typeid(ShaderAsset)},
-  {AssetType::Skybox, typeid(SkyboxAsset)},
   {AssetType::Texture, typeid(TextureAsset)}};
 const std::unordered_map<std::type_index, AssetType> Asset::typeIndexToType = {
   {typeid(MaterialAsset), AssetType::Material},
   {typeid(MeshAsset), AssetType::Mesh},
   {typeid(SceneAsset), AssetType::Scene},
   {typeid(ShaderAsset), AssetType::Shader},
-  {typeid(SkyboxAsset), AssetType::Skybox},
   {typeid(TextureAsset), AssetType::Texture}};
 auto Asset::GetName() const -> const std::string & {
   return name;

@@ -11,7 +11,6 @@
 #include <imfilebrowser.h>
 using namespace kuki;
 enum class EditorState : uint8_t {
-  Fly,
   Normal,
   Rename
 };
@@ -29,19 +28,15 @@ enum class KeyBit : uint8_t {
 };
 using KeyMask = std::bitset<static_cast<uint8_t>(KeyBit::V) + 1>;
 struct EditorContext {
-  AssetID selectedAssetID{};
   AssetType selectedAssetType{AssetType::Texture};
-  ComponentType selectedComponentType{ComponentType::Transform};
   EditorState state{EditorState::Normal};
   EntityID cameraEntity{};
-  EntityID renamedEntityID{};
-  EntityID selectedEntityID;
+  EntityID renamedEntityId{};
+  EntityID selectedEntityId;
   KeyMask keyState{};
   KeyMask pressState{};
   KeyMask releaseState{};
   bool showFPS{};
-  int selectedProperty{-1};
-  std::unordered_set<AssetID> selectedAssets{};
   std::unordered_set<EntityID> selectedEntities{};
 };
 class Editor final : public Application {

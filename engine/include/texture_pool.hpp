@@ -5,7 +5,6 @@
 namespace kuki {
 class KUKI_ENGINE_API TexturePool final : public KeyedPool<TargetDescription, unsigned int> {
 public:
-  ~TexturePool() override;
   auto Clear() -> void;
   auto Reallocate(const TargetDescription &, unsigned int &) -> void override;
 protected:

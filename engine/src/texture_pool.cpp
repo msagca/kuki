@@ -5,9 +5,6 @@
 //
 #include <glad/glad.h>
 namespace kuki {
-TexturePool::~TexturePool() {
-  Clear();
-}
 auto TexturePool::Allocate(const TargetDescription &desc) -> unsigned int {
   unsigned int texture;
   glGenTextures(1, &texture);
@@ -23,8 +20,8 @@ auto TexturePool::Reallocate(const TargetDescription &desc, unsigned int &textur
   if (texture == 0)
     return;
   const auto format = GLRenderer::TargetFormatToGL(desc.format);
-  const auto target = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
-  // TODO: handle cubemaps
+  const auto target = desc.type == TargetType::Cubemap ? GL_TEXTURE_CUBE_MAP : desc.type == TargetType::Texture2DMulti || desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE
+                                                                                                                                           : GL_TEXTURE_2D;
   glBindTexture(target, texture);
   if (target == GL_TEXTURE_2D_MULTISAMPLE)
     glTexImage2DMultisample(target, desc.samples, format.internal, desc.width, desc.height, GL_TRUE);
@@ -34,9 +31,13 @@ auto TexturePool::Reallocate(const TargetDescription &desc, unsigned int &textur
     glTexParameteri(target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(target, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
     for (auto level = 0; level < desc.mipmaps; ++level) {
-      auto width = std::max(1, desc.width >> level);
-      auto height = std::max(1, desc.height >> level);
-      glTexImage2D(target, level, format.internal, width, height, 0, format.external, GL_UNSIGNED_BYTE, nullptr);
+      const auto width = std::max(1, desc.width >> level);
+      const auto height = std::max(1, desc.height >> level);
+      if (target == GL_TEXTURE_CUBE_MAP)
+        for (auto face = 0; face < 6; ++face)
+          glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, level, format.internal, width, height, 0, format.external, GL_UNSIGNED_BYTE, nullptr);
+      else
+        glTexImage2D(target, level, format.internal, width, height, 0, format.external, GL_UNSIGNED_BYTE, nullptr);
     }
   }
   glBindTexture(target, 0);

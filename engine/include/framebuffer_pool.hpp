@@ -4,7 +4,6 @@
 namespace kuki {
 class KUKI_ENGINE_API FramebufferPool final : public ObjectPool<unsigned int> {
 public:
-  ~FramebufferPool() override;
   auto Clear() -> void;
 protected:
   auto Allocate() -> unsigned int override;

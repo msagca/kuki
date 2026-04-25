@@ -41,8 +41,8 @@ auto RenderingSystem::Start() -> void {
   renderGraph = graphBuilder
                   .BeginGraph()
                   .BeginPass(RenderScene)
-                  // NOTE: subsequent outputs will use this description unless overridden
-                  .AddOutput("SceneMulti", {.width = res.width, .height = res.height, .samples = 4})
+                  // NOTE: unless overriden, subsequent outputs will use this description (no partial overrides)
+                  .AddOutput("SceneMulti", {.type = TargetType::Texture2DMulti, .width = res.width, .height = res.height, .samples = 4})
                   .EndPass()
                   .BeginPass(ApplyAntiAliasing)
                   .AddInput("SceneMulti")
@@ -294,117 +294,6 @@ auto RenderingSystem::ApplyGammaCorrection(Renderer &renderer, std::span<std::st
   gammaShader->Draw(*mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
-auto RenderingSystem::ConvertCubemapToEquirectangularMap(Renderer &renderer, const std::string &input, const std::string &output, const TargetDescription &desc) -> void {
-  auto glRenderer = renderer.As<GLRenderer>();
-  if (!glRenderer)
-    return;
-  auto compute = glRenderer->GetCompute("CubemapEquirect");
-  if (!compute)
-    return;
-  const auto in = glRenderer->GetTarget(input);
-  const auto out = glRenderer->GetTarget(output);
-  if (!in || !out)
-    return;
-  constexpr unsigned int workgroupSize = 8;
-  compute->Use();
-  compute->SetTexture("cubemap", in->texture);
-  compute->SetUniform("size", static_cast<unsigned int>(desc.width));
-  const auto format = GLRenderer::TargetFormatToGL(desc.format);
-  glBindImageTexture(0, out->texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
-  const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
-  const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
-  compute->Dispatch(numGroupsX, numGroupsY, 6);
-}
-auto RenderingSystem::ConvertEquirectangularMapToCubemap(Renderer &renderer, const std::string &input, const std::string &output, const TargetDescription &desc) -> void {
-  auto glRenderer = renderer.As<GLRenderer>();
-  if (!glRenderer)
-    return;
-  auto compute = glRenderer->GetCompute("EquirectCubemap");
-  if (!compute)
-    return;
-  const auto in = glRenderer->GetTarget(input);
-  const auto out = glRenderer->GetTarget(output);
-  if (!in || !out)
-    return;
-  const auto format = GLRenderer::TargetFormatToGL(desc.format);
-  constexpr unsigned int workgroupSize = 8;
-  compute->Use();
-  compute->SetTexture("equirect", in->texture);
-  compute->SetUniform("size", static_cast<unsigned int>(desc.width));
-  // TODO: set the following to `true` if texture was loaded by TinyEXR
-  compute->SetUniform("invert", false);
-  glBindImageTexture(0, out->texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
-  const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
-  const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
-  compute->Dispatch(numGroupsX, numGroupsY, 6);
-}
-auto RenderingSystem::CreateBRDF_LUT(Renderer &renderer, const std::string &output, const TargetDescription &desc) -> void {
-  auto glRenderer = renderer.As<GLRenderer>();
-  if (!glRenderer)
-    return;
-  auto compute = glRenderer->GetCompute("BRDF_LUT");
-  if (!compute)
-    return;
-  const auto out = glRenderer->GetTarget(output);
-  if (!out)
-    return;
-  const auto format = GLRenderer::TargetFormatToGL(desc.format);
-  constexpr unsigned int workgroupSize = 8;
-  compute->Use();
-  glBindImageTexture(0, out->texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, format.internal);
-  const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
-  const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
-  compute->Dispatch(numGroupsX, numGroupsY, 1);
-}
-auto RenderingSystem::CreateIrradianceMap(Renderer &renderer, const std::string &input, const std::string &output, const TargetDescription &desc) -> void {
-  auto glRenderer = renderer.As<GLRenderer>();
-  if (!glRenderer)
-    return;
-  auto compute = glRenderer->GetCompute("IrradianceMap");
-  if (!compute)
-    return;
-  const auto in = glRenderer->GetTarget(input);
-  const auto out = glRenderer->GetTarget(output);
-  if (!in || !out)
-    return;
-  const auto format = GLRenderer::TargetFormatToGL(desc.format);
-  constexpr unsigned int workgroupSize = 8;
-  compute->Use();
-  compute->SetTexture("cubemap", in->texture);
-  compute->SetUniform("cubeSize", static_cast<unsigned int>(desc.width));
-  glBindImageTexture(0, out->texture, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
-  const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
-  const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
-  compute->Dispatch(numGroupsX, numGroupsY, 6);
-}
-auto RenderingSystem::CreatePrefilterMap(Renderer &renderer, const std::string &input, const std::string &output, const TargetDescription &desc) -> void {
-  auto glRenderer = renderer.As<GLRenderer>();
-  if (!glRenderer)
-    return;
-  auto compute = glRenderer->GetCompute("PrefilterMap");
-  if (!compute)
-    return;
-  const auto in = glRenderer->GetTarget(input);
-  const auto out = glRenderer->GetTarget(output);
-  if (!in || !out)
-    return;
-  const auto format = GLRenderer::TargetFormatToGL(desc.format);
-  constexpr unsigned int workgroupSize = 8;
-  compute->Use();
-  compute->SetTexture("cubemap", in->texture);
-  compute->SetTexture("mipLevels", desc.mipmaps);
-  for (auto mip = 0; mip < desc.mipmaps; ++mip) {
-    const auto mipSize = static_cast<unsigned int>(desc.width) >> mip;
-    const auto roughness = static_cast<float>(mip) / (desc.mipmaps - 1);
-    compute->SetUniform("roughness", roughness);
-    compute->SetUniform("mipWidth", mipSize);
-    compute->SetUniform("cubeSize", mipSize);
-    glBindImageTexture(0, out->texture, mip, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
-    const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
-    const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
-    compute->Dispatch(numGroupsX, numGroupsY, 6);
-  }
-}
 auto RenderingSystem::RenderScene(Renderer &renderer, std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   if (outputs.size() != 1)
     return;
@@ -418,12 +307,14 @@ auto RenderingSystem::RenderScene(Renderer &renderer, std::span<std::string> inp
   if (!out)
     return;
   glRenderer->LoadScene(*scene); // TODO: optimize this
+  glEnable(GL_DEPTH_TEST);
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   glViewport(0, 0, out->desc.width, out->desc.height);
   DrawSkybox(renderer);
   DrawEntities(renderer);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glDisable(GL_DEPTH_TEST); // disable before post-processing
 }
 auto RenderingSystem::DrawEntities(Renderer &renderer) -> void {
   auto scene = renderer.GetScene();

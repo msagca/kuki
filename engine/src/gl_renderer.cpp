@@ -17,7 +17,6 @@
 #include <renderer.hpp>
 #include <scene.hpp>
 #include <scene_asset.hpp>
-#include <skybox_asset.hpp>
 #include <skybox_handle.hpp>
 #include <target_description.hpp>
 //
@@ -75,7 +74,7 @@ auto GLRenderer::CreateTarget(const std::string &name, const TargetDescription &
   return id;
 }
 auto GLRenderer::CreateTexture(const TargetDescription &desc, const std::string &name) -> EntityID {
-  const auto id = resourceManager.Create(std::move(name));
+  const auto id = resourceManager.Create(name);
   auto texture = resourceManager.AddComponent<GLTexture>(id);
   texture->id = BorrowTexture(desc);
   return id;
@@ -147,8 +146,6 @@ auto GLRenderer::LoadAsset(const AssetID id) -> void {
     LoadAsset<SceneAsset>(*asset->As<SceneAsset>());
   else if (asset->Is<ShaderAsset>())
     LoadAsset<ShaderAsset>(*asset->As<ShaderAsset>());
-  else if (asset->Is<SkyboxAsset>())
-    LoadAsset<SkyboxAsset>(*asset->As<SkyboxAsset>());
   else if (asset->Is<TextureAsset>())
     LoadAsset<TextureAsset>(*asset->As<TextureAsset>());
 }
@@ -208,8 +205,6 @@ auto GLRenderer::PreviewAsset(const AssetID id) -> GLTexture * {
     return PreviewAsset<MeshAsset>(*asset->As<MeshAsset>());
   else if (asset->Is<SceneAsset>())
     return PreviewAsset<SceneAsset>(*asset->As<SceneAsset>());
-  else if (asset->Is<SkyboxAsset>())
-    return PreviewAsset<SkyboxAsset>(*asset->As<SkyboxAsset>());
   return nullptr;
 }
 auto GLRenderer::Reset() -> void {
@@ -275,18 +270,111 @@ auto GLRenderer::CreateVertexBuffer(GLMesh &mesh, const std::vector<Vertex> &ver
     glEnableVertexArrayAttrib(mesh.vao, attribIndex);
   }
 }
-auto GLRenderer::LoadMesh(GLMesh &glMesh, Mesh &mesh) -> void {
+auto GLRenderer::ConvertCubemapToEquirectangularMap(const TargetDescription &desc, const unsigned int input) -> unsigned int {
+  auto compute = GetCompute("CubemapEquirect");
+  if (!compute)
+    return 0;
+  const auto output = BorrowTexture(desc);
+  constexpr unsigned int workgroupSize = 8;
+  compute->Use();
+  compute->SetTexture("cubemap", input);
+  compute->SetUniform("size", static_cast<unsigned int>(desc.width));
+  const auto format = TargetFormatToGL(desc.format);
+  glBindImageTexture(0, output, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
+  const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
+  const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
+  compute->Dispatch(numGroupsX, numGroupsY, 6);
+  return output;
+}
+auto GLRenderer::ConvertEquirectangularMapToCubemap(const TargetDescription &desc, const unsigned int input) -> unsigned int {
+  auto compute = GetCompute("EquirectCubemap");
+  if (!compute)
+    return 0;
+  const auto output = BorrowTexture(desc);
+  const auto format = TargetFormatToGL(desc.format);
+  constexpr unsigned int workgroupSize = 8;
+  compute->Use();
+  compute->SetTexture("equirect", input);
+  compute->SetUniform("size", static_cast<unsigned int>(desc.width));
+  // TODO: set the following to `true` if texture was loaded by TinyEXR
+  compute->SetUniform("invert", false);
+  glBindImageTexture(0, output, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
+  const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
+  const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
+  compute->Dispatch(numGroupsX, numGroupsY, 6);
+  return output;
+}
+auto GLRenderer::CreateBRDF_LUT(const TargetDescription &desc) -> unsigned int {
+  auto compute = GetCompute("BRDF_LUT");
+  if (!compute)
+    return 0;
+  if (const auto output = GetTexture("BRDF_LUT"); output)
+    return output->id;
+  const auto id = CreateTexture(desc, "BRDF_LUT");
+  const auto output = GetTexture(id);
+  const auto format = TargetFormatToGL(desc.format);
+  constexpr unsigned int workgroupSize = 8;
+  compute->Use();
+  glBindImageTexture(0, output->id, 0, GL_FALSE, 0, GL_WRITE_ONLY, format.internal);
+  const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
+  const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
+  compute->Dispatch(numGroupsX, numGroupsY, 1);
+  return output->id;
+}
+auto GLRenderer::CreateIrradianceMap(const TargetDescription &desc, const unsigned int input) -> unsigned int {
+  auto compute = GetCompute("IrradianceMap");
+  if (!compute)
+    return 0;
+  const auto output = BorrowTexture(desc);
+  const auto format = TargetFormatToGL(desc.format);
+  constexpr unsigned int workgroupSize = 8;
+  compute->Use();
+  compute->SetTexture("cubemap", input);
+  compute->SetUniform("cubeSize", static_cast<unsigned int>(desc.width));
+  glBindImageTexture(0, output, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
+  const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
+  const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
+  compute->Dispatch(numGroupsX, numGroupsY, 6);
+  return output;
+}
+auto GLRenderer::CreatePrefilterMap(const TargetDescription &desc, const unsigned int input) -> unsigned int {
+  auto compute = GetCompute("PrefilterMap");
+  if (!compute)
+    return 0;
+  const auto output = BorrowTexture(desc);
+  const auto format = TargetFormatToGL(desc.format);
+  constexpr unsigned int workgroupSize = 8;
+  compute->Use();
+  compute->SetTexture("cubemap", input);
+  compute->SetUniform("mipLevels", desc.mipmaps);
+  for (auto mip = 0; mip < desc.mipmaps; ++mip) {
+    const auto mipSize = static_cast<unsigned int>(desc.width) >> mip;
+    const auto roughness = static_cast<float>(mip) / (desc.mipmaps - 1);
+    compute->SetUniform("roughness", roughness);
+    compute->SetUniform("mipWidth", mipSize);
+    compute->SetUniform("cubeSize", mipSize);
+    glBindImageTexture(0, output, mip, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
+    const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
+    const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
+    compute->Dispatch(numGroupsX, numGroupsY, 6);
+  }
+  return output;
+}
+auto GLRenderer::LoadMesh(Mesh &mesh) -> GLMesh {
+  GLMesh glMesh;
   CreateVertexBuffer(glMesh, mesh.vertices);
   if (mesh.indices.size() > 0)
     CreateIndexBuffer(glMesh, mesh.indices);
   mesh.vertices = {};
   mesh.indices = {};
+  return glMesh;
 }
-auto GLRenderer::LoadTexture(GLTexture &glTexture, Texture &texture) -> void {
+auto GLRenderer::LoadTexture(Texture &texture) -> GLTexture {
+  GLTexture glTexture;
   glTexture.desc.width = texture.width;
   glTexture.desc.height = texture.height;
   glTexture.content = texture.content;
-  const auto isHDR = texture.color == ColorSpace::HDR;
+  const auto isHDR = texture.range == ColorRange::HDR;
   const auto isSRGB = texture.color == ColorSpace::sRGB;
   GLenum internalFormat, format;
   switch (texture.channels) {
@@ -318,19 +406,18 @@ auto GLRenderer::LoadTexture(GLTexture &glTexture, Texture &texture) -> void {
     break;
   default:
     spdlog::warn("[OpenGL] unsupported number of channels: {}", texture.channels);
-    return;
+    return glTexture;
   }
   glTexture.desc.format = GLFormatToTarget(internalFormat);
   glCreateTextures(GL_TEXTURE_2D, 1, &glTexture.id);
   auto mipmaps = 1;
   if (isSRGB)
     mipmaps = std::log2(std::max(texture.width, texture.height)) + 1;
-  const auto type = isHDR ? GL_FLOAT : GL_UNSIGNED_BYTE;
   glTextureStorage2D(glTexture.id, mipmaps, internalFormat, texture.width, texture.height);
-  glTextureSubImage2D(glTexture.id, 0, 0, 0, texture.width, texture.height, format, type, texture.data.data());
-  switch (texture.type) {
-  case TextureType::UV2D:
-  case TextureType::Equirectangular:
+  const auto type = isHDR ? GL_FLOAT : GL_UNSIGNED_BYTE;
+  std::visit([&](auto &data) { glTextureSubImage2D(glTexture.id, 0, 0, 0, texture.width, texture.height, format, type, data.data()); }, texture.data);
+  switch (texture.content) {
+  case TextureContent::Skybox:
     glTextureParameteri(glTexture.id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTextureParameteri(glTexture.id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTextureParameteri(glTexture.id, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -348,6 +435,7 @@ auto GLRenderer::LoadTexture(GLTexture &glTexture, Texture &texture) -> void {
     break;
   }
   texture.data = {};
+  return glTexture;
 }
 auto GLRenderer::LoadSceneMaterial(SceneAsset &sceneAsset, const size_t materialIndex) -> EntityID {
   if (materialIndex >= sceneAsset.materials.size())
@@ -408,7 +496,7 @@ auto GLRenderer::LoadSceneMesh(SceneAsset &sceneAsset, const size_t meshIndex) -
   const auto resourceId = resourceManager.Create(sceneMesh.name);
   sceneMesh.resourceId = resourceId;
   auto glMesh = resourceManager.AddComponent<GLMesh>(resourceId);
-  LoadMesh(*glMesh, sceneMesh.mesh);
+  *glMesh = LoadMesh(sceneMesh.mesh);
   const auto materialIndex = sceneMesh.material;
   LoadSceneMaterial(sceneAsset, materialIndex);
   spdlog::info("[OpenGL] loaded mesh: {}", sceneMesh.name);
@@ -423,7 +511,7 @@ auto GLRenderer::LoadSceneTexture(SceneAsset &sceneAsset, const size_t textureIn
   const auto resourceId = resourceManager.Create(sceneTexture.name);
   sceneTexture.resourceId = resourceId;
   auto glTexture = resourceManager.AddComponent<GLTexture>(resourceId);
-  LoadTexture(*glTexture, sceneTexture.texture);
+  *glTexture = LoadTexture(sceneTexture.texture);
   spdlog::info("[OpenGL] loaded texture: {}", sceneTexture.name);
   return glTexture;
 }

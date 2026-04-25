@@ -9,25 +9,24 @@
 namespace kuki {
 class Application;
 }
-using namespace kuki;
 /// @brief An FPS-style camera controller
-class CameraController final : public Script {
+class CameraController final : public kuki::Script {
 public:
   CameraController();
-  auto CloneTo(EntityManager &, const EntityID) const -> void override;
+  auto CloneTo(kuki::EntityManager &, const kuki::EntityID) const -> void override;
   auto Display() const -> void override;
   auto GetProjection() const -> const glm::mat4 &;
-  auto GetType() const -> const CameraType &;
+  auto GetType() const -> const kuki::CameraType &;
   auto GetView() const -> const glm::mat4 &;
-  auto Start(Application &) -> void override;
-  auto Update(Application &) -> void override;
+  auto Start(kuki::Application &) -> void override;
+  auto Update(kuki::Application &) -> void override;
 private:
-  Camera camera{};
+  kuki::Camera camera{};
   ControllerSettings settings{};
   bool cameraMissing{true};
   bool mouseEnter{true};
   bool mouselook{false};
   glm::vec2 mouseLast{.0f};
-  auto UpdatePosition(Application &) -> bool;
-  auto UpdateRotation(Application &) -> bool;
+  auto UpdatePosition(kuki::Application &) -> bool;
+  auto UpdateRotation(kuki::Application &) -> bool;
 };

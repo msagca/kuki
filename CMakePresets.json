@@ -16,12 +16,11 @@
     {
       "name": "Release",
       "inherits": "Base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
-    },
-    {
-      "name": "Package",
-      "inherits": "Release",
-      "cacheVariables": { "KUKI_BUILD_GAMES": "ON", "KUKI_BUILD_TESTS": "ON" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "KUKI_BUILD_GAMES": "ON",
+        "KUKI_BUILD_TESTS": "ON"
+      }
     },
     {
       "name": "MSVC",
@@ -58,11 +57,6 @@
       "configuration": "Release"
     },
     {
-      "name": "Package",
-      "configurePreset": "Package",
-      "configuration": "Release"
-    },
-    {
       "name": "MSVC-Debug",
       "configurePreset": "MSVC",
       "configuration": "Debug"
@@ -75,57 +69,69 @@
     { "name": "Clang-Debug", "configurePreset": "Clang-Debug" },
     { "name": "Clang-Release", "configurePreset": "Clang-Release" }
   ],
-  "testPresets": [{ "name": "Package", "configurePreset": "Package" }],
-  "packagePresets": [{ "name": "Package", "configurePreset": "Package" }],
+  "testPresets": [
+    { "name": "Debug", "configurePreset": "Debug" },
+    { "name": "Release", "configurePreset": "Release" },
+    { "name": "MSVC-Debug", "configurePreset": "MSVC" },
+    { "name": "MSVC-Release", "configurePreset": "MSVC" },
+    { "name": "Clang-Debug", "configurePreset": "Clang-Debug" },
+    { "name": "Clang-Release", "configurePreset": "Clang-Release" }
+  ],
+  "packagePresets": [
+    { "name": "Release", "configurePreset": "Release" },
+    { "name": "MSVC-Release", "configurePreset": "MSVC" },
+    { "name": "Clang-Release", "configurePreset": "Clang-Release" }
+  ],
   "workflowPresets": [
     {
       "name": "Debug",
       "steps": [
         { "type": "configure", "name": "Debug" },
-        { "type": "build", "name": "Debug" }
+        { "type": "build", "name": "Debug" },
+        { "type": "test", "name": "Debug" }
       ]
     },
     {
       "name": "Release",
       "steps": [
         { "type": "configure", "name": "Release" },
-        { "type": "build", "name": "Release" }
-      ]
-    },
-    {
-      "name": "Package",
-      "steps": [
-        { "type": "configure", "name": "Package" },
-        { "type": "build", "name": "Package" },
-        { "type": "package", "name": "Package" }
+        { "type": "build", "name": "Release" },
+        { "type": "test", "name": "Release" },
+        { "type": "package", "name": "Release" }
       ]
     },
     {
       "name": "MSVC-Debug",
       "steps": [
         { "type": "configure", "name": "MSVC" },
-        { "type": "build", "name": "MSVC-Debug" }
+        { "type": "build", "name": "MSVC-Debug" },
+        { "type": "test", "name": "MSVC-Debug" }
       ]
     },
     {
       "name": "MSVC-Release",
       "steps": [
         { "type": "configure", "name": "MSVC" },
-        { "type": "build", "name": "MSVC-Release" }
+        { "type": "build", "name": "MSVC-Release" },
+        { "type": "test", "name": "MSVC-Release" },
+        { "type": "package", "name": "MSVC-Release" }
       ]
     },
     {
       "name": "Clang-Debug",
       "steps": [
         { "type": "configure", "name": "Clang-Debug" },
-        { "type": "build", "name": "Clang-Debug" }
+        { "type": "build", "name": "Clang-Debug" },
+        { "type": "test", "name": "Clang-Debug" }
       ]
     },
     {
       "name": "Clang-Release",
       "steps": [
         { "type": "configure", "name": "Clang-Release" },
-        { "type": "build", "name": "Clang-Release" }
+        { "type": "build", "name": "Clang-Release" },
+        { "type": "test", "name": "Clang-Release" },
+        { "type": "package", "name": "Clang-Release" }
       ]
     }
   ]

@@ -1,26 +1,25 @@
 #pragma once
+#include <application.hpp>
+#include <array>
 #include <bone_data.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
-#include <editor.hpp>
+#include <component_type.hpp>
 #include <enum_traits.hpp>
 #include <gl_material.hpp>
 #include <gl_mesh.hpp>
 #include <gl_skybox.hpp>
 #include <gl_texture.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <imgui.h>
 #include <light.hpp>
-#include <material_handle.hpp>
+#include <material_type.hpp>
 #include <mesh_handle.hpp>
 #include <skybox_handle.hpp>
 #include <texture_handle.hpp>
-class PropertyDisplayer {
-public:
-  PropertyDisplayer(Editor &);
+struct PropertyDisplayer {
   template <typename T>
   auto operator()(T *) -> void;
-private:
-  Editor &editor;
 };
 template <typename T>
 inline auto PropertyDisplayer::operator()(T *) -> void {}
@@ -42,9 +41,9 @@ inline auto PropertyDisplayer::operator()<kuki::BoundingBox>(kuki::BoundingBox *
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) -> void {
+  static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
   if (!camera)
     return;
-  static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
   auto dirty = false;
   static auto &types = kuki::EnumTraits<kuki::CameraType>::GetNames();
   auto type = static_cast<int>(camera->type);
@@ -103,9 +102,9 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLMaterial>(kuki::GLMaterial *material) -> void {
+  static constexpr ImVec2 TEXTURE_SIZE(64, 64);
   if (!material)
     return;
-  static constexpr ImVec2 TEXTURE_SIZE(64, 64);
   const auto &style = ImGui::GetStyle();
   auto GetTileWidth = [&](const char *label) -> float {
     const auto textWidth = ImGui::CalcTextSize(label).x;
@@ -127,10 +126,7 @@ inline auto PropertyDisplayer::operator()<kuki::GLMaterial>(kuki::GLMaterial *ma
     ImGui::EndGroup();
     return tileWidth;
   };
-  const auto SelectProperty = [&](const kuki::MaterialProperty prop) {
-    editor.context.selectedComponentType = kuki::ComponentType::GLMaterial;
-    editor.context.selectedProperty = static_cast<uint8_t>(prop);
-  };
+  const auto SelectProperty = [&](const kuki::MaterialProperty prop) {};
   struct TexEntry {
     const char *id;
     ImTextureID tex;
@@ -138,13 +134,13 @@ inline auto PropertyDisplayer::operator()<kuki::GLMaterial>(kuki::GLMaterial *ma
     kuki::MaterialProperty prop;
   };
   std::array<TexEntry, 7> entries{
-    TexEntry{"Albedo", static_cast<ImTextureID>(material->textures.albedo), "Albedo", MaterialProperty::AlbedoTexture},
-    {"Normal", static_cast<ImTextureID>(material->textures.normal), "Normal", MaterialProperty::NormalTexture},
-    {"Metalness", static_cast<ImTextureID>(material->textures.metalness), "Metalness", MaterialProperty::MetalnessTexture},
-    {"Occlusion", static_cast<ImTextureID>(material->textures.occlusion), "Occlusion", MaterialProperty::OcclusionTexture},
-    {"Roughness", static_cast<ImTextureID>(material->textures.roughness), "Roughness", MaterialProperty::RoughnessTexture},
-    {"Specular", static_cast<ImTextureID>(material->textures.specular), "Specular", MaterialProperty::SpecularTexture},
-    {"Emissive", static_cast<ImTextureID>(material->textures.emissive), "Emissive", MaterialProperty::EmissiveTexture},
+    TexEntry{"Albedo", static_cast<ImTextureID>(material->textures.albedo), "Albedo", kuki::MaterialProperty::AlbedoTexture},
+    {"Normal", static_cast<ImTextureID>(material->textures.normal), "Normal", kuki::MaterialProperty::NormalTexture},
+    {"Metalness", static_cast<ImTextureID>(material->textures.metalness), "Metalness", kuki::MaterialProperty::MetalnessTexture},
+    {"Occlusion", static_cast<ImTextureID>(material->textures.occlusion), "Occlusion", kuki::MaterialProperty::OcclusionTexture},
+    {"Roughness", static_cast<ImTextureID>(material->textures.roughness), "Roughness", kuki::MaterialProperty::RoughnessTexture},
+    {"Specular", static_cast<ImTextureID>(material->textures.specular), "Specular", kuki::MaterialProperty::SpecularTexture},
+    {"Emissive", static_cast<ImTextureID>(material->textures.emissive), "Emissive", kuki::MaterialProperty::EmissiveTexture},
   };
   auto firstOnLine = true;
   auto lineWidth = .0f;
@@ -206,11 +202,11 @@ inline auto PropertyDisplayer::operator()<kuki::GLMesh>(kuki::GLMesh *mesh) -> v
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLSkybox>(kuki::GLSkybox *skybox) -> void {
+  static constexpr ImVec2 TEXTURE_SIZE(64, 64);
+  static constexpr ImVec2 UV0(0.f, 1.f);
+  static constexpr ImVec2 UV1(1.f, 0.f);
   if (!skybox)
     return;
-  static constexpr ImVec2 uv0(0.f, 1.f);
-  static constexpr ImVec2 uv1(1.f, 0.f);
-  static constexpr ImVec2 TEXTURE_SIZE(64, 64);
   const auto &style = ImGui::GetStyle();
   const auto label = "Skybox";
   // FIXME: create a preview image for the skybox
@@ -220,9 +216,7 @@ inline auto PropertyDisplayer::operator()<kuki::GLSkybox>(kuki::GLSkybox *skybox
   const float tileWidth = std::max(buttonWidth, textWidth);
   auto startPos = ImGui::GetCursorPos();
   ImGui::BeginGroup();
-  bool clicked = ImGui::ImageButton("Skybox##Texture", tex, TEXTURE_SIZE, uv0, uv1);
-  if (clicked)
-    editor.context.selectedComponentType = ComponentType::GLSkybox;
+  if (ImGui::ImageButton("Skybox##Texture", tex, TEXTURE_SIZE, UV0, UV1)) {}
   const auto buttonHeight = TEXTURE_SIZE.y + style.FramePadding.y * 2.f;
   ImGui::SetCursorPosX(startPos.x + (tileWidth - textWidth) * .5f);
   ImGui::SetCursorPosY(startPos.y + buttonHeight + style.ItemInnerSpacing.y);
@@ -231,10 +225,10 @@ inline auto PropertyDisplayer::operator()<kuki::GLSkybox>(kuki::GLSkybox *skybox
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLTexture>(kuki::GLTexture *texture) -> void {
-  if (!texture)
-    return;
   static constexpr auto MAX_INT = std::numeric_limits<int>::max();
   static constexpr auto TEXTURE_SIZE = ImVec2(64, 64);
+  if (!texture)
+    return;
   auto textureId = texture->id;
   if (ImGui::ImageButton("ID", textureId, TEXTURE_SIZE)) {}
 }
@@ -246,9 +240,22 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
   auto type = static_cast<int>(light->type);
   if (ImGui::Combo("Type", &type, types.data(), types.size()))
     light->type = static_cast<kuki::LightType>(type);
-  auto vector = light->vector;
-  if (ImGui::DragFloat3(light->type == kuki::LightType::Directional ? "Direction" : "Position", glm::value_ptr(vector), .1f))
-    light->vector = vector;
+  auto position = light->position;
+  if (ImGui::DragFloat3("Position", glm::value_ptr(position), .1f))
+    light->position = position;
+  auto rotationQuat = light->rotation;
+  auto rotationDegrees = glm::degrees(glm::eulerAngles(rotationQuat));
+  if (ImGui::DragFloat3("Rotation", glm::value_ptr(rotationDegrees), .1f)) {
+    for (auto i = 0; i < 3; ++i) {
+      auto angle = rotationDegrees[i];
+      while (angle > 180.f)
+        angle -= 360.f;
+      while (angle < -180.f)
+        angle += 360.f;
+    }
+    auto rotationRadians = glm::radians(rotationDegrees);
+    light->rotation = glm::quat(rotationRadians);
+  }
   auto ambient = light->ambient;
   if (ImGui::ColorEdit3("Ambient Color", glm::value_ptr(ambient)))
     light->ambient = ambient;
@@ -325,9 +332,9 @@ inline auto PropertyDisplayer::operator()<kuki::TextureHandle>(kuki::TextureHand
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Transform>(kuki::Transform *transform) -> void {
+  static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
   if (!transform)
     return;
-  static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
   auto dirty = false;
   auto position = transform->position;
   if (ImGui::DragFloat3("Position", glm::value_ptr(position), .1f)) {

@@ -19,14 +19,14 @@ auto GLLitShader::SetLighting(std::span<const Light> lights) -> void {
   unsigned int pointIndex = 0;
   for (const auto &light : lights)
     if (light.type == LightType::Directional) {
-      SetUniform("dirLight.direction", light.vector);
+      SetUniform("dirLight.direction", glm::eulerAngles(light.rotation));
       SetUniform("dirLight.ambient", light.ambient);
       SetUniform("dirLight.diffuse", light.diffuse);
       SetUniform("dirLight.specular", light.specular);
       dirExists = true;
     } else if (light.type == LightType::Point) {
       const auto offset = pointIndex * 7;
-      SetUniform(nameToUniform["pointLights[0].position"].location + offset, light.vector);
+      SetUniform(nameToUniform["pointLights[0].position"].location + offset, light.position);
       SetUniform(nameToUniform["pointLights[0].ambient"].location + offset, light.ambient);
       SetUniform(nameToUniform["pointLights[0].diffuse"].location + offset, light.diffuse);
       SetUniform(nameToUniform["pointLights[0].specular"].location + offset, light.specular);
@@ -78,22 +78,12 @@ auto GLLitShader::SetMaterialFallback(const GLMesh &mesh, std::span<const Materi
   glEnableVertexArrayAttrib(mesh.vao, attribIndex);
 }
 auto GLLitShader::SetSkybox(const GLSkybox *skybox) -> void {
-  if (!skybox) {
-    SetUniform("hasSkybox", false);
-    SetUniform("hasIrradianceMap", false);
-    SetUniform("hasPrefilterMap", false);
-    SetUniform("hasBRDF", false);
-    return;
-  }
-  if (skybox->irradiance > 0)
-    SetTexture("irradianceMap", skybox->irradiance);
-  if (skybox->prefilter > 0)
-    SetTexture("prefilterMap", skybox->prefilter);
-  if (skybox->brdf > 0)
-    SetTexture("brdfLUT", skybox->brdf);
-  SetUniform("hasSkybox", true);
-  SetUniform("hasIrradianceMap", skybox->irradiance > 0);
-  SetUniform("hasPrefilterMap", skybox->prefilter > 0);
-  SetUniform("hasBRDF", skybox->brdf > 0);
+  SetTexture("brdfLUT", skybox ? skybox->brdf : 0);
+  SetTexture("irradianceMap", skybox ? skybox->irradiance : 0);
+  SetTexture("prefilterMap", skybox ? skybox->prefilter : 0);
+  SetUniform("hasBRDF", skybox && skybox->brdf > 0);
+  SetUniform("hasIrradianceMap", skybox && skybox->irradiance > 0);
+  SetUniform("hasPrefilterMap", skybox && skybox->prefilter > 0);
+  SetUniform("hasSkybox", skybox != nullptr);
 }
 } // namespace kuki

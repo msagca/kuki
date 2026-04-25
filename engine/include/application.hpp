@@ -36,6 +36,7 @@ public:
   virtual auto Status() -> bool;
   // TODO: clean up this API, or expose them through different APIs based on category
   // FIXME: don't expose Add/Remove and ForEach calls through the same API, underlying structures should not be resized/reallocated during iteration
+  static auto ComponentToAssetType(const ComponentType) -> AssetType;
   auto ActivateScene(const std::string &) -> bool;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
   auto AddEntityComponent(const EntityID, const ComponentType) -> void;
@@ -113,6 +114,8 @@ public:
   auto GetAsset(const AssetID) -> decltype(auto);
   template <typename... T>
   auto GetEntityComponent(this auto &, const EntityID) -> decltype(auto);
+  template <typename... T>
+  auto GetPrefabComponent(this auto &, const EntityID) -> decltype(auto);
   template <IsSystem T>
   auto GetSystem(this auto &) -> decltype(auto);
   template <IsAsset T>
@@ -146,13 +149,13 @@ private:
   /// @brief Shuts down systems, destroys app window
   auto PreShutdown() -> void;
   auto SetWindowIcon() -> void;
-  static void CharCallback(GLFWwindow *, unsigned int);
-  static void CursorPosCallback(GLFWwindow *, double, double);
-  static void DebugMessageCallback(unsigned int, unsigned int, unsigned int, unsigned int, int, const char *, const void *);
-  static void FramebufferSizeCallback(GLFWwindow *, int, int);
-  static void KeyCallback(GLFWwindow *, int, int, int, int);
-  static void MouseButtonCallback(GLFWwindow *, int, int, int);
-  static void WindowCloseCallback(GLFWwindow *);
+  static auto CharCallback(GLFWwindow *, unsigned int) -> void;
+  static auto CursorPosCallback(GLFWwindow *, double, double) -> void;
+  static auto DebugMessageCallback(unsigned int, unsigned int, unsigned int, unsigned int, int, const char *, const void *) -> void;
+  static auto FramebufferSizeCallback(GLFWwindow *, int, int) -> void;
+  static auto KeyCallback(GLFWwindow *, int, int, int, int) -> void;
+  static auto MouseButtonCallback(GLFWwindow *, int, int, int) -> void;
+  static auto WindowCloseCallback(GLFWwindow *) -> void;
 };
 auto Application::ForEachAsset(this auto &self, const AssetType type, auto &&func) -> void {
   self.assetManager.ForEach(type, std::forward<decltype(func)>(func));
@@ -260,6 +263,10 @@ auto Application::GetEntityComponent(this auto &self, const EntityID id) -> decl
     else
       return std::tuple(self.template GetEntityComponent<T>(id)...);
   }
+}
+template <typename... T>
+auto Application::GetPrefabComponent(this auto &self, const EntityID id) -> decltype(auto) {
+  return self.assetManager.template GetComponent<T...>(id);
 }
 template <IsSystem T>
 auto Application::GetSystem(this auto &self) -> decltype(auto) {

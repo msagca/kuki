@@ -2,9 +2,6 @@
 //
 #include <glad/glad.h>
 namespace kuki {
-BufferPool::~BufferPool() {
-  Clear();
-}
 auto BufferPool::Allocate(const int &size) -> unsigned int {
   unsigned int buffer;
   glCreateBuffers(1, &buffer);

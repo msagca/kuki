@@ -2,9 +2,6 @@
 //
 #include <glad/glad.h>
 namespace kuki {
-RenderbufferPool::~RenderbufferPool() {
-  Clear();
-}
 auto RenderbufferPool::Allocate(const TargetDescription &desc) -> unsigned int {
   unsigned int renderbuffer;
   glGenRenderbuffers(1, &renderbuffer);
