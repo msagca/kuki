@@ -265,7 +265,7 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
   auto specular = light->specular;
   if (ImGui::ColorEdit3("Specular Color", glm::value_ptr(specular)))
     light->specular = specular;
-  if (light->type == kuki::LightType::Point) {
+  if (light->type == kuki::LightType::Point || light->type == kuki::LightType::Spot) {
     // TODO: expose these in a more user-friendly fashion
     auto constant = light->constant;
     if (ImGui::SliderFloat("Constant Term", &constant, .0f, 1.f))
@@ -276,6 +276,14 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
     auto quadratic = light->quadratic;
     if (ImGui::SliderFloat("Quadratic Term", &quadratic, .0f, 1.f))
       light->quadratic = quadratic;
+  }
+  if (light->type == kuki::LightType::Spot) {
+    auto innerCutoff = light->innerCutoff;
+    if (ImGui::SliderFloat("Cos(Inner Cut-off Angle)", &innerCutoff, .0f, 1.f))
+      light->innerCutoff = innerCutoff;
+    auto outerCutoff = light->outerCutoff;
+    if (ImGui::SliderFloat("Cos(Outer Cut-off Angle)", &outerCutoff, .0f, 1.f))
+      light->outerCutoff = outerCutoff;
   }
 }
 template <>

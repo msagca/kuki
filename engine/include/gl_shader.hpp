@@ -32,6 +32,6 @@ protected:
   GLShader() = default;
   size_t materialCount{};
   size_t transformCount{};
-  size_t cameraDirty{};
+  GenCount cameraDirty{};
 };
 } // namespace kuki

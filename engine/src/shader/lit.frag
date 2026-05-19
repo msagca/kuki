@@ -3,6 +3,7 @@ const float EPSILON = 1.0e-6;
 const float MAX_REFLECTION_LOD = 4.0;
 const float PI = 3.14159265359;
 const uint MAX_POINT_LIGHTS = 8;
+const uint MAX_SPOT_LIGHTS = 8;
 flat in int textureMask;
 in float metalness;
 in float occlusion;
@@ -10,6 +11,7 @@ in float roughness;
 in vec2 texCoord;
 in vec3 normal;
 in vec3 position;
+in vec4 positionL;
 in vec3 tangent;
 in vec4 albedo;
 in vec4 emissive;
@@ -29,6 +31,8 @@ struct DirLight {
         vec3 ambient;
         vec3 diffuse;
         vec3 specular;
+        mat4 view;
+        mat4 projection;
 };
 struct PointLight {
         vec3 position;
@@ -39,30 +43,46 @@ struct PointLight {
         float linear;
         float quadratic;
 };
+struct SpotLight {
+        vec3 position;
+        vec3 direction;
+        vec3 ambient;
+        vec3 diffuse;
+        vec3 specular;
+        float constant;
+        float linear;
+        float quadratic;
+        float innerCutoff;
+        float outerCutoff;
+};
 uniform DirLight dirLight;
 uniform Material material;
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
+uniform SpotLight spotLights[MAX_SPOT_LIGHTS];
 uniform bool hasBRDF;
 uniform bool hasDirLight;
 uniform bool hasIrradianceMap;
 uniform bool hasPrefilterMap;
 uniform bool hasSkybox;
 uniform sampler2D brdfLUT;
+uniform sampler2D shadowMap;
 uniform samplerCube irradianceMap;
 uniform samplerCube prefilterMap;
 uniform uint pointCount;
+uniform uint spotCount;
 uniform vec3 viewPos;
 float DistributionGGX(vec3, vec3, float);
 float GeometrySchlickGGX(float, float);
 float GeometrySmith(vec3, vec3, vec3, float);
+float ShadowAmount(vec4, vec3);
 vec2 FallbackBRDF(float, float);
 vec3 DirLightContribution(DirLight, vec3, vec3, vec3, float, float, vec3);
-/// @brief A gradient sky to use as fallback in the absence of a cubemap
 vec3 FallbackSky(vec3);
 vec3 FresnelSchlick(float, vec3);
 vec3 FresnelSchlickRoughness(float, vec3, float);
 vec3 GetNormalFromTexture();
 vec3 PointLightContribution(PointLight, vec3, vec3, vec3, float, float, vec3, vec3);
+vec3 SpotLightContribution(SpotLight, vec3, vec3, vec3, float, float, vec3, vec3);
 void main() {
         bool useAlbedoTexture = (textureMask & 0x1) != 0;
         bool useNormalTexture = (textureMask & 0x2) != 0;
@@ -100,9 +120,12 @@ void main() {
                 ambient = dirLight.ambient * A.rgb * O;
         } else
                 ambient = vec3(0.03) * A.rgb * O;
-        for (int i = 0; i < min(pointCount, MAX_POINT_LIGHTS); ++i)
+        for (uint i = 0u; i < min(pointCount, MAX_POINT_LIGHTS); ++i)
                 Lo += PointLightContribution(pointLights[i], F0, A.rgb, N, M, R, V, position);
-        color = vec4(ambient + Lo, A.a);
+        for (uint i = 0u; i < min(spotCount, MAX_SPOT_LIGHTS); ++i)
+                Lo += SpotLightContribution(spotLights[i], F0, A.rgb, N, M, R, V, position);
+        float shadow = hasDirLight ? ShadowAmount(positionL, N) : 0.0;
+        color = vec4(ambient + (1.0 - shadow) * Lo, 1.0);
 }
 vec3 DirLightContribution(DirLight light, vec3 F0, vec3 A, vec3 N, float M, float R, vec3 V) {
         vec3 L = normalize(light.direction);
@@ -160,6 +183,15 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float R) {
         float ggx1 = GeometrySchlickGGX(NdotL, R);
         return ggx1 * ggx2;
 }
+float ShadowAmount(vec4 posClip, vec3 N) {
+        vec3 posScreen = posClip.xyz / posClip.w;
+        posScreen = posScreen * 0.5 + 0.5;
+        float mapDepth = texture(shadowMap, posScreen.xy).r;
+        float fragDepth = posScreen.z;
+        float bias = max(0.05 * (1.0 - dot(N, dirLight.direction)), 0.005);
+        float shadow = fragDepth - bias > mapDepth ? 1.0 : 0.0;
+        return shadow;
+}
 vec3 GetNormalFromTexture() {
         vec3 tangentNormal = texture(material.normal, texCoord).xyz * 2.0 - 1.0;
         vec3 N = normalize(normal);
@@ -168,8 +200,8 @@ vec3 GetNormalFromTexture() {
         mat3 TBN = mat3(T, B, N);
         return normalize(TBN * tangentNormal);
 }
-vec3 PointLightContribution(PointLight light, vec3 F0, vec3 A, vec3 N, float M, float R, vec3 V, vec3 position) {
-        vec3 L = normalize(light.position - position);
+vec3 PointLightContribution(PointLight light, vec3 F0, vec3 A, vec3 N, float M, float R, vec3 V, vec3 fragPos) {
+        vec3 L = normalize(light.position - fragPos);
         vec3 H = normalize(V + L);
         float NdotL = max(dot(N, L), 0.0);
         float NDF = DistributionGGX(N, H, R);
@@ -180,8 +212,30 @@ vec3 PointLightContribution(PointLight light, vec3 F0, vec3 A, vec3 N, float M, 
         vec3 kS = F;
         vec3 kD = vec3(1.0) - kS;
         kD *= 1.0 - vec3(M);
-        float distance = length(light.position - position);
+        float distance = length(light.position - fragPos);
         float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * distance * distance);
+        vec3 diffuse = (A / PI) * light.diffuse * attenuation;
+        vec3 specular = numerator / denominator;
+        return (kD * diffuse + specular * light.specular) * NdotL;
+}
+vec3 SpotLightContribution(SpotLight light, vec3 F0, vec3 A, vec3 N, float M, float R, vec3 V, vec3 fragPos) {
+        vec3 L = normalize(light.position - fragPos);
+        vec3 H = normalize(V + L);
+        float NdotL = max(dot(N, L), 0.0);
+        float NDF = DistributionGGX(N, H, R);
+        float G = GeometrySmith(N, V, L, R);
+        vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+        vec3 numerator = NDF * G * F;
+        float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + EPSILON;
+        vec3 kS = F;
+        vec3 kD = vec3(1.0) - kS;
+        kD *= 1.0 - vec3(M);
+        float distance = length(light.position - fragPos);
+        float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * distance * distance);
+        float theta = dot(L, normalize(-light.direction));
+        float epsilon = light.innerCutoff - light.outerCutoff;
+        float intensity = clamp((theta - light.outerCutoff) / epsilon, 0.0, 1.0);
+        attenuation *= intensity;
         vec3 diffuse = (A / PI) * light.diffuse * attenuation;
         vec3 specular = numerator / denominator;
         return (kD * diffuse + specular * light.specular) * NdotL;

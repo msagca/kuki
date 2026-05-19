@@ -69,7 +69,7 @@ auto RenderGraph::Execute(Renderer &renderer) -> void {
     Compile();
   renderer.Reset();
   ForEachTarget([&](const std::string &name, const TargetDescription &desc) {
-    renderer.CreateTarget(name, desc);
+    renderer.CreateTarget(desc, name);
   });
   ForEachPass([&](const PassID id, const PassFunc &func) {
     auto inputs = GetInputs(id);

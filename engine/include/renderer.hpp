@@ -13,12 +13,9 @@ class Renderer {
 public:
   virtual ~Renderer() = default;
   virtual auto Clear() -> void = 0;
-  virtual auto CreateBuffer(const int & = 0, const std::string & = "") -> EntityID = 0;
-  virtual auto CreateBuffer(const std::string &, const int & = 0) -> EntityID = 0;
+  virtual auto CreateBuffer(const std::string & = "", const int & = 0) -> EntityID = 0;
   virtual auto CreateTarget(const TargetDescription &, const std::string & = "") -> EntityID = 0;
-  virtual auto CreateTarget(const std::string &, const TargetDescription &) -> EntityID = 0;
   virtual auto CreateTexture(const TargetDescription &, const std::string & = "") -> EntityID = 0;
-  virtual auto CreateTexture(const std::string &, const TargetDescription &) -> EntityID = 0;
   virtual auto GetBuffer(const EntityID) -> BufferObject * = 0;
   virtual auto GetBuffer(const std::string &) -> BufferObject * = 0;
   virtual auto GetCompute(const std::string &) -> Shader * = 0;

@@ -142,7 +142,7 @@ auto Primitive::Sphere(unsigned int level) -> std::vector<Vertex> {
       const auto phi = acos(v.y / glm::length(v));
       vertex.texture = glm::vec2((theta + PI) / (2.f * PI), phi / PI);
       glm::vec3 tangent(-sin(theta), 0.f, cos(theta));
-      if (abs(v.y) > .999f)
+      if (std::abs(v.y) > .999f)
         tangent = glm::vec3(1.f, 0.f, 0.f);
       tangent = glm::normalize(tangent - vertex.normal * glm::dot(tangent, vertex.normal));
       vertex.tangent = tangent;

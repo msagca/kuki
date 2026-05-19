@@ -1,10 +1,13 @@
+#define GLM_ENABLE_EXPERIMENTAL
 #include <application.hpp>
 #include <asset_manager.hpp>
 #include <asset_metadata.hpp>
 #include <bounding_box.hpp>
 #include <chrono>
+#include <color.hpp>
 #include <filesystem>
 #include <future>
+#include <glm/gtx/matrix_decompose.hpp>
 #include <id.hpp>
 #include <material_asset.hpp>
 #include <material_handle.hpp>
@@ -14,6 +17,7 @@
 #include <scene_asset.hpp>
 #include <stb_image.h>
 #include <texture_asset.hpp>
+#include <texture_content.hpp>
 namespace kuki {
 const std::unordered_map<std::type_index, AssetType> AssetManager::typeIndexToAssetType = {
   {typeid(MaterialAsset), AssetType::Material},
@@ -148,6 +152,9 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const SceneAsset &sce
   const auto prefabId = prefabManager.Create(name);
   auto transform = prefabManager.AddComponent<Transform>(prefabId);
   transform->local = node.transform;
+  glm::vec3 skew;
+  glm::vec4 perspective;
+  glm::decompose(node.transform, transform->scale, transform->rotation, transform->position, skew, perspective);
   if (node.bounds) {
     auto bounds = prefabManager.AddComponent<BoundingBox>(prefabId);
     *bounds = node.bounds;
@@ -351,6 +358,9 @@ auto AssetManager::LoadTexture(std::unordered_map<std::string, unsigned int> &vi
     SceneTexture sceneTexture{};
     sceneTexture.name = pathNormStr;
     sceneTexture.texture.content = content;
+    if (content == TextureContent::Albedo)
+      // NOTE: we assume that albedo textures are, in general, in sRGB space
+      sceneTexture.texture.color = ColorSpace::sRGB;
     if (auto data = stbi_load(pathNormStr.c_str(), &sceneTexture.texture.width, &sceneTexture.texture.height, &sceneTexture.texture.channels, 0); data) {
       const auto size = sceneTexture.texture.width * sceneTexture.texture.height * sceneTexture.texture.channels;
       sceneTexture.texture.data = std::vector<unsigned char>();

@@ -55,7 +55,7 @@ public:
   auto EnableKeys() -> void;
   auto EntityHasChildren(const EntityID) const -> bool;
   auto EntityHasParent(const EntityID) const -> bool;
-  auto GetArrowKeys() const -> glm::vec2;
+  auto GetArrowKeys() const -> glm::ivec2;
   auto GetAssetName(const AssetID) const -> std::string;
   auto GetButton(int) const -> bool;
   auto GetButtonDown(int) const -> bool;
@@ -73,7 +73,7 @@ public:
   auto GetMousePosition() const -> glm::vec2;
   auto GetName() const -> std::string;
   auto GetSettings() const -> const ApplicationSettings &;
-  auto GetWASDKeys() const -> glm::vec2;
+  auto GetWASDKeys() const -> glm::ivec2;
   auto InstantiateAsset(const AssetID) -> EntityID;
   auto InstantiateAsset(const std::string &) -> EntityID;
   auto IsEntity(const EntityID) const -> bool;

@@ -53,8 +53,9 @@ auto GLShader::SetTransform(const GLMesh &mesh, std::span<const glm::mat4> trans
   }
 }
 auto GLShader::SetCamera(const Camera &camera, const unsigned int buffer) -> void {
-  if (camera.dirty == cameraDirty)
-    return;
+  // FIXME: this causes problems in edge cases, e.g., there exists another camera with the same dirty count
+  //if (camera.dirty == cameraDirty)
+  //  return;
   cameraDirty = camera.dirty;
   // NOTE: this assumes that enough memory was allocated for `buffer`
   // FIXME: binding point might be different for some shaders

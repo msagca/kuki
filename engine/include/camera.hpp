@@ -27,8 +27,8 @@ struct KUKI_ENGINE_API Camera {
   float aspectRatio{1.f};
   float nearPlane{.1f};
   float farPlane{100.f};
-  float orthoSize{2.f};
-  auto Frame(const BoundingBox &, glm::vec3 = {0.f, 0.f, 0.f}, glm::vec3 = {.26f, .52f, 0.f}, float = 1.1f) -> void;
+  float orthoSize{10.f};
+  auto Frame(const BoundingBox &, glm::vec3 = {0.f, 0.f, 0.f}, glm::vec3 = {-.26f, .52f, 0.f}, float = 1.1f) -> void;
   auto GetTransform() const -> Transform;
   auto IntersectsFrustum(const BoundingBox &) const -> bool;
   auto SetTransform(const Transform &) -> void;

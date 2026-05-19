@@ -24,8 +24,9 @@ auto CameraController::CloneTo(EntityManager &entityManager, const EntityID id) 
 auto CameraController::Display() const -> void {
   // TODO: make these configurable
   if (ImGui::CollapsingHeader("Camera Controller")) {
-    ImGui::Text("Use WASD or arrow keys to move");
-    ImGui::Text("Hold shift to boost move speed");
+    ImGui::Text("Use WASD or arrow keys to move horizontally");
+    ImGui::Text("Use Q (down) and E (up) keys to move vertically");
+    ImGui::Text("Hold shift to boost movement speed");
     ImGui::Text("Hold right mouse button to look around");
   }
 }
@@ -63,12 +64,13 @@ auto CameraController::Update(Application &app) -> void {
   camera.Update();
 }
 auto CameraController::UpdatePosition(Application &app) -> bool {
-  static constexpr auto EPSILON = 1e-6f;
-  auto input = app.GetWASDKeys();
+  constexpr auto WORLD_UP = glm::vec3(.0f, 1.f, .0f);
+  auto wasd = app.GetWASDKeys();
+  auto eq = app.GetKey(GLFWConst::KEY_E) - app.GetKey(GLFWConst::KEY_Q);
   // FIXME: prevent movement if there is a key sequence in progress
-  if (glm::length2(input) < EPSILON)
-    input = app.GetArrowKeys();
-  if (glm::length2(input) < EPSILON)
+  if (wasd.x == 0 && wasd.y == 0)
+    wasd = app.GetArrowKeys();
+  if (wasd.x == 0 && wasd.y == 0 && eq == 0)
     return false;
   const auto shift = app.GetKey(GLFWConst::KEY_LEFT_SHIFT);
   const auto deltaTime = app.DeltaTime();
@@ -78,7 +80,7 @@ auto CameraController::UpdatePosition(Application &app) -> bool {
     settings.boostTime = std::max(0.f, settings.boostTime - deltaTime * (settings.boostRampUpTime / settings.boostRampDownTime));
   settings.moveBoost = 1.f + (settings.moveBoostMax - 1.f) * (settings.boostTime / settings.boostRampUpTime);
   const auto velocity = settings.moveSpeed * settings.moveBoost * deltaTime;
-  camera.position += (camera.forward * input.y + camera.right * input.x) * velocity;
+  camera.position += (camera.forward * static_cast<float>(wasd.y) + camera.right * static_cast<float>(wasd.x) + WORLD_UP * static_cast<float>(eq)) * velocity;
   return true;
 }
 auto CameraController::UpdateRotation(Application &app) -> bool {

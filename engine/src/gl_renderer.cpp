@@ -19,6 +19,7 @@
 #include <scene_asset.hpp>
 #include <skybox_handle.hpp>
 #include <target_description.hpp>
+#include <texture_content.hpp>
 //
 #include <glad/glad.h>
 namespace kuki {
@@ -39,51 +40,59 @@ auto GLRenderer::BorrowTexture(const TargetDescription &desc) -> unsigned int {
 auto GLRenderer::Clear() -> void {
   resourceManager.Clear();
 }
-auto GLRenderer::CreateBuffer(const int &size, const std::string &name) -> EntityID {
-  const auto id = resourceManager.Create(name);
-  auto buffer = resourceManager.AddComponent<GLBuffer>(id);
-  buffer->id = BorrowBuffer(size);
-  return id;
-}
 auto GLRenderer::CreateBuffer(const std::string &name, const int &size) -> EntityID {
-  if (auto id = resourceManager.GetID(name); id)
-    return id;
-  const auto id = CreateBuffer(size, name);
-  spdlog::info("[OpenGL] created buffer: {}", name);
+  EntityID id{};
+  if (auto id_ = resourceManager.GetID(name); id_)
+    id = id_;
+  else
+    id = resourceManager.Create(name);
+  auto buffer = resourceManager.AddComponent<GLBuffer>(id);
+  if (buffer->id == 0) {
+    buffer->id = BorrowBuffer(size);
+    spdlog::info("[OpenGL] created buffer: {}", name);
+  }
   return id;
 }
 auto GLRenderer::CreateTarget(const TargetDescription &desc, const std::string &name) -> EntityID {
-  const auto id = resourceManager.Create(name);
+  EntityID id{};
+  if (auto id_ = resourceManager.GetID(name); id_)
+    id = id_;
+  else
+    id = resourceManager.Create(name);
   auto renderTarget = resourceManager.AddComponent<GLRenderTarget>(id);
-  renderTarget->framebuffer = BorrowFramebuffer();
-  renderTarget->renderbuffer = BorrowRenderbuffer(desc);
-  renderTarget->texture = BorrowTexture(desc);
+  if (renderTarget->framebuffer == 0) {
+    renderTarget->framebuffer = BorrowFramebuffer();
+    spdlog::info("[OpenGL] created render target: {}", name);
+  }
+  if (renderTarget->renderbuffer == 0)
+    renderTarget->renderbuffer = BorrowRenderbuffer(desc);
+  if (renderTarget->texture == 0)
+    renderTarget->texture = BorrowTexture(desc);
   renderTarget->desc = desc;
   glBindFramebuffer(GL_FRAMEBUFFER, renderTarget->framebuffer);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderTarget->renderbuffer);
   const auto textureTarget = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textureTarget, renderTarget->texture, 0);
+  const auto attachment = desc.format == TargetFormat::DEPTH ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0;
+  glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, textureTarget, renderTarget->texture, 0);
+  if (attachment != GL_DEPTH_ATTACHMENT)
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, renderTarget->renderbuffer);
+  else {
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+  }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return id;
 }
-auto GLRenderer::CreateTarget(const std::string &name, const TargetDescription &desc) -> EntityID {
-  if (auto id = resourceManager.GetID(name); id)
-    return id;
-  const auto id = CreateTarget(desc, name);
-  spdlog::info("[OpenGL] created render target: {}", name);
-  return id;
-}
 auto GLRenderer::CreateTexture(const TargetDescription &desc, const std::string &name) -> EntityID {
-  const auto id = resourceManager.Create(name);
+  EntityID id{};
+  if (auto id_ = resourceManager.GetID(name); id_)
+    id = id_;
+  else
+    id = resourceManager.Create(name);
   auto texture = resourceManager.AddComponent<GLTexture>(id);
-  texture->id = BorrowTexture(desc);
-  return id;
-}
-auto GLRenderer::CreateTexture(const std::string &name, const TargetDescription &desc) -> EntityID {
-  if (auto id = resourceManager.GetID(name); id)
-    return id;
-  const auto id = CreateTexture(desc, name);
-  spdlog::info("[OpenGL] created texture: {}", name);
+  if (texture->id == 0) {
+    texture->id = BorrowTexture(desc);
+    spdlog::info("[OpenGL] created texture: {}", name);
+  }
   return id;
 }
 auto GLRenderer::GetBuffer(const EntityID id) -> GLBuffer * {
@@ -218,12 +227,18 @@ auto GLRenderer::UpdateTarget(const std::string &name, const TargetDescription &
   if (!target)
     return;
   target->desc = desc;
-  texturePool.Reallocate(desc, target->texture);
   renderbufferPool.Reallocate(desc, target->renderbuffer);
+  texturePool.Reallocate(desc, target->texture);
   glBindFramebuffer(GL_FRAMEBUFFER, target->framebuffer);
   const auto textureTarget = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textureTarget, target->texture, 0);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, target->renderbuffer);
+  const auto attachment = desc.format == TargetFormat::DEPTH ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0;
+  glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, textureTarget, target->texture, 0);
+  if (attachment != GL_DEPTH_ATTACHMENT)
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, target->renderbuffer);
+  else {
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+  }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 auto GLRenderer::CreateIndexBuffer(GLMesh &mesh, const std::vector<unsigned int> &indices) -> void {
@@ -537,6 +552,8 @@ auto GLRenderer::GLFormatToTarget(const unsigned int format) -> TargetFormat {
     return TargetFormat::RGBA16;
   case GL_RGBA32F:
     return TargetFormat::RGBA32;
+  case GL_DEPTH_COMPONENT:
+    return TargetFormat::DEPTH;
   default:
     return TargetFormat::Unknown;
   }
@@ -563,6 +580,8 @@ auto GLRenderer::TargetFormatToGL(const TargetFormat &format) -> GLFormat {
     return {GL_RGBA, GL_RGBA16F};
   case TargetFormat::RGBA32:
     return {GL_RGBA, GL_RGBA32F};
+  case TargetFormat::DEPTH:
+    return {GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT};
   default:
     return {};
   }

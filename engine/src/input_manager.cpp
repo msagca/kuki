@@ -1,5 +1,6 @@
 #include <GLFW/glfw3.h>
 #include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_int2.hpp>
 #include <input_manager.hpp>
 #include <span>
 #include <spdlog/spdlog.h>
@@ -62,14 +63,14 @@ auto InputManager::EnableButtons() -> void {
 auto InputManager::EnableKeys() -> void {
   keysEnabled = true;
 }
-auto InputManager::GetArrowKeys() const -> glm::vec2 {
-  glm::vec2 arrow(0.f, 0.f);
+auto InputManager::GetArrowKeys() const -> glm::ivec2 {
+  glm::ivec2 arrow{};
   const auto up = GetState(GLFW_KEY_UP);
   const auto down = GetState(GLFW_KEY_DOWN);
   const auto left = GetState(GLFW_KEY_LEFT);
   const auto right = GetState(GLFW_KEY_RIGHT);
-  arrow.y = up ? (down ? 0.f : 1.f) : (down ? -1.f : 0.f);
-  arrow.x = right ? (left ? 0.f : 1.f) : (left ? -1.f : 0.f);
+  arrow.y = up ? (down ? 0 : 1) : (down ? -1 : 0);
+  arrow.x = right ? (left ? 0 : 1) : (left ? -1 : 0);
   return arrow;
 }
 auto InputManager::GetInactivityTime() const -> double {
@@ -82,14 +83,14 @@ auto InputManager::GetState(int input) const -> bool {
   const auto index = GLFWInputToIndex(input);
   return inputState[index];
 }
-auto InputManager::GetWASD() const -> glm::vec2 {
-  glm::vec2 wasd(0.f, 0.f);
+auto InputManager::GetWASD() const -> glm::ivec2 {
+  glm::ivec2 wasd{};
   const auto w = GetState(GLFW_KEY_W);
   const auto s = GetState(GLFW_KEY_S);
   const auto a = GetState(GLFW_KEY_A);
   const auto d = GetState(GLFW_KEY_D);
-  wasd.y = w ? (s ? 0.f : 1.f) : (s ? -1.f : 0.f);
-  wasd.x = d ? (a ? 0.f : 1.f) : (a ? -1.f : 0.f);
+  wasd.y = w ? (s ? 0 : 1) : (s ? -1 : 0);
+  wasd.x = d ? (a ? 0 : 1) : (a ? -1 : 0);
   return wasd;
 }
 auto InputManager::IsPressed(int input) const -> bool {

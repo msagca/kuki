@@ -3,6 +3,7 @@
 #include <application_settings.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
+#include <camera_type.hpp>
 #include <component.hpp>
 #include <entity_manager.hpp>
 #include <enum_traits.hpp>
@@ -17,6 +18,7 @@
 #include <id.hpp>
 #include <keyed_pool.hpp>
 #include <light.hpp>
+#include <light_type.hpp>
 #include <primitive.hpp>
 #include <renderer.hpp>
 #include <rendering_system.hpp>
@@ -40,8 +42,11 @@ auto RenderingSystem::Start() -> void {
   const auto &res = settingsManager.GetResolution();
   renderGraph = graphBuilder
                   .BeginGraph()
+                  .BeginPass(CreateShadowMap)
+                  .AddOutput("ShadowMap", {.format = TargetFormat::DEPTH, .width = res.height * 4, .height = res.height * 4})
+                  .EndPass()
                   .BeginPass(RenderScene)
-                  // NOTE: unless overriden, subsequent outputs will use this description (no partial overrides)
+                  .AddInput("ShadowMap")
                   .AddOutput("SceneMulti", {.type = TargetType::Texture2DMulti, .width = res.width, .height = res.height, .samples = 4})
                   .EndPass()
                   .BeginPass(ApplyAntiAliasing)
@@ -294,8 +299,28 @@ auto RenderingSystem::ApplyGammaCorrection(Renderer &renderer, std::span<std::st
   gammaShader->Draw(*mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
-auto RenderingSystem::RenderScene(Renderer &renderer, std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+auto RenderingSystem::CreateShadowMap(Renderer &renderer, std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   if (outputs.size() != 1)
+    return;
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto scene = glRenderer->GetScene();
+  if (!scene)
+    return;
+  const auto out = glRenderer->GetTarget(outputs[0]);
+  if (!out)
+    return;
+  // glRenderer->LoadScene(*scene);
+  glEnable(GL_DEPTH_TEST);
+  glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glViewport(0, 0, out->desc.width, out->desc.height);
+  DrawMeshes(renderer);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+auto RenderingSystem::RenderScene(Renderer &renderer, std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  if (inputs.size() != 1 || outputs.size() != 1)
     return;
   auto glRenderer = renderer.As<GLRenderer>();
   if (!glRenderer)
@@ -312,29 +337,31 @@ auto RenderingSystem::RenderScene(Renderer &renderer, std::span<std::string> inp
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   glViewport(0, 0, out->desc.width, out->desc.height);
   DrawSkybox(renderer);
-  DrawEntities(renderer);
+  DrawEntities(renderer, inputs);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glDisable(GL_DEPTH_TEST); // disable before post-processing
 }
-auto RenderingSystem::DrawEntities(Renderer &renderer) -> void {
+auto RenderingSystem::DrawEntities(Renderer &renderer, std::span<std::string> inputs) -> void {
   auto scene = renderer.GetScene();
   if (!scene)
     return;
   // TODO: cache these
-  std::unordered_map<GLMeshMat, std::vector<glm::mat4>> meshToMatToTransforms;
-  std::unordered_map<GLMeshMat, std::vector<MaterialFallback>> meshToMatToFallbacks;
+  std::unordered_map<GLMeshMat, std::vector<glm::mat4>> meshMatToTransforms;
+  std::unordered_map<GLMeshMat, std::vector<MaterialFallback>> meshMatToFallbacks;
   // TODO: use ForEachVisibleEntity below
   scene->ForEachEntity<GLMesh, GLMaterial, Transform>([&](const EntityID id, const GLMesh *mesh, const GLMaterial *material, const Transform *transform) {
     if (mesh->vao == 0)
       return;
     GLMeshMat meshMat{.mesh = *mesh, .material = *material};
-    meshToMatToTransforms[meshMat].push_back(transform->world);
-    meshToMatToFallbacks[meshMat].push_back(material->fallback);
+    meshMatToTransforms[meshMat].push_back(transform->world);
+    meshMatToFallbacks[meshMat].push_back(material->fallback);
   });
-  for (const auto &[meshMat, transforms] : meshToMatToTransforms)
-    DrawEntitiesInstanced(renderer, meshMat.mesh, meshMat.material, meshToMatToFallbacks[meshMat], transforms);
+  for (const auto &[meshMat, transforms] : meshMatToTransforms)
+    DrawEntitiesInstanced(renderer, inputs, meshMat.mesh, meshMat.material, meshMatToFallbacks[meshMat], transforms);
 }
-auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, const GLMesh &mesh, const GLMaterial &material, const std::vector<MaterialFallback> &fallbacks, const std::vector<glm::mat4> &transforms) -> void {
+auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, std::span<std::string> inputs, const GLMesh &mesh, const GLMaterial &material, const std::vector<MaterialFallback> &fallbacks, const std::vector<glm::mat4> &transforms) -> void {
+  if (inputs.size() != 1)
+    return;
   auto glRenderer = renderer.As<GLRenderer>();
   if (!glRenderer)
     return;
@@ -347,6 +374,9 @@ auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, const GLMesh &me
   auto shader = glRenderer->GetShader(material.type);
   if (!shader)
     return;
+  const auto in = glRenderer->GetTarget(inputs[0]);
+  if (!in)
+    return;
   const auto materialBufferId = glRenderer->CreateBuffer("MaterialBuffer");
   const auto transformBufferId = glRenderer->CreateBuffer("TransformBuffer");
   const auto cameraBufferId = glRenderer->CreateBuffer("CameraBuffer", sizeof(CameraTransform));
@@ -357,18 +387,70 @@ auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, const GLMesh &me
     return;
   shader->Use();
   shader->SetCamera(*camera, cameraBuffer->id);
-  const GLSkybox *skybox{nullptr};
+  const GLSkybox *skybox{};
   scene->ForFirstEntity<GLSkybox>([&](const EntityID, const GLSkybox *skyboxComp) {
     skybox = skyboxComp;
   });
   shader->SetSkybox(skybox);
   std::vector<Light> lights;
-  scene->ForEachEntity<Light>([&](EntityID, const Light *light) {
+  const Light *dirLight{};
+  scene->ForEachEntity<Light>([&](const EntityID, const Light *light) {
+    if (light->type == LightType::Directional)
+      dirLight = light;
     lights.push_back(*light);
   });
+  if (dirLight) {
+    Camera lightCam{.type = CameraType::Orthographic};
+    lightCam.SetTransform(dirLight->GetTransform());
+    shader->SetUniform("dirLight.projection", lightCam.transform.projection);
+  }
   shader->SetLighting(lights);
+  shader->SetTexture("shadowMap", in->texture);
   shader->SetMaterial(material);
   shader->SetMaterialFallback(mesh, fallbacks, materialBuffer->id);
+  shader->SetTransform(mesh, transforms, transformBuffer->id);
+  shader->Draw(mesh, transforms.size());
+}
+auto RenderingSystem::DrawMeshes(Renderer &renderer) -> void {
+  auto scene = renderer.GetScene();
+  if (!scene)
+    return;
+  std::unordered_map<GLMesh, std::vector<glm::mat4>> meshToTransforms;
+  scene->ForEachEntity<GLMesh, Transform>([&](const EntityID id, const GLMesh *mesh, const Transform *transform) {
+    if (mesh->vao == 0)
+      return;
+    meshToTransforms[*mesh].push_back(transform->world);
+  });
+  for (const auto &[mesh, transforms] : meshToTransforms)
+    DrawMeshesInstanced(renderer, mesh, transforms);
+}
+auto RenderingSystem::DrawMeshesInstanced(Renderer &renderer, const GLMesh &mesh, const std::vector<glm::mat4> &transforms) -> void {
+  auto glRenderer = renderer.As<GLRenderer>();
+  if (!glRenderer)
+    return;
+  auto scene = glRenderer->GetScene();
+  if (!scene)
+    return;
+  auto shader = glRenderer->GetShader("ShadowMap");
+  if (!shader)
+    return;
+  const Light *dirLight{};
+  scene->ForEachEntity<Light>([&](const EntityID, const Light *light) {
+    if (light->type == LightType::Directional)
+      dirLight = light;
+  });
+  if (!dirLight)
+    return;
+  Camera camera{.type = CameraType::Orthographic};
+  camera.SetTransform(dirLight->GetTransform());
+  const auto transformBufferId = glRenderer->CreateBuffer("TransformBuffer");
+  const auto cameraBufferId = glRenderer->CreateBuffer("CameraBuffer", sizeof(CameraTransform));
+  const auto transformBuffer = glRenderer->GetBuffer(transformBufferId);
+  const auto cameraBuffer = glRenderer->GetBuffer(cameraBufferId);
+  if (!transformBuffer || !cameraBuffer)
+    return;
+  shader->Use();
+  shader->SetCamera(camera, cameraBuffer->id);
   shader->SetTransform(mesh, transforms, transformBuffer->id);
   shader->Draw(mesh, transforms.size());
 }
@@ -400,12 +482,9 @@ auto RenderingSystem::DrawSkybox(Renderer &renderer) -> void {
   scene->ForFirstEntity<GLSkybox>([&skybox](const EntityID id, GLSkybox *skyboxComp) {
     skybox = skyboxComp;
   });
-  if (!skybox || skybox->skybox == 0)
-    shader->SetUniform("useSkybox", false);
-  else {
-    shader->SetTexture("skybox", skybox->skybox);
-    shader->SetUniform("useSkybox", true);
-  }
+  shader->SetTexture("skybox", skybox ? skybox->skybox : 0);
+  shader->SetUniform("useGradient", skybox != nullptr);
+  shader->SetUniform("useSkybox", skybox != nullptr && skybox->skybox > 0);
   glDepthFunc(GL_LEQUAL);
   glDepthMask(GL_FALSE);
   shader->Draw(*mesh);

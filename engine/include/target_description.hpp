@@ -15,6 +15,7 @@ enum class TargetFormat : uint8_t {
   RGBA16,
   RGBA32,
   SRGB8,
+  DEPTH,
   Unknown
 };
 enum class TargetType : uint8_t {

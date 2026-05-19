@@ -211,7 +211,7 @@ auto Application::EntityHasParent(const EntityID id) const -> bool {
     return scene->EntityHasParent(id);
   return false;
 }
-auto Application::GetArrowKeys() const -> glm::vec2 {
+auto Application::GetArrowKeys() const -> glm::ivec2 {
   return inputManager.GetArrowKeys();
 };
 auto Application::GetAssetName(const AssetID id) const -> std::string {
@@ -277,7 +277,7 @@ auto Application::GetName() const -> std::string {
 auto Application::GetSettings() const -> const ApplicationSettings & {
   return settingsManager.GetSettings();
 }
-auto Application::GetWASDKeys() const -> glm::vec2 {
+auto Application::GetWASDKeys() const -> glm::ivec2 {
   return inputManager.GetWASD();
 };
 auto Application::InstantiateAsset(const AssetID id) -> EntityID {

@@ -22,6 +22,7 @@ auto TexturePool::Reallocate(const TargetDescription &desc, unsigned int &textur
   const auto format = GLRenderer::TargetFormatToGL(desc.format);
   const auto target = desc.type == TargetType::Cubemap ? GL_TEXTURE_CUBE_MAP : desc.type == TargetType::Texture2DMulti || desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE
                                                                                                                                            : GL_TEXTURE_2D;
+  const auto type = format.external == GL_DEPTH_COMPONENT ? GL_FLOAT : GL_UNSIGNED_BYTE;
   glBindTexture(target, texture);
   if (target == GL_TEXTURE_2D_MULTISAMPLE)
     glTexImage2DMultisample(target, desc.samples, format.internal, desc.width, desc.height, GL_TRUE);
@@ -35,9 +36,9 @@ auto TexturePool::Reallocate(const TargetDescription &desc, unsigned int &textur
       const auto height = std::max(1, desc.height >> level);
       if (target == GL_TEXTURE_CUBE_MAP)
         for (auto face = 0; face < 6; ++face)
-          glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, level, format.internal, width, height, 0, format.external, GL_UNSIGNED_BYTE, nullptr);
+          glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, level, format.internal, width, height, 0, format.external, type, nullptr);
       else
-        glTexImage2D(target, level, format.internal, width, height, 0, format.external, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(target, level, format.internal, width, height, 0, format.external, type, nullptr);
     }
   }
   glBindTexture(target, 0);

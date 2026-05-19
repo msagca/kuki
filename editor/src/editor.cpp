@@ -110,6 +110,7 @@ auto Editor::InitLayout() -> void {
   ImGui::DockBuilderFinish(dockspaceId);
 }
 auto Editor::LoadDefaultAssets() -> void {
+  // TODO: load assets required by systems in their `Start` functions
   const auto &desc = GetDescription();
   // TODO: make LoadAsset<T> accept arbitrary arguments (e.g., shader type) to declutter this function
   // LoadAsset<ShaderAsset>(desc.path / "shader/standard_mvp.vert", "StandardMVP");
@@ -142,6 +143,10 @@ auto Editor::LoadDefaultAssets() -> void {
   vertId = LoadAsset<ShaderAsset>(desc.path / "shader/unlit.vert", "Unlit");
   GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
   fragId = LoadAsset<ShaderAsset>(desc.path / "shader/unlit.frag", "Unlit");
+  GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
+  vertId = LoadAsset<ShaderAsset>(desc.path / "shader/standard_instanced.vert", "ShadowMap");
+  GetAsset(vertId)->As<ShaderAsset>()->shaderType = ShaderType::Vertex;
+  fragId = LoadAsset<ShaderAsset>(desc.path / "shader/empty.frag", "ShadowMap");
   GetAsset(fragId)->As<ShaderAsset>()->vertexShader = vertId;
   auto compId = LoadAsset<ShaderAsset>(desc.path / "shader/brdf_lut.comp", "BRDF_LUT");
   GetAsset(compId)->As<ShaderAsset>()->shaderType = ShaderType::Compute;
@@ -228,6 +233,8 @@ auto Editor::DisplayAssetCategories() -> void {
   ImGui::End();
 }
 auto Editor::DisplayAssets() -> void {
+  static constexpr ImVec2 UV0(0.f, 1.f);
+  static constexpr ImVec2 UV1(1.f, 0.f);
   static constexpr auto POPUP_WINDOW_FLAGS = ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight;
   static constexpr auto PREVIEW_SIZE = 128;
   ImGui::Begin("Assets");
@@ -248,7 +255,7 @@ auto Editor::DisplayAssets() -> void {
     if (ImGui::IsItemHovered()) {
       const auto texture = static_cast<GLTexture *>(PreviewAsset(id));
       if (texture && ImGui::BeginTooltip()) {
-        ImGui::Image(texture->id, ImVec2(PREVIEW_SIZE, PREVIEW_SIZE));
+        ImGui::Image(texture->id, ImVec2(PREVIEW_SIZE, PREVIEW_SIZE), UV0, UV1);
         ImGui::EndTooltip();
       }
     }

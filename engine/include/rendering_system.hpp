@@ -40,9 +40,12 @@ private:
   static auto ApplyBlurEffect(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
   static auto ApplyBrightPassFilter(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
   static auto ApplyGammaCorrection(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
+  static auto CreateShadowMap(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
   static auto RenderScene(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
-  static auto DrawEntities(Renderer &) -> void;
-  static auto DrawEntitiesInstanced(Renderer &, const GLMesh &, const GLMaterial &, const std::vector<MaterialFallback> &, const std::vector<glm::mat4> &) -> void;
+  static auto DrawEntities(Renderer &, std::span<std::string>) -> void;
+  static auto DrawEntitiesInstanced(Renderer &, std::span<std::string>, const GLMesh &, const GLMaterial &, const std::vector<MaterialFallback> &, const std::vector<glm::mat4> &) -> void;
+  static auto DrawMeshes(Renderer &) -> void;
+  static auto DrawMeshesInstanced(Renderer &, const GLMesh &, const std::vector<glm::mat4> &) -> void;
   static auto DrawSkybox(Renderer &) -> void;
 };
 } // namespace kuki

@@ -48,12 +48,9 @@ public:
   auto BorrowRenderbuffer(const TargetDescription &) -> unsigned int;
   auto BorrowTexture(const TargetDescription &) -> unsigned int;
   auto Clear() -> void override;
-  auto CreateBuffer(const int & = 0, const std::string & = "") -> EntityID override;
-  auto CreateBuffer(const std::string &, const int & = 0) -> EntityID override;
+  auto CreateBuffer(const std::string & = "", const int & = 0) -> EntityID override;
   auto CreateTarget(const TargetDescription &, const std::string & = "") -> EntityID override;
-  auto CreateTarget(const std::string &, const TargetDescription &) -> EntityID override;
   auto CreateTexture(const TargetDescription &, const std::string & = "") -> EntityID override;
-  auto CreateTexture(const std::string &, const TargetDescription &) -> EntityID override;
   auto GetBuffer(const EntityID) -> GLBuffer * override;
   auto GetBuffer(const std::string &) -> GLBuffer * override;
   auto GetCompute(const std::string &) -> GLComputeShader * override;
@@ -321,8 +318,8 @@ inline auto GLRenderer::PreviewAsset<MeshAsset>(MeshAsset &meshAsset) -> GLTextu
   shader->Use();
   shader->SetCamera(camera, cameraBuffer);
   shader->SetSkybox();
-  shader->SetUniform("hasSkybox", true);
-  shader->SetLighting();
+  Light light{.rotation = glm::quat(glm::vec3(.52f, .0f, .52f))};
+  shader->SetLighting(light);
   shader->SetMaterial(*material);
   shader->SetMaterialFallback(*mesh, material->fallback, materialBuffer);
   shader->SetTransform(*mesh, glm::mat4(1.f), transformBuffer);
@@ -364,7 +361,8 @@ inline auto GLRenderer::PreviewAsset<SceneAsset>(SceneAsset &sceneAsset) -> GLTe
   shader->Use();
   shader->SetCamera(camera, cameraBuffer);
   shader->SetSkybox();
-  shader->SetLighting();
+  Light light{.rotation = glm::quat(glm::vec3(.52f, .0f, .52f))};
+  shader->SetLighting(light);
   std::vector<glm::mat4> transforms;
   transforms.reserve(sceneAsset.nodes.size());
   for (const auto &node : sceneAsset.nodes) {

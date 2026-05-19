@@ -100,12 +100,12 @@ target_include_directories(
 ## imguizmo
 add_library(
   imguizmo
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/ImGuizmo.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/GraphEditor.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/ImGuizmo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/GraphEditor.cpp"
 )
 target_include_directories(
   imguizmo
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo"
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src"
 )
 target_link_libraries(imguizmo PUBLIC imgui)
 ## json

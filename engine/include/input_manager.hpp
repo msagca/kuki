@@ -1,6 +1,7 @@
 #pragma once
 #include <bitset>
 #include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_int2.hpp>
 #include <kuki_engine_export.h>
 #include <string>
 #include <trie.hpp>
@@ -17,11 +18,11 @@ public:
   auto EnableAll() -> void;
   auto EnableButtons() -> void;
   auto EnableKeys() -> void;
-  auto GetArrowKeys() const -> glm::vec2;
+  auto GetArrowKeys() const -> glm::ivec2;
   auto GetInactivityTime() const -> double;
   auto GetMousePosition() const -> glm::vec2;
   auto GetState(int) const -> bool;
-  auto GetWASD() const -> glm::vec2;
+  auto GetWASD() const -> glm::ivec2;
   auto IsPressed(int) const -> bool;
   auto IsReleased(int) const -> bool;
   auto KeyCallback(GLFWwindow *, int, int, int, int) -> void;

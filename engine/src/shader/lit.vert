@@ -6,6 +6,7 @@ out float roughness;
 out vec2 texCoord;
 out vec3 normal;
 out vec3 position;
+out vec4 positionL; // light space position
 out vec3 tangent;
 out vec4 albedo;
 out vec4 emissive;
@@ -29,6 +30,15 @@ layout(std140, binding = 0) uniform i_cameraTransform {
         mat4 view;
         mat4 projection;
 };
+struct DirLight {
+        vec3 direction;
+        vec3 ambient;
+        vec3 diffuse;
+        vec3 specular;
+        mat4 view;
+        mat4 projection;
+};
+uniform DirLight dirLight;
 void main() {
         mat4 model = mat4(i_model0, i_model1, i_model2, i_model3);
         vec4 worldPosition = model * vec4(i_position, 1.0);
@@ -43,5 +53,6 @@ void main() {
         occlusion = i_occlusion;
         roughness = i_roughness;
         textureMask = i_textureMask;
+        positionL = dirLight.projection * dirLight.view * worldPosition;
         gl_Position = projection * view * worldPosition;
 }

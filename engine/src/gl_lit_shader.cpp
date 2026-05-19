@@ -8,6 +8,7 @@ auto GLLitShader::SetCamera(const Camera &camera, const unsigned int ubo) -> voi
 }
 auto GLLitShader::SetLighting() -> void {
   SetUniform("pointCount", 0u);
+  SetUniform("spotCount", 0u);
   SetUniform("hasDirLight", false);
 }
 auto GLLitShader::SetLighting(const Light &light) -> void {
@@ -16,13 +17,15 @@ auto GLLitShader::SetLighting(const Light &light) -> void {
 }
 auto GLLitShader::SetLighting(std::span<const Light> lights) -> void {
   auto dirExists = false;
-  unsigned int pointIndex = 0;
+  auto pointIndex = 0u;
+  auto spotIndex = 0u;
   for (const auto &light : lights)
-    if (light.type == LightType::Directional) {
+    if (!dirExists && light.type == LightType::Directional) {
       SetUniform("dirLight.direction", glm::eulerAngles(light.rotation));
       SetUniform("dirLight.ambient", light.ambient);
       SetUniform("dirLight.diffuse", light.diffuse);
       SetUniform("dirLight.specular", light.specular);
+      SetUniform("dirLight.view", light.GetView());
       dirExists = true;
     } else if (light.type == LightType::Point) {
       const auto offset = pointIndex * 7;
@@ -34,8 +37,22 @@ auto GLLitShader::SetLighting(std::span<const Light> lights) -> void {
       SetUniform(nameToUniform["pointLights[0].linear"].location + offset, light.linear);
       SetUniform(nameToUniform["pointLights[0].quadratic"].location + offset, light.quadratic);
       ++pointIndex;
+    } else if (light.type == LightType::Spot) {
+      const auto offset = spotIndex * 10;
+      SetUniform(nameToUniform["spotLights[0].position"].location + offset, light.position);
+      SetUniform(nameToUniform["spotLights[0].direction"].location + offset, glm::eulerAngles(light.rotation));
+      SetUniform(nameToUniform["spotLights[0].ambient"].location + offset, light.ambient);
+      SetUniform(nameToUniform["spotLights[0].diffuse"].location + offset, light.diffuse);
+      SetUniform(nameToUniform["spotLights[0].specular"].location + offset, light.specular);
+      SetUniform(nameToUniform["spotLights[0].constant"].location + offset, light.constant);
+      SetUniform(nameToUniform["spotLights[0].linear"].location + offset, light.linear);
+      SetUniform(nameToUniform["spotLights[0].quadratic"].location + offset, light.quadratic);
+      SetUniform(nameToUniform["spotLights[0].innerCutoff"].location + offset, light.innerCutoff);
+      SetUniform(nameToUniform["spotLights[0].outerCutoff"].location + offset, light.outerCutoff);
+      ++spotIndex;
     }
   SetUniform("pointCount", pointIndex);
+  SetUniform("spotCount", spotIndex);
   SetUniform("hasDirLight", dirExists);
 }
 auto GLLitShader::SetMaterialFallback(const GLMesh &mesh, std::span<const MaterialFallback> fallbacks, const unsigned int buffer) -> void {
