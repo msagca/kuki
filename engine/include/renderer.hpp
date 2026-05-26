@@ -21,8 +21,7 @@ public:
   virtual auto GetCompute(const std::string &) -> Shader * = 0;
   virtual auto GetPrimitive(const std::string &) -> BufferObject * = 0;
   virtual auto GetScene(const std::string & = "") -> Scene * = 0;
-  virtual auto GetShader(const MaterialType) -> Shader * = 0;
-  virtual auto GetShader(const std::string &, const MaterialType) -> Shader * = 0;
+  virtual auto GetShader(const std::string &) -> Shader * = 0;
   virtual auto GetTarget(const EntityID) -> RenderTarget * = 0;
   virtual auto GetTarget(const std::string &) -> RenderTarget * = 0;
   virtual auto GetTexture(const EntityID) -> RenderTarget * = 0;

@@ -2,7 +2,7 @@
 const float PI = 3.14159265359;
 const uint SAMPLE_COUNT = 1024u;
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-layout(rg16f, binding = 0) writeonly uniform image2D brdfLUT;
+layout(rg16f, binding = 0) writeonly uniform image2D u_brdfLUT;
 float GeometrySchlickGGX(float, float);
 float GeometrySmith(vec3, vec3, vec3, float);
 float RadicalInverseVdC(uint);
@@ -11,12 +11,12 @@ vec2 IntegrateBRDF(float, float);
 vec3 ImportanceSampleGGX(vec2, vec3, float);
 void main() {
         ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
-        ivec2 dims = imageSize(brdfLUT);
+        ivec2 dims = imageSize(u_brdfLUT);
         if (pixelCoord.x >= dims.x || pixelCoord.y >= dims.y)
                 return;
         vec2 texCoord = (vec2(pixelCoord) + 0.5) / vec2(dims);
         vec2 integratedBRDF = IntegrateBRDF(texCoord.x, texCoord.y);
-        imageStore(brdfLUT, pixelCoord, vec4(integratedBRDF, 0.0, 1.0));
+        imageStore(u_brdfLUT, pixelCoord, vec4(integratedBRDF, 0.0, 1.0));
 }
 float GeometrySchlickGGX(float NdotV, float roughness) {
         float k = (roughness * roughness) / 2.0;

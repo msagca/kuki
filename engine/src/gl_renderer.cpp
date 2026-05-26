@@ -115,21 +115,13 @@ auto GLRenderer::GetScene(const std::string &name) -> Scene * {
     return sceneManager.GetActive();
   return sceneManager.Get(name);
 }
-auto GLRenderer::GetShader(const MaterialType type) -> GLShader * {
-  switch (type) {
-  case MaterialType::Lit:
-    return resourceManager.GetAny<GLLitShader>();
-  default:
-    return resourceManager.GetAny<GLUnlitShader>();
-  }
-}
-auto GLRenderer::GetShader(const std::string &name, const MaterialType type) -> GLShader * {
-  switch (type) {
-  case MaterialType::Lit:
-    return resourceManager.GetComponent<GLLitShader>(name);
-  default:
+auto GLRenderer::GetShader(const std::string &name) -> GLShader * {
+  // TODO: make `GetComponent<T>` work with derived types so we can use `GLShader` as the type argument here
+  // NOTE: this assumes that there is only one lit shader, which is named "Lit"
+  if (name == "Lit")
+    return resourceManager.GetComponent<GLLitShader>("Lit");
+  else
     return resourceManager.GetComponent<GLUnlitShader>(name);
-  }
 }
 auto GLRenderer::GetTarget(const EntityID id) -> GLRenderTarget * {
   return resourceManager.GetComponent<GLRenderTarget>(id);
@@ -292,8 +284,8 @@ auto GLRenderer::ConvertCubemapToEquirectangularMap(const TargetDescription &des
   const auto output = BorrowTexture(desc);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
-  compute->SetTexture("cubemap", input);
-  compute->SetUniform("size", static_cast<unsigned int>(desc.width));
+  compute->SetTexture("u_cubemap", input);
+  compute->SetUniform("u_size", static_cast<unsigned int>(desc.width));
   const auto format = TargetFormatToGL(desc.format);
   glBindImageTexture(0, output, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
   const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
@@ -309,10 +301,10 @@ auto GLRenderer::ConvertEquirectangularMapToCubemap(const TargetDescription &des
   const auto format = TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
-  compute->SetTexture("equirect", input);
-  compute->SetUniform("size", static_cast<unsigned int>(desc.width));
+  compute->SetTexture("u_equirect", input);
+  compute->SetUniform("u_size", static_cast<unsigned int>(desc.width));
   // TODO: set the following to `true` if texture was loaded by TinyEXR
-  compute->SetUniform("invert", false);
+  compute->SetUniform("u_invert", false);
   glBindImageTexture(0, output, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
   const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
   const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
@@ -344,8 +336,8 @@ auto GLRenderer::CreateIrradianceMap(const TargetDescription &desc, const unsign
   const auto format = TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
-  compute->SetTexture("cubemap", input);
-  compute->SetUniform("cubeSize", static_cast<unsigned int>(desc.width));
+  compute->SetTexture("u_cubemap", input);
+  compute->SetUniform("u_cubeSize", static_cast<unsigned int>(desc.width));
   glBindImageTexture(0, output, 0, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
   const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
   const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));
@@ -360,14 +352,14 @@ auto GLRenderer::CreatePrefilterMap(const TargetDescription &desc, const unsigne
   const auto format = TargetFormatToGL(desc.format);
   constexpr unsigned int workgroupSize = 8;
   compute->Use();
-  compute->SetTexture("cubemap", input);
-  compute->SetUniform("mipLevels", desc.mipmaps);
+  compute->SetTexture("u_cubemap", input);
+  compute->SetUniform("u_mipLevels", desc.mipmaps);
   for (auto mip = 0; mip < desc.mipmaps; ++mip) {
     const auto mipSize = static_cast<unsigned int>(desc.width) >> mip;
     const auto roughness = static_cast<float>(mip) / (desc.mipmaps - 1);
-    compute->SetUniform("roughness", roughness);
-    compute->SetUniform("mipWidth", mipSize);
-    compute->SetUniform("cubeSize", mipSize);
+    compute->SetUniform("u_roughness", roughness);
+    compute->SetUniform("u_mipWidth", mipSize);
+    compute->SetUniform("u_cubeSize", mipSize);
     glBindImageTexture(0, output, mip, GL_TRUE, 0, GL_WRITE_ONLY, format.internal);
     const auto numGroupsX = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.width) / workgroupSize));
     const auto numGroupsY = static_cast<unsigned int>(std::ceil(static_cast<float>(desc.height) / workgroupSize));

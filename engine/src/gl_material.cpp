@@ -5,20 +5,27 @@ namespace kuki {
 auto GLMaterial::Apply(const GLShader &shader) const -> void {
   if (type != shader.type)
     return;
-  if (textures.albedo > 0)
-    shader.SetTexture("material.albedo", textures.albedo);
-  if (textures.normal > 0)
-    shader.SetTexture("material.normal", textures.normal);
-  if (textures.metalness > 0)
-    shader.SetTexture("material.metalness", textures.metalness);
-  if (textures.occlusion > 0)
-    shader.SetTexture("material.occlusion", textures.occlusion);
-  if (textures.roughness > 0)
-    shader.SetTexture("material.roughness", textures.roughness);
-  if (textures.specular > 0)
-    shader.SetTexture("material.specular", textures.specular);
-  if (textures.emissive > 0)
-    shader.SetTexture("material.emissive", textures.emissive);
+  switch (type) {
+  case MaterialType::Lit:
+    if (textures.albedo > 0)
+      shader.SetTexture("u_material.albedo", textures.albedo);
+    if (textures.normal > 0)
+      shader.SetTexture("u_material.normal", textures.normal);
+    if (textures.metalness > 0)
+      shader.SetTexture("u_material.metalness", textures.metalness);
+    if (textures.occlusion > 0)
+      shader.SetTexture("u_material.occlusion", textures.occlusion);
+    if (textures.roughness > 0)
+      shader.SetTexture("u_material.roughness", textures.roughness);
+    if (textures.specular > 0)
+      shader.SetTexture("u_material.specular", textures.specular);
+    if (textures.emissive > 0)
+      shader.SetTexture("u_material.emissive", textures.emissive);
+    break;
+  default:
+    if (textures.albedo > 0)
+      shader.SetTexture("u_material.base", textures.albedo);
+  }
 }
 auto GLMaterial::operator==(const GLMaterial &other) const -> bool {
   const auto SameTexture = [this, &other](const int id, const int otherId, const TextureContent content) {

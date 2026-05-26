@@ -523,10 +523,10 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
   } else
     transform = *transformComp;
   ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-  if (!ImGuizmo::Manipulate(glm::value_ptr(cameraController->GetView()), glm::value_ptr(cameraController->GetProjection()), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(transform.local)))
+  if (!ImGuizmo::Manipulate(glm::value_ptr(cameraController->GetView()), glm::value_ptr(cameraController->GetProjection()), ImGuizmo::OPERATION::UNIVERSAL, ImGuizmo::MODE::WORLD, glm::value_ptr(transform.world)))
     return;
   glm::vec3 rotation;
-  ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform.local), glm::value_ptr(transform.position), glm::value_ptr(rotation), glm::value_ptr(transform.scale));
+  ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform.world), glm::value_ptr(transform.position), glm::value_ptr(rotation), glm::value_ptr(transform.scale));
   transform.rotation = glm::quat(glm::radians(rotation));
   if (cameraComp)
     cameraComp->SetTransform(transform);

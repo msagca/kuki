@@ -1,32 +1,32 @@
 #version 460 core
-flat out int textureMask;
-out float metalness;
-out float occlusion;
-out float roughness;
-out vec2 texCoord;
-out vec3 normal;
-out vec3 position;
-out vec4 positionL; // light space position
-out vec3 tangent;
-out vec4 albedo;
-out vec4 emissive;
-out vec4 specular;
-layout(location = 0) in vec3 i_position;
-layout(location = 1) in vec3 i_normal;
-layout(location = 2) in vec2 i_texCoord;
-layout(location = 3) in vec3 i_tangent;
-layout(location = 4) in vec4 i_model0;
-layout(location = 5) in vec4 i_model1;
-layout(location = 6) in vec4 i_model2;
-layout(location = 7) in vec4 i_model3;
-layout(location = 8) in vec4 i_albedo;
-layout(location = 9) in vec4 i_specular;
-layout(location = 10) in vec4 i_emissive;
-layout(location = 11) in float i_metalness;
-layout(location = 12) in float i_occlusion;
-layout(location = 13) in float i_roughness;
-layout(location = 14) in int i_textureMask;
-layout(std140, binding = 0) uniform i_cameraTransform {
+flat out int v_textureMask;
+out float v_metalness;
+out float v_occlusion;
+out float v_roughness;
+out vec2 v_texCoords;
+out vec3 v_normal;
+out vec3 v_position;
+out vec4 v_positionL; // light space position
+out vec3 v_tangent;
+out vec4 v_albedo;
+out vec4 v_emissive;
+out vec4 v_specular;
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 texCoords;
+layout(location = 3) in vec3 tangent;
+layout(location = 4) in vec4 model0;
+layout(location = 5) in vec4 model1;
+layout(location = 6) in vec4 model2;
+layout(location = 7) in vec4 model3;
+layout(location = 8) in vec4 albedo;
+layout(location = 9) in vec4 specular;
+layout(location = 10) in vec4 emissive;
+layout(location = 11) in float metalness;
+layout(location = 12) in float occlusion;
+layout(location = 13) in float roughness;
+layout(location = 14) in int textureMask;
+layout(std140, binding = 0) uniform u_cameraTransform {
         mat4 view;
         mat4 projection;
 };
@@ -38,21 +38,21 @@ struct DirLight {
         mat4 view;
         mat4 projection;
 };
-uniform DirLight dirLight;
+uniform DirLight u_dirLight;
 void main() {
-        mat4 model = mat4(i_model0, i_model1, i_model2, i_model3);
-        vec4 worldPosition = model * vec4(i_position, 1.0);
-        position = vec3(worldPosition);
-        normal = mat3(transpose(inverse(model))) * i_normal;
-        texCoord = i_texCoord;
-        tangent = i_tangent;
-        albedo = i_albedo;
-        specular = i_specular;
-        emissive = i_emissive;
-        metalness = i_metalness;
-        occlusion = i_occlusion;
-        roughness = i_roughness;
-        textureMask = i_textureMask;
-        positionL = dirLight.projection * dirLight.view * worldPosition;
+        mat4 model = mat4(model0, model1, model2, model3);
+        vec4 worldPosition = model * vec4(position, 1.0);
+        v_position = vec3(worldPosition);
+        v_normal = mat3(transpose(inverse(model))) * normal;
+        v_texCoords = texCoords;
+        v_tangent = tangent;
+        v_albedo = albedo;
+        v_specular = specular;
+        v_emissive = emissive;
+        v_metalness = metalness;
+        v_occlusion = occlusion;
+        v_roughness = roughness;
+        v_textureMask = textureMask;
+        v_positionL = u_dirLight.projection * u_dirLight.view * worldPosition;
         gl_Position = projection * view * worldPosition;
 }

@@ -4,18 +4,18 @@ const float MAX_REFLECTION_LOD = 4.0;
 const float PI = 3.14159265359;
 const uint MAX_POINT_LIGHTS = 8;
 const uint MAX_SPOT_LIGHTS = 8;
-flat in int textureMask;
-in float metalness;
-in float occlusion;
-in float roughness;
-in vec2 texCoord;
-in vec3 normal;
-in vec3 position;
-in vec4 positionL;
-in vec3 tangent;
-in vec4 albedo;
-in vec4 emissive;
-in vec4 specular;
+flat in int v_textureMask;
+in float v_metalness;
+in float v_occlusion;
+in float v_roughness;
+in vec2 v_texCoords;
+in vec3 v_normal;
+in vec3 v_position;
+in vec4 v_positionL;
+in vec3 v_tangent;
+in vec4 v_albedo;
+in vec4 v_emissive;
+in vec4 v_specular;
 out vec4 color;
 struct Material {
         sampler2D albedo;
@@ -55,77 +55,78 @@ struct SpotLight {
         float innerCutoff;
         float outerCutoff;
 };
-uniform DirLight dirLight;
-uniform Material material;
-uniform PointLight pointLights[MAX_POINT_LIGHTS];
-uniform SpotLight spotLights[MAX_SPOT_LIGHTS];
-uniform bool hasBRDF;
-uniform bool hasDirLight;
-uniform bool hasIrradianceMap;
-uniform bool hasPrefilterMap;
-uniform bool hasSkybox;
-uniform sampler2D brdfLUT;
-uniform sampler2D shadowMap;
-uniform samplerCube irradianceMap;
-uniform samplerCube prefilterMap;
-uniform uint pointCount;
-uniform uint spotCount;
-uniform vec3 viewPos;
+uniform DirLight u_dirLight;
+uniform Material u_material;
+uniform PointLight u_pointLights[MAX_POINT_LIGHTS];
+uniform SpotLight u_spotLights[MAX_SPOT_LIGHTS];
+uniform bool u_hasBRDF;
+uniform bool u_hasDirLight;
+uniform bool u_hasIrradianceMap;
+uniform bool u_hasPrefilterMap;
+uniform bool u_hasSkybox;
+uniform sampler2D u_brdfLUT;
+uniform sampler2D u_shadowMap;
+uniform samplerCube u_irradianceMap;
+uniform samplerCube u_prefilterMap;
+uniform uint u_pointCount;
+uniform uint u_spotCount;
+uniform vec3 u_viewPos;
 float DistributionGGX(vec3, vec3, float);
 float GeometrySchlickGGX(float, float);
 float GeometrySmith(vec3, vec3, vec3, float);
-float ShadowAmount(vec4, vec3);
+float ShadowAmount(sampler2D, vec3, vec4, vec3);
 vec2 FallbackBRDF(float, float);
 vec3 DirLightContribution(DirLight, vec3, vec3, vec3, float, float, vec3);
 vec3 FallbackSky(vec3);
 vec3 FresnelSchlick(float, vec3);
 vec3 FresnelSchlickRoughness(float, vec3, float);
-vec3 GetNormalFromTexture();
+vec3 GetNormalFromTexture(sampler2D, vec2, vec3, vec3);
 vec3 PointLightContribution(PointLight, vec3, vec3, vec3, float, float, vec3, vec3);
 vec3 SpotLightContribution(SpotLight, vec3, vec3, vec3, float, float, vec3, vec3);
 void main() {
-        bool useAlbedoTexture = (textureMask & 0x1) != 0;
-        bool useNormalTexture = (textureMask & 0x2) != 0;
-        bool useMetalnessTexture = (textureMask & 0x4) != 0;
-        bool useOcclusionTexture = (textureMask & 0x8) != 0;
-        bool useRoughnessTexture = (textureMask & 0x10) != 0;
-        bool useSpecularTexture = (textureMask & 0x20) != 0;
-        bool useEmissiveTexture = (textureMask & 0x40) != 0;
-        vec3 N = (useNormalTexture) ? GetNormalFromTexture() : normal;
-        vec4 A = (useAlbedoTexture) ? texture(material.albedo, texCoord) : albedo;
-        vec4 S = (useSpecularTexture) ? texture(material.specular, texCoord) : specular;
-        vec4 E = (useEmissiveTexture) ? texture(material.emissive, texCoord) : emissive;
-        float O = (useOcclusionTexture) ? texture(material.occlusion, texCoord).r : occlusion;
-        float R = (useRoughnessTexture) ? texture(material.roughness, texCoord).g : roughness;
-        float M = (useMetalnessTexture) ? texture(material.metalness, texCoord).b : metalness;
-        vec3 V = normalize(viewPos - position);
+        bool useAlbedoTexture = (v_textureMask & 0x1) != 0;
+        bool useNormalTexture = (v_textureMask & 0x2) != 0;
+        bool useMetalnessTexture = (v_textureMask & 0x4) != 0;
+        bool useOcclusionTexture = (v_textureMask & 0x8) != 0;
+        bool useRoughnessTexture = (v_textureMask & 0x10) != 0;
+        bool useSpecularTexture = (v_textureMask & 0x20) != 0;
+        bool useEmissiveTexture = (v_textureMask & 0x40) != 0;
+        vec3 N = (useNormalTexture) ? GetNormalFromTexture(u_material.normal, v_texCoords, v_normal, v_tangent) : v_normal;
+        vec4 A = (useAlbedoTexture) ? texture(u_material.albedo, v_texCoords) : v_albedo;
+        vec4 S = (useSpecularTexture) ? texture(u_material.specular, v_texCoords) : v_specular;
+        vec4 E = (useEmissiveTexture) ? texture(u_material.emissive, v_texCoords) : v_emissive;
+        float O = (useOcclusionTexture) ? texture(u_material.occlusion, v_texCoords).r : v_occlusion;
+        float R = (useRoughnessTexture) ? texture(u_material.roughness, v_texCoords).g : v_roughness;
+        float M = (useMetalnessTexture) ? texture(u_material.metalness, v_texCoords).b : v_metalness;
+        vec3 V = normalize(u_viewPos - v_position);
         vec3 reflectDir = reflect(-V, N);
         vec3 F0 = vec3(0.04);
         F0 = mix(F0, A.rgb, vec3(M));
         vec3 Lo = vec3(0.0);
         vec3 ambient;
-        if (hasSkybox) {
+        if (u_hasSkybox) {
                 vec3 F = FresnelSchlickRoughness(max(dot(N, V), 0.0), F0, R);
                 vec3 kS = F;
                 vec3 kD = 1.0 - kS;
                 kD *= 1.0 - vec3(M);
-                vec3 irradiance = hasIrradianceMap ? texture(irradianceMap, N).rgb : FallbackSky(N);
+                vec3 irradiance = u_hasIrradianceMap ? texture(u_irradianceMap, N).rgb : FallbackSky(N);
                 vec3 diffuse = irradiance * A.rgb;
-                vec3 prefilteredColor = hasPrefilterMap ? textureLod(prefilterMap, reflectDir, R * MAX_REFLECTION_LOD).rgb : FallbackSky(reflectDir);
-                vec2 brdf = hasBRDF ? texture(brdfLUT, vec2(max(dot(N, V), 0.0), R)).rg : FallbackBRDF(max(dot(N, V), 0.0), R);
+                vec3 prefilteredColor = u_hasPrefilterMap ? textureLod(u_prefilterMap, reflectDir, R * MAX_REFLECTION_LOD).rgb : FallbackSky(reflectDir);
+                vec2 brdf = u_hasBRDF ? texture(u_brdfLUT, vec2(max(dot(N, V), 0.0), R)).rg : FallbackBRDF(max(dot(N, V), 0.0), R);
                 vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
                 ambient = (kD * diffuse + specular) * O;
-        } else if (hasDirLight) {
-                Lo += DirLightContribution(dirLight, F0, A.rgb, N, M, R, V);
-                ambient = dirLight.ambient * A.rgb * O;
-        } else
+        } else if (u_hasDirLight)
+                ambient = u_dirLight.ambient * A.rgb * O;
+        else
                 ambient = vec3(0.03) * A.rgb * O;
-        for (uint i = 0u; i < min(pointCount, MAX_POINT_LIGHTS); ++i)
-                Lo += PointLightContribution(pointLights[i], F0, A.rgb, N, M, R, V, position);
-        for (uint i = 0u; i < min(spotCount, MAX_SPOT_LIGHTS); ++i)
-                Lo += SpotLightContribution(spotLights[i], F0, A.rgb, N, M, R, V, position);
-        float shadow = hasDirLight ? ShadowAmount(positionL, N) : 0.0;
-        color = vec4(ambient + (1.0 - shadow) * Lo, 1.0);
+        if (u_hasDirLight)
+                Lo += DirLightContribution(u_dirLight, F0, A.rgb, N, M, R, V);
+        for (uint i = 0u; i < min(u_pointCount, MAX_POINT_LIGHTS); ++i)
+                Lo += PointLightContribution(u_pointLights[i], F0, A.rgb, N, M, R, V, v_position);
+        for (uint i = 0u; i < min(u_spotCount, MAX_SPOT_LIGHTS); ++i)
+                Lo += SpotLightContribution(u_spotLights[i], F0, A.rgb, N, M, R, V, v_position);
+        float shadow = u_hasDirLight ? ShadowAmount(u_shadowMap, u_dirLight.direction, v_positionL, N) : 0.0;
+        color = vec4(ambient + (1.0 - shadow) * Lo, A.a);
 }
 vec3 DirLightContribution(DirLight light, vec3 F0, vec3 A, vec3 N, float M, float R, vec3 V) {
         vec3 L = normalize(light.direction);
@@ -183,17 +184,17 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float R) {
         float ggx1 = GeometrySchlickGGX(NdotL, R);
         return ggx1 * ggx2;
 }
-float ShadowAmount(vec4 posClip, vec3 N) {
+float ShadowAmount(sampler2D shadowMap, vec3 lightDir, vec4 posClip, vec3 N) {
         vec3 posScreen = posClip.xyz / posClip.w;
         posScreen = posScreen * 0.5 + 0.5;
         float mapDepth = texture(shadowMap, posScreen.xy).r;
         float fragDepth = posScreen.z;
-        float bias = max(0.05 * (1.0 - dot(N, dirLight.direction)), 0.005);
+        float bias = max(0.05 * (1.0 - dot(N, lightDir)), 0.005);
         float shadow = fragDepth - bias > mapDepth ? 1.0 : 0.0;
         return shadow;
 }
-vec3 GetNormalFromTexture() {
-        vec3 tangentNormal = texture(material.normal, texCoord).xyz * 2.0 - 1.0;
+vec3 GetNormalFromTexture(sampler2D normalMap, vec2 texCoords, vec3 normal, vec3 tangent) {
+        vec3 tangentNormal = texture(normalMap, texCoords).xyz * 2.0 - 1.0;
         vec3 N = normalize(normal);
         vec3 T = normalize(tangent);
         vec3 B = normalize(cross(N, T));
@@ -214,9 +215,9 @@ vec3 PointLightContribution(PointLight light, vec3 F0, vec3 A, vec3 N, float M, 
         kD *= 1.0 - vec3(M);
         float distance = length(light.position - fragPos);
         float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * distance * distance);
-        vec3 diffuse = (A / PI) * light.diffuse * attenuation;
-        vec3 specular = numerator / denominator;
-        return (kD * diffuse + specular * light.specular) * NdotL;
+        vec3 diffuse = kD * A * light.diffuse * attenuation / PI;
+        vec3 specular = light.specular * attenuation * numerator / denominator;
+        return (diffuse + specular) * NdotL;
 }
 vec3 SpotLightContribution(SpotLight light, vec3 F0, vec3 A, vec3 N, float M, float R, vec3 V, vec3 fragPos) {
         vec3 L = normalize(light.position - fragPos);
@@ -238,5 +239,5 @@ vec3 SpotLightContribution(SpotLight light, vec3 F0, vec3 A, vec3 N, float M, fl
         attenuation *= intensity;
         vec3 diffuse = (A / PI) * light.diffuse * attenuation;
         vec3 specular = numerator / denominator;
-        return (kD * diffuse + specular * light.specular) * NdotL;
+        return (kD * diffuse + specular * light.specular * attenuation) * NdotL;
 }

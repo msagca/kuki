@@ -2,12 +2,12 @@
 const float EPSILON = 1.0e-6;
 const float PI = 3.14159265359;
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-layout(rgba32f, binding = 0) writeonly uniform imageCube prefilteredMap;
-uniform float roughness;
-uniform samplerCube cubemap;
-uniform uint cubeSize;
-uniform uint mipLevels;
-uniform uint mipWidth;
+layout(rgba32f, binding = 0) writeonly uniform imageCube u_prefilteredMap;
+uniform float u_roughness;
+uniform samplerCube u_cubemap;
+uniform uint u_cubeSize;
+uniform uint u_mipLevels;
+uniform uint u_mipWidth;
 float DistributionGGX(vec3, vec3, float);
 float RadicalInverseVdC(uint);
 vec2 Hammersley(uint, uint);
@@ -15,34 +15,34 @@ vec3 CubeDirectionFromCoord(ivec3, uint);
 vec3 ImportanceSampleGGX(vec2, vec3, float);
 void main() {
         ivec3 gid = ivec3(gl_GlobalInvocationID);
-        if (gid.x >= cubeSize || gid.y >= cubeSize || gid.z >= 6)
+        if (gid.x >= u_cubeSize || gid.y >= u_cubeSize || gid.z >= 6)
                 return;
-        vec3 N = CubeDirectionFromCoord(gid, cubeSize);
+        vec3 N = CubeDirectionFromCoord(gid, u_cubeSize);
         vec3 R = N;
         vec3 V = R;
         vec3 prefilteredColor = vec3(0.0);
         float totalWeight = 0.0;
-        uint sampleCount = uint(mix(1024.0, 4096.0, roughness * roughness));
+        uint sampleCount = uint(mix(1024.0, 4096.0, u_roughness * u_roughness));
         for (uint i = 0u; i < sampleCount; ++i) {
                 vec2 Xi = Hammersley(i, sampleCount);
-                vec3 H = ImportanceSampleGGX(Xi, N, roughness);
+                vec3 H = ImportanceSampleGGX(Xi, N, u_roughness);
                 vec3 L = normalize(2.0 * dot(V, H) * H - V);
                 float NdotL = max(dot(N, L), 0.0);
                 if (NdotL > 0.0) {
-                        float D = DistributionGGX(N, H, roughness);
+                        float D = DistributionGGX(N, H, u_roughness);
                         float NdotH = max(dot(N, H), 0.0);
                         float HdotV = max(dot(H, V), 0.0);
                         float pdf = D * NdotH / (4.0 * HdotV) + EPSILON;
-                        float saTexel = 4.0 * PI / (6.0 * mipWidth * mipWidth);
+                        float saTexel = 4.0 * PI / (6.0 * u_mipWidth * u_mipWidth);
                         float saSample = 1.0 / (float(sampleCount) * pdf + EPSILON);
-                        float mipLevel = roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel);
-                        mipLevel = clamp(mipLevel, 0.0, float(mipLevels - 1));
-                        prefilteredColor += textureLod(cubemap, L, mipLevel).rgb * NdotL;
+                        float mipLevel = u_roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel);
+                        mipLevel = clamp(mipLevel, 0.0, float(u_mipLevels - 1));
+                        prefilteredColor += textureLod(u_cubemap, L, mipLevel).rgb * NdotL;
                         totalWeight += NdotL;
                 }
         }
         prefilteredColor /= totalWeight;
-        imageStore(prefilteredMap, gid, vec4(prefilteredColor, 1.0));
+        imageStore(u_prefilteredMap, gid, vec4(prefilteredColor, 1.0));
 }
 vec3 CubeDirectionFromCoord(ivec3 coord, uint size) {
         uint face = coord.z;

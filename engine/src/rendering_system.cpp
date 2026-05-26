@@ -93,6 +93,7 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   }
   fps = times.size();
   // TODO: move this to somewhere more appropriate
+  // NOTE: this isn't in `Start` because shader assets are loaded after it executes
   assetManager.ForEach<ShaderAsset>([this](const AssetID id, const std::string &) {
     activeRenderer->LoadAsset(id);
   });
@@ -192,10 +193,10 @@ auto RenderingSystem::ApplyBloomEffect(Renderer &renderer, std::span<std::string
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   bloomShader->Use();
-  bloomShader->SetTexture("image", in0->texture);
-  bloomShader->SetTexture("imageBright", in1->texture);
-  bloomShader->SetUniform("intensity", .5f);
-  bloomShader->SetUniform("model", glm::mat4(1.f));
+  bloomShader->SetTexture("u_image", in0->texture);
+  bloomShader->SetTexture("u_imageBright", in1->texture);
+  bloomShader->SetUniform("u_intensity", .5f);
+  bloomShader->SetUniform("u_model", glm::mat4(1.f));
   bloomShader->Draw(*mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -225,7 +226,7 @@ auto RenderingSystem::ApplyBlurEffect(Renderer &renderer, std::span<std::string>
   glBindFramebuffer(GL_FRAMEBUFFER, pong->framebuffer);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   blurShader->Use();
-  blurShader->SetUniform("model", glm::mat4(1.f));
+  blurShader->SetUniform("u_model", glm::mat4(1.f));
   for (auto i = 0; i < NUM_PASSES; ++i) {
     const auto even = i % 2 == 0;
     const auto &srcTexture = i == 0 ? in->texture : even ? pong->texture
@@ -243,8 +244,8 @@ auto RenderingSystem::ApplyBlurEffect(Renderer &renderer, std::span<std::string>
      * 7    ping out
      */
     glBindFramebuffer(GL_FRAMEBUFFER, dstFramebuffer);
-    blurShader->SetTexture("image", srcTexture);
-    blurShader->SetUniform("horizontal", even);
+    blurShader->SetTexture("u_image", srcTexture);
+    blurShader->SetUniform("u_horizontal", even);
     blurShader->Draw(*mesh);
   }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -268,9 +269,9 @@ auto RenderingSystem::ApplyBrightPassFilter(Renderer &renderer, std::span<std::s
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   brightShader->Use();
-  brightShader->SetTexture("image", in->texture);
-  brightShader->SetUniform("threshold", .5f);
-  brightShader->SetUniform("model", glm::mat4(1.f));
+  brightShader->SetTexture("u_image", in->texture);
+  brightShader->SetUniform("u_threshold", .5f);
+  brightShader->SetUniform("u_model", glm::mat4(1.f));
   brightShader->Draw(*mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -293,9 +294,9 @@ auto RenderingSystem::ApplyGammaCorrection(Renderer &renderer, std::span<std::st
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   gammaShader->Use();
-  gammaShader->SetTexture("image", in->texture);
-  gammaShader->SetUniform("gamma", 2.2f);
-  gammaShader->SetUniform("model", glm::mat4(1.f));
+  gammaShader->SetTexture("u_image", in->texture);
+  gammaShader->SetUniform("u_gamma", 2.2f);
+  gammaShader->SetUniform("u_model", glm::mat4(1.f));
   gammaShader->Draw(*mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -371,7 +372,9 @@ auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, std::span<std::s
   auto camera = scene->GetActiveCamera();
   if (!camera)
     return;
-  auto shader = glRenderer->GetShader(material.type);
+  // TODO: find a more reliable way to get the material/shader name
+  auto materialName = EnumTraits<MaterialType>::GetNames()[static_cast<int>(material.type)];
+  auto shader = glRenderer->GetShader(materialName);
   if (!shader)
     return;
   const auto in = glRenderer->GetTarget(inputs[0]);
@@ -402,10 +405,10 @@ auto RenderingSystem::DrawEntitiesInstanced(Renderer &renderer, std::span<std::s
   if (dirLight) {
     Camera lightCam{.type = CameraType::Orthographic};
     lightCam.SetTransform(dirLight->GetTransform());
-    shader->SetUniform("dirLight.projection", lightCam.transform.projection);
+    shader->SetUniform("u_dirLight.projection", lightCam.transform.projection);
   }
   shader->SetLighting(lights);
-  shader->SetTexture("shadowMap", in->texture);
+  shader->SetTexture("u_shadowMap", in->texture);
   shader->SetMaterial(material);
   shader->SetMaterialFallback(mesh, fallbacks, materialBuffer->id);
   shader->SetTransform(mesh, transforms, transformBuffer->id);
@@ -477,14 +480,14 @@ auto RenderingSystem::DrawSkybox(Renderer &renderer) -> void {
   shader->Use();
   shader->SetCamera(*camera, cameraBuffer->id);
   const auto model = glm::scale(glm::mat4(1.f), glm::vec3(2.f));
-  shader->SetUniform("model", model);
+  shader->SetUniform("u_model", model);
   GLSkybox *skybox{};
   scene->ForFirstEntity<GLSkybox>([&skybox](const EntityID id, GLSkybox *skyboxComp) {
     skybox = skyboxComp;
   });
-  shader->SetTexture("skybox", skybox ? skybox->skybox : 0);
-  shader->SetUniform("useGradient", skybox != nullptr);
-  shader->SetUniform("useSkybox", skybox != nullptr && skybox->skybox > 0);
+  shader->SetTexture("u_skybox", skybox ? skybox->skybox : 0);
+  shader->SetUniform("u_useGradient", skybox != nullptr);
+  shader->SetUniform("u_useSkybox", skybox != nullptr && skybox->skybox > 0);
   glDepthFunc(GL_LEQUAL);
   glDepthMask(GL_FALSE);
   shader->Draw(*mesh);

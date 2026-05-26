@@ -57,8 +57,7 @@ public:
   auto GetPrimitive(const std::string &) -> GLMesh * override;
   auto GetResourceID(const std::string &) const -> EntityID;
   auto GetScene(const std::string & = "") -> Scene * override;
-  auto GetShader(const MaterialType) -> GLShader * override;
-  auto GetShader(const std::string &, const MaterialType = MaterialType::Unlit) -> GLShader * override;
+  auto GetShader(const std::string &) -> GLShader * override;
   auto GetTarget(const EntityID) -> GLRenderTarget * override;
   auto GetTarget(const std::string &) -> GLRenderTarget * override;
   auto GetTexture(const EntityID) -> GLTexture * override;
@@ -287,7 +286,7 @@ inline auto GLRenderer::PreviewAsset<MeshAsset>(MeshAsset &meshAsset) -> GLTextu
   constexpr unsigned int PREVIEW_SIZE = 128; // TODO: make this configurable
   if (meshAsset.previewId)
     return resourceManager.GetComponent<GLTexture>(meshAsset.previewId);
-  auto shader = GetShader(MaterialType::Lit);
+  auto shader = GetShader("Lit");
   if (!shader)
     return nullptr;
   const auto mesh = resourceManager.GetComponent<GLMesh>(meshAsset.resourceId);
@@ -336,7 +335,7 @@ inline auto GLRenderer::PreviewAsset<SceneAsset>(SceneAsset &sceneAsset) -> GLTe
   constexpr unsigned int PREVIEW_SIZE = 128; // TODO: make this configurable
   if (sceneAsset.previewId)
     return resourceManager.GetComponent<GLTexture>(sceneAsset.previewId);
-  auto shader = GetShader(MaterialType::Lit);
+  auto shader = GetShader("Lit");
   if (!shader)
     return nullptr;
   if (sceneAsset.nodes.size() == 0)

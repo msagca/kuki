@@ -234,6 +234,7 @@ inline auto PropertyDisplayer::operator()<kuki::GLTexture>(kuki::GLTexture *text
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> void {
+  static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
   if (!light)
     return;
   static auto &types = kuki::EnumTraits<kuki::LightType>::GetNames();
@@ -254,7 +255,7 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
         angle += 360.f;
     }
     auto rotationRadians = glm::radians(rotationDegrees);
-    light->rotation = glm::quat(rotationRadians);
+    light->SetRotation(glm::quat(rotationRadians));
   }
   auto ambient = light->ambient;
   if (ImGui::ColorEdit3("Ambient Color", glm::value_ptr(ambient)))
@@ -285,6 +286,15 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
     if (ImGui::SliderFloat("Cos(Outer Cut-off Angle)", &outerCutoff, .0f, 1.f))
       light->outerCutoff = outerCutoff;
   }
+  auto nearPlane = light->nearPlane;
+  if (ImGui::DragFloat("Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT))
+    light->nearPlane = nearPlane;
+  auto farPlane = light->farPlane;
+  if (ImGui::DragFloat("Far Plane", &farPlane, .1f, .0f, MAX_FLOAT))
+    light->farPlane = farPlane;
+  auto orthoSize = light->orthoSize;
+  if (ImGui::DragFloat("Size", &orthoSize, .1f, .0f, MAX_FLOAT))
+    light->orthoSize = orthoSize;
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::MaterialHandle>(kuki::MaterialHandle *handle) -> void {

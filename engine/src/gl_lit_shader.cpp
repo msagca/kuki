@@ -4,12 +4,12 @@
 namespace kuki {
 auto GLLitShader::SetCamera(const Camera &camera, const unsigned int ubo) -> void {
   GLShader::SetCamera(camera, ubo);
-  SetUniform("viewPos", camera.position);
+  SetUniform("u_viewPos", camera.position);
 }
 auto GLLitShader::SetLighting() -> void {
-  SetUniform("pointCount", 0u);
-  SetUniform("spotCount", 0u);
-  SetUniform("hasDirLight", false);
+  SetUniform("u_pointCount", 0u);
+  SetUniform("u_spotCount", 0u);
+  SetUniform("u_hasDirLight", false);
 }
 auto GLLitShader::SetLighting(const Light &light) -> void {
   std::span<const Light> lights(&light, 1);
@@ -21,39 +21,39 @@ auto GLLitShader::SetLighting(std::span<const Light> lights) -> void {
   auto spotIndex = 0u;
   for (const auto &light : lights)
     if (!dirExists && light.type == LightType::Directional) {
-      SetUniform("dirLight.direction", glm::eulerAngles(light.rotation));
-      SetUniform("dirLight.ambient", light.ambient);
-      SetUniform("dirLight.diffuse", light.diffuse);
-      SetUniform("dirLight.specular", light.specular);
-      SetUniform("dirLight.view", light.GetView());
+      SetUniform("u_dirLight.direction", light.forward);
+      SetUniform("u_dirLight.ambient", light.ambient);
+      SetUniform("u_dirLight.diffuse", light.diffuse);
+      SetUniform("u_dirLight.specular", light.specular);
+      SetUniform("u_dirLight.view", light.GetView());
       dirExists = true;
     } else if (light.type == LightType::Point) {
       const auto offset = pointIndex * 7;
-      SetUniform(nameToUniform["pointLights[0].position"].location + offset, light.position);
-      SetUniform(nameToUniform["pointLights[0].ambient"].location + offset, light.ambient);
-      SetUniform(nameToUniform["pointLights[0].diffuse"].location + offset, light.diffuse);
-      SetUniform(nameToUniform["pointLights[0].specular"].location + offset, light.specular);
-      SetUniform(nameToUniform["pointLights[0].constant"].location + offset, light.constant);
-      SetUniform(nameToUniform["pointLights[0].linear"].location + offset, light.linear);
-      SetUniform(nameToUniform["pointLights[0].quadratic"].location + offset, light.quadratic);
+      SetUniform(nameToUniform["u_pointLights[0].position"].location + offset, light.position);
+      SetUniform(nameToUniform["u_pointLights[0].ambient"].location + offset, light.ambient);
+      SetUniform(nameToUniform["u_pointLights[0].diffuse"].location + offset, light.diffuse);
+      SetUniform(nameToUniform["u_pointLights[0].specular"].location + offset, light.specular);
+      SetUniform(nameToUniform["u_pointLights[0].constant"].location + offset, light.constant);
+      SetUniform(nameToUniform["u_pointLights[0].linear"].location + offset, light.linear);
+      SetUniform(nameToUniform["u_pointLights[0].quadratic"].location + offset, light.quadratic);
       ++pointIndex;
     } else if (light.type == LightType::Spot) {
       const auto offset = spotIndex * 10;
-      SetUniform(nameToUniform["spotLights[0].position"].location + offset, light.position);
-      SetUniform(nameToUniform["spotLights[0].direction"].location + offset, glm::eulerAngles(light.rotation));
-      SetUniform(nameToUniform["spotLights[0].ambient"].location + offset, light.ambient);
-      SetUniform(nameToUniform["spotLights[0].diffuse"].location + offset, light.diffuse);
-      SetUniform(nameToUniform["spotLights[0].specular"].location + offset, light.specular);
-      SetUniform(nameToUniform["spotLights[0].constant"].location + offset, light.constant);
-      SetUniform(nameToUniform["spotLights[0].linear"].location + offset, light.linear);
-      SetUniform(nameToUniform["spotLights[0].quadratic"].location + offset, light.quadratic);
-      SetUniform(nameToUniform["spotLights[0].innerCutoff"].location + offset, light.innerCutoff);
-      SetUniform(nameToUniform["spotLights[0].outerCutoff"].location + offset, light.outerCutoff);
+      SetUniform(nameToUniform["u_spotLights[0].position"].location + offset, light.position);
+      SetUniform(nameToUniform["u_spotLights[0].direction"].location + offset, light.forward);
+      SetUniform(nameToUniform["u_spotLights[0].ambient"].location + offset, light.ambient);
+      SetUniform(nameToUniform["u_spotLights[0].diffuse"].location + offset, light.diffuse);
+      SetUniform(nameToUniform["u_spotLights[0].specular"].location + offset, light.specular);
+      SetUniform(nameToUniform["u_spotLights[0].constant"].location + offset, light.constant);
+      SetUniform(nameToUniform["u_spotLights[0].linear"].location + offset, light.linear);
+      SetUniform(nameToUniform["u_spotLights[0].quadratic"].location + offset, light.quadratic);
+      SetUniform(nameToUniform["u_spotLights[0].innerCutoff"].location + offset, light.innerCutoff);
+      SetUniform(nameToUniform["u_spotLights[0].outerCutoff"].location + offset, light.outerCutoff);
       ++spotIndex;
     }
-  SetUniform("pointCount", pointIndex);
-  SetUniform("spotCount", spotIndex);
-  SetUniform("hasDirLight", dirExists);
+  SetUniform("u_pointCount", pointIndex);
+  SetUniform("u_spotCount", spotIndex);
+  SetUniform("u_hasDirLight", dirExists);
 }
 auto GLLitShader::SetMaterialFallback(const GLMesh &mesh, std::span<const MaterialFallback> fallbacks, const unsigned int buffer) -> void {
   const auto bindingIndex = 2;
@@ -95,12 +95,12 @@ auto GLLitShader::SetMaterialFallback(const GLMesh &mesh, std::span<const Materi
   glEnableVertexArrayAttrib(mesh.vao, attribIndex);
 }
 auto GLLitShader::SetSkybox(const GLSkybox *skybox) -> void {
-  SetTexture("brdfLUT", skybox ? skybox->brdf : 0);
-  SetTexture("irradianceMap", skybox ? skybox->irradiance : 0);
-  SetTexture("prefilterMap", skybox ? skybox->prefilter : 0);
-  SetUniform("hasBRDF", skybox && skybox->brdf > 0);
-  SetUniform("hasIrradianceMap", skybox && skybox->irradiance > 0);
-  SetUniform("hasPrefilterMap", skybox && skybox->prefilter > 0);
-  SetUniform("hasSkybox", skybox != nullptr);
+  SetTexture("u_brdfLUT", skybox ? skybox->brdf : 0);
+  SetTexture("u_irradianceMap", skybox ? skybox->irradiance : 0);
+  SetTexture("u_prefilterMap", skybox ? skybox->prefilter : 0);
+  SetUniform("u_hasBRDF", skybox && skybox->brdf > 0);
+  SetUniform("u_hasIrradianceMap", skybox && skybox->irradiance > 0);
+  SetUniform("u_hasPrefilterMap", skybox && skybox->prefilter > 0);
+  SetUniform("u_hasSkybox", skybox != nullptr);
 }
 } // namespace kuki
