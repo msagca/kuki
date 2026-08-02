@@ -1,5 +1,9 @@
+#include <cstddef>
+#include <gl_mesh.hpp>
 #include <gl_unlit_shader.hpp>
 #include <glad/glad.h>
+#include <material_fallback.hpp>
+#include <span>
 namespace kuki {
 auto GLUnlitShader::SetMaterialFallback(const GLMesh &mesh, std::span<const MaterialFallback> fallbacks, const unsigned int buffer) -> void {
   const auto bindingIndex = 2;

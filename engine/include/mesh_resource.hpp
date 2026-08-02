@@ -2,7 +2,7 @@
 #include <id.hpp>
 namespace kuki {
 struct MeshResource {
-  AssetID sceneAssetId{};
+  AssetID modelAssetId{};
   EntityID meshId{};
 };
 } // namespace kuki

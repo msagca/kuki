@@ -1,4 +1,7 @@
-project(KukiGames)
+project(KukiTest)
+enable_testing()
+include(CTest)
+include(GoogleTest)
 file(
   GLOB_RECURSE C_SOURCES
   CONFIGURE_DEPENDS
@@ -17,7 +20,8 @@ target_include_directories(
   ${PROJECT_NAME}
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngine)
+target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngine gtest)
+gtest_discover_tests(${PROJECT_NAME})
 install(
   TARGETS ${PROJECT_NAME}
   DESTINATION "${CMAKE_INSTALL_BINDIR}"
@@ -29,10 +33,3 @@ if(UNIX AND NOT APPLE)
     PROPERTIES INSTALL_RPATH "$ORIGIN" BUILD_WITH_INSTALL_RPATH TRUE
   )
 endif()
-add_custom_command(
-  TARGET ${PROJECT_NAME}
-  POST_BUILD
-  COMMAND
-    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:KukiEngine>/shader
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
-)

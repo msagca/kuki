@@ -4,13 +4,11 @@
 namespace kuki {
 class KUKI_ENGINE_API PhysicsSystem final : public System {
 public:
-  PhysicsSystem(SceneManager &);
-  ~PhysicsSystem();
+  PhysicsSystem(Application &);
   auto Start() -> void override;
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
 private:
-  SceneManager &sceneManager;
   const float simulationTimestep;
   float timeAccumulated{};
 };

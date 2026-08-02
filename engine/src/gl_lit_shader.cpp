@@ -1,6 +1,14 @@
+#include <camera.hpp>
+#include <cstddef>
 #include <gl_lit_shader.hpp>
+#include <gl_mesh.hpp>
+#include <gl_shader.hpp>
 #include <gl_skybox.hpp>
 #include <glad/glad.h>
+#include <light.hpp>
+#include <light_type.hpp>
+#include <material_fallback.hpp>
+#include <span>
 namespace kuki {
 auto GLLitShader::SetCamera(const Camera &camera, const unsigned int ubo) -> void {
   GLShader::SetCamera(camera, ubo);
@@ -25,25 +33,27 @@ auto GLLitShader::SetLighting(std::span<const Light> lights) -> void {
       SetUniform("u_dirLight.ambient", light.ambient);
       SetUniform("u_dirLight.diffuse", light.diffuse);
       SetUniform("u_dirLight.specular", light.specular);
-      SetUniform("u_dirLight.view", light.GetView());
+      SetUniform("u_dirLight.intensity", light.intensity);
       dirExists = true;
     } else if (light.type == LightType::Point) {
-      const auto offset = pointIndex * 7;
+      const auto offset = pointIndex;
       SetUniform(nameToUniform["u_pointLights[0].position"].location + offset, light.position);
       SetUniform(nameToUniform["u_pointLights[0].ambient"].location + offset, light.ambient);
       SetUniform(nameToUniform["u_pointLights[0].diffuse"].location + offset, light.diffuse);
       SetUniform(nameToUniform["u_pointLights[0].specular"].location + offset, light.specular);
+      SetUniform(nameToUniform["u_pointLights[0].intensity"].location + offset, light.intensity);
       SetUniform(nameToUniform["u_pointLights[0].constant"].location + offset, light.constant);
       SetUniform(nameToUniform["u_pointLights[0].linear"].location + offset, light.linear);
       SetUniform(nameToUniform["u_pointLights[0].quadratic"].location + offset, light.quadratic);
       ++pointIndex;
     } else if (light.type == LightType::Spot) {
-      const auto offset = spotIndex * 10;
+      const auto offset = spotIndex;
       SetUniform(nameToUniform["u_spotLights[0].position"].location + offset, light.position);
       SetUniform(nameToUniform["u_spotLights[0].direction"].location + offset, light.forward);
       SetUniform(nameToUniform["u_spotLights[0].ambient"].location + offset, light.ambient);
       SetUniform(nameToUniform["u_spotLights[0].diffuse"].location + offset, light.diffuse);
       SetUniform(nameToUniform["u_spotLights[0].specular"].location + offset, light.specular);
+      SetUniform(nameToUniform["u_spotLights[0].intensity"].location + offset, light.intensity);
       SetUniform(nameToUniform["u_spotLights[0].constant"].location + offset, light.constant);
       SetUniform(nameToUniform["u_spotLights[0].linear"].location + offset, light.linear);
       SetUniform(nameToUniform["u_spotLights[0].quadratic"].location + offset, light.quadratic);

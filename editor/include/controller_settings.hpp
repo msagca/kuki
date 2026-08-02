@@ -6,4 +6,9 @@ struct ControllerSettings {
   float moveBoostMax{10.f};
   float moveBoost{1.f};
   float moveSpeed{5.f};
+  float orbitFallbackDistance{10.f};
+  float panSpeed{.005f};
+  float precisionMin{.1f};
+  float precisionTime{0.f};
+  float zoomSpeed{2.f};
 };

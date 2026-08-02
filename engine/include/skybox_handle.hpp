@@ -4,5 +4,6 @@ namespace kuki {
 struct SkyboxHandle {
   AssetID assetId{};
   EntityID prefabId{};
+  EntityID resourceId{};
 };
 } // namespace kuki

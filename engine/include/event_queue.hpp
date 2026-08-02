@@ -10,9 +10,6 @@ private:
 public:
   void Push(std::unique_ptr<T>);
   std::unique_ptr<T> Pop();
-  /// @brief Process all events in the queue by applying the given function to each event
-  /// @tparam F Function type
-  /// @param F&& Function to execute on events
   template <typename F>
   void Drain(F &&);
 };

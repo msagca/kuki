@@ -1,8 +1,11 @@
 #include <gl_shader_base.hpp>
+#include <glad/glad.h>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <spdlog/spdlog.h>
-//
-#include <glad/glad.h>
+#include <string>
 namespace kuki {
 auto GLShaderBase::CacheLocations() -> void {
   GLint params = 0;
@@ -50,6 +53,11 @@ auto GLShaderBase::SetUniform(const int location, const glm::mat4 &value) const 
     return;
   glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
 }
+auto GLShaderBase::SetUniform(const int location, const glm::vec2 &value) const -> void {
+  if (cachedLocations.find(location) == cachedLocations.end())
+    return;
+  glUniform2fv(location, 1, glm::value_ptr(value));
+}
 auto GLShaderBase::SetUniform(const int location, const glm::vec3 &value) const -> void {
   if (cachedLocations.find(location) == cachedLocations.end())
     return;
@@ -83,6 +91,10 @@ auto GLShaderBase::SetUniform(const std::string &name, const glm::mat4 &value) c
   if (auto it = nameToUniform.find(name); it != nameToUniform.end())
     glUniformMatrix4fv(it->second.location, 1, GL_FALSE, glm::value_ptr(value));
 }
+auto GLShaderBase::SetUniform(const std::string &name, const glm::vec2 &value) const -> void {
+  if (auto it = nameToUniform.find(name); it != nameToUniform.end())
+    glUniform2fv(it->second.location, 1, glm::value_ptr(value));
+}
 auto GLShaderBase::SetUniform(const std::string &name, const glm::vec3 &value) const -> void {
   if (auto it = nameToUniform.find(name); it != nameToUniform.end())
     glUniform3fv(it->second.location, 1, glm::value_ptr(value));
@@ -99,6 +111,10 @@ auto GLShaderBase::SetUniform(const std::string &name, const int value) const ->
   if (auto it = nameToUniform.find(name); it != nameToUniform.end())
     glUniform1i(it->second.location, value);
 }
+auto GLShaderBase::SetUniform(const std::string &name, const int count, const unsigned int *value) const -> void {
+  if (auto it = nameToUniform.find(name); it != nameToUniform.end())
+    glUniform1uiv(it->second.location, count, value);
+}
 auto GLShaderBase::SetUniform(const std::string &name, const unsigned int value) const -> void {
   if (auto it = nameToUniform.find(name); it != nameToUniform.end())
     glUniform1ui(it->second.location, value);
@@ -112,8 +128,14 @@ auto GLShaderBase::Compile(const char *text, const int type, const std::string &
   glCompileShader(id);
   int success;
   glGetShaderiv(id, GL_COMPILE_STATUS, &success);
-  if (!success)
-    spdlog::error("[OpenGL] failed to compile shader: {}", name);
+  if (!success) {
+    int logLength{};
+    glGetShaderiv(id, GL_INFO_LOG_LENGTH, &logLength);
+    std::string log(logLength, '\0');
+    if (logLength > 0)
+      glGetShaderInfoLog(id, logLength, nullptr, log.data());
+    spdlog::error("[OpenGL] failed to compile shader: {}\n{}", name, log);
+  }
   return id;
 }
 auto GLShaderBase::GetTextureType(const unsigned int samplerType) -> unsigned int {

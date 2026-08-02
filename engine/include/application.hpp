@@ -1,6 +1,5 @@
 #pragma once
 #include <application_description.hpp>
-#include <application_settings.hpp>
 #include <asset_manager.hpp>
 #include <component_type.hpp>
 #include <concepts.hpp>
@@ -8,44 +7,34 @@
 #include <id.hpp>
 #include <input_manager.hpp>
 #include <kuki_engine_export.h>
-#include <memory>
 #include <primitive.hpp>
 #include <render_target.hpp>
 #include <scene.hpp>
 #include <scene_manager.hpp>
-#include <settings_manager.hpp>
 #include <shader_asset.hpp>
+#include <string_view>
 #include <system.hpp>
 #include <typeindex>
 #include <vector>
 #include <whereami.h>
 namespace kuki {
+class RenderingSystem;
 class KUKI_ENGINE_API Application {
 public:
   Application(ApplicationDescription = {});
   virtual ~Application();
-  /// @brief Executes the lifecycle functions (e.g., `Start`, `Update`, etc.)
   auto Run() -> void;
-  /// @brief User defined one-time initializations
   virtual auto Start() -> void;
-  /// @brief User defined per-frame updates
   virtual auto Update(const float) -> void;
-  /// @brief User defined clean-up procedures
   virtual auto Shutdown() -> void;
-  /// @return `true` if the app should keep running
   virtual auto Status() -> bool;
-  // TODO: clean up this API, or expose them through different APIs based on category
-  // FIXME: don't expose Add/Remove and ForEach calls through the same API, underlying structures should not be resized/reallocated during iteration
-  static auto ComponentToAssetType(const ComponentType) -> AssetType;
-  auto ActivateScene(const std::string &) -> bool;
+  Event<Scene &> OnSceneLoaded;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
-  auto AddEntityComponent(const EntityID, const ComponentType) -> void;
   auto AlignView(const EntityID) -> void;
   auto CreateEntity(std::string = "") -> EntityID;
   auto CreateScene(std::string = "") -> SceneID;
   auto DeleteEntities() -> void;
   auto DeleteEntity(const EntityID) -> void;
-  auto DeleteScene(const std::string &) -> bool;
   auto DeltaTime() const -> float;
   auto DisableButtons() -> void;
   auto DisableInputs() -> void;
@@ -55,98 +44,122 @@ public:
   auto EnableKeys() -> void;
   auto EntityHasChildren(const EntityID) const -> bool;
   auto EntityHasParent(const EntityID) const -> bool;
+  auto ForEachAsset(this auto &, const AssetType, auto &&) -> void;
+  auto ForEachAssetType(this auto &, auto &&) -> void;
+  auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;
+  auto ForEachRootEntity(this auto &, auto &&) -> void;
   auto GetArrowKeys() const -> glm::ivec2;
+  auto GetAsset(this auto &self, const AssetID) -> ConstCorrectPointer<decltype(self), Asset>;
+  auto GetAsset(this auto &self, const std::string &) -> ConstCorrectPointer<decltype(self), Asset>;
   auto GetAssetName(const AssetID) const -> std::string;
+  auto GetAssetPath(const AssetID) const -> std::filesystem::path;
+  auto GetAssetType(const AssetID) const -> AssetType;
   auto GetButton(int) const -> bool;
   auto GetButtonDown(int) const -> bool;
   auto GetButtonUp(int) const -> bool;
+  auto GetCamera(this auto &self, const std::string & = "") -> ConstCorrectPointer<decltype(self), Camera>;
   auto GetDescription() const -> const ApplicationDescription &;
   auto GetEntityComponent(const EntityID, const ComponentType) -> std::optional<ComponentVariant>;
   auto GetEntityComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetEntityCount() const -> size_t;
   auto GetEntityName(const EntityID) const -> std::string;
-  auto GetFPS() const -> size_t;
+  auto GetFPS() -> size_t;
   auto GetKey(int) const -> bool;
   auto GetKeyDown(int) const -> bool;
   auto GetKeyUp(int) const -> bool;
+  auto GetEntityParent(const EntityID) const -> EntityID;
   auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
   auto GetMousePosition() const -> glm::vec2;
   auto GetName() const -> std::string;
-  auto GetSettings() const -> const ApplicationSettings &;
+  auto GetScene(this auto &, const std::string & = "") -> decltype(auto);
+  auto GetScrollOffset() const -> glm::vec2;
   auto GetWASDKeys() const -> glm::ivec2;
   auto InstantiateAsset(const AssetID) -> EntityID;
   auto InstantiateAsset(const std::string &) -> EntityID;
+  auto IsAssetLoaded(const AssetID) const -> bool;
   auto IsEntity(const EntityID) const -> bool;
+  auto IsViewportHovered() const -> bool;
+  auto ResolveModelInstance(const EntityID, const AssetID) -> void;
+  auto LoadComputeFromSource(const std::string_view, std::string = "") -> AssetID;
   auto LoadPrimitive(const std::string &) -> void;
-  auto LoadScene(const std::string &) -> bool;
+  auto LoadShader(const std::filesystem::path &, const std::filesystem::path &, std::string name = "", const MaterialType = MaterialType::Unlit) -> AssetID;
+  auto LoadShaderFromSource(const std::string_view, const std::string_view, std::string name = "", const MaterialType = MaterialType::Unlit) -> AssetID;
+  auto GetPreviewSize() -> int;
   auto PreviewAsset(const AssetID) -> RenderTarget *;
-  auto RegisterInputAction(int, InputAction, bool = true) -> void;
-  auto RegisterInputAction(const std::string &, InputAction) -> void;
-  auto RemoveEntityComponent(const EntityID, const ComponentType) -> bool;
+  auto SetPreviewSize(const int) -> void;
+  auto BeginKeyCapture() -> void;
+  auto CancelKeyCapture() -> void;
+  auto GetBinding(const std::string &) const -> InputManager::Trigger;
+  auto GetBindingDescription(const std::string &) const -> std::string;
+  auto GetBindingNames() const -> const std::vector<std::string> &;
+  auto GetSequenceDescription(const std::string &) const -> std::string;
+  auto GetSequenceNames() const -> const std::vector<std::string> &;
+  auto GetTriggerName(const InputManager::Trigger &) const -> std::string;
+  virtual auto GetSelectedEntity() const -> EntityID {
+    return {};
+  }
+  virtual auto GetSelectedEntities() const -> std::vector<EntityID> {
+    const auto id = GetSelectedEntity();
+    if (!id)
+      return {};
+    return {id};
+  }
+  auto IsBindingHeld(const std::string &) const -> bool;
+  auto IsBindingPressed(const std::string &) const -> bool;
+  auto IsSequenceInProgress() const -> bool;
+  auto PollKeyCapture() -> InputManager::CaptureOutcome;
+  auto RegisterBinding(const std::string &, const InputManager::Trigger &, std::string = "") -> void;
+  auto RegisterInputAction(const std::string &, InputAction, std::string = "") -> InputManager::ActionID;
+  auto RegisterInputAction(int, InputAction, bool = true) -> InputManager::ActionID;
+  auto RemoveEntityScript(const EntityID, const std::type_index) -> bool;
+  auto RenameAsset(const AssetID, std::string = "") -> bool;
   auto RenameEntity(const EntityID, std::string) -> bool;
-  auto SetResolution(const int, const int) -> void;
-  auto ForEachAsset(this auto &, const AssetType, auto &&) -> void;
-  auto ForEachAssetPerType(this auto &, auto &&) -> void;
-  auto ForEachAssetType(this auto &, auto &&) -> void;
-  auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;
-  auto ForEachPrefab(this auto &, auto &&) -> void;
-  auto ForEachRootEntity(this auto &, auto &&) -> void;
-  auto GetActiveCamera(this auto &self) -> ConstCorrectPointer<decltype(self), Camera>;
-  auto GetActiveScene(this auto &self) -> ConstCorrectPointer<decltype(self), Scene>;
-  auto GetAsset(this auto &self, const AssetID) -> ConstCorrectPointer<decltype(self), Asset>;
+  auto SetActiveCamera(const EntityID, const std::string & = "") -> bool;
+  auto SetBinding(const std::string &, const InputManager::Trigger &) -> void;
+  auto UnregisterInputAction(InputManager::ActionID) -> bool;
+  auto SetCursorLocked(bool) -> void;
+  virtual auto SetInputCaptureActive(bool) -> void {}
+  auto SetResolution(const int = 1920, const int = 1080) -> void;
+  auto SetViewportHovered(bool) -> void;
   template <typename... T>
   auto AddEntityComponent(const EntityID) -> decltype(auto);
-  template <IsSystem T, typename... Args>
-  auto CreateSystem(Args &&...) -> T *;
-  template <IsSystem T>
-  auto DeleteSystem() -> bool;
-  template <typename... T>
-  auto EntityHasComponent(const EntityID) const -> bool;
   template <IsAsset... T>
   auto ForEachAsset(this auto &, auto &&) -> void;
   template <typename... T>
   auto ForEachEntity(this auto &, auto &&) -> void;
-  template <typename... T>
-  auto ForFirstEntity(this auto &, auto &&) -> void;
-  template <typename T>
-  auto GetAnyComponent(this auto &) -> decltype(auto);
   template <IsAsset T>
   auto GetAsset(const AssetID) -> decltype(auto);
   template <typename... T>
   auto GetEntityComponent(this auto &, const EntityID) -> decltype(auto);
-  template <typename... T>
-  auto GetPrefabComponent(this auto &, const EntityID) -> decltype(auto);
-  template <IsSystem T>
-  auto GetSystem(this auto &) -> decltype(auto);
   template <IsAsset T>
-  auto LoadAsset(const std::filesystem::path &, std::string = "") -> AssetID;
+  auto LoadAsset(const std::filesystem::path &, std::string = "", const AssetID = {}) -> AssetID;
   template <IsAsset T>
-  auto LoadAssetAsync(const std::filesystem::path &, std::string = "") -> AssetID;
+  auto LoadAssetAsync(const std::filesystem::path &, std::string = "", const AssetID = {}) -> AssetID;
   template <typename... T>
   auto RemoveEntityComponent(const EntityID) -> bool;
 protected:
   GLFWwindow *window{};
+  virtual auto GetRenderingSystem() -> RenderingSystem * {
+    return nullptr;
+  }
+  virtual auto StartSystems() -> void {}
+  virtual auto PostStartSystems() -> void {}
+  virtual auto UpdateSystems(const float) -> void {}
+  virtual auto ShutdownSystems() -> void {}
 private:
   ApplicationDescription desc;
-  SettingsManager settingsManager;
   AssetManager assetManager;
   InputManager inputManager;
   SceneManager sceneManager;
   float deltaTime{};
-  // TODO: create a system manager
-  std::unordered_map<std::type_index, std::unique_ptr<System>> typeIndexToSystem;
+  bool viewportHovered{};
   auto CreateWindow() -> bool;
   auto GetExePath() -> std::filesystem::path;
   auto LoadPrimitiveAssets() -> void;
-  /// @brief Creates and starts systems
   auto PreStart() -> void;
-  /// @brief Starts the scripting system
   auto PostStart() -> void;
-  /// @brief Runs system updates, calculates `deltaTime`
   auto PreUpdate() -> void;
-  /// @brief Displays the rendered frame
   auto PostUpdate() -> void;
-  /// @brief Shuts down systems, destroys app window
   auto PreShutdown() -> void;
   auto SetWindowIcon() -> void;
   static auto CharCallback(GLFWwindow *, unsigned int) -> void;
@@ -155,43 +168,41 @@ private:
   static auto FramebufferSizeCallback(GLFWwindow *, int, int) -> void;
   static auto KeyCallback(GLFWwindow *, int, int, int, int) -> void;
   static auto MouseButtonCallback(GLFWwindow *, int, int, int) -> void;
+  static auto ScrollCallback(GLFWwindow *, double, double) -> void;
   static auto WindowCloseCallback(GLFWwindow *) -> void;
 };
 auto Application::ForEachAsset(this auto &self, const AssetType type, auto &&func) -> void {
   self.assetManager.ForEach(type, std::forward<decltype(func)>(func));
 }
-auto Application::ForEachAssetPerType(this auto &self, auto &&func) -> void {
-  self.assetManager.ForEachPerType(std::forward<decltype(func)>(func));
-}
 auto Application::ForEachAssetType(this auto &self, auto &&func) -> void {
   self.assetManager.ForEachType(std::forward<decltype(func)>(func));
 }
 auto Application::ForEachChildEntity(this auto &self, const EntityID parent, auto &&func) -> void {
-  if (auto scene = self.GetActiveScene(); scene)
+  if (auto scene = self.GetScene(); scene)
     scene->ForEachChildEntity(parent, std::forward<decltype(func)>(func));
 }
-auto Application::ForEachPrefab(this auto &self, auto &&func) -> void {
-  self.assetManager.ForEachPrefab(std::forward<decltype(func)>(func));
-}
 auto Application::ForEachRootEntity(this auto &self, auto &&func) -> void {
-  if (auto scene = self.GetActiveScene(); scene)
+  if (auto scene = self.GetScene(); scene)
     scene->ForEachRootEntity(std::forward<decltype(func)>(func));
-}
-auto Application::GetActiveCamera(this auto &self) -> ConstCorrectPointer<decltype(self), Camera> {
-  if (auto scene = self.GetActiveScene(); scene)
-    return scene->GetActiveCamera();
-  return nullptr;
-}
-auto Application::GetActiveScene(this auto &self) -> ConstCorrectPointer<decltype(self), Scene> {
-  return self.sceneManager.GetActive();
 }
 auto Application::GetAsset(this auto &self, const AssetID id) -> ConstCorrectPointer<decltype(self), Asset> {
   return self.assetManager.Get(id);
 }
+auto Application::GetAsset(this auto &self, const std::string &name) -> ConstCorrectPointer<decltype(self), Asset> {
+  return self.assetManager.Get(name);
+}
+auto Application::GetCamera(this auto &self, const std::string &name) -> ConstCorrectPointer<decltype(self), Camera> {
+  if (auto scene = self.GetScene(name); scene)
+    return scene->GetActiveCamera();
+  return nullptr;
+}
+auto Application::GetScene(this auto &self, const std::string &name) -> decltype(auto) {
+  return self.sceneManager.Get(name);
+}
 template <typename... T>
 auto Application::AddEntityComponent(const EntityID id) -> decltype(auto) {
   static_assert(sizeof...(T) > 0, "`AddEntityComponent` requires at least one type parameter.");
-  if (auto scene = GetActiveScene(); scene)
+  if (auto scene = GetScene(); scene)
     return scene->template AddEntityComponent<T...>(id);
   if constexpr (sizeof...(T) == 1) {
     using C = std::tuple_element_t<0, std::tuple<T...>>;
@@ -199,44 +210,14 @@ auto Application::AddEntityComponent(const EntityID id) -> decltype(auto) {
   } else
     return std::tuple(AddEntityComponent<T>(id)...);
 }
-template <IsSystem T, typename... Args>
-auto Application::CreateSystem(Args &&...args) -> T * {
-  const auto typeIndex = std::type_index(typeid(T));
-  if (auto it = typeIndexToSystem.find(typeIndex); it != typeIndexToSystem.end())
-    return static_cast<T *>(it->second.get());
-  auto [it, _] = typeIndexToSystem.emplace(typeIndex, std::make_unique<T>(std::forward<Args>(args)...));
-  return static_cast<T *>(it->second.get());
-}
-template <IsSystem T>
-auto Application::DeleteSystem() -> bool {
-  const auto typeIndex = std::type_index(typeid(T));
-  return typeIndexToSystem.erase(typeIndex);
-}
-template <typename... T>
-auto Application::EntityHasComponent(const EntityID id) const -> bool {
-  if (auto scene = GetActiveScene(); scene)
-    return scene->template EntityHasComponent<T...>(id);
-  return false;
-}
 template <IsAsset... T>
 auto Application::ForEachAsset(this auto &self, auto &&func) -> void {
   self.assetManager.template ForEach<T...>(std::forward<decltype(func)>(func));
 }
 template <typename... T>
 auto Application::ForEachEntity(this auto &self, auto &&func) -> void {
-  if (auto scene = self.GetActiveScene(); scene)
+  if (auto scene = self.GetScene(); scene)
     scene->template ForEachEntity<T...>(std::forward<decltype(func)>(func));
-}
-template <typename... T>
-auto Application::ForFirstEntity(this auto &self, auto &&func) -> void {
-  if (auto scene = self.GetActiveScene(); scene)
-    scene->template ForFirstEntity<T...>(std::forward<decltype(func)>(func));
-}
-template <typename T>
-auto Application::GetAnyComponent(this auto &self) -> decltype(auto) {
-  if (auto scene = self.GetActiveScene(); scene)
-    return scene->template GetAnyComponent<T>();
-  return ConstCorrectPointer<decltype(self), T>(nullptr);
 }
 template <IsAsset T>
 auto Application::GetAsset(const AssetID id) -> decltype(auto) {
@@ -247,45 +228,34 @@ auto Application::GetEntityComponent(this auto &self, const EntityID id) -> decl
   if constexpr (sizeof...(T) == 1) {
     using C = std::tuple_element_t<0, std::tuple<T...>>;
     if constexpr (std::is_same_v<Script, C>) {
-      if (auto scene = self.GetActiveScene(); scene)
+      if (auto scene = self.GetScene(); scene)
         return scene->template GetEntityComponent<T...>(id);
       else
         return std::vector<ConstCorrectPointer<decltype(self), C>>();
     } else {
-      if (auto scene = self.GetActiveScene(); scene)
+      if (auto scene = self.GetScene(); scene)
         return scene->template GetEntityComponent<T...>(id);
       else
         return static_cast<ConstCorrectPointer<decltype(self), C>>(nullptr);
     }
   } else {
-    if (auto scene = self.GetActiveScene(); scene)
+    if (auto scene = self.GetScene(); scene)
       return scene->template GetEntityComponent<T...>(id);
     else
       return std::tuple(self.template GetEntityComponent<T>(id)...);
   }
 }
-template <typename... T>
-auto Application::GetPrefabComponent(this auto &self, const EntityID id) -> decltype(auto) {
-  return self.assetManager.template GetComponent<T...>(id);
-}
-template <IsSystem T>
-auto Application::GetSystem(this auto &self) -> decltype(auto) {
-  const auto typeIndex = std::type_index(typeid(T));
-  if (auto it = self.typeIndexToSystem.find(typeIndex); it != self.typeIndexToSystem.end())
-    return static_cast<ConstCorrectPointer<decltype(self), T>>(it->second.get());
-  return static_cast<ConstCorrectPointer<decltype(self), T>>(nullptr);
+template <IsAsset T>
+auto Application::LoadAsset(const std::filesystem::path &path, std::string name, const AssetID forcedId) -> AssetID {
+  return assetManager.Load<T>(path, std::move(name), forcedId);
 }
 template <IsAsset T>
-auto Application::LoadAsset(const std::filesystem::path &path, std::string name) -> AssetID {
-  return assetManager.Load<T>(path, std::move(name));
-}
-template <IsAsset T>
-auto Application::LoadAssetAsync(const std::filesystem::path &path, std::string name) -> AssetID {
-  return assetManager.LoadAsync<T>(path, std::move(name));
+auto Application::LoadAssetAsync(const std::filesystem::path &path, std::string name, const AssetID forcedId) -> AssetID {
+  return assetManager.LoadAsync<T>(path, std::move(name), forcedId);
 }
 template <typename... T>
 auto Application::RemoveEntityComponent(const EntityID id) -> bool {
-  if (auto scene = GetActiveScene(); scene)
+  if (auto scene = GetScene(); scene)
     return scene->template RemoveEntityComponent<T...>(id);
   return false;
 }

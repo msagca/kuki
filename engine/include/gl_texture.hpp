@@ -8,6 +8,7 @@ struct KUKI_ENGINE_API GLTexture final : public RenderTarget {
   unsigned int id{};
   TextureContent content{TextureContent::Albedo};
   TargetDescription desc{};
+  bool flipY{false};
   explicit operator bool() const;
 };
 } // namespace kuki

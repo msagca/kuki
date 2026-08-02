@@ -1,0 +1,52 @@
+{
+  "entities": [
+    {
+      "children": [],
+      "components": {
+        "Camera": {
+          "position": {
+            "x": 1.104341,
+            "y": 0.591246,
+            "z": 1.928771
+          },
+          "rotation": {
+            "w": 0.958235,
+            "x": -0.125277,
+            "y": 0.254911,
+            "z": 0.033326
+          }
+        }
+      },
+      "name": "Camera"
+    },
+    {
+      "children": [],
+      "components": {
+        "SkyboxHandle": {}
+      },
+      "name": "Skybox"
+    },
+    {
+      "children": [],
+      "components": {
+        "BoundingBox": {
+          "max": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": 0.5
+          },
+          "min": {
+            "x": -0.5,
+            "y": -0.5,
+            "z": -0.5
+          }
+        },
+        "MaterialHandle": {},
+        "MeshHandle": {},
+        "Transform": {}
+      },
+      "name": "Cube"
+    }
+  ],
+  "name": "Main"
+}

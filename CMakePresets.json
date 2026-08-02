@@ -6,7 +6,10 @@
       "name": "Base",
       "hidden": true,
       "binaryDir": "${sourceDir}/build",
-      "cacheVariables": { "CMAKE_EXPORT_COMPILE_COMMANDS": "ON" }
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "KUKI_BUILD_TESTS": "OFF"
+      }
     },
     {
       "name": "Debug",
@@ -16,11 +19,7 @@
     {
       "name": "Release",
       "inherits": "Base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "KUKI_BUILD_GAMES": "ON",
-        "KUKI_BUILD_TESTS": "ON"
-      }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     },
     {
       "name": "MSVC",

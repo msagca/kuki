@@ -13,18 +13,15 @@ struct KUKI_ENGINE_API Light {
   glm::vec3 forward{.0f, .0f, -1.f};
   glm::vec3 up{.0f, 1.f, .0f};
   glm::vec3 right{1.f, .0f, .0f};
-  // color
   glm::vec3 ambient{.2f};
   glm::vec3 diffuse{.5f};
   glm::vec3 specular{1.f};
-  // point light
+  float intensity{1.f};
   float constant{1.f};
   float linear{.09f};
   float quadratic{.032f};
-  // spot light
-  float innerCutoff{.91f}; // cos(25)
-  float outerCutoff{.82f}; // cos(35)
-  // camera (for shadow mapping)
+  float innerCutoff{.91f};
+  float outerCutoff{.82f};
   float nearPlane{.1f};
   float farPlane{100.f};
   float orthoSize{10.f};

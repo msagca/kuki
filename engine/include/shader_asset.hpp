@@ -6,10 +6,10 @@
 #include <string>
 namespace kuki {
 struct KUKI_ENGINE_API ShaderAsset final : public Asset {
-  ShaderAsset(const AssetID = AssetID::Invalid, std::string = "");
-  ShaderType shaderType{ShaderType::Fragment};
-  MaterialType materialType{MaterialType::Unlit};
-  AssetID vertexShader{AssetID::Invalid};
+  ShaderAsset(const AssetID = AssetID::Invalid);
+  ShaderType shaderType{ShaderType::Vertex};
   std::string text{};
+  AssetID vertexShader{AssetID::Invalid};
+  MaterialType materialType{MaterialType::Unlit};
 };
 } // namespace kuki

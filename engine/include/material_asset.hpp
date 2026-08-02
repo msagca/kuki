@@ -7,7 +7,7 @@
 #include <string>
 namespace kuki {
 struct KUKI_ENGINE_API MaterialAsset final : public Asset {
-  MaterialAsset(AssetID, std::string = "");
+  MaterialAsset(AssetID);
   MaterialFallback fallback;
   MaterialType type{MaterialType::Unlit};
   std::vector<AssetID> textures;

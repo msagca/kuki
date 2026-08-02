@@ -8,7 +8,7 @@
 #include <string>
 namespace kuki {
 struct KUKI_ENGINE_API MeshAsset final : public Asset {
-  MeshAsset(AssetID, std::string = "");
+  MeshAsset(AssetID);
   Mesh mesh;
   AssetID material{};
   BoundingBox bounds{};

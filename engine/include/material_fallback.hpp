@@ -4,7 +4,7 @@
 namespace kuki {
 struct MaterialFallback {
   glm::vec4 albedo{1.f};
-  glm::vec4 specular{.0f};
+  glm::vec4 specular{1.f};
   glm::vec4 emissive{.0f};
   float metalness{.5f};
   float occlusion{1.f};

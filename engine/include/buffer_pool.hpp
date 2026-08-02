@@ -7,8 +7,6 @@ public:
   auto Clear() -> void;
   auto Reallocate(const int &, unsigned int &) -> void override;
 protected:
-  /// @param size Buffer size in bytes
-  /// @return id Buffer ID
   auto Allocate(const int & = 0) -> unsigned int override;
 };
 } // namespace kuki

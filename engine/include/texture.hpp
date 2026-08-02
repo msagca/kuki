@@ -11,6 +11,7 @@ struct Texture {
   int channels{3};
   int height{1024};
   int width{1024};
+  bool flipY{false};
   std::variant<std::vector<unsigned char>, std::vector<float>> data;
 };
 } // namespace kuki

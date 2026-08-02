@@ -1,10 +1,13 @@
 #pragma once
+#include <algorithm>
 #include <application.hpp>
 #include <array>
 #include <bone_data.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
+#include <cmath>
 #include <component_type.hpp>
+#include <editor.hpp>
 #include <enum_traits.hpp>
 #include <gl_material.hpp>
 #include <gl_mesh.hpp>
@@ -18,6 +21,8 @@
 #include <skybox_handle.hpp>
 #include <texture_handle.hpp>
 struct PropertyDisplayer {
+  EditorContext &context;
+  Application &app;
   template <typename T>
   auto operator()(T *) -> void;
 };
@@ -48,7 +53,13 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   static auto &types = kuki::EnumTraits<kuki::CameraType>::GetNames();
   auto type = static_cast<int>(camera->type);
   if (ImGui::Combo("Type", &type, types.data(), types.size())) {
-    camera->type = static_cast<kuki::CameraType>(type);
+    const auto newType = static_cast<kuki::CameraType>(type);
+    if (newType == kuki::CameraType::Orthographic && camera->type != kuki::CameraType::Orthographic) {
+      const auto distance = glm::length(camera->position);
+      if (distance > .0f)
+        camera->orthoSize = distance * glm::tan(glm::radians(camera->fov) * .5f);
+    }
+    camera->type = newType;
     dirty = true;
   }
   auto rotationQuat = camera->rotation;
@@ -72,8 +83,6 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
     }
     auto aspectRatio = camera->aspectRatio;
     if (ImGui::SliderFloat("Aspect Ratio", &aspectRatio, .1f, 10.f, nullptr, ImGuiInputTextFlags_ReadOnly)) {
-      // camera->aspectRatio = aspectRatio;
-      // dirty = true;
     }
   }
   auto nearPlane = camera->nearPlane;
@@ -111,11 +120,13 @@ inline auto PropertyDisplayer::operator()<kuki::GLMaterial>(kuki::GLMaterial *ma
     const auto buttonWidth = TEXTURE_SIZE.x + style.FramePadding.x * 2.f;
     return (std::max)(buttonWidth, textWidth);
   };
-  auto DrawTextureTile = [&](const char *id, ImTextureID tex, const char *label, auto onClick) -> float {
+  auto DrawTextureTile = [&](const char *id, ImTextureID tex, const char *label, bool pending, auto onClick) -> float {
     const auto tileWidth = GetTileWidth(label);
     auto startPos = ImGui::GetCursorPos();
     ImGui::BeginGroup();
     auto clicked = ImGui::ImageButton(id, tex, TEXTURE_SIZE);
+    if (pending)
+      ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), PICKING_HIGHLIGHT_COLOR, 0.f, 0, PICKING_HIGHLIGHT_THICKNESS);
     if (clicked)
       onClick();
     const auto textWidth = ImGui::CalcTextSize(label).x;
@@ -126,7 +137,13 @@ inline auto PropertyDisplayer::operator()<kuki::GLMaterial>(kuki::GLMaterial *ma
     ImGui::EndGroup();
     return tileWidth;
   };
-  const auto SelectProperty = [&](const kuki::MaterialProperty prop) {};
+  const auto SelectProperty = [&](const kuki::MaterialProperty prop) {
+    context.state = EditorState::PickingAsset;
+    context.pickingAssetType = AssetType::Texture;
+    context.pickingEntityId = context.selectedEntityId;
+    context.pickingProperty = prop;
+    context.pickingTarget = PickingTarget::MaterialTexture;
+  };
   struct TexEntry {
     const char *id;
     ImTextureID tex;
@@ -161,7 +178,8 @@ inline auto PropertyDisplayer::operator()<kuki::GLMaterial>(kuki::GLMaterial *ma
         remaining = lineWidth;
       }
     }
-    remaining -= DrawTextureTile(e.id, e.tex, e.label, [&SelectProperty, &e] { SelectProperty(e.prop); });
+    const auto pending = context.state == EditorState::PickingAsset && context.pickingEntityId == context.selectedEntityId && context.pickingProperty == e.prop;
+    remaining -= DrawTextureTile(e.id, e.tex, e.label, pending, [&SelectProperty, &e] { SelectProperty(e.prop); });
     firstOnLine = false;
   }
   static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
@@ -203,20 +221,36 @@ inline auto PropertyDisplayer::operator()<kuki::GLMesh>(kuki::GLMesh *mesh) -> v
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLSkybox>(kuki::GLSkybox *skybox) -> void {
   static constexpr ImVec2 TEXTURE_SIZE(64, 64);
-  static constexpr ImVec2 UV0(0.f, 1.f);
-  static constexpr ImVec2 UV1(1.f, 0.f);
   if (!skybox)
     return;
   const auto &style = ImGui::GetStyle();
   const auto label = "Skybox";
-  // FIXME: create a preview image for the skybox
-  auto tex = static_cast<ImTextureID>(skybox->prefilter);
+  auto tex = ImTextureID{};
+  auto uv0 = ImVec2(0.f, 1.f);
+  auto uv1 = ImVec2(1.f, 0.f);
+  if (auto *handle = app.GetEntityComponent<kuki::SkyboxHandle>(context.selectedEntityId); handle)
+    if (auto *texture = static_cast<kuki::GLTexture *>(app.PreviewAsset(handle->assetId)); texture) {
+      tex = static_cast<ImTextureID>(texture->id);
+      if (texture->flipY) {
+        uv0 = ImVec2(0.f, 0.f);
+        uv1 = ImVec2(1.f, 1.f);
+      }
+    }
   const float textWidth = ImGui::CalcTextSize(label).x;
   const float buttonWidth = TEXTURE_SIZE.x + style.FramePadding.x * 2.f;
   const float tileWidth = std::max(buttonWidth, textWidth);
   auto startPos = ImGui::GetCursorPos();
   ImGui::BeginGroup();
-  if (ImGui::ImageButton("Skybox##Texture", tex, TEXTURE_SIZE, UV0, UV1)) {}
+  const auto pending = context.state == EditorState::PickingAsset && context.pickingTarget == PickingTarget::Skybox && context.pickingEntityId == context.selectedEntityId;
+  const auto clicked = ImGui::ImageButton("Skybox##Texture", tex, TEXTURE_SIZE, uv0, uv1);
+  if (pending)
+    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), PICKING_HIGHLIGHT_COLOR, 0.f, 0, PICKING_HIGHLIGHT_THICKNESS);
+  if (clicked) {
+    context.state = EditorState::PickingAsset;
+    context.pickingAssetType = AssetType::Texture;
+    context.pickingEntityId = context.selectedEntityId;
+    context.pickingTarget = PickingTarget::Skybox;
+  }
   const auto buttonHeight = TEXTURE_SIZE.y + style.FramePadding.y * 2.f;
   ImGui::SetCursorPosX(startPos.x + (tileWidth - textWidth) * .5f);
   ImGui::SetCursorPosY(startPos.y + buttonHeight + style.ItemInnerSpacing.y);
@@ -266,35 +300,70 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
   auto specular = light->specular;
   if (ImGui::ColorEdit3("Specular Color", glm::value_ptr(specular)))
     light->specular = specular;
+  auto intensity = light->intensity;
+  if (ImGui::DragFloat("Intensity", &intensity, .05f, .0f, MAX_FLOAT, "%.2f"))
+    light->intensity = intensity;
+  ImGui::SameLine();
+  ImGui::TextDisabled("(?)");
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Brightness multiplier applied on top of the diffuse/specular colors above.\nRaise this instead of pushing color channels past 1.0 to make a light brighter.");
   if (light->type == kuki::LightType::Point || light->type == kuki::LightType::Spot) {
-    // TODO: expose these in a more user-friendly fashion
-    auto constant = light->constant;
-    if (ImGui::SliderFloat("Constant Term", &constant, .0f, 1.f))
-      light->constant = constant;
-    auto linear = light->linear;
-    if (ImGui::SliderFloat("Linear Term", &linear, .0f, 1.f))
-      light->linear = linear;
-    auto quadratic = light->quadratic;
-    if (ImGui::SliderFloat("Quadratic Term", &quadratic, .0f, 1.f))
-      light->quadratic = quadratic;
+    constexpr auto MIN_RANGE = 1.f;
+    const auto currentLinear = std::max(light->linear, 1.0e-4f);
+    const auto currentRange = 4.5f / currentLinear;
+    auto range = currentRange;
+    if (ImGui::DragFloat("Range", &range, .5f, MIN_RANGE, MAX_FLOAT, "%.1f")) {
+      range = std::max(range, MIN_RANGE);
+      light->constant = 1.f;
+      light->linear = 4.5f / range;
+      light->quadratic = 75.f / (range * range);
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Approximate distance the light reaches before fading out.\nReplaces manually tuning constant/linear/quadratic attenuation terms.");
+    if (ImGui::TreeNode("Advanced Falloff")) {
+      auto constant = light->constant;
+      if (ImGui::SliderFloat("Constant Term", &constant, .0f, 1.f))
+        light->constant = constant;
+      auto linear = light->linear;
+      if (ImGui::SliderFloat("Linear Term", &linear, .0f, 1.f))
+        light->linear = linear;
+      auto quadratic = light->quadratic;
+      if (ImGui::SliderFloat("Quadratic Term", &quadratic, .0f, 1.f))
+        light->quadratic = quadratic;
+      ImGui::TreePop();
+    }
   }
   if (light->type == kuki::LightType::Spot) {
-    auto innerCutoff = light->innerCutoff;
-    if (ImGui::SliderFloat("Cos(Inner Cut-off Angle)", &innerCutoff, .0f, 1.f))
-      light->innerCutoff = innerCutoff;
-    auto outerCutoff = light->outerCutoff;
-    if (ImGui::SliderFloat("Cos(Outer Cut-off Angle)", &outerCutoff, .0f, 1.f))
-      light->outerCutoff = outerCutoff;
+    auto innerAngle = glm::degrees(std::acos(std::clamp(light->innerCutoff, -1.f, 1.f)));
+    auto outerAngle = glm::degrees(std::acos(std::clamp(light->outerCutoff, -1.f, 1.f)));
+    if (ImGui::DragFloat("Inner Cone Angle", &innerAngle, .1f, .0f, outerAngle))
+      light->innerCutoff = std::cos(glm::radians(innerAngle));
+    if (ImGui::DragFloat("Outer Cone Angle", &outerAngle, .1f, innerAngle, 89.f))
+      light->outerCutoff = std::cos(glm::radians(outerAngle));
+    auto spotNearPlane = light->nearPlane;
+    if (ImGui::DragFloat("Shadow Near Plane", &spotNearPlane, .1f, .0f, MAX_FLOAT))
+      light->nearPlane = spotNearPlane;
+    auto spotFarPlane = light->farPlane;
+    if (ImGui::DragFloat("Shadow Far Plane", &spotFarPlane, .1f, .0f, MAX_FLOAT))
+      light->farPlane = spotFarPlane;
   }
-  auto nearPlane = light->nearPlane;
-  if (ImGui::DragFloat("Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT))
-    light->nearPlane = nearPlane;
-  auto farPlane = light->farPlane;
-  if (ImGui::DragFloat("Far Plane", &farPlane, .1f, .0f, MAX_FLOAT))
-    light->farPlane = farPlane;
-  auto orthoSize = light->orthoSize;
-  if (ImGui::DragFloat("Size", &orthoSize, .1f, .0f, MAX_FLOAT))
-    light->orthoSize = orthoSize;
+  if (light->type == kuki::LightType::Directional) {
+    auto nearPlane = light->nearPlane;
+    if (ImGui::DragFloat("Shadow Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT))
+      light->nearPlane = nearPlane;
+    auto farPlane = light->farPlane;
+    if (ImGui::DragFloat("Shadow Far Plane", &farPlane, .1f, .0f, MAX_FLOAT))
+      light->farPlane = farPlane;
+    auto orthoSize = light->orthoSize;
+    if (ImGui::DragFloat("Shadow Coverage Size", &orthoSize, .1f, .0f, MAX_FLOAT))
+      light->orthoSize = orthoSize;
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Half-width of the area around this light that the shadow map covers.\nIncrease if shadows clip or disappear near the edges of the scene.");
+  }
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::MaterialHandle>(kuki::MaterialHandle *handle) -> void {
@@ -311,20 +380,20 @@ inline auto PropertyDisplayer::operator()<kuki::MeshHandle>(kuki::MeshHandle *ha
   ImGui::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
-inline auto PropertyDisplayer::operator()<kuki::SceneMaterialHandle>(kuki::SceneMaterialHandle *handle) -> void {
+inline auto PropertyDisplayer::operator()<kuki::ModelMaterialHandle>(kuki::ModelMaterialHandle *handle) -> void {
   if (!handle)
     return;
-  auto sceneAssetId = handle->sceneAssetId;
-  ImGui::InputScalar("Scene Asset ID", ImGuiDataType_U64, &sceneAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  auto modelAssetId = handle->modelAssetId;
+  ImGui::InputScalar("Model Asset ID", ImGuiDataType_U64, &modelAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
   auto materialIndex = handle->materialIndex;
   ImGui::InputScalar("Material Index", ImGuiDataType_U64, &materialIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
-inline auto PropertyDisplayer::operator()<kuki::SceneMeshHandle>(kuki::SceneMeshHandle *handle) -> void {
+inline auto PropertyDisplayer::operator()<kuki::ModelMeshHandle>(kuki::ModelMeshHandle *handle) -> void {
   if (!handle)
     return;
-  auto sceneAssetId = handle->sceneAssetId;
-  ImGui::InputScalar("Scene Asset ID", ImGuiDataType_U64, &sceneAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  auto modelAssetId = handle->modelAssetId;
+  ImGui::InputScalar("Model Asset ID", ImGuiDataType_U64, &modelAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
   auto meshIndex = handle->meshIndex;
   ImGui::InputScalar("Mesh Index", ImGuiDataType_U64, &meshIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }

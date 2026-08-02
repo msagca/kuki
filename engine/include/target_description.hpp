@@ -21,6 +21,7 @@ enum class TargetFormat : uint8_t {
 enum class TargetType : uint8_t {
   Cubemap,
   Texture2D,
+  Texture2DArray,
   Texture2DMulti
 };
 struct TargetDescription {
@@ -30,6 +31,8 @@ struct TargetDescription {
   int height{1024};
   int samples{1};
   int mipmaps{1};
+  int layers{1};
+  bool pickingBuffer{false};
   auto operator==(const TargetDescription &) const noexcept -> bool = default;
 };
 } // namespace kuki
@@ -44,6 +47,8 @@ struct hash<kuki::TargetDescription> {
     kuki::hash_combine(h, hash<int>{}(desc.height));
     kuki::hash_combine(h, hash<int>{}(desc.samples));
     kuki::hash_combine(h, hash<int>{}(desc.mipmaps));
+    kuki::hash_combine(h, hash<int>{}(desc.layers));
+    kuki::hash_combine(h, hash<bool>{}(desc.pickingBuffer));
     return h;
   }
 };

@@ -1,51 +1,51 @@
 #pragma once
-#include <application_settings.hpp>
+#include <application.hpp>
+#include <array>
 #include <asset_manager.hpp>
-#include <gl_renderer.hpp>
 #include <kuki_engine_export.h>
 #include <material_type.hpp>
 #include <memory>
 #include <render_graph.hpp>
 #include <render_graph_builder.hpp>
+#include <renderer.hpp>
 #include <scene_manager.hpp>
-#include <settings_manager.hpp>
 #include <shader_asset.hpp>
 #include <system.hpp>
 #include <target_description.hpp>
 namespace kuki {
+enum class RenderingAPI : uint8_t {
+  DirectX,
+  OpenGL,
+  Vulkan
+};
 class KUKI_ENGINE_API RenderingSystem final : public System {
 public:
-  RenderingSystem(SceneManager &, AssetManager &, SettingsManager &);
-  ~RenderingSystem();
+  RenderingSystem(Application &);
   auto Start() -> void override;
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
   auto GetFPS() const -> size_t;
+  auto GetPreviewSize() const -> int;
+  auto GetResolution() const -> std::pair<int, int>;
   auto GetTarget(std::string = "") -> RenderTarget *;
-  auto LoadAsset(const AssetID) -> void;
-  auto PreviewAsset(const AssetID, int = 128) -> RenderTarget *;
+  auto ForEachTarget(auto &&) const -> void;
+  auto LoadAssets(const AssetType) -> void;
+  auto PickEntity(const int, const int) -> EntityID;
+  auto PreviewAsset(const AssetID) -> RenderTarget *;
+  auto SetPreviewSize(const int) -> void;
+  auto SetRenderer(const RenderingAPI = RenderingAPI::OpenGL) -> void;
+  auto SetResolution(const int = 1920, const int = 1080) -> void;
 private:
-  AssetManager &assetManager;
-  SceneManager &sceneManager;
-  SettingsManager &settingsManager;
-  Renderer *activeRenderer{};
-  GLRenderer glRenderer;
   RenderGraphBuilder graphBuilder;
   std::unique_ptr<RenderGraph> renderGraph;
+  Renderer *activeRenderer{};
+  std::array<std::unique_ptr<Renderer>, static_cast<uint8_t>(RenderingAPI::Vulkan) + 1> renderers;
   size_t fps{};
-  auto OnResolutionChanged(const ScreenResolution &) -> void;
-  auto OnSceneLoaded(Scene &) -> void;
-  static auto ApplyAntiAliasing(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
-  static auto ApplyBloomEffect(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
-  static auto ApplyBlurEffect(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
-  static auto ApplyBrightPassFilter(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
-  static auto ApplyGammaCorrection(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
-  static auto CreateShadowMap(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
-  static auto RenderScene(Renderer &, std::span<std::string>, std::span<std::string>) -> void;
-  static auto DrawEntities(Renderer &, std::span<std::string>) -> void;
-  static auto DrawEntitiesInstanced(Renderer &, std::span<std::string>, const GLMesh &, const GLMaterial &, const std::vector<MaterialFallback> &, const std::vector<glm::mat4> &) -> void;
-  static auto DrawMeshes(Renderer &) -> void;
-  static auto DrawMeshesInstanced(Renderer &, const GLMesh &, const std::vector<glm::mat4> &) -> void;
-  static auto DrawSkybox(Renderer &) -> void;
+  int screenWidth{1920};
+  int screenHeight{1080};
 };
+auto RenderingSystem::ForEachTarget(auto &&func) const -> void {
+  if (renderGraph)
+    renderGraph->ForEachTarget(std::forward<decltype(func)>(func));
+}
 } // namespace kuki

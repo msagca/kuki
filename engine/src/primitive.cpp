@@ -11,7 +11,7 @@
 namespace kuki {
 static constexpr auto PI = glm::pi<float>();
 auto Primitive::Cube() -> std::vector<Vertex> {
-  return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
+  return {
     {{.5f, -.5f, -.5f}, {0.f, 0.f, -1.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}},
     {{-.5f, -.5f, -.5f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
     {{.5f, .5f, -.5f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
@@ -53,7 +53,7 @@ auto Primitive::Cylinder(unsigned int segments) -> std::vector<Vertex> {
   std::vector<Vertex> vertices(segments * 36);
   std::vector<float> segmentData(segments * 4);
   const auto circ = 2 * PI / segments;
-  for (auto i = 0; i < segments; ++i) { // x, z, Nx, Nz
+  for (auto i = 0; i < segments; ++i) {
     const auto angle = circ * i;
     const auto x = cos(angle) * .5f;
     const auto z = sin(angle) * .5f;
@@ -63,7 +63,7 @@ auto Primitive::Cylinder(unsigned int segments) -> std::vector<Vertex> {
     segmentData[i * 4 + 2] = normal.x;
     segmentData[i * 4 + 3] = normal.z;
   }
-  for (auto i = 0; i < segments; ++i) { // side faces
+  for (auto i = 0; i < segments; ++i) {
     const auto iNext = (i + 1) % segments;
     const auto x = segmentData[i * 4];
     const auto z = segmentData[i * 4 + 1];
@@ -84,7 +84,7 @@ auto Primitive::Cylinder(unsigned int segments) -> std::vector<Vertex> {
     vertices.push_back({{xNext, .5f, zNext}, {nxNext, 0.f, nzNext}, {uNext, 1.f}, tangentNext});
     vertices.push_back({{xNext, -.5f, zNext}, {nxNext, 0.f, nzNext}, {uNext, 0.f}, tangentNext});
   }
-  for (auto i = 0; i < segments; ++i) { // top cap
+  for (auto i = 0; i < segments; ++i) {
     const auto iNext = (i + 1) % segments;
     const auto u = static_cast<float>(i) / segments;
     const auto uNext = static_cast<float>(iNext) / segments;
@@ -96,7 +96,7 @@ auto Primitive::Cylinder(unsigned int segments) -> std::vector<Vertex> {
     vertices.push_back({{0.f, .5f, 0.f}, {0.f, 1.f, 0.f}, {.5f, 1.f}, {1.f, 0.f, 0.f}});
     vertices.push_back({{segmentData[iNext * 4], .5f, segmentData[iNext * 4 + 1]}, {0.f, 1.f, 0.f}, {uNext, 0.f}, tangentNext});
   }
-  for (auto i = 0; i < segments; ++i) { // bottom cap
+  for (auto i = 0; i < segments; ++i) {
     const auto iNext = (i + 1) % segments;
     const auto u = static_cast<float>(i) / segments;
     const auto uNext = static_cast<float>(iNext) / segments;
@@ -111,7 +111,7 @@ auto Primitive::Cylinder(unsigned int segments) -> std::vector<Vertex> {
   return vertices;
 }
 auto Primitive::Frame() -> std::vector<Vertex> {
-  return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
+  return {
     {{-1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
     {{-1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
     {{1.f, 1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
@@ -120,7 +120,7 @@ auto Primitive::Frame() -> std::vector<Vertex> {
     {{1.f, -1.f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f}, {1.f, 0.f, 0.f}}};
 }
 auto Primitive::Plane() -> std::vector<Vertex> {
-  return {// x, y, z, Nx, Ny, Nz, u, v, Tx, Ty, Tz
+  return {
     {{-1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {0.f, 1.f}, {1.f, 0.f, 0.f}},
     {{1.f, 0.f, 1.f}, {0.f, 1.f, 0.f}, {1.f, 1.f}, {1.f, 0.f, 0.f}},
     {{-1.f, 0.f, -1.f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}},
@@ -153,7 +153,6 @@ auto Primitive::Sphere(unsigned int level) -> std::vector<Vertex> {
 }
 auto Primitive::FlipWindingOrder(std::vector<Vertex> &vertices) -> void {
   for (auto i = 1; i < vertices.size(); i += 3)
-    // swap vertex #0 and vertex #1 of the triangle
     std::swap(vertices[i - 1], vertices[i]);
 }
 auto Primitive::CreateIcosahedron() -> std::vector<Triangle> {

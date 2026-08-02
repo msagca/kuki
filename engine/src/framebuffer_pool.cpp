@@ -1,5 +1,4 @@
 #include <framebuffer_pool.hpp>
-//
 #include <glad/glad.h>
 namespace kuki {
 auto FramebufferPool::Allocate() -> unsigned int {

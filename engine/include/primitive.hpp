@@ -26,7 +26,6 @@ public:
   static auto Frame() -> std::vector<Vertex>;
   static auto Plane() -> std::vector<Vertex>;
   static auto Sphere(unsigned int = 4) -> std::vector<Vertex>;
-  /// @brief Flip the winding order (clockwise <-> counter-clockwise) of faces in a mesh
   static void FlipWindingOrder(std::vector<Vertex> &);
 private:
   static auto CreateIcosahedron() -> std::vector<Triangle>;

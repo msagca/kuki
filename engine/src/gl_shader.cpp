@@ -1,9 +1,14 @@
+#include <camera.hpp>
+#include <gl_material.hpp>
+#include <gl_mesh.hpp>
 #include <gl_shader.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <shader_asset.hpp>
-#include <spdlog/spdlog.h>
-//
+#include <gl_skybox.hpp>
 #include <glad/glad.h>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float4.hpp>
+#include <light.hpp>
+#include <material_fallback.hpp>
+#include <span>
 namespace kuki {
 auto GLShader::Draw(const GLMesh &mesh, const unsigned int count) -> void {
   if (count == 0)
@@ -22,7 +27,25 @@ auto GLShader::Draw(const GLMesh &mesh, const unsigned int count) -> void {
   }
   glBindVertexArray(0);
 }
-auto GLShader::SetBoneTransforms(const BoneData &boneData) -> void {}
+auto GLShader::SetBoneTransforms(std::span<const glm::mat4> matrices, const unsigned int buffer) -> void {
+  glNamedBufferData(buffer, matrices.size() * sizeof(glm::mat4), matrices.data(), GL_DYNAMIC_DRAW);
+  glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, buffer);
+}
+auto GLShader::SetEntityIds(const GLMesh &mesh, std::span<const uint32_t> ids, const unsigned int buffer) -> void {
+  const auto bindingIndex = 3;
+  if (entityIdCount == ids.size())
+    glNamedBufferSubData(buffer, 0, entityIdCount * sizeof(uint32_t), ids.data());
+  else {
+    entityIdCount = ids.size();
+    glNamedBufferData(buffer, entityIdCount * sizeof(uint32_t), ids.data(), GL_DYNAMIC_DRAW);
+  }
+  glVertexArrayVertexBuffer(mesh.vao, bindingIndex, buffer, 0, sizeof(uint32_t));
+  glVertexArrayBindingDivisor(mesh.vao, bindingIndex, 1);
+  constexpr auto attribIndex = 15;
+  glVertexArrayAttribIFormat(mesh.vao, attribIndex, 1, GL_UNSIGNED_INT, 0);
+  glVertexArrayAttribBinding(mesh.vao, attribIndex, bindingIndex);
+  glEnableVertexArrayAttrib(mesh.vao, attribIndex);
+}
 auto GLShader::SetMaterial(const GLMaterial &material) const -> void {
   material.Apply(*this);
 }
@@ -53,12 +76,8 @@ auto GLShader::SetTransform(const GLMesh &mesh, std::span<const glm::mat4> trans
   }
 }
 auto GLShader::SetCamera(const Camera &camera, const unsigned int buffer) -> void {
-  // FIXME: this causes problems in edge cases, e.g., there exists another camera with the same dirty count
-  //if (camera.dirty == cameraDirty)
-  //  return;
   cameraDirty = camera.dirty;
   // NOTE: this assumes that enough memory was allocated for `buffer`
-  // FIXME: binding point might be different for some shaders
   constexpr auto bindingPoint = 0;
   glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, buffer);
   glNamedBufferSubData(buffer, 0, sizeof(CameraTransform), &camera.transform);

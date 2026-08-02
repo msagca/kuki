@@ -1,5 +1,4 @@
 #include <buffer_pool.hpp>
-//
 #include <glad/glad.h>
 namespace kuki {
 auto BufferPool::Allocate(const int &size) -> unsigned int {

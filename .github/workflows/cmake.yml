@@ -13,11 +13,9 @@ jobs:
           - os: ubuntu-latest
             cc: clang
             cxx: clang++
-            cpack_generator: DEB
           - os: windows-latest
             cc: cl
             cxx: cl
-            cpack_generator: NSIS
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}

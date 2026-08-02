@@ -1,5 +1,11 @@
 #pragma once
-#include <kuki_engine_export.h>
+#include <id.hpp>
 namespace kuki {
-struct Animator {};
+struct Animator {
+  AssetID modelAssetId{};
+  int clipIndex{-1};
+  float time{};
+  bool playing{true};
+  bool loop{true};
+};
 } // namespace kuki

@@ -1,8 +1,8 @@
 #pragma once
 #include <id.hpp>
 namespace kuki {
-struct SceneMeshHandle {
-  AssetID sceneAssetId{};
+struct ModelMeshHandle {
+  AssetID modelAssetId{};
   EntityID resourceId{};
   size_t meshIndex{};
 };

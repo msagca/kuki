@@ -1,6 +1,6 @@
 #pragma once
-#include <bone_data.hpp>
 #include <camera.hpp>
+#include <cstdint>
 #include <gl_material.hpp>
 #include <gl_mesh.hpp>
 #include <gl_shader_base.hpp>
@@ -17,7 +17,8 @@ public:
   virtual ~GLShader() = default;
   MaterialType type{MaterialType::Unlit};
   auto Draw(const GLMesh &, const unsigned int = 1) -> void;
-  auto SetBoneTransforms(const BoneData &) -> void;
+  auto SetBoneTransforms(std::span<const glm::mat4>, const unsigned int) -> void;
+  auto SetEntityIds(const GLMesh &, std::span<const uint32_t>, const unsigned int) -> void;
   auto SetMaterial(const GLMaterial &) const -> void;
   auto SetMaterialFallback(const GLMesh &, const MaterialFallback &, const unsigned int) -> void;
   auto SetTransform(const GLMesh &, const glm::mat4 &, const unsigned int) -> void;
@@ -30,6 +31,7 @@ public:
   virtual auto SetSkybox(const GLSkybox * = nullptr) -> void;
 protected:
   GLShader() = default;
+  size_t entityIdCount{};
   size_t materialCount{};
   size_t transformCount{};
   GenCount cameraDirty{};

@@ -3,7 +3,8 @@
 #include <glm/ext/scalar_constants.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-#include <glm/gtc/epsilon.hpp>
+#include <primitive.hpp>
+#include <span>
 namespace kuki {
 BoundingBox BoundingBox::GetWorldBounds(const glm::mat4 &transform) const {
   BoundingBox bounds{};

@@ -25,6 +25,7 @@
 .ninja_log
 .vs/
 .vscode/
+CLAUDE.md
 CMakeCache.txt
 CMakeFiles/
 CMakeScripts/

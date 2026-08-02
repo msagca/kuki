@@ -5,7 +5,7 @@ namespace kuki {
 enum class AssetType : uint8_t {
   Material,
   Mesh,
-  Scene,
+  Model,
   Shader,
   Texture
 };

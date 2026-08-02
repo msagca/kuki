@@ -1,0 +1,73 @@
+#version 460 core
+const float PI = 3.14159265359;
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(std430, binding = 0) writeonly buffer u_shCoefficients {
+        vec4 shCoefficients[9];
+};
+uniform samplerCube u_cubemap;
+uniform uint u_faceSize;
+uniform float u_mipLevel;
+vec3 CubeDirectionFromCoord(ivec3, uint);
+void main() {
+        vec3 coeffs[9];
+        for (int i = 0; i < 9; ++i)
+                coeffs[i] = vec3(0.0);
+        float totalWeight = 0.0;
+        for (uint face = 0u; face < 6u; ++face) {
+                for (uint y = 0u; y < u_faceSize; ++y) {
+                        for (uint x = 0u; x < u_faceSize; ++x) {
+                                vec3 dir = CubeDirectionFromCoord(ivec3(x, y, face), u_faceSize);
+                                float s = 2.0 * (float(x) + 0.5) / float(u_faceSize) - 1.0;
+                                float t = 2.0 * (float(y) + 0.5) / float(u_faceSize) - 1.0;
+                                float weight = 1.0 / pow(s * s + t * t + 1.0, 1.5);
+                                vec3 radiance = textureLod(u_cubemap, dir, u_mipLevel).rgb;
+                                float basis[9] = float[9](
+                                  0.282095,
+                                  0.488603 * dir.y,
+                                  0.488603 * dir.z,
+                                  0.488603 * dir.x,
+                                  1.092548 * dir.x * dir.y,
+                                  1.092548 * dir.y * dir.z,
+                                  0.315392 * (3.0 * dir.z * dir.z - 1.0),
+                                  1.092548 * dir.x * dir.z,
+                                  0.546274 * (dir.x * dir.x - dir.y * dir.y)
+                                );
+                                for (int i = 0; i < 9; ++i)
+                                        coeffs[i] += radiance * basis[i] * weight;
+                                totalWeight += weight;
+                        }
+                }
+        }
+        float normalization = (4.0 * PI) / totalWeight;
+        for (int i = 0; i < 9; ++i)
+                shCoefficients[i] = vec4(coeffs[i] * normalization, 0.0);
+}
+vec3 CubeDirectionFromCoord(ivec3 coord, uint size) {
+        uint face = coord.z;
+        float u = (float(coord.x) + 0.5) / float(size);
+        float v = (float(coord.y) + 0.5) / float(size);
+        float s = 2.0 * u - 1.0;
+        float t = 2.0 * v - 1.0;
+        vec3 dir;
+        switch (face) {
+                case 0:
+                dir = vec3(1.0, -t, -s);
+                break;
+                case 1:
+                dir = vec3(-1.0, -t, s);
+                break;
+                case 2:
+                dir = vec3(s, 1.0, t);
+                break;
+                case 3:
+                dir = vec3(s, -1.0, -t);
+                break;
+                case 4:
+                dir = vec3(s, -t, 1.0);
+                break;
+                case 5:
+                dir = vec3(-s, -t, -1.0);
+                break;
+        }
+        return normalize(dir);
+}

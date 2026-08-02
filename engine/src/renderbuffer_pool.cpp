@@ -1,6 +1,6 @@
-#include <renderbuffer_pool.hpp>
-//
 #include <glad/glad.h>
+#include <renderbuffer_pool.hpp>
+#include <target_description.hpp>
 namespace kuki {
 auto RenderbufferPool::Allocate(const TargetDescription &desc) -> unsigned int {
   unsigned int renderbuffer;

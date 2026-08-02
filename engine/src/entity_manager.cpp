@@ -1,120 +1,42 @@
-#include <bone_data.hpp>
-#include <camera.hpp>
 #include <component.hpp>
 #include <component_cloner.hpp>
-#include <component_manager.hpp>
 #include <component_type.hpp>
-#include <concepts.hpp>
 #include <entity_manager.hpp>
 #include <id.hpp>
-#include <light.hpp>
-#include <list>
-#include <material_handle.hpp>
-#include <mesh_handle.hpp>
-#include <skybox_handle.hpp>
 #include <string>
 #include <transform.hpp>
 #include <unordered_map>
+#include <utility>
+#include <variant>
 #include <vector>
 namespace kuki {
 auto EntityManager::AddChild(const EntityID parent, const EntityID child, bool keepWorld) -> bool {
-  if (idToMask.find(parent) == idToMask.end() || idToMask.find(child) == idToMask.end())
+  if (!IsEntity(parent) || !IsEntity(child))
     return false;
   if (idToChildren.find(parent) == idToChildren.end())
     idToChildren[parent] = {};
   rootEntities.erase(child);
-  auto transformManager = GetManager<Transform>();
-  auto childTransform = transformManager->Get(child);
-  if (!childTransform)
-    childTransform = transformManager->Add(child);
-  auto parentTransform = transformManager->Get(parent);
-  if (!parentTransform)
-    parentTransform = transformManager->Add(parent);
+  AddComponent<Transform>(child);
+  AddComponent<Transform>(parent);
+  auto *childTransform = GetComponent<Transform>(child);
+  auto *parentTransform = GetComponent<Transform>(parent);
   childTransform->parent = parent;
   childTransform->Reparent(parentTransform, keepWorld);
   idToChildren[parent].insert(child);
   idToParent[child] = parent;
-  transformManager->Sort(); // TODO: replace this with a partial sort function
+  RebuildTransformOrder(); // TODO: replace this with a partial rebuild
   return true;
 }
-auto EntityManager::AddComponent(const EntityID id, const ComponentType type) -> void {
-  switch (type) {
-  case ComponentType::BoneData:
-    AddComponent<BoneData>(id);
-    break;
-  case ComponentType::BoundingBox:
-    AddComponent<BoundingBox>(id);
-    break;
-  case ComponentType::Camera:
-    AddComponent<Camera>(id);
-    break;
-  case ComponentType::GLBuffer:
-    AddComponent<GLBuffer>(id);
-    break;
-  case ComponentType::GLComputeShader:
-    AddComponent<GLComputeShader>(id);
-    break;
-  case ComponentType::GLLitShader:
-    AddComponent<GLLitShader>(id);
-    break;
-  case ComponentType::GLMaterial:
-    AddComponent<GLMaterial>(id);
-    break;
-  case ComponentType::GLMesh:
-    AddComponent<GLMesh>(id);
-    break;
-  case ComponentType::GLRenderTarget:
-    AddComponent<GLRenderTarget>(id);
-    break;
-  case ComponentType::GLSkybox:
-    AddComponent<GLSkybox>(id);
-    break;
-  case ComponentType::GLTexture:
-    AddComponent<GLTexture>(id);
-    break;
-  case ComponentType::GLUnlitShader:
-    AddComponent<GLUnlitShader>(id);
-    break;
-  case ComponentType::Light:
-    AddComponent<Light>(id);
-    break;
-  case ComponentType::MaterialHandle:
-    AddComponent<MaterialHandle>(id);
-    break;
-  case ComponentType::MeshHandle:
-    AddComponent<MeshHandle>(id);
-    break;
-  case ComponentType::SceneMaterialHandle:
-    AddComponent<SceneMaterialHandle>(id);
-    break;
-  case ComponentType::SceneMeshHandle:
-    AddComponent<SceneMeshHandle>(id);
-    break;
-  case ComponentType::Script:
-    // NOTE: scripts cannot be added via `AddComponent(id, type)`; call `AddComponent<T>(id)` instead with a derived type
-    // TODO: if the user wants to add a script through the editor, display a dropdown of concrete script types that can be added
-    break;
-  case ComponentType::SkyboxHandle:
-    AddComponent<SkyboxHandle>(id);
-    break;
-  case ComponentType::TextureHandle:
-    AddComponent<TextureHandle>(id);
-    break;
-  case ComponentType::Transform:
-    AddComponent<Transform>(id);
-    break;
-  }
-}
 auto EntityManager::Clear() -> void {
+  archetypeRegistry.Clear();
   idToChildren.clear();
-  idToMask.clear();
+  idToLocation.clear();
   idToName.clear();
   idToParent.clear();
-  maskToIdSet.clear();
   nameToId.clear();
-  registeredTypes.clear();
   rootEntities.clear();
-  typeIndexToManager.clear();
+  scriptStore.Clear();
+  transformUpdateOrder.clear();
 }
 auto EntityManager::CopyFrom(const EntityManager &other, const EntityID otherId) -> EntityID {
   if (!otherId || !other.IsEntity(otherId))
@@ -139,25 +61,42 @@ auto EntityManager::Create(std::string name) -> EntityID {
     idToName[id] = name;
     nameToId.insert({std::move(name), id});
   }
-  ComponentMask mask{};
-  idToMask[id] = mask;
-  maskToIdSet[mask].insert(id);
+  auto *archetype = archetypeRegistry.GetOrCreateArchetype(ComponentMask{});
+  archetype->entities.push_back(id);
+  idToLocation[id] = {ComponentMask{}, archetype->entities.size() - 1};
   rootEntities.insert(id);
+  transformUpdateOrder.push_back(id);
   return id;
 }
 auto EntityManager::Delete(const EntityID id) -> bool {
+  if (forEachDepth > 0) {
+    if (!IsEntity(id))
+      return false;
+    pendingStructuralChanges.push_back([this, id] { Delete(id); });
+    return true;
+  }
   if (!RemoveAllComponents(id))
     return false;
+  if (auto pit = idToParent.find(id); pit != idToParent.end())
+    if (auto cit = idToChildren.find(pit->second); cit != idToChildren.end())
+      cit->second.erase(id);
   ForEachChild(id, [this](const EntityID childId) {
     Delete(childId);
   });
+  if (auto it = idToLocation.find(id); it != idToLocation.end()) {
+    const auto row = it->second.row;
+    const auto displaced = archetypeRegistry.RemoveEntity(id, it->second);
+    idToLocation.erase(id);
+    if (displaced)
+      idToLocation[displaced].row = row;
+  }
   DeleteRecords(id);
   return true;
 }
 auto EntityManager::GetComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
   std::vector<ComponentType> components;
-  if (auto it = idToMask.find(id); it != idToMask.end()) {
-    const auto &mask = it->second;
+  if (auto it = idToLocation.find(id); it != idToLocation.end()) {
+    const auto &mask = it->second.signature;
     Component::ForEachSetType(mask, [&](const ComponentType type) {
       components.emplace_back(type);
     });
@@ -165,12 +104,12 @@ auto EntityManager::GetComponentTypes(const EntityID id) const -> std::vector<Co
   return components;
 }
 auto EntityManager::GetCount() const -> size_t {
-  return idToMask.size();
+  return idToLocation.size();
 }
 auto EntityManager::GetMissingComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
   std::vector<ComponentType> components;
-  if (auto it = idToMask.find(id); it != idToMask.end()) {
-    const auto &mask = it->second;
+  if (auto it = idToLocation.find(id); it != idToLocation.end()) {
+    const auto &mask = it->second.signature;
     Component::ForEachUnsetType(mask, [this, &id, &components](const ComponentType type) {
       components.emplace_back(type);
     });
@@ -180,8 +119,8 @@ auto EntityManager::GetMissingComponentTypes(const EntityID id) const -> std::ve
 auto EntityManager::GetName(const EntityID id) const -> std::string {
   if (auto it = idToName.find(id); it != idToName.end())
     return it->second;
-  if (auto it = idToMask.find(id); it != idToMask.end())
-    return it->first.ToString();
+  if (idToLocation.contains(id))
+    return id.ToString();
   return "";
 }
 auto EntityManager::GetID(const std::string &name) const -> EntityID {
@@ -189,6 +128,9 @@ auto EntityManager::GetID(const std::string &name) const -> EntityID {
   if (auto it = ids.first; it != ids.second)
     return it->second;
   return EntityID::Invalid;
+}
+auto EntityManager::GetStructuralGeneration() const -> size_t {
+  return structuralGeneration;
 }
 auto EntityManager::GetParent(const EntityID id) const -> EntityID {
   if (auto it = idToParent.find(id); it != idToParent.end())
@@ -204,7 +146,7 @@ auto EntityManager::HasParent(const EntityID id) const -> bool {
   return idToParent.find(id) != idToParent.end();
 }
 auto EntityManager::IsEntity(const EntityID id) const -> bool {
-  return idToMask.find(id) != idToMask.end();
+  return idToLocation.find(id) != idToLocation.end();
 }
 auto EntityManager::IsEntity(const std::string &name) const -> bool {
   auto ids = nameToId.equal_range(name);
@@ -219,74 +161,43 @@ auto EntityManager::RemoveChild(const EntityID parent, const EntityID child) -> 
       idToChildren.erase(it->first);
   } else
     return false;
-  auto transformManager = GetManager<Transform>();
-  auto childTransform = transformManager->Get(child);
-  if (childTransform) {
+  if (auto *childTransform = GetComponent<Transform>(child); childTransform) {
     childTransform->parent = EntityID::Invalid;
     childTransform->Reparent(nullptr);
   }
   idToParent.erase(child);
   rootEntities.insert(child);
-  transformManager->Sort();
+  RebuildTransformOrder();
   return true;
 }
-auto EntityManager::RemoveComponent(const EntityID id, const ComponentType type) -> bool {
-  switch (type) {
-  case ComponentType::BoneData:
-    return RemoveComponent<BoneData>(id);
-  case ComponentType::BoundingBox:
-    return RemoveComponent<BoundingBox>(id);
-  case ComponentType::Camera:
-    return RemoveComponent<Camera>(id);
-  case ComponentType::GLBuffer:
-    return RemoveComponent<GLBuffer>(id);
-  case ComponentType::GLMaterial:
-    return RemoveComponent<GLMaterial>(id);
-  case ComponentType::GLMesh:
-    return RemoveComponent<GLMesh>(id);
-  case ComponentType::GLRenderTarget:
-    return RemoveComponent<GLRenderTarget>(id);
-  case ComponentType::GLSkybox:
-    return RemoveComponent<GLSkybox>(id);
-  case ComponentType::GLTexture:
-    return RemoveComponent<GLTexture>(id);
-  case ComponentType::Light:
-    return RemoveComponent<Light>(id);
-  case ComponentType::MaterialHandle:
-    return RemoveComponent<MaterialHandle>(id);
-  case ComponentType::MeshHandle:
-    return RemoveComponent<MeshHandle>(id);
-  case ComponentType::SceneMaterialHandle:
-    return RemoveComponent<SceneMaterialHandle>(id);
-  case ComponentType::SceneMeshHandle:
-    return RemoveComponent<SceneMeshHandle>(id);
-  case ComponentType::SkyboxHandle:
-    return RemoveComponent<SkyboxHandle>(id);
-  case ComponentType::TextureHandle:
-    return RemoveComponent<TextureHandle>(id);
-  case ComponentType::Transform:
-    return RemoveComponent<Transform>(id);
-  default:
-    return false;
-  }
-}
 auto EntityManager::RemoveAllComponents(const EntityID id) -> bool {
-  if (auto it = idToMask.find(id); it != idToMask.end()) {
-    Component::ForEachSetType(it->second, [this, &id](const ComponentType type) {
-      const auto typeIndex = Component::GetTypeIndex(type);
-      if (auto it = typeIndexToManager.find(typeIndex); it != typeIndexToManager.end()) {
-        auto &manager = it->second;
-        manager->Remove(id);
-      }
-    });
-    if (auto it2 = maskToIdSet.find(it->second); it2 != maskToIdSet.end())
-      it2->second.erase(id);
-    ComponentMask mask{0};
-    maskToIdSet[mask].insert(id);
-    idToMask[id] = mask;
+  auto it = idToLocation.find(id);
+  if (it == idToLocation.end())
+    return false;
+  if (forEachDepth > 0) {
+    pendingStructuralChanges.push_back([this, id] { RemoveAllComponents(id); });
     return true;
   }
-  return false;
+  if (it->second.signature.test(static_cast<size_t>(ComponentType::Script)))
+    scriptStore.Remove(id);
+  MoveToArchetype(id, ComponentMask{});
+  return true;
+}
+auto EntityManager::RemoveScript(const EntityID id, const std::type_index type) -> bool {
+  if (forEachDepth > 0) {
+    pendingStructuralChanges.push_back([this, id, type] { RemoveScript(id, type); });
+    return false;
+  }
+  const auto removed = scriptStore.Remove(id, type);
+  if (removed && !scriptStore.Has<Script>(id)) {
+    auto it = idToLocation.find(id);
+    if (it != idToLocation.end() && it->second.signature.test(static_cast<size_t>(ComponentType::Script))) {
+      auto newMask = it->second.signature;
+      newMask.reset(static_cast<size_t>(ComponentType::Script));
+      MoveToArchetype(id, newMask);
+    }
+  }
+  return removed;
 }
 auto EntityManager::Rename(const EntityID id, std::string nameNew) -> bool {
   if (auto it = idToName.find(id); it != idToName.end()) {
@@ -306,7 +217,7 @@ auto EntityManager::Rename(const EntityID id, std::string nameNew) -> bool {
       nameToId.insert({std::move(nameNew), id});
     }
     return true;
-  } else if (auto it = idToMask.find(id); it != idToMask.end()) {
+  } else if (idToLocation.contains(id)) {
     idToName[id] = nameNew;
     nameToId.insert({std::move(nameNew), id});
     return true;
@@ -329,5 +240,49 @@ auto EntityManager::DeleteRecords(const EntityID id) -> void {
   idToChildren.erase(id);
   idToParent.erase(id);
   rootEntities.erase(id);
+}
+auto EntityManager::DrainPendingStructuralChanges() const -> void {
+  if (pendingStructuralChanges.empty())
+    return;
+  auto pending = std::move(pendingStructuralChanges);
+  pendingStructuralChanges.clear();
+  for (auto &change : pending)
+    change();
+}
+auto EntityManager::MoveToArchetype(const EntityID id, const ComponentMask &newMask) -> void {
+  auto &location = idToLocation.at(id);
+  const auto result = archetypeRegistry.MoveEntity(id, location, newMask);
+  location = result.location;
+  if (result.displacedEntity)
+    idToLocation[result.displacedEntity].row = result.displacedRow;
+  ++structuralGeneration;
+}
+auto EntityManager::RebuildTransformOrder() -> void {
+  transformUpdateOrder.clear();
+  transformUpdateOrder.reserve(idToLocation.size());
+  for (const auto &id : rootEntities)
+    AppendTransformOrder(id);
+}
+void EntityManager::AppendTransformOrder(const EntityID id) {
+  transformUpdateOrder.push_back(id);
+  if (auto it = idToChildren.find(id); it != idToChildren.end())
+    for (const auto &childId : it->second)
+      AppendTransformOrder(childId);
+}
+auto EntityManager::UpdateTransforms() -> void {
+  for (const auto &id : transformUpdateOrder) {
+    auto *transform = GetComponent<Transform>(id);
+    if (!transform)
+      continue;
+    Transform *parentTransform = nullptr;
+    if (auto parentIt = idToParent.find(id); parentIt != idToParent.end())
+      parentTransform = GetComponent<Transform>(parentIt->second);
+    transform->dirty |= parentTransform && parentTransform->dirty;
+    if (transform->dirty)
+      transform->Update(parentTransform);
+  }
+  for (const auto &id : transformUpdateOrder)
+    if (auto *transform = GetComponent<Transform>(id))
+      transform->dirty = false;
 }
 } // namespace kuki

@@ -1,5 +1,5 @@
 #version 460 core
-const vec2 INV_ATAN = vec2(0.1591, 0.3183); // 1/(2pi), 1/pi
+const vec2 INV_ATAN = vec2(0.1591, 0.3183);
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba32f, binding = 0) writeonly uniform imageCube u_cubemap;
 uniform sampler2D u_equirect;
@@ -13,7 +13,7 @@ void main() {
                 return;
         vec3 dir = GetDirection(gid, ivec2(u_size));
         vec2 uv = SampleSphericalMap(dir);
-        if (u_invert) // invert if EXR
+        if (u_invert)
                 uv.y = 1.0 - uv.y;
         vec3 color = texture(u_equirect, uv).rgb;
         imageStore(u_cubemap, gid, vec4(color, 1.0));
@@ -23,17 +23,17 @@ vec3 GetDirection(ivec3 coord, ivec2 size) {
         vec2 uv = (coord.xy + 0.5) / size * 2.0 - 1.0;
         switch (face) {
                 case 0:
-                return normalize(vec3(1.0, -uv.y, -uv.x)); // +x
+                return normalize(vec3(1.0, -uv.y, -uv.x));
                 case 1:
-                return normalize(vec3(-1.0, -uv.y, uv.x)); // -x
+                return normalize(vec3(-1.0, -uv.y, uv.x));
                 case 2:
-                return normalize(vec3(uv.x, 1.0, uv.y)); // +y
+                return normalize(vec3(uv.x, 1.0, uv.y));
                 case 3:
-                return normalize(vec3(uv.x, -1.0, -uv.y)); // -y
+                return normalize(vec3(uv.x, -1.0, -uv.y));
                 case 4:
-                return normalize(vec3(uv.x, -uv.y, 1.0)); // +z
+                return normalize(vec3(uv.x, -uv.y, 1.0));
                 case 5:
-                return normalize(vec3(-uv.x, -uv.y, -1.0)); // -z
+                return normalize(vec3(-uv.x, -uv.y, -1.0));
         }
         return vec3(0.0);
 }

@@ -1,6 +1,8 @@
+#include <cstdint>
 #include <gl_material.hpp>
 #include <gl_shader.hpp>
-#include <glad/glad.h>
+#include <material_type.hpp>
+#include <texture_content.hpp>
 namespace kuki {
 auto GLMaterial::Apply(const GLShader &shader) const -> void {
   if (type != shader.type)

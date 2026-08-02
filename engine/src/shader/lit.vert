@@ -1,12 +1,13 @@
 #version 460 core
 flat out int v_textureMask;
+flat out uint v_entityId;
 out float v_metalness;
 out float v_occlusion;
 out float v_roughness;
 out vec2 v_texCoords;
 out vec3 v_normal;
 out vec3 v_position;
-out vec4 v_positionL; // light space position
+out vec4 v_positionL;
 out vec3 v_tangent;
 out vec4 v_albedo;
 out vec4 v_emissive;
@@ -26,6 +27,7 @@ layout(location = 11) in float metalness;
 layout(location = 12) in float occlusion;
 layout(location = 13) in float roughness;
 layout(location = 14) in int textureMask;
+layout(location = 15) in uint entityId;
 layout(std140, binding = 0) uniform u_cameraTransform {
         mat4 view;
         mat4 projection;
@@ -35,6 +37,7 @@ struct DirLight {
         vec3 ambient;
         vec3 diffuse;
         vec3 specular;
+        float intensity;
         mat4 view;
         mat4 projection;
 };
@@ -53,6 +56,7 @@ void main() {
         v_occlusion = occlusion;
         v_roughness = roughness;
         v_textureMask = textureMask;
+        v_entityId = entityId;
         v_positionL = u_dirLight.projection * u_dirLight.view * worldPosition;
         gl_Position = projection * view * worldPosition;
 }

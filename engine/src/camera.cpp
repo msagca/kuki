@@ -3,14 +3,13 @@
 #include <camera.hpp>
 #include <camera_type.hpp>
 #include <cmath>
-#include <component.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <glm/ext/vector_float4.hpp>
 #include <glm/geometric.hpp>
-#include <glm/gtx/euler_angles.hpp>
+#include <glm/gtc/matrix_access.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <transform.hpp>
 namespace kuki {
@@ -60,12 +59,16 @@ inline auto Camera::UpdateBasis() -> void {
 }
 inline auto Camera::UpdateFrustum() -> void {
   auto vp = transform.projection * transform.view;
-  frustum.left = {vp[3] + vp[0]};
-  frustum.right = {vp[3] - vp[0]};
-  frustum.bottom = {vp[3] + vp[1]};
-  frustum.top = {vp[3] - vp[1]};
-  frustum.near = {vp[3] + vp[2]};
-  frustum.far = {vp[3] - vp[2]};
+  const auto row0 = glm::row(vp, 0);
+  const auto row1 = glm::row(vp, 1);
+  const auto row2 = glm::row(vp, 2);
+  const auto row3 = glm::row(vp, 3);
+  frustum.left = {row3 + row0};
+  frustum.right = {row3 - row0};
+  frustum.bottom = {row3 + row1};
+  frustum.top = {row3 - row1};
+  frustum.near = {row3 + row2};
+  frustum.far = {row3 - row2};
 }
 inline auto Camera::UpdateTransform() -> void {
   auto T = glm::translate(glm::mat4(1.f), position);

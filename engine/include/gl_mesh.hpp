@@ -8,6 +8,7 @@ struct KUKI_ENGINE_API GLMesh final : public BufferObject {
   unsigned int ebo{};
   int vertexCount{};
   int indexCount{};
+  bool skinned{};
   auto operator==(const GLMesh &) const -> bool;
   explicit operator bool() const;
 };

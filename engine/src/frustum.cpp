@@ -1,5 +1,6 @@
 #include <bounding_box.hpp>
 #include <frustum.hpp>
+#include <plane.hpp>
 namespace kuki {
 auto Frustum::InFrustum(const BoundingBox &bounds) const -> bool {
   const Plane planes[6] = {near, far, right, left, top, bottom};

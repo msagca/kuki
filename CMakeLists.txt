@@ -43,7 +43,6 @@ project(Kuki VERSION 1.0.0)
 string(TOUPPER ${PROJECT_NAME} PROJECT_NAME_UPPER)
 include(GNUInstallDirs)
 option(${PROJECT_NAME_UPPER}_BUILD_TESTS "Build engine tests" OFF)
-option(${PROJECT_NAME_UPPER}_BUILD_GAMES "Build game samples" OFF)
 option(${PROJECT_NAME_UPPER}_ENABLE_LINTING "Enable linting" OFF)
 # third party libraries
 ## assimp
@@ -102,6 +101,7 @@ add_library(
   imguizmo
   "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/ImGuizmo.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/GraphEditor.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/ImSequencer.cpp"
 )
 target_include_directories(
   imguizmo
@@ -151,12 +151,10 @@ target_include_directories(
 add_subdirectory(engine)
 add_subdirectory(editor)
 if(${PROJECT_NAME_UPPER}_BUILD_TESTS)
+  enable_testing()
   set(INSTALL_GTEST OFF CACHE BOOL "")
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/googletest")
-  add_subdirectory(tests)
-endif()
-if(${PROJECT_NAME_UPPER}_BUILD_GAMES)
-  add_subdirectory(games)
+  add_subdirectory(test)
 endif()
 if(WIN32)
   set_property(
@@ -203,24 +201,14 @@ cpack_add_component(
   REQUIRED
 )
 set(CPACK_COMPONENTS_ALL KukiEngine KukiEditor)
-if(${PROJECT_NAME_UPPER}_BUILD_GAMES)
-  cpack_add_component(
-    KukiGames
-    DISPLAY_NAME "Game Samples"
-    DESCRIPTION "A collection of games made with Kuki."
-    DEPENDS KukiEngine
-    DISABLED
-  )
-  list(APPEND CPACK_COMPONENTS_ALL KukiGames)
-endif()
 if(${PROJECT_NAME_UPPER}_BUILD_TESTS)
   cpack_add_component(
-    KukiTests
+    KukiTest
     DISPLAY_NAME "Engine Tests"
     DESCRIPTION "Test binaries to verify engine functionality."
     DEPENDS KukiEngine
     DISABLED
   )
-  list(APPEND CPACK_COMPONENTS_ALL KukiTests)
+  list(APPEND CPACK_COMPONENTS_ALL KukiTest)
 endif()
 include(CPack)

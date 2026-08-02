@@ -1,8 +1,8 @@
 #pragma once
 #include <id.hpp>
 namespace kuki {
-struct SceneMaterialHandle {
-  AssetID sceneAssetId{};
+struct ModelMaterialHandle {
+  AssetID modelAssetId{};
   EntityID resourceId{};
   size_t materialIndex;
   std::vector<size_t> textureIndices;

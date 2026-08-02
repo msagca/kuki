@@ -1,11 +1,17 @@
+#include <algorithm>
 #include <id.hpp>
 #include <queue>
 #include <render_graph.hpp>
+#include <render_pass.hpp>
 #include <renderer.hpp>
+#include <span>
 #include <stack>
+#include <string>
 #include <target_description.hpp>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 namespace kuki {
 auto RenderGraph::AddInput(std::string name) -> RenderGraph & {
   if (passId) {
@@ -27,6 +33,10 @@ auto RenderGraph::AddOutput(std::string name, TargetDescription desc) -> RenderG
       outputs.emplace_back(std::move(name));
   }
   return *this;
+}
+auto RenderGraph::BeginPass(const RenderPass pass) -> void {
+  passId = nextId++;
+  idToFunc[passId] = pass;
 }
 auto RenderGraph::Compile() -> void {
   idToPredecessors.clear();
@@ -71,10 +81,10 @@ auto RenderGraph::Execute(Renderer &renderer) -> void {
   ForEachTarget([&](const std::string &name, const TargetDescription &desc) {
     renderer.CreateTarget(desc, name);
   });
-  ForEachPass([&](const PassID id, const PassFunc &func) {
+  ForEachPass([&](const PassID id, const RenderPass pass) {
     auto inputs = GetInputs(id);
     auto outputs = GetOutputs(id);
-    func(renderer, inputs, outputs);
+    renderer.ExecutePass(pass, inputs, outputs);
   });
 }
 auto RenderGraph::GetFinalOutputName() -> std::string {
@@ -139,7 +149,7 @@ auto RenderGraph::CreateEdge(const PassID src, const PassID dst) -> bool {
       return false;
   }
   if (AreConnected(dst, src))
-    return false; // prevent cycles
+    return false;
   idToSuccessors[src].push_back(dst);
   idToPredecessors[dst].push_back(src);
   dirty = true;

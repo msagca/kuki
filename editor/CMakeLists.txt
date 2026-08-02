@@ -16,6 +16,8 @@ set(IMAGE_SOURCES ${JPG_SOURCES} ${PNG_SOURCES})
 set(FONT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/font")
 file(GLOB_RECURSE TTF_SOURCES CONFIGURE_DEPENDS "${FONT_SOURCE_DIR}/*.ttf")
 set(FONT_SOURCES ${TTF_SOURCES})
+set(SCENE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/scene")
+file(GLOB_RECURSE SCENE_SOURCES CONFIGURE_DEPENDS "${SCENE_SOURCE_DIR}/*.json")
 add_executable(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
 if(KUKI_ENABLE_LINTING AND CLANG_TIDY_EXE)
   enable_clang_tidy(${PROJECT_NAME})
@@ -32,7 +34,7 @@ if(UNIX AND NOT APPLE)
   find_package(X11 REQUIRED)
   target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
 endif()
-target_sources(${PROJECT_NAME} PRIVATE ${FONT_SOURCES} ${IMAGE_SOURCES})
+target_sources(${PROJECT_NAME} PRIVATE ${FONT_SOURCES} ${IMAGE_SOURCES} ${SCENE_SOURCES})
 target_sources(${PROJECT_NAME} PRIVATE "${IMAGE_SOURCE_DIR}/kuki.rc")
 install(
   DIRECTORY "${IMAGE_SOURCE_DIR}"
@@ -41,6 +43,11 @@ install(
 )
 install(
   DIRECTORY "${FONT_SOURCE_DIR}"
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  COMPONENT ${PROJECT_NAME}
+)
+install(
+  DIRECTORY "${SCENE_SOURCE_DIR}"
   DESTINATION "${CMAKE_INSTALL_BINDIR}"
   COMPONENT ${PROJECT_NAME}
 )
@@ -69,8 +76,8 @@ add_custom_command(
     ${CMAKE_COMMAND} -E copy_directory "${IMAGE_SOURCE_DIR}"
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/image
   COMMAND
-    ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:KukiEngine>/shader
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>/shader
+    ${CMAKE_COMMAND} -E copy_directory "${SCENE_SOURCE_DIR}"
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/scene
   COMMAND
     ${CMAKE_COMMAND} -E cmake_echo_color
     "Build successful. Binaries can be found at: $<TARGET_FILE:${PROJECT_NAME}>"

@@ -1,4 +1,6 @@
+#include <animator.hpp>
 #include <bone_data.hpp>
+#include <bounding_box.hpp>
 #include <camera.hpp>
 #include <component.hpp>
 #include <component_type.hpp>
@@ -15,11 +17,16 @@
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
 #include <script.hpp>
+#include <skeleton.hpp>
 #include <skybox_handle.hpp>
+#include <string>
+#include <texture_handle.hpp>
+#include <transform.hpp>
 #include <typeindex>
 #include <unordered_map>
 namespace kuki {
 const std::unordered_map<std::type_index, ComponentType> Component::indexToType = {
+  {typeid(Animator), ComponentType::Animator},
   {typeid(BoneData), ComponentType::BoneData},
   {typeid(BoundingBox), ComponentType::BoundingBox},
   {typeid(Camera), ComponentType::Camera},
@@ -35,13 +42,15 @@ const std::unordered_map<std::type_index, ComponentType> Component::indexToType 
   {typeid(Light), ComponentType::Light},
   {typeid(MaterialHandle), ComponentType::MaterialHandle},
   {typeid(MeshHandle), ComponentType::MeshHandle},
-  {typeid(SceneMaterialHandle), ComponentType::SceneMaterialHandle},
-  {typeid(SceneMeshHandle), ComponentType::SceneMeshHandle},
+  {typeid(ModelMaterialHandle), ComponentType::ModelMaterialHandle},
+  {typeid(ModelMeshHandle), ComponentType::ModelMeshHandle},
   {typeid(Script), ComponentType::Script},
+  {typeid(Skeleton), ComponentType::Skeleton},
   {typeid(SkyboxHandle), ComponentType::SkyboxHandle},
   {typeid(TextureHandle), ComponentType::TextureHandle},
   {typeid(Transform), ComponentType::Transform}};
 const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex = {
+  {ComponentType::Animator, typeid(Animator)},
   {ComponentType::BoneData, typeid(BoneData)},
   {ComponentType::BoundingBox, typeid(BoundingBox)},
   {ComponentType::Camera, typeid(Camera)},
@@ -55,15 +64,17 @@ const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex 
   {ComponentType::GLTexture, typeid(GLTexture)},
   {ComponentType::GLUnlitShader, typeid(GLUnlitShader)},
   {ComponentType::Light, typeid(Light)},
-  {ComponentType::MaterialHandle, typeid(SceneMaterialHandle)},
-  {ComponentType::MeshHandle, typeid(SceneMeshHandle)},
-  {ComponentType::SceneMaterialHandle, typeid(SceneMaterialHandle)},
-  {ComponentType::SceneMeshHandle, typeid(SceneMeshHandle)},
+  {ComponentType::MaterialHandle, typeid(MaterialHandle)},
+  {ComponentType::MeshHandle, typeid(MeshHandle)},
+  {ComponentType::ModelMaterialHandle, typeid(ModelMaterialHandle)},
+  {ComponentType::ModelMeshHandle, typeid(ModelMeshHandle)},
   {ComponentType::Script, typeid(Script)},
+  {ComponentType::Skeleton, typeid(Skeleton)},
   {ComponentType::SkyboxHandle, typeid(SkyboxHandle)},
   {ComponentType::TextureHandle, typeid(TextureHandle)},
   {ComponentType::Transform, typeid(Transform)}};
 const std::unordered_map<ComponentType, std::string> Component::typeToName = {
+  {ComponentType::Animator, "Animator"},
   {ComponentType::BoneData, "BoneData"},
   {ComponentType::BoundingBox, "BoundingBox"},
   {ComponentType::Camera, "Camera"},
@@ -79,9 +90,10 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::Light, "Light"},
   {ComponentType::MaterialHandle, "MaterialHandle"},
   {ComponentType::MeshHandle, "MeshHandle"},
-  {ComponentType::SceneMaterialHandle, "SceneMaterialHandle"},
-  {ComponentType::SceneMeshHandle, "SceneMeshHandle"},
+  {ComponentType::ModelMaterialHandle, "ModelMaterialHandle"},
+  {ComponentType::ModelMeshHandle, "ModelMeshHandle"},
   {ComponentType::Script, "Script"},
+  {ComponentType::Skeleton, "Skeleton"},
   {ComponentType::SkyboxHandle, "SkyboxHandle"},
   {ComponentType::TextureHandle, "TextureHandle"},
   {ComponentType::Transform, "Transform"}};
@@ -104,5 +116,8 @@ auto Component::GetTypeName(const ComponentType type) -> std::string {
   if (auto it = typeToName.find(type); it != typeToName.end())
     return it->second;
   return {};
+}
+auto Component::IsGL(const ComponentType type) -> bool {
+  return type >= ComponentType::GLBuffer && type <= ComponentType::GLUnlitShader;
 }
 } // namespace kuki

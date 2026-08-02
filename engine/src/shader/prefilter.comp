@@ -54,22 +54,22 @@ vec3 CubeDirectionFromCoord(ivec3 coord, uint size) {
         switch (face) {
                 case 0:
                 dir = vec3(1.0, -t, -s);
-                break; // +x
+                break;
                 case 1:
                 dir = vec3(-1.0, -t, s);
-                break; // -x
+                break;
                 case 2:
                 dir = vec3(s, 1.0, t);
-                break; // +y
+                break;
                 case 3:
                 dir = vec3(s, -1.0, -t);
-                break; // -y
+                break;
                 case 4:
                 dir = vec3(s, -t, 1.0);
-                break; // +z
+                break;
                 case 5:
                 dir = vec3(-s, -t, -1.0);
-                break; // -z
+                break;
         }
         return normalize(dir);
 }

@@ -12,18 +12,18 @@ template <typename T>
 struct TrieNode {
   // TODO: add unicode support
   std::unordered_map<unsigned char, std::unique_ptr<T>> children;
-  /// @brief Indicates if this node terminates a valid word
   bool last{};
 };
 struct SuffixNode final : TrieNode<SuffixNode> {
-  /// @brief Stores the next available number suffix that can be appended to words ending at this node to make them unique
   size_t suffix{};
 };
 using InputAction = std::function<void()>;
 struct ActionNode final : TrieNode<ActionNode> {
-  /// @brief The action to execute when this node is reached during traversal
   InputAction action{};
 };
+enum class TrieMatch : uint8_t { NotFound,
+  PrefixFound,
+  WordFound };
 template <IsTrieNode T>
 class KUKI_ENGINE_API Trie {
 public:
@@ -32,40 +32,25 @@ public:
   Trie &operator=(const Trie<T> &) = delete;
   Trie(Trie<T> &&) noexcept = default;
   Trie(const Trie<T> &) = delete;
-  /// @brief Insert a word, overwrite duplicates
-  /// @return `true` if the word did not already exist, `false` otherwise
   auto Insert(std::string_view) -> bool
     requires(!IsSuffixNode<T> && !IsActionNode<T>);
-  /// @brief Insert a word, add a suffix if duplicate, modify the input string to include the suffix (if applicable)
-  /// @return `true` if the word was inserted (with or without a suffix), `false` otherwise
   auto Insert(std::string &) -> bool
     requires(IsSuffixNode<T> && !IsActionNode<T>);
-  /// @brief Insert a trigger (key sequence) and an associated action to execute
-  /// @return `true` if the trigger did not contain or was not a prefix of another trigger, `false` otherwise
   auto Insert(std::string_view, InputAction) -> bool
     requires(!IsSuffixNode<T> && IsActionNode<T>);
-  /// @brief Delete the given word if it's in the trie
   auto Remove(std::string_view) -> bool;
-  /// @brief Delete all the words that start with the given prefix
   auto RemovePrefix(std::string_view) -> bool;
-  auto FindWord(std::string_view) -> bool;
+  auto Find(std::string_view) -> TrieMatch;
   template <IsCharIterator I>
-  auto FindWord(I, I) -> bool;
-  auto FindPrefix(std::string_view) -> bool;
-  template <IsCharIterator I>
-  auto FindPrefix(I, I) -> bool;
-  /// @brief Execute a function for each word starting with the given prefix
+  auto Find(I, I) -> TrieMatch;
   template <typename F>
   auto ForEach(std::string_view, F &&) -> void;
 private:
   std::unique_ptr<T> root;
   const size_t maxInsertAttempts{8};
-  /// @brief Insert a word starting at a given node
-  /// @return `true` if no duplicates, `false` otherwise
   auto InsertAt(std::string_view, T &) -> bool
     requires(IsSuffixNode<T> && !IsActionNode<T>);
   auto Invalidate(T &) -> void;
-  /// @brief Execute a function for each word starting at the given node
   template <typename F>
   auto ForEach(const T &, std::string &, F &&) -> void;
 };
@@ -131,12 +116,10 @@ auto Trie<T>::Insert(std::string_view trigger, InputAction action) -> bool
     if (!child)
       child = std::make_unique<T>();
     else if (child->last || child->action)
-      // a subsequence already exists, abort
       return false;
     node = child.get();
   }
   if (!node->children.empty())
-    // trigger is a prefix of a longer sequence, abort
     return false;
   node->last = true;
   node->action = std::move(action);
@@ -166,19 +149,25 @@ auto Trie<T>::Remove(std::string_view word) -> bool {
   if (word.empty())
     return false;
   auto node = root.get();
-  for (auto &c : word)
-    if (auto it = node->children.find(c); it != node->children.end())
+  for (const auto &c : word) {
+    const auto uc = static_cast<unsigned char>(c);
+    if (auto it = node->children.find(uc); it != node->children.end())
       node = it->second.get();
     else
       return false;
+  }
   node->last = false;
+  if constexpr (IsActionNode<T>)
+    node->action = {};
   return true;
 }
 template <IsTrieNode T>
 auto Trie<T>::Invalidate(T &node) -> void {
   node.last = false;
+  if constexpr (IsActionNode<T>)
+    node.action = {};
   for (auto &[_, child] : node.children)
-    Invalidate(child);
+    Invalidate(*child);
 }
 template <IsTrieNode T>
 auto Trie<T>::RemovePrefix(std::string_view prefix) -> bool {
@@ -192,43 +181,28 @@ auto Trie<T>::RemovePrefix(std::string_view prefix) -> bool {
     else
       return false;
   }
-  Invalidate(node);
+  Invalidate(*node);
   return true;
 }
 template <IsTrieNode T>
-auto Trie<T>::FindWord(std::string_view word) -> bool {
-  return FindWord(word.begin(), word.end());
+auto Trie<T>::Find(std::string_view word) -> TrieMatch {
+  return Find(word.begin(), word.end());
 }
 template <IsTrieNode T>
 template <IsCharIterator I>
-auto Trie<T>::FindWord(I begin, I end) -> bool {
+auto Trie<T>::Find(I begin, I end) -> TrieMatch {
   auto node = root.get();
   for (auto it = begin; it != end; ++it)
     if (auto it2 = node->children.find(*it); it2 != node->children.end())
       node = it2->second.get();
     else
-      return false;
+      return TrieMatch::NotFound;
   if constexpr (IsActionNode<T>)
     if (node->action) {
       spdlog::info("Firing action for trigger {}", std::string(begin, end));
       node->action();
     }
-  return node->last;
-}
-template <IsTrieNode T>
-auto Trie<T>::FindPrefix(std::string_view prefix) -> bool {
-  return FindPrefix(prefix.begin(), prefix.end());
-}
-template <IsTrieNode T>
-template <IsCharIterator I>
-auto Trie<T>::FindPrefix(I begin, I end) -> bool {
-  auto node = root.get();
-  for (auto it = begin; it != end; ++it)
-    if (auto it2 = node->children.find(*it); it2 != node->children.end())
-      node = it2->second.get();
-    else
-      return false;
-  return true;
+  return node->last ? TrieMatch::WordFound : TrieMatch::PrefixFound;
 }
 template <IsTrieNode T>
 template <typename F>

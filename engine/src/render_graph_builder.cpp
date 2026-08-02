@@ -1,6 +1,9 @@
 #include <memory>
+#include <render_graph.hpp>
 #include <render_graph_builder.hpp>
+#include <string>
 #include <target_description.hpp>
+#include <utility>
 namespace kuki {
 auto RenderGraphBuilder::AddInput(std::string name) -> RenderGraphBuilder & {
   if (renderGraph)

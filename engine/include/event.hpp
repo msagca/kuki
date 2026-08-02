@@ -7,9 +7,7 @@ template <typename... T>
 class Event {
 public:
   using Handler = std::function<void(T...)>;
-  auto Emit(T...) -> void;
-  auto Subscribe(auto &&) -> size_t;
-  auto Unsubscribe(const size_t) -> void;
+  auto operator()(T...) -> void;
   auto operator+=(auto &&) -> size_t;
   auto operator-=(const size_t) -> Event &;
 private:
@@ -18,7 +16,7 @@ private:
   std::unordered_map<size_t, Handler> handlers;
 };
 template <typename... T>
-auto Event<T...>::Emit(T... args) -> void {
+auto Event<T...>::operator()(T... args) -> void {
   std::vector<Handler> handlers_;
   {
     std::lock_guard lock(mutex);
@@ -31,7 +29,7 @@ auto Event<T...>::Emit(T... args) -> void {
       handler(args...);
 }
 template <typename... T>
-auto Event<T...>::Subscribe(auto &&handler) -> size_t {
+auto Event<T...>::operator+=(auto &&handler) -> size_t {
   // TODO: return an object that unsubscribes automatically when destroyed
   std::lock_guard lock(mutex);
   const auto id = nextId++;
@@ -39,17 +37,9 @@ auto Event<T...>::Subscribe(auto &&handler) -> size_t {
   return id;
 }
 template <typename... T>
-auto Event<T...>::Unsubscribe(const size_t id) -> void {
+auto Event<T...>::operator-=(const size_t id) -> Event & {
   std::lock_guard lock(mutex);
   handlers.erase(id);
-}
-template <typename... T>
-auto Event<T...>::operator+=(auto &&handler) -> size_t {
-  return Subscribe(std::forward<decltype(handler)>(handler));
-}
-template <typename... T>
-auto Event<T...>::operator-=(const size_t id) -> Event & {
-  Unsubscribe(id);
   return *this;
 }
 } // namespace kuki

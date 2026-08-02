@@ -1,5 +1,9 @@
+#include <asset.hpp>
+#include <id.hpp>
+#include <string>
 #include <texture_asset.hpp>
+#include <utility>
 namespace kuki {
-TextureAsset::TextureAsset(AssetID id, std::string name)
-  : Asset(std::in_place_type<TextureAsset>, id, std::move(name)) {}
+TextureAsset::TextureAsset(AssetID id)
+  : Asset(std::in_place_type<TextureAsset>, id) {}
 } // namespace kuki
