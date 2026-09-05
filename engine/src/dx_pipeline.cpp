@@ -409,6 +409,50 @@ auto DXPipelineCache::GetComputePipeline(ID3D12Device *device, const char *entry
   spdlog::info("[DX12] created compute pipeline: {}", entryPoint);
   return &pipeline;
 }
+auto DXPipelineCache::GetPickRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (pickRootSignature)
+    return pickRootSignature.Get();
+  CD3DX12_DESCRIPTOR_RANGE srvRange{};
+  srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
+  parameters[0].InitAsConstants(sizeof(DXPickConstants) / sizeof(uint32_t), 0);
+  parameters[1].InitAsDescriptorTable(1, &srvRange);
+  parameters[2].InitAsUnorderedAccessView(0);
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(3, parameters);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] failed to serialise the pick root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&pickRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return pickRootSignature.Get();
+}
+auto DXPipelineCache::GetPickPipeline(ID3D12Device *device) -> const DXPipeline * {
+  if (!device)
+    return nullptr;
+  const auto key = std::hash<std::string>{}("pick:CSPick");
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetPickRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = pickRootSignature;
+  const auto computeShader = shaderCompiler.Compile(embedded_shader::pick_hlsl, "CSPick", "cs_6_0", "pick");
+  if (!computeShader)
+    return nullptr;
+  D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.CS = ToBytecode(computeShader);
+  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] created pick pipeline");
+  return &pipeline;
+}
 auto DXPipelineCache::GetRayProbeRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (rayProbeRootSignature)
     return rayProbeRootSignature.Get();
@@ -618,6 +662,7 @@ auto DXPipelineCache::Clear() -> void {
   shadowRootSignature.Reset();
   skyboxRootSignature.Reset();
   computeRootSignature.Reset();
+  pickRootSignature.Reset();
   rayProbeRootSignature.Reset();
   probeAuditRootSignature.Reset();
   probeTraceRootSignature.Reset();

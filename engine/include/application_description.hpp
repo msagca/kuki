@@ -1,4 +1,5 @@
 #pragma once
+#include <desktop_size.hpp>
 #include <engine_config.hpp>
 #include <filesystem>
 #include <rendering_api.hpp>
@@ -13,8 +14,11 @@ struct ApplicationDescription {
   ///
   /// Ignored under `fullscreen`, which takes the monitor's current video mode instead, and largely
   /// ignored under `maximized`, which is why both of those are separate flags rather than sizes.
-  int width{1920};
-  int height{1080};
+  ///
+  /// Defaults to the desktop's own size rather than to a fixed one, so that a window restored down
+  /// from maximised is the size of the display it is on. See `DesktopSize`.
+  int width{DesktopWidth()};
+  int height{DesktopHeight()};
   /// @brief Opens maximised on the primary monitor. The editor's long-standing behaviour, so it is
   /// the default; a game that wants the size above should turn it off.
   bool maximized{true};

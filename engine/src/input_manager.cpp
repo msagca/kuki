@@ -172,7 +172,8 @@ auto InputManager::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
   inputState[index] = action == GLFW_PRESS || action == GLFW_REPEAT;
   pressState[index] = pressState[index] || action == GLFW_PRESS;
   releaseState[index] = releaseState[index] || action == GLFW_RELEASE;
-  FireAction(index);
+  if (action != GLFW_REPEAT)
+    FireAction(index, action == GLFW_PRESS);
 }
 auto InputManager::MouseButtonCallback(GLFWwindow *window, int button, int action, int mods) -> void {
   if (!buttonsEnabled)
@@ -181,7 +182,7 @@ auto InputManager::MouseButtonCallback(GLFWwindow *window, int button, int actio
   const auto index = GLFWInputToIndex(button);
   pressState[index] = pressState[index] || action == GLFW_PRESS;
   releaseState[index] = releaseState[index] || action == GLFW_RELEASE;
-  FireAction(index);
+  FireAction(index, action == GLFW_PRESS);
 }
 auto InputManager::PollKeyCapture() -> CaptureOutcome {
   if (!captureResolved)
@@ -196,7 +197,11 @@ auto InputManager::RegisterAction(int trigger, InputAction action, bool press) -
     return InvalidActionID;
   }
   if (press && trigger >= GLFW_KEY_SPACE && trigger <= GLFW_KEY_GRAVE_ACCENT) {
-    return RegisterSequence(GLFWKeyToString(trigger), std::move(action));
+    // Through the string overload rather than straight to `RegisterSequence`, because that is where
+    // a trigger is lowercased. `GLFWKeyToString` names a key in capitals and `CharCallback` types
+    // in lower case, so registering the name as it comes back put "R" in the trie for a sequence
+    // that only ever arrives as "r" -- a key registered this way never fired at all.
+    return RegisterAction(GLFWKeyToString(trigger), std::move(action));
   }
   const auto id = nextActionId++;
   Registration registration;
@@ -312,18 +317,13 @@ auto InputManager::CurrentMods() const -> int {
     mods |= GLFW_MOD_SUPER;
   return mods;
 }
-auto InputManager::FireAction(unsigned char index) -> void {
+auto InputManager::FireAction(unsigned char index, const bool pressed) -> void {
   if (!keysEnabled || IsSequenceInProgress())
     return;
-  if (pressState[index]) {
-    auto actions = pressActions.equal_range(index);
-    for (auto it = actions.first; it != actions.second; ++it)
-      it->second();
-  } else if (releaseState[index]) {
-    auto actions = releaseActions.equal_range(index);
-    for (auto it = actions.first; it != actions.second; ++it)
-      it->second();
-  }
+  auto &actions = pressed ? pressActions : releaseActions;
+  const auto range = actions.equal_range(index);
+  for (auto it = range.first; it != range.second; ++it)
+    it->second();
 }
 auto InputManager::IsSequenceInProgress() const -> bool {
   return !keyseq.empty();

@@ -123,7 +123,13 @@ private:
   std::vector<std::string> sequenceOrder;
   auto AssignBinding(const std::string &, const Trigger &) -> void;
   auto CurrentMods() const -> int;
-  auto FireAction(unsigned char) -> void;
+  /// @brief Runs the actions registered for the event that has just arrived.
+  ///
+  /// Told which event it was rather than reading the pulse flags, because those are sticky for the
+  /// whole frame: a press and a release inside one frame left the press flag still set when the
+  /// release arrived, and the release actions never ran at all. A click faster than a frame then
+  /// looked to a script like a button that went down and stayed down.
+  auto FireAction(unsigned char, const bool) -> void;
   auto RegisterSequence(std::string, InputAction, std::string = "") -> ActionID;
   static auto GLFWInputToIndex(int) -> unsigned char;
   static auto GLFWKeyToString(int) -> std::string;

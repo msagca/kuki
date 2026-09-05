@@ -34,11 +34,12 @@ public:
   auto GetDevice5() const -> ID3D12Device5 *;
   /// @brief What this adapter supports beyond the feature level, queried once at initialisation.
   auto GetCapabilities() const -> const DXCapabilities &;
-  /// @brief The command list recorded between `BeginFrame` and `Present`. Null outside a frame.
+  /// @brief The command list recorded between `BeginFrame` and `Present`, or between
+  /// `BeginImmediate` and `EndImmediate`. Null when neither is open.
   auto GetCommandList() const -> ID3D12GraphicsCommandList *;
   /// @brief The same command list through the interface that records raytracing work.
   ///
-  /// Null outside a frame, and null always when the driver has no raytracing interface at all.
+  /// Null when no list is open, and null always when the driver has no raytracing interface at all.
   auto GetCommandList4() const -> ID3D12GraphicsCommandList4 *;
   auto GetCommandQueue() const -> ID3D12CommandQueue *;
   auto GetFrameIndex() const -> uint32_t;
@@ -53,6 +54,26 @@ public:
   auto GetHeight() const -> int;
   /// @brief Blocks until the GPU has drained every submitted frame. Required before releasing resources.
   auto WaitForGPU() -> void;
+  /// @brief Opens the command list for work that has to run while no frame is.
+  ///
+  /// Not everything the renderer is asked for happens between `BeginFrame` and `Present`. Picking
+  /// is the case that forced this: it is answered from an input callback, and input is polled
+  /// before the frame opens, so the list a pick wants to record on does not exist yet. Without a
+  /// list to record on the pick used to return nothing at all, which read as clicks doing nothing.
+  ///
+  /// Waits for the GPU before reopening, because the allocator this reuses is the one the frame
+  /// with this index recorded from and may still be in flight. That makes this a stall, which is
+  /// what a synchronous readback was going to be anyway.
+  ///
+  /// Returns the list, or null if a frame is already open -- in that case the caller has one
+  /// through `GetCommandList` and must not close it. Pair every non-null return with
+  /// `EndImmediate`.
+  auto BeginImmediate() -> ID3D12GraphicsCommandList *;
+  /// @brief Closes the list `BeginImmediate` opened, leaving it as `BeginFrame` expects to find it.
+  ///
+  /// Submission is not here: a caller that needs its work on the GPU asks for that with
+  /// `FlushCommandList`, which leaves the list open again, and this closes what that reopened.
+  auto EndImmediate() -> void;
   /// @brief Closes, submits and waits on the current command list, then reopens it.
   ///
   /// Used by one-off work that has to complete before the frame continues, such as staging an
@@ -108,6 +129,8 @@ private:
   int width{};
   int height{};
   bool frameOpen{};
+  /// @brief Whether the list was opened by `BeginImmediate` rather than by `BeginFrame`.
+  bool immediateOpen{};
   bool vsync{true};
   bool tearingSupported{};
   auto CreateDeviceAndQueue() -> bool;

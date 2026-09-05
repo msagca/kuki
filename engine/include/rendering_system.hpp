@@ -3,6 +3,7 @@
 #include <array>
 #include <asset_manager.hpp>
 #include <debug_view.hpp>
+#include <desktop_size.hpp>
 #include <kuki_engine_export.h>
 #include <indirect_lighting.hpp>
 #include <material_type.hpp>
@@ -135,8 +136,15 @@ private:
   int pendingHeight{};
   bool hasPending{};
   bool presentEnabled{true};
-  int screenWidth{1920};
-  int screenHeight{1080};
+  /// @brief The size every viewport-sized target in the graph is built at, before the window has
+  /// said anything about its own.
+  ///
+  /// Seeded from the desktop rather than fixed: the graph is compiled in `Start`, which runs before
+  /// the first frame asks the window for a surface size, and a seed that does not match the display
+  /// means every target is allocated once at the wrong size and again a few frames later. See
+  /// `DesktopSize`.
+  int screenWidth{DesktopWidth()};
+  int screenHeight{DesktopHeight()};
   /// @brief Derives a directional light from the scene's skybox and writes it into the scene.
   ///
   /// Runs before the renderer loads the scene, and must: the OpenGL backend frees a texture's

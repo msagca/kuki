@@ -50,9 +50,24 @@ auto SceneBuilder::Entity(std::string name) -> EntityBuilder {
   stack->Push(BuilderScope::Entity, id);
   return EntityBuilder(stack);
 }
+auto SceneBuilder::Entity(const EntityID id) -> EntityBuilder {
+  stack->PopTo(BuilderScope::Scene);
+  // Given rather than created, so the transform is only added when the entity somehow has none --
+  // which `AddEntityComponent` already means. An invalid id pushes an empty frame, and every call
+  // above checks the frame before touching anything, so a stale id edits nothing instead of
+  // crashing.
+  if (id)
+    stack->app.AddEntityComponent<Transform>(id);
+  stack->Push(BuilderScope::Entity, id);
+  return EntityBuilder(stack);
+}
 auto EntityBuilder::Entity(std::string name) -> EntityBuilder {
   SceneBuilder builder(stack);
   return builder.Entity(std::move(name));
+}
+auto EntityBuilder::Entity(const EntityID id) -> EntityBuilder {
+  SceneBuilder builder(stack);
+  return builder.Entity(id);
 }
 auto EntityBuilder::Scene(std::string name) -> SceneBuilder {
   SceneBuilder builder(stack);

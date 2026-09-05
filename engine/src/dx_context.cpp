@@ -156,7 +156,7 @@ auto DXContext::ReleaseBackBuffers() -> void {
     buffer.Reset();
 }
 auto DXContext::BeginFrame() -> void {
-  if (!device || frameOpen)
+  if (!device || frameOpen || immediateOpen)
     return;
   if (fence->GetCompletedValue() < fenceValues[frameIndex]) {
     if (DXFailed(fence->SetEventOnCompletion(fenceValues[frameIndex], fenceEvent), "SetEventOnCompletion"))
@@ -204,8 +204,32 @@ auto DXContext::MoveToNextFrame() -> void {
   fenceValues[frameIndex] = signalled;
   frameIndex = swapChain->GetCurrentBackBufferIndex();
 }
+auto DXContext::BeginImmediate() -> ID3D12GraphicsCommandList * {
+  if (!device || frameOpen || immediateOpen)
+    return nullptr;
+  // The allocator belongs to the frame with this index, whose work may still be running: resetting
+  // it under the GPU is what this wait is for. `BeginFrame` waits on that frame's fence for the
+  // same reason; here there is no frame to take the value from, so the wait is the whole queue.
+  WaitForGPU();
+  if (DXFailed(commandAllocators[frameIndex]->Reset(), "CommandAllocator::Reset"))
+    return nullptr;
+  if (DXFailed(commandList->Reset(commandAllocators[frameIndex].Get(), nullptr), "CommandList::Reset"))
+    return nullptr;
+  immediateOpen = true;
+  auto *heap = srvHeap.Get();
+  commandList->SetDescriptorHeaps(1, &heap);
+  return commandList.Get();
+}
+auto DXContext::EndImmediate() -> void {
+  if (!immediateOpen)
+    return;
+  immediateOpen = false;
+  // Closed rather than left open, because `BeginFrame` resets both the allocator and the list, and
+  // neither reset is legal on a list still recording.
+  DXFailed(commandList->Close(), "CommandList::Close");
+}
 auto DXContext::FlushCommandList() -> void {
-  if (!device || !frameOpen)
+  if (!device || (!frameOpen && !immediateOpen))
     return;
   if (DXFailed(commandList->Close(), "CommandList::Close"))
     return;
@@ -261,9 +285,10 @@ auto DXContext::OnResize(const int newWidth, const int newHeight) -> void {
   if (newWidth == width && newHeight == height)
     return;
   WaitForGPU();
-  if (frameOpen) {
+  if (frameOpen || immediateOpen) {
     commandList->Close();
     frameOpen = false;
+    immediateOpen = false;
   }
   ReleaseBackBuffers();
   width = newWidth;
@@ -312,10 +337,10 @@ auto DXContext::GetCapabilities() const -> const DXCapabilities & {
   return capabilities;
 }
 auto DXContext::GetCommandList() const -> ID3D12GraphicsCommandList * {
-  return frameOpen ? commandList.Get() : nullptr;
+  return frameOpen || immediateOpen ? commandList.Get() : nullptr;
 }
 auto DXContext::GetCommandList4() const -> ID3D12GraphicsCommandList4 * {
-  return frameOpen ? commandList4.Get() : nullptr;
+  return frameOpen || immediateOpen ? commandList4.Get() : nullptr;
 }
 auto DXContext::GetCommandQueue() const -> ID3D12CommandQueue * {
   return commandQueue.Get();

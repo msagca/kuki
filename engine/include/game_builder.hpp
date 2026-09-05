@@ -127,6 +127,8 @@ public:
   auto Parent() -> EntityBuilder;
   /// @brief Starts a new root entity in the current scene, abandoning whatever entity was open.
   auto Entity(std::string = "") -> EntityBuilder;
+  /// @brief Re-opens an entity that already exists, so the calls after it edit that one.
+  auto Entity(const EntityID) -> EntityBuilder;
   /// @brief Starts a new scene, abandoning whatever entity and scene were open.
   auto Scene(std::string) -> SceneBuilder;
 private:
@@ -140,6 +142,13 @@ public:
   explicit SceneBuilder(std::shared_ptr<BuilderStack> stack)
     : stack(std::move(stack)) {}
   auto Entity(std::string = "") -> EntityBuilder;
+  /// @brief Re-opens an entity that already exists, so the calls after it edit that one.
+  ///
+  /// The builders otherwise only ever create, which leaves anything that keeps its entities across
+  /// a change writing components by hand. Editing in place is worth having a route to: an entity
+  /// destroyed and made again is a new id, and picking reads the id buffer the last frame left
+  /// behind -- so a scene that rebuilds itself answers a click with an id that no longer resolves.
+  auto Entity(const EntityID) -> EntityBuilder;
   auto Scene(std::string) -> SceneBuilder;
 private:
   std::shared_ptr<BuilderStack> stack;

@@ -380,14 +380,36 @@ auto GLRenderer::PickEntity(const int x, const int y) -> EntityID {
     glNamedFramebufferTexture(pickFramebuffer, GL_COLOR_ATTACHMENT0, pickTexture, 0);
   }
   const auto flippedY = out->desc.height - 1 - y;
-  glBindFramebuffer(GL_READ_FRAMEBUFFER, out->framebuffer);
-  glReadBuffer(GL_COLOR_ATTACHMENT1);
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pickFramebuffer);
-  glDrawBuffer(GL_COLOR_ATTACHMENT0);
-  glBlitFramebuffer(x, flippedY, x + 1, flippedY + 1, 0, 0, 1, 1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-  glReadBuffer(GL_COLOR_ATTACHMENT0);
-  glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+  // A blit out of a multisampled buffer resolves, and a resolve averages: the average of two ids is
+  // a third that belongs to no entity, which is what made a click along an object's silhouette
+  // select nothing. So the samples are fetched by a shader instead, and only a target that has one
+  // sample -- where a blit is an exact copy and there is nothing to choose between -- still blits.
+  // See `pick.frag`.
+  auto *pickShader = out->desc.samples > 1 ? GetShader("Pick") : nullptr;
+  const auto *frame = pickShader ? GetPrimitive("Frame") : nullptr;
+  if (pickShader && frame) {
+    glBindFramebuffer(GL_FRAMEBUFFER, pickFramebuffer);
+    glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    glViewport(0, 0, 1, 1);
+    glDisable(GL_DEPTH_TEST);
+    pickShader->Use();
+    pickShader->SetTexture("u_idImage", out->idTexture);
+    pickShader->SetUniform("u_coordX", x);
+    pickShader->SetUniform("u_coordY", flippedY);
+    pickShader->SetUniform("u_sampleCount", out->desc.samples);
+    pickShader->SetUniform("u_model", glm::mat4(1.f));
+    pickShader->Draw(*frame);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  } else {
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, out->framebuffer);
+    glReadBuffer(GL_COLOR_ATTACHMENT1);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pickFramebuffer);
+    glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    glBlitFramebuffer(x, flippedY, x + 1, flippedY + 1, 0, 0, 1, 1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+  }
   unsigned char pixel[4];
   glGetTextureImage(pickTexture, 0, GL_RGBA, GL_UNSIGNED_BYTE, sizeof(pixel), pixel);
   const auto value = static_cast<uint32_t>(pixel[0]) | static_cast<uint32_t>(pixel[1]) << 8 | static_cast<uint32_t>(pixel[2]) << 16;

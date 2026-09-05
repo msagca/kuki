@@ -257,6 +257,16 @@ struct DXProbeDebugConstants {
   float range{};
   float padding{};
 };
+/// @brief Root constants for the compute shader that reads one texel of the entity id buffer.
+///
+/// `coord` is the texel, `samples` how many the target carries. The sample count is passed rather
+/// than queried in the shader because `GetDimensions` on a multisampled texture costs a call to
+/// learn something the caller already knows from the target description.
+struct DXPickConstants {
+  uint32_t coord[2]{};
+  uint32_t samples{};
+  uint32_t padding{};
+};
 /// @brief Root constants for the shadow depth pass: the light's view-projection.
 ///
 /// The per-instance model matrix is combined with this in the shader, from the same instance
@@ -325,6 +335,11 @@ public:
   /// @param entryPoint Compute entry point in the shared image-based lighting HLSL.
   /// @return Null when compilation or creation failed; the caller should skip the dispatch.
   auto GetComputePipeline(ID3D12Device *, const char *) -> const DXPipeline *;
+  /// @brief Returns the compute pipeline that reads one texel of the entity id buffer, building it once.
+  ///
+  /// Compute rather than a resolve, because a resolve averages: see `pick.hlsl`. Plain Shader Model
+  /// 6.0, so it runs wherever the backend does.
+  auto GetPickPipeline(ID3D12Device *) -> const DXPipeline *;
   /// @brief Returns the depth-only pipeline the shadow pass renders with, building it once.
   ///
   /// Bound with no render target and no pixel shader: the pass exists purely to populate a depth
@@ -360,6 +375,7 @@ private:
   ComPtr<ID3D12RootSignature> shadowRootSignature;
   ComPtr<ID3D12RootSignature> skyboxRootSignature;
   ComPtr<ID3D12RootSignature> computeRootSignature;
+  ComPtr<ID3D12RootSignature> pickRootSignature;
   ComPtr<ID3D12RootSignature> rayProbeRootSignature;
   ComPtr<ID3D12RootSignature> probeAuditRootSignature;
   ComPtr<ID3D12RootSignature> probeTraceRootSignature;
@@ -375,6 +391,11 @@ private:
   auto GetSkyboxRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature shared by every image-based lighting compute shader.
   auto GetComputeRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  /// @brief Root signature for the pick: the texel to read, the id buffer, and a result to write.
+  ///
+  /// The id buffer goes through a table because it is a texture and already has a view in the shared
+  /// heap; the result is a root descriptor, since a four-byte buffer is not worth a descriptor.
+  auto GetPickRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the ray probe: the camera, the scene, its geometry, and a result.
   ///
   /// Every binding is a root descriptor, so the pass needs no descriptor heap of its own. That is a

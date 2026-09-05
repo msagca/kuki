@@ -57,6 +57,7 @@ auto RenderingSystem::Start() -> void {
   app.LoadShaderFromSource(standard_m_vert, bright_pass_frag, "BrightPass");
   app.LoadShaderFromSource(standard_m_vert, tone_mapping_frag, "ToneMapping");
   app.LoadShaderFromSource(standard_m_vert, outline_frag, "Outline");
+  app.LoadShaderFromSource(standard_m_vert, pick_frag, "Pick");
   app.LoadShaderFromSource(unlit_vert, unlit_frag, "Unlit");
   if (activeRenderer)
     activeRenderer->LoadAssets(AssetType::Shader);

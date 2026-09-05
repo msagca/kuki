@@ -2,6 +2,7 @@
 #ifdef KUKI_HAS_DIRECTX
 #include <array>
 #include <bounding_box.hpp>
+#include <desktop_size.hpp>
 #include <dx_acceleration_structure.hpp>
 #include <dx_common.hpp>
 #include <dx_compute_texture.hpp>
@@ -346,10 +347,13 @@ private:
   uint64_t uploadEpoch{};
   uint32_t spotShadowCount{};
   std::array<glm::mat4, MAX_SPOT_LIGHTS> spotShadowViewProjection{};
-  ComPtr<ID3D12Resource> pickResolveTexture;
+  /// @brief Where the pick shader writes the one id it read, and where that id is read back from.
+  ///
+  /// Four bytes apiece and sized once: a pick asks about a single texel, so neither of these has
+  /// anything to do with how big the target is. The pair replaces a full-size resolve texture,
+  /// which was both larger than the question and wrong -- see `DXRenderer::PickEntity`.
+  ComPtr<ID3D12Resource> pickResultBuffer;
   ComPtr<ID3D12Resource> pickReadbackBuffer;
-  int pickResolveWidth{};
-  int pickResolveHeight{};
   EntityID nextTargetId{1};
   int previewSize{128};
   /// @brief Staging buffers whose copies are recorded into the open command list but not yet run.
@@ -381,8 +385,8 @@ private:
   int sceneColorWidth{};
   int sceneColorHeight{};
   DXGI_FORMAT sceneColorFormat{DXGI_FORMAT_UNKNOWN};
-  int screenWidth{1920};
-  int screenHeight{1080};
+  int screenWidth{DesktopWidth()};
+  int screenHeight{DesktopHeight()};
   /// @brief The context downcast from the application, or null when running on another backend.
   /// @brief Default bytes of texture staging to keep in flight before flushing.
   ///
@@ -436,8 +440,8 @@ private:
   auto BlitOrResolve(std::span<std::string>, std::span<std::string>) -> void;
   /// @brief Creates the depth buffer a colour target draws against, sized to match it.
   auto EnsureDepthBuffer(DXRenderTarget &) -> bool;
-  /// @brief Creates the non-multisampled resolve texture and readback buffer picking reads through.
-  auto EnsurePickResources(const DXRenderTarget &) -> bool;
+  /// @brief Creates the result and readback buffers picking reads through, once for the process.
+  auto EnsurePickResources() -> bool;
   /// @brief Uploads a mesh asset's geometry, reusing the existing buffers when already resident.
   auto EnsureMesh(const AssetID) -> DXMesh *;
   /// @brief Uploads a texture asset into a default-heap resource and creates its shader resource view.

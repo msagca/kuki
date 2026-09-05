@@ -2300,10 +2300,8 @@ auto DXRenderer::Clear() -> void {
   rayScene.Clear();
   ReleaseAllTargets();
   pipelines.Clear();
-  pickResolveTexture.Reset();
+  pickResultBuffer.Reset();
   pickReadbackBuffer.Reset();
-  pickResolveWidth = 0;
-  pickResolveHeight = 0;
   // Everything from here down runs with the GPU idle: `ReleaseAllTargets` above flushes the command
   // list and waits. That is what lets these descriptors go straight back to the heap instead of on
   // to the retirement queue, which is drained by `Reset` -- a call a backend being torn down is
@@ -2502,36 +2500,54 @@ auto DXRenderer::LoadScene(Scene &scene) -> void {
       *material = value;
   }
 }
-auto DXRenderer::EnsurePickResources(const DXRenderTarget &target) -> bool {
-  auto context = GetContext();
-  if (!context || !target.idResource)
-    return false;
-  if (pickResolveTexture && pickResolveWidth == target.desc.width && pickResolveHeight == target.desc.height)
+auto DXRenderer::EnsurePickResources() -> bool {
+  if (pickResultBuffer && pickReadbackBuffer)
     return true;
-  auto *device = context->GetDevice();
-  context->WaitForGPU();
-  pickResolveTexture.Reset();
-  auto resolveDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, static_cast<UINT64>(target.desc.width), static_cast<UINT>(target.desc.height), 1, 1, 1, 0, D3D12_RESOURCE_FLAG_NONE);
-  const auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-  if (DXFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &resolveDesc, D3D12_RESOURCE_STATE_RESOLVE_DEST, nullptr, IID_PPV_ARGS(&pickResolveTexture)), "CreateCommittedResource for pick resolve"))
+  auto context = GetContext();
+  if (!context)
     return false;
+  auto *device = context->GetDevice();
+  if (!device)
+    return false;
+  // Both are the smallest buffer the API will hand out, and neither depends on the target: a pick
+  // reads one texel, so there is nothing here to resize when the window is.
+  if (!pickResultBuffer) {
+    const auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    auto resultDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(uint32_t), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    if (DXFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &resultDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&pickResultBuffer)), "CreateCommittedResource for pick result"))
+      return false;
+  }
   if (!pickReadbackBuffer) {
     const auto readbackHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+    // A texel copy lands here as well as the shader's four bytes, and a texture copy's destination
+    // has to be padded to the API's row-pitch alignment however little of it is written.
     auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
     if (DXFailed(device->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&pickReadbackBuffer)), "CreateCommittedResource for pick readback"))
       return false;
   }
-  pickResolveWidth = target.desc.width;
-  pickResolveHeight = target.desc.height;
   return true;
 }
 auto DXRenderer::PickEntity(const int x, const int y) -> EntityID {
   auto context = GetContext();
   if (!context)
     return EntityID::Invalid;
+  // A pick is answered from wherever it is asked, and that is not always inside a frame: a script
+  // reads it from an input callback, and input is polled before the frame opens. Inside a frame the
+  // frame's list is borrowed; outside one, a list is opened here and closed before returning. What
+  // is read either way is the id buffer the last frame left behind, which is the picture the click
+  // was aimed at.
   auto *commandList = context->GetCommandList();
+  const auto immediate = commandList == nullptr;
+  if (immediate)
+    commandList = context->BeginImmediate();
   if (!commandList)
     return EntityID::Invalid;
+  // One exit for every path below, so the list opened above is closed however the pick ends.
+  const auto Finish = [&](const EntityID result) {
+    if (immediate)
+      context->EndImmediate();
+    return result;
+  };
   DXRenderTarget *pickTarget{};
   for (auto &[name, target] : nameToTarget)
     if (target.idResource && target.desc.pickingBuffer) {
@@ -2539,43 +2555,79 @@ auto DXRenderer::PickEntity(const int x, const int y) -> EntityID {
       break;
     }
   if (!pickTarget)
-    return EntityID::Invalid;
+    return Finish(EntityID::Invalid);
   if (x < 0 || y < 0 || x >= pickTarget->desc.width || y >= pickTarget->desc.height)
-    return EntityID::Invalid;
-  if (!EnsurePickResources(*pickTarget))
-    return EntityID::Invalid;
-  const auto idToResolveSource = CD3DX12_RESOURCE_BARRIER::Transition(pickTarget->idResource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
-  commandList->ResourceBarrier(1, &idToResolveSource);
-  commandList->ResolveSubresource(pickResolveTexture.Get(), 0, pickTarget->idResource.Get(), 0, DXGI_FORMAT_R8G8B8A8_UNORM);
-  const auto idBack = CD3DX12_RESOURCE_BARRIER::Transition(pickTarget->idResource.Get(), D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-  const auto resolveToCopySource = CD3DX12_RESOURCE_BARRIER::Transition(pickResolveTexture.Get(), D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE);
-  commandList->ResourceBarrier(1, &idBack);
-  commandList->ResourceBarrier(1, &resolveToCopySource);
-  D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
-  footprint.Offset = 0;
-  footprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-  footprint.Footprint.Width = 1;
-  footprint.Footprint.Height = 1;
-  footprint.Footprint.Depth = 1;
-  footprint.Footprint.RowPitch = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT;
-  const CD3DX12_TEXTURE_COPY_LOCATION destination(pickReadbackBuffer.Get(), footprint);
-  const CD3DX12_TEXTURE_COPY_LOCATION source(pickResolveTexture.Get(), 0);
-  const CD3DX12_BOX box(x, y, x + 1, y + 1);
-  commandList->CopyTextureRegion(&destination, 0, 0, 0, &source, &box);
-  const auto resolveBack = CD3DX12_RESOURCE_BARRIER::Transition(pickResolveTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RESOLVE_DEST);
-  commandList->ResourceBarrier(1, &resolveBack);
+    return Finish(EntityID::Invalid);
+  if (!EnsurePickResources())
+    return Finish(EntityID::Invalid);
+  const auto samples = static_cast<uint32_t>(pickTarget->desc.samples > 0 ? pickTarget->desc.samples : 1);
+  // Multisampled ids are read by a shader rather than resolved. A resolve averages, and the average
+  // of two ids is a third belonging to no entity at all, which is what made a click anywhere along
+  // an object's silhouette select nothing. See `pick.hlsl`.
+  //
+  // A target with one sample has nothing to choose between and is copied straight out. That path
+  // also needs no pipeline, which is what makes it worth keeping rather than folding into a shader
+  // that would load sample zero of a texture with only one.
+  const auto multisampled = samples > 1;
+  if (multisampled) {
+    auto *device = context->GetDevice();
+    const auto *pipeline = device ? pipelines.GetPickPipeline(device) : nullptr;
+    if (!pipeline || !*pipeline || !pickTarget->idSrvGPU.ptr)
+      return Finish(EntityID::Invalid);
+    const auto idToShaderResource = CD3DX12_RESOURCE_BARRIER::Transition(pickTarget->idResource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &idToShaderResource);
+    DXPickConstants constants{};
+    constants.coord[0] = static_cast<uint32_t>(x);
+    constants.coord[1] = static_cast<uint32_t>(y);
+    constants.samples = samples;
+    commandList->SetComputeRootSignature(pipeline->rootSignature.Get());
+    commandList->SetPipelineState(pipeline->pipelineState.Get());
+    commandList->SetComputeRoot32BitConstants(0, sizeof(DXPickConstants) / sizeof(uint32_t), &constants, 0);
+    commandList->SetComputeRootDescriptorTable(1, pickTarget->idSrvGPU);
+    commandList->SetComputeRootUnorderedAccessView(2, pickResultBuffer->GetGPUVirtualAddress());
+    commandList->Dispatch(1, 1, 1);
+    const auto idBack = CD3DX12_RESOURCE_BARRIER::Transition(pickTarget->idResource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    const auto resultToCopySource = CD3DX12_RESOURCE_BARRIER::Transition(pickResultBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    commandList->ResourceBarrier(1, &idBack);
+    commandList->ResourceBarrier(1, &resultToCopySource);
+    commandList->CopyBufferRegion(pickReadbackBuffer.Get(), 0, pickResultBuffer.Get(), 0, sizeof(uint32_t));
+    const auto resultBack = CD3DX12_RESOURCE_BARRIER::Transition(pickResultBuffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    commandList->ResourceBarrier(1, &resultBack);
+  } else {
+    const auto idToCopySource = CD3DX12_RESOURCE_BARRIER::Transition(pickTarget->idResource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    commandList->ResourceBarrier(1, &idToCopySource);
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+    footprint.Offset = 0;
+    footprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    footprint.Footprint.Width = 1;
+    footprint.Footprint.Height = 1;
+    footprint.Footprint.Depth = 1;
+    footprint.Footprint.RowPitch = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT;
+    const CD3DX12_TEXTURE_COPY_LOCATION destination(pickReadbackBuffer.Get(), footprint);
+    const CD3DX12_TEXTURE_COPY_LOCATION source(pickTarget->idResource.Get(), 0);
+    const CD3DX12_BOX box(x, y, x + 1, y + 1);
+    commandList->CopyTextureRegion(&destination, 0, 0, 0, &source, &box);
+    const auto idBack = CD3DX12_RESOURCE_BARRIER::Transition(pickTarget->idResource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    commandList->ResourceBarrier(1, &idBack);
+  }
   context->FlushCommandList();
   void *mapped{};
-  const CD3DX12_RANGE readRange(0, 4);
+  const CD3DX12_RANGE readRange(0, sizeof(uint32_t));
   if (DXFailed(pickReadbackBuffer->Map(0, &readRange, &mapped), "Map pick readback"))
-    return EntityID::Invalid;
-  const auto *pixel = static_cast<const uint8_t *>(mapped);
-  const auto value = static_cast<uint32_t>(pixel[0]) | (static_cast<uint32_t>(pixel[1]) << 8) | (static_cast<uint32_t>(pixel[2]) << 16);
+    return Finish(EntityID::Invalid);
+  // The shader writes the id already decoded; a texel copy arrives as the three bytes it was encoded
+  // into, and is decoded here the way `pick.hlsl` and the outline pass decode it.
+  const auto *bytes = static_cast<const uint8_t *>(mapped);
+  uint32_t value{};
+  if (multisampled)
+    memcpy(&value, bytes, sizeof(value));
+  else
+    value = static_cast<uint32_t>(bytes[0]) | (static_cast<uint32_t>(bytes[1]) << 8) | (static_cast<uint32_t>(bytes[2]) << 16);
   const CD3DX12_RANGE writeRange(0, 0);
   pickReadbackBuffer->Unmap(0, &writeRange);
   if (value == ENTITY_ID_ENCODED_INVALID)
-    return EntityID::Invalid;
-  return static_cast<EntityID>(value);
+    return Finish(EntityID::Invalid);
+  return Finish(static_cast<EntityID>(value));
 }
 auto DXRenderer::EnsurePreviewMaterial(const AssetID assetId, const MaterialAsset &materialAsset) -> const DXMaterial * {
   auto &shared = materialTables[assetId][0];
