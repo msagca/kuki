@@ -88,7 +88,20 @@ if(WIN32)
   target_link_libraries(${PROJECT_NAME} PRIVATE kuki_d3d12)
   target_compile_definitions(${PROJECT_NAME} PUBLIC KUKI_HAS_DIRECTX=1)
 endif()
+# Listed so they show up in an IDE, and marked so nothing tries to compile them. Every one of
+# these is embedded as text by the custom command below and handed to a compiler at run time -- dxc
+# through dxcompiler.dll for the HLSL, the driver for the GLSL.
+#
+# The marking is not cosmetic. MSBuild assigns `.hlsl` to FxCompile on sight, so the Visual Studio
+# generator was calling FXC on shaders that have no `main` -- every entry point here is named for
+# its stage (`VSMain`, `PSMain`, `CSTrace`) -- and failing the build with X3501 before a single
+# translation unit was compiled. FXC would be the wrong compiler even if it found one: these are
+# Shader Model 6, which only dxc emits.
 target_sources(${PROJECT_NAME} PRIVATE ${SHADER_SOURCES})
+set_source_files_properties(
+  ${SHADER_SOURCES}
+  PROPERTIES HEADER_FILE_ONLY TRUE VS_TOOL_OVERRIDE "None"
+)
 set(EMBEDDED_SHADER_HEADER "${CMAKE_CURRENT_BINARY_DIR}/embedded_shaders.hpp")
 add_custom_command(
   OUTPUT "${EMBEDDED_SHADER_HEADER}"
