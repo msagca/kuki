@@ -1,7 +1,12 @@
 *.comp linguist-language=GLSL
 *.frag linguist-language=GLSL
+*.geom linguist-language=GLSL
+*.tesc linguist-language=GLSL
+*.tese linguist-language=GLSL
 *.vert linguist-language=GLSL
 *.exr filter=lfs diff=lfs merge=lfs -text
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.gltf filter=lfs diff=lfs merge=lfs -text
 *.hdr filter=lfs diff=lfs merge=lfs -text
 *.ico filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text

@@ -10,6 +10,7 @@
 #include <color.hpp>
 #include <cstddef>
 #include <enum_traits.hpp>
+#include <gl_context.hpp>
 #include <gl_buffer.hpp>
 #include <gl_compute_shader.hpp>
 #include <gl_lit_shader.hpp>
@@ -41,7 +42,9 @@
 #include <mesh_asset.hpp>
 #include <mesh_handle.hpp>
 #include <model_asset.hpp>
+#include <post_process.hpp>
 #include <primitive.hpp>
+#include <profiler.hpp>
 #include <render_target.hpp>
 #include <renderer.hpp>
 #include <scene.hpp>
@@ -61,8 +64,79 @@
 #include <variant>
 #include <vector>
 namespace kuki {
+/// @brief S3TC enumerants, which glad does not generate because they arrive through an extension.
+///
+/// Their values are fixed by `EXT_texture_compression_s3tc` and `EXT_texture_sRGB`, and every
+/// desktop driver that can offer the 4.5 core profile this renderer already requires offers them.
+#ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
+#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
+#endif
+#ifndef GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
+#endif
+#ifndef GL_COMPRESSED_SRGB_S3TC_DXT1_EXT
+#define GL_COMPRESSED_SRGB_S3TC_DXT1_EXT 0x8C4C
+#endif
+#ifndef GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT
+#define GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT 0x8C4F
+#endif
 GLRenderer::GLRenderer(Application &app)
   : Renderer(std::in_place_type<GLRenderer>, app) {}
+auto GLRenderer::BypassPass(const RenderPass pass, std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  // See the Direct3D side: the count belongs to the pass being stood down, and the shading reads it.
+  if (pass == RenderPass::SpotShadowMap)
+    spotShadowCount = 0;
+  Renderer::BypassPass(pass, inputs, outputs);
+}
+auto GLRenderer::BypassCopy(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  // The first resolved colour input, falling back to a multisampled one only if that is all there
+  // is -- the reasoning is argued on the Direct3D side, and the order it depends on is the order
+  // the passes were declared in, which both backends are handed alike.
+  GLRenderTarget *source{};
+  for (const auto &name : inputs) {
+    auto target = GetTarget(name);
+    if (!target || target->desc.format == TargetFormat::DEPTH)
+      continue;
+    if (target->desc.samples <= 1) {
+      source = target;
+      break;
+    }
+    if (!source)
+      source = target;
+  }
+  if (outputs.empty())
+    return;
+  auto out = GetTarget(outputs[0]);
+  if (!out)
+    return;
+  if (!source) {
+    BypassClear(outputs);
+    return;
+  }
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, source->framebuffer);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, out->framebuffer);
+  glBlitFramebuffer(0, 0, out->desc.width, out->desc.height, 0, 0, out->desc.width, out->desc.height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+auto GLRenderer::BypassClear(std::span<std::string> outputs) -> void {
+  for (const auto &name : outputs) {
+    auto target = GetTarget(name);
+    if (!target)
+      continue;
+    glBindFramebuffer(GL_FRAMEBUFFER, target->framebuffer);
+    glClearColor(.0f, .0f, .0f, 1.f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+auto GLRenderer::GetPoolUsage() const -> PoolUsage {
+  PoolUsage usage{};
+  usage += bufferPool.GetUsage();
+  usage += framebufferPool.GetUsage();
+  usage += renderbufferPool.GetUsage();
+  usage += texturePool.GetUsage();
+  return usage;
+}
 auto GLRenderer::ApplyAntiAliasing(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   const auto in = GetTarget(inputs, "SceneMulti");
   const auto out = GetTarget(outputs, "Scene");
@@ -88,18 +162,19 @@ auto GLRenderer::ApplyBloomEffect(std::span<std::string> inputs, std::span<std::
   if (!in0 || !in1 || !out)
     return;
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
+  glViewport(0, 0, out->desc.width, out->desc.height);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   bloomShader->Use();
   bloomShader->SetTexture("u_image", in0->texture);
   bloomShader->SetTexture("u_imageBright", in1->texture);
-  bloomShader->SetUniform("u_intensity", .5f);
+  bloomShader->SetUniform("u_intensity", BLOOM_INTENSITY);
   bloomShader->SetUniform("u_model", glm::mat4(1.f));
   bloomShader->Draw(*mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 auto GLRenderer::ApplyBlurEffect(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
-  constexpr auto NUM_PASSES = 8;
-  if (inputs.size() != 1 || outputs.size() != 1)
+  constexpr auto NUM_PASSES = BLUR_PASS_COUNT;
+  if (inputs.size() != 1 || outputs.empty())
     return;
   auto blurShader = GetShader("Blur");
   if (!blurShader)
@@ -119,9 +194,10 @@ auto GLRenderer::ApplyBlurEffect(std::span<std::string> inputs, std::span<std::s
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glBindFramebuffer(GL_FRAMEBUFFER, pong->framebuffer);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  glViewport(0, 0, out->desc.width, out->desc.height);
   blurShader->Use();
   blurShader->SetUniform("u_model", glm::mat4(1.f));
-  for (auto i = 0; i < NUM_PASSES; ++i) {
+  for (auto i = 0u; i < NUM_PASSES; ++i) {
     const auto even = i % 2 == 0;
     const auto &srcTexture = i == 0 ? in->texture : even ? pong->texture
                                                          : ping->texture;
@@ -148,32 +224,39 @@ auto GLRenderer::ApplyBrightPassFilter(std::span<std::string> inputs, std::span<
   if (!in || !out)
     return;
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
+  glViewport(0, 0, out->desc.width, out->desc.height);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   brightShader->Use();
   brightShader->SetTexture("u_image", in->texture);
-  brightShader->SetUniform("u_threshold", .5f);
+  brightShader->SetUniform("u_exposure", exposure);
+  brightShader->SetUniform("u_threshold", BRIGHT_PASS_THRESHOLD);
   brightShader->SetUniform("u_model", glm::mat4(1.f));
   brightShader->Draw(*mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
-auto GLRenderer::ApplyGammaCorrection(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
-  auto gammaShader = GetShader("GammaCorrect");
-  if (!gammaShader)
+auto GLRenderer::ApplyToneMapping(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  auto toneShader = GetShader("ToneMapping");
+  if (!toneShader)
     return;
   const auto mesh = GetPrimitive("Frame");
   if (!mesh)
     return;
-  const auto in = GetTarget(inputs, "SceneOutlined");
-  const auto out = GetTarget(outputs, "SceneSRGB");
+  if (inputs.empty() || outputs.empty())
+    return;
+  const auto in = GetTarget(inputs[0]);
+  const auto out = GetTarget(outputs[0]);
   if (!in || !out)
     return;
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
+  glViewport(0, 0, out->desc.width, out->desc.height);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  gammaShader->Use();
-  gammaShader->SetTexture("u_image", in->texture);
-  gammaShader->SetUniform("u_gamma", 2.2f);
-  gammaShader->SetUniform("u_model", glm::mat4(1.f));
-  gammaShader->Draw(*mesh);
+  toneShader->Use();
+  toneShader->SetTexture("u_image", in->texture);
+  toneShader->SetUniform("u_exposure", exposure);
+  toneShader->SetUniform("u_gamma", GAMMA);
+  toneShader->SetUniform("u_toneMapper", static_cast<unsigned int>(toneMapper));
+  toneShader->SetUniform("u_model", glm::mat4(1.f));
+  toneShader->Draw(*mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 auto GLRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
@@ -186,10 +269,21 @@ auto GLRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::stri
   const auto mesh = GetPrimitive("Frame");
   if (!mesh)
     return;
-  const auto sceneMulti = GetTarget(inputs, "SceneMulti");
-  const auto in = GetTarget(inputs, "Scene");
-  const auto out = GetTarget(outputs, "SceneOutlined");
-  if (!sceneMulti || !in || !out || sceneMulti->idTexture == 0)
+  if (outputs.empty())
+    return;
+  GLRenderTarget *sceneMulti{};
+  GLRenderTarget *in{};
+  for (const auto &name : inputs) {
+    const auto target = GetTarget(name);
+    if (!target)
+      continue;
+    if (!sceneMulti && target->idTexture != 0)
+      sceneMulti = target;
+    if (!in && target->desc.samples <= 1)
+      in = target;
+  }
+  const auto out = GetTarget(outputs[0]);
+  if (!sceneMulti || !in || !out)
     return;
   const auto width = sceneMulti->desc.width;
   const auto height = sceneMulti->desc.height;
@@ -215,6 +309,7 @@ auto GLRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::stri
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
   const auto selected = app.GetSelectedEntities();
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
+  glViewport(0, 0, out->desc.width, out->desc.height);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   outlineShader->Use();
   outlineShader->SetTexture("u_image", in->texture);
@@ -268,8 +363,8 @@ auto GLRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   glViewport(0, 0, out->desc.width, out->desc.height);
   DrawSkybox();
-  DrawEntities(inputs);
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  DrawEntities(inputs, *out);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glDisable(GL_DEPTH_TEST);
 }
 auto GLRenderer::PickEntity(const int x, const int y) -> EntityID {
@@ -296,63 +391,134 @@ auto GLRenderer::PickEntity(const int x, const int y) -> EntityID {
   unsigned char pixel[4];
   glGetTextureImage(pickTexture, 0, GL_RGBA, GL_UNSIGNED_BYTE, sizeof(pixel), pixel);
   const auto value = static_cast<uint32_t>(pixel[0]) | static_cast<uint32_t>(pixel[1]) << 8 | static_cast<uint32_t>(pixel[2]) << 16;
-  if (value == 0xFFFFFFu)
+  if (value == ENTITY_ID_ENCODED_INVALID)
     return EntityID::Invalid;
   return EntityID{static_cast<long long>(value)};
 }
-auto GLRenderer::DrawEntities(std::span<std::string> inputs) -> void {
+auto GLRenderer::CaptureSceneColor(const GLRenderTarget &target) -> unsigned int {
+  const auto width = target.desc.width;
+  const auto height = target.desc.height;
+  if (width <= 0 || height <= 0)
+    return 0;
+  if (sceneColorWidth != width || sceneColorHeight != height) {
+    if (sceneColorFramebuffer)
+      glDeleteFramebuffers(1, &sceneColorFramebuffer);
+    if (sceneColorTexture)
+      glDeleteTextures(1, &sceneColorTexture);
+    glCreateFramebuffers(1, &sceneColorFramebuffer);
+    glCreateTextures(GL_TEXTURE_2D, 1, &sceneColorTexture);
+    glTextureStorage2D(sceneColorTexture, 1, TargetFormatToGL(target.desc.format).internal, width, height);
+    glTextureParameteri(sceneColorTexture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(sceneColorTexture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTextureParameteri(sceneColorTexture, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(sceneColorTexture, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glNamedFramebufferTexture(sceneColorFramebuffer, GL_COLOR_ATTACHMENT0, sceneColorTexture, 0);
+    sceneColorWidth = width;
+    sceneColorHeight = height;
+  }
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, target.framebuffer);
+  glReadBuffer(GL_COLOR_ATTACHMENT0);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sceneColorFramebuffer);
+  glDrawBuffer(GL_COLOR_ATTACHMENT0);
+  glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+  glBindFramebuffer(GL_FRAMEBUFFER, target.framebuffer);
+  glViewport(0, 0, width, height);
+  return sceneColorTexture;
+}
+auto GLRenderer::DrawEntities(std::span<std::string> inputs, const GLRenderTarget &target) -> void {
+  KUKI_PROFILE_SCOPE("DrawEntities");
   auto scene = GetScene();
   if (!scene)
     return;
-  if (const auto generation = scene->GetStructuralGeneration(); generation != renderBucketGeneration) {
-    RebuildRenderBuckets(*scene);
-    renderBucketGeneration = generation;
-  }
   auto camera = scene->GetCamera();
-  for (const auto &[meshMat, ids] : renderBuckets) {
-    if (ids.empty())
+  std::vector<GLDeferredDraw> deferred;
+  for (const auto &batch : CollectBatches(*scene, camera)) {
+    if (batch.transforms.empty())
       continue;
-    std::vector<glm::mat4> transforms;
-    std::vector<MaterialFallback> fallbacks;
-    std::vector<uint32_t> entityIds;
-    transforms.reserve(ids.size());
-    fallbacks.reserve(ids.size());
-    entityIds.reserve(ids.size());
-    for (const auto id : ids) {
-      const auto transform = scene->GetEntityComponent<Transform>(id);
-      if (camera) {
-        const auto bounds = scene->GetEntityComponent<BoundingBox>(id);
-        if (bounds && *bounds && !camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world)))
-          continue;
+    const auto blended = batch.material->fallback.alphaMode == AlphaMode::Blend;
+    if (blended || batch.material->fallback.transmission > .0f) {
+      for (size_t index = 0; index < batch.transforms.size(); ++index) {
+        const glm::vec3 position{batch.transforms[index][3]};
+        deferred.push_back({batch.mesh, batch.material, batch.fallbacks[index], batch.transforms[index], {}, batch.entityIds[index], blended, camera ? glm::distance(position, camera->position) : 0.f});
       }
-      transforms.push_back(transform->world);
-      fallbacks.push_back(scene->GetEntityComponent<GLMaterial>(id)->fallback);
-      entityIds.push_back(static_cast<uint32_t>(static_cast<long long>(id)));
+      continue;
     }
-    const auto material = scene->GetEntityComponent<GLMaterial>(ids.front());
-    DrawEntitiesInstanced(inputs, meshMat.mesh, *material, fallbacks, transforms, entityIds);
+    DrawEntitiesInstanced(inputs, *batch.mesh, *batch.material, batch.fallbacks, batch.transforms, batch.entityIds);
   }
-  DrawSkinnedEntities(inputs);
+  DrawSkinnedEntities(inputs, deferred);
+  if (deferred.empty())
+    return;
+  std::sort(deferred.begin(), deferred.end(), [](const GLDeferredDraw &first, const GLDeferredDraw &second) { return first.depth > second.depth; });
+  const auto refracts = std::any_of(deferred.begin(), deferred.end(), [](const GLDeferredDraw &draw) { return draw.material->fallback.transmission > .0f; });
+  const auto sceneColor = refracts ? CaptureSceneColor(target) : 0u;
+  auto blending = false;
+  for (const auto &draw : deferred) {
+    if (draw.blended != blending) {
+      blending = draw.blended;
+      if (blending) {
+        glEnable(GL_BLEND);
+        glDepthMask(GL_FALSE);
+      } else {
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+      }
+    }
+    if (draw.bones.empty())
+      DrawEntitiesInstanced(inputs, *draw.mesh, *draw.material, {draw.fallback}, {draw.transform}, {draw.entityId}, sceneColor);
+    else
+      DrawSkinnedMesh(inputs, *draw.mesh, *draw.material, draw.bones, draw.entityId, sceneColor);
+  }
+  if (blending) {
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+  }
 }
-auto GLRenderer::RebuildRenderBuckets(Scene &scene) -> void {
-  renderBuckets.clear();
-  scene.ForEachEntity<GLMesh, GLMaterial, Transform>([&](const EntityID id, const GLMesh *mesh, const GLMaterial *material, const Transform *) {
+auto GLRenderer::CollectBatches(Scene &scene, const Camera *camera) -> std::span<const GLDrawBatch> {
+  KUKI_PROFILE_SCOPE("CollectBatches");
+  // how many pooled batches this call has claimed; the rest is last call's, left alone for its capacity
+  size_t used = 0;
+  batchLookup.clear();
+  scene.ForEachEntity<GLMesh, GLMaterial, Transform, Optional<BoundingBox>>([&](const EntityID id, const GLMesh *mesh, const GLMaterial *material, const Transform *transform, const BoundingBox *bounds) {
     if (mesh->vao == 0 || mesh->skinned)
       return;
-    renderBuckets[GLMeshMat{.mesh = *mesh, .material = *material}].push_back(id);
+    // an entity with no bounds cannot be tested, so it is drawn; over-drawing is the safe way to be wrong
+    if (camera && bounds && *bounds && !camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world)))
+      return;
+    const GLMeshMat key{.mesh = *mesh, .material = *material};
+    auto it = batchLookup.find(key);
+    if (it == batchLookup.end()) {
+      if (used == batchPool.size())
+        batchPool.emplace_back();
+      it = batchLookup.emplace(key, used++).first;
+      auto &claimed = batchPool[it->second];
+      claimed.mesh = mesh;
+      claimed.material = material;
+      // clear, never shrink: the capacity is the whole point of pooling these
+      claimed.transforms.clear();
+      claimed.fallbacks.clear();
+      claimed.entityIds.clear();
+    }
+    auto &batch = batchPool[it->second];
+    batch.transforms.push_back(transform->world);
+    batch.fallbacks.push_back(material->fallback);
+    batch.entityIds.push_back(static_cast<uint32_t>(static_cast<long long>(id)));
   });
+  return std::span(batchPool).first(used);
 }
-auto GLRenderer::DrawSkinnedEntities(std::span<std::string> inputs) -> void {
+auto GLRenderer::DrawSkinnedEntities(std::span<std::string> inputs, std::vector<GLDeferredDraw> &deferred) -> void {
+  KUKI_PROFILE_SCOPE("DrawSkinnedEntities");
   auto scene = GetScene();
   if (!scene)
     return;
   auto camera = scene->GetCamera();
   if (!camera)
     return;
-  scene->ForEachEntity<ModelMeshHandle, GLMesh, GLMaterial, Transform>([&](const EntityID id, const ModelMeshHandle *handle, const GLMesh *mesh, const GLMaterial *material, const Transform *transform) {
+  scene->ForEachEntity<ModelMeshHandle, GLMesh, GLMaterial, Transform, Optional<BoundingBox>>([&](const EntityID id, const ModelMeshHandle *handle, const GLMesh *mesh, const GLMaterial *material, const Transform *transform, const BoundingBox *bounds) {
     if (!mesh->skinned || mesh->vao == 0)
       return;
-    if (const auto bounds = scene->GetEntityComponent<BoundingBox>(id); bounds && *bounds && !camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world)))
+    if (bounds && *bounds && !camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world)))
       return;
     auto modelAsset = app.GetAsset<ModelAsset>(handle->modelAssetId);
     if (!modelAsset || handle->meshIndex >= modelAsset->meshes.size())
@@ -379,51 +545,69 @@ auto GLRenderer::DrawSkinnedEntities(std::span<std::string> inputs) -> void {
         if (auto boneTransform = scene->GetEntityComponent<Transform>(boneEntityId); boneTransform)
           boneMatrices[i] = boneTransform->world * bone.offsetMatrix;
       }
-    auto shader = GetShader("LitSkinned");
-    if (!shader)
+    const auto entityId = static_cast<uint32_t>(static_cast<long long>(id));
+    const auto blended = material->fallback.alphaMode == AlphaMode::Blend;
+    if (blended || material->fallback.transmission > .0f) {
+      const glm::vec3 position{transform->world[3]};
+      deferred.push_back({mesh, material, material->fallback, transform->world, std::move(boneMatrices), entityId, blended, glm::distance(position, camera->position)});
       return;
-    const auto in = GetTarget(inputs, "ShadowMap");
-    const auto spotIn = GetTarget(inputs, "SpotShadowMap");
-    if (!in || !spotIn)
-      return;
-    const auto boneBufferId = CreateBuffer("BoneTransformBuffer");
-    const auto materialBufferId = CreateBuffer("MaterialBuffer");
-    const auto cameraBufferId = CreateBuffer("CameraBuffer", sizeof(CameraTransform));
-    const auto entityIdBufferId = CreateBuffer("EntityIdBuffer");
-    const auto boneBuffer = GetBuffer(boneBufferId);
-    const auto materialBuffer = GetBuffer(materialBufferId);
-    const auto cameraBuffer = GetBuffer(cameraBufferId);
-    const auto entityIdBuffer = GetBuffer(entityIdBufferId);
-    if (!boneBuffer || !materialBuffer || !cameraBuffer || !entityIdBuffer)
-      return;
-    shader->Use();
-    shader->SetCamera(*camera, cameraBuffer->id);
-    auto skybox = scene->GetAnyComponent<GLSkybox>();
-    shader->SetSkybox(skybox);
-    std::vector<Light> lights;
-    auto hasDirLight = false;
-    scene->ForEachEntity<Light>([&](const EntityID, const Light *light) {
-      if (light->type == LightType::Directional)
-        hasDirLight = true;
-      lights.push_back(*light);
-    });
-    shader->SetLighting(lights);
-    if (hasDirLight) {
-      shader->SetUniform("u_dirLight.view", shadowView);
-      shader->SetUniform("u_dirLight.projection", shadowProjection);
     }
-    shader->SetTexture("u_shadowMap", in->texture);
-    for (auto i = 0u; i < spotShadowCount; ++i)
-      shader->SetUniform("u_spotLightViewProj[" + std::to_string(i) + "]", spotShadowViewProj[i]);
-    shader->SetTexture("u_spotShadowMap", spotIn->texture);
-    shader->SetMaterial(*material);
-    shader->SetMaterialFallback(*mesh, material->fallback, materialBuffer->id);
-    shader->SetEntityIds(*mesh, std::vector<uint32_t>{static_cast<uint32_t>(static_cast<long long>(id))}, entityIdBuffer->id);
-    shader->SetBoneTransforms(boneMatrices, boneBuffer->id);
-    shader->Draw(*mesh, 1);
+    DrawSkinnedMesh(inputs, *mesh, *material, boneMatrices, entityId);
   });
 }
-auto GLRenderer::DrawEntitiesInstanced(std::span<std::string> inputs, const GLMesh &mesh, const GLMaterial &material, const std::vector<MaterialFallback> &fallbacks, const std::vector<glm::mat4> &transforms, const std::vector<uint32_t> &entityIds) -> void {
+auto GLRenderer::DrawSkinnedMesh(std::span<std::string> inputs, const GLMesh &mesh, const GLMaterial &material, std::span<const glm::mat4> bones, const uint32_t entityId, const unsigned int sceneColor) -> void {
+  auto scene = GetScene();
+  if (!scene)
+    return;
+  auto camera = scene->GetCamera();
+  if (!camera)
+    return;
+  auto shader = GetShader("LitSkinned");
+  if (!shader)
+    return;
+  const auto in = GetTarget(inputs, "ShadowMap");
+  const auto spotIn = GetTarget(inputs, "SpotShadowMap");
+  if (!in || !spotIn)
+    return;
+  const auto boneBufferId = CreateBuffer("BoneTransformBuffer");
+  const auto materialBufferId = CreateBuffer("MaterialBuffer");
+  const auto cameraBufferId = CreateBuffer("CameraBuffer", sizeof(CameraTransform));
+  const auto entityIdBufferId = CreateBuffer("EntityIdBuffer");
+  const auto boneBuffer = GetBuffer(boneBufferId);
+  const auto materialBuffer = GetBuffer(materialBufferId);
+  const auto cameraBuffer = GetBuffer(cameraBufferId);
+  const auto entityIdBuffer = GetBuffer(entityIdBufferId);
+  if (!boneBuffer || !materialBuffer || !cameraBuffer || !entityIdBuffer)
+    return;
+  shader->Use();
+  shader->SetCamera(*camera, cameraBuffer->id);
+  auto skybox = scene->GetAnyComponent<GLSkybox>();
+  shader->SetSkybox(skybox);
+  shader->SetIndirectLighting(indirect);
+  std::vector<Light> lights;
+  auto hasDirLight = false;
+  scene->ForEachEntity<Light>([&](const EntityID, const Light *light) {
+    if (light->type == LightType::Directional)
+      hasDirLight = true;
+    lights.push_back(*light);
+  });
+  shader->SetLighting(lights);
+  if (hasDirLight) {
+    shader->SetUniform("u_dirLight.view", shadowView);
+    shader->SetUniform("u_dirLight.projection", shadowProjection);
+  }
+  shader->SetTexture("u_shadowMap", in->texture);
+  for (auto i = 0u; i < spotShadowCount; ++i)
+    shader->SetUniform("u_spotLightViewProj[" + std::to_string(i) + "]", spotShadowViewProj[i]);
+  shader->SetTexture("u_spotShadowMap", spotIn->texture);
+  shader->SetMaterial(material);
+  shader->SetTexture("u_sceneColor", sceneColor);
+  shader->SetMaterialFallback(mesh, material.fallback, materialBuffer->id);
+  shader->SetEntityIds(mesh, std::vector<uint32_t>{entityId}, entityIdBuffer->id);
+  shader->SetBoneTransforms(bones, boneBuffer->id);
+  shader->Draw(mesh, 1);
+}
+auto GLRenderer::DrawEntitiesInstanced(std::span<std::string> inputs, const GLMesh &mesh, const GLMaterial &material, const std::vector<MaterialFallback> &fallbacks, const std::vector<glm::mat4> &transforms, const std::vector<uint32_t> &entityIds, const unsigned int sceneColor) -> void {
   auto scene = GetScene();
   if (!scene)
     return;
@@ -452,6 +636,7 @@ auto GLRenderer::DrawEntitiesInstanced(std::span<std::string> inputs, const GLMe
   shader->SetCamera(*camera, cameraBuffer->id);
   auto skybox = scene->GetAnyComponent<GLSkybox>();
   shader->SetSkybox(skybox);
+  shader->SetIndirectLighting(indirect);
   std::vector<Light> lights;
   auto hasDirLight = false;
   scene->ForEachEntity<Light>([&](const EntityID, const Light *light) {
@@ -469,6 +654,7 @@ auto GLRenderer::DrawEntitiesInstanced(std::span<std::string> inputs, const GLMe
     shader->SetUniform("u_spotLightViewProj[" + std::to_string(i) + "]", spotShadowViewProj[i]);
   shader->SetTexture("u_spotShadowMap", spotIn->texture);
   shader->SetMaterial(material);
+  shader->SetTexture("u_sceneColor", sceneColor);
   shader->SetMaterialFallback(mesh, fallbacks, materialBuffer->id);
   shader->SetTransform(mesh, transforms, transformBuffer->id);
   shader->SetEntityIds(mesh, entityIds, entityIdBuffer->id);
@@ -486,14 +672,43 @@ auto GLRenderer::DrawMeshes() -> void {
   if (!dirLight)
     return;
   FitShadowFrustum(*scene, *dirLight);
+  DrawOpaqueMeshes(shadowView, shadowProjection);
+}
+/// @brief Every opaque, unskinned mesh, drawn depth only through the given camera.
+///
+/// The same geometry a shadow map wants and a depth prepass wants, which differ only in whose eye
+/// they are seen from.
+auto GLRenderer::DrawOpaqueMeshes(const glm::mat4 &view, const glm::mat4 &projection) -> void {
+  auto scene = GetScene();
+  if (!scene)
+    return;
   std::unordered_map<GLMesh, std::vector<glm::mat4>> meshToTransforms;
-  scene->ForEachEntity<GLMesh, Transform>([&](const EntityID, const GLMesh *mesh, const Transform *transform) {
+  scene->ForEachEntity<GLMesh, Transform>([&](const EntityID id, const GLMesh *mesh, const Transform *transform) {
     if (mesh->vao == 0 || mesh->skinned)
+      return;
+    if (const auto material = scene->GetEntityComponent<GLMaterial>(id); material && (material->fallback.alphaMode == AlphaMode::Blend || material->fallback.transmission > .0f))
       return;
     meshToTransforms[*mesh].push_back(transform->world);
   });
   for (const auto &[mesh, transforms] : meshToTransforms)
-    DrawMeshesInstanced(mesh, transforms, shadowView, shadowProjection);
+    DrawMeshesInstanced(mesh, transforms, view, projection);
+}
+auto GLRenderer::CreateDepthPrepass(std::span<std::string>, std::span<std::string> outputs) -> void {
+  auto scene = GetScene();
+  if (!scene)
+    return;
+  const auto out = GetTarget(outputs, "SceneDepth");
+  auto camera = scene->GetCamera();
+  if (!out || !camera)
+    return;
+  glEnable(GL_DEPTH_TEST);
+  glDepthFunc(GL_LESS);
+  glDepthMask(GL_TRUE);
+  glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
+  glViewport(0, 0, out->desc.width, out->desc.height);
+  glClear(GL_DEPTH_BUFFER_BIT);
+  DrawOpaqueMeshes(camera->transform.view, camera->transform.projection);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 auto GLRenderer::DrawMeshesInstanced(const GLMesh &mesh, const std::vector<glm::mat4> &transforms, const glm::mat4 &view, const glm::mat4 &projection) -> void {
   auto shader = GetShader("ShadowMap");
@@ -514,6 +729,7 @@ auto GLRenderer::DrawMeshesInstanced(const GLMesh &mesh, const std::vector<glm::
   shader->Draw(mesh, transforms.size());
 }
 auto GLRenderer::FitShadowFrustum(Scene &scene, const Light &light) -> void {
+  KUKI_PROFILE_SCOPE("FitShadowFrustum");
   BoundingBox sceneBounds{};
   scene.ForEachEntity<BoundingBox, Transform>([&](const EntityID, const BoundingBox *box, const Transform *transform) {
     const auto worldBounds = box->GetWorldBounds(transform->world);
@@ -570,8 +786,10 @@ auto GLRenderer::CreateSpotShadowMap(std::span<std::string> inputs, std::span<st
   if (spotShadowCount == 0)
     return;
   std::unordered_map<GLMesh, std::vector<glm::mat4>> meshToTransforms;
-  scene->ForEachEntity<GLMesh, Transform>([&](const EntityID, const GLMesh *mesh, const Transform *transform) {
+  scene->ForEachEntity<GLMesh, Transform>([&](const EntityID id, const GLMesh *mesh, const Transform *transform) {
     if (mesh->vao == 0 || mesh->skinned)
+      return;
+    if (const auto material = scene->GetEntityComponent<GLMaterial>(id); material && (material->fallback.alphaMode == AlphaMode::Blend || material->fallback.transmission > .0f))
       return;
     meshToTransforms[*mesh].push_back(transform->world);
   });
@@ -638,9 +856,101 @@ auto GLRenderer::BorrowTexture(const TargetDescription &desc) -> unsigned int {
   return texturePool.Request(desc);
 }
 auto GLRenderer::Clear() -> void {
+  // Nothing to delete against, and nothing that may be attempted. Every renderer the system built
+  // is cleared at shutdown, active or not, and these calls need a current context rather than
+  // merely a live one -- so a backend that is not the one presenting drops its handles instead of
+  // naming them to whatever context happens to be current. Only its own can free them, and if that
+  // context is gone the driver has already taken them back.
+  if (!dynamic_cast<GLContext *>(app.GetGraphicsContext())) {
+    resourceRegistry.Clear();
+    assetIdToResourceId.clear();
+    assetIdToPreviewId.clear();
+    return;
+  }
+  // Everything below is deleted rather than returned to a pool. What a pool is for is the next
+  // request, and after this there is not going to be one: this runs when the backend is being torn
+  // down, and holding a texture for a scene that will never be loaded is the leak with extra steps.
+  //
+  // Deleting rather than returning also keeps the books straight for free. `Clear` on a pool drops
+  // its buckets outright, so whatever was lent out stops being counted at the same moment it stops
+  // existing, and nothing is left claiming to be in use by a scene that is gone.
+  const auto DeleteTexture = [](unsigned int &id) {
+    if (id)
+      glDeleteTextures(1, &id);
+    id = 0;
+  };
+  const auto DeleteFramebuffer = [](unsigned int &id) {
+    if (id)
+      glDeleteFramebuffers(1, &id);
+    id = 0;
+  };
+  resourceRegistry.ForEach<GLTexture>([&](GLTexture &texture) {
+    DeleteTexture(texture.id);
+  });
+  resourceRegistry.ForEach<GLSkybox>([&](GLSkybox &skybox) {
+    // Four textures from one asset, and each of them borrowed under a description of its own, so
+    // there is no single key to hand them back under even if handing them back were wanted here.
+    DeleteTexture(skybox.skybox);
+    DeleteTexture(skybox.irradiance);
+    DeleteTexture(skybox.prefilter);
+    DeleteTexture(skybox.brdf);
+  });
+  resourceRegistry.ForEach<GLRenderTarget>([&](GLRenderTarget &target) {
+    DeleteFramebuffer(target.framebuffer);
+    if (target.renderbuffer)
+      glDeleteRenderbuffers(1, &target.renderbuffer);
+    target.renderbuffer = 0;
+    DeleteTexture(target.texture);
+    DeleteTexture(target.idTexture);
+  });
+  resourceRegistry.ForEach<GLMesh>([](GLMesh &mesh) {
+    if (mesh.vao)
+      glDeleteVertexArrays(1, &mesh.vao);
+    if (mesh.ebo)
+      glDeleteBuffers(1, &mesh.ebo);
+    if (mesh.vbo)
+      glDeleteBuffers(1, &mesh.vbo);
+    mesh.vao = 0;
+    mesh.ebo = 0;
+    mesh.vbo = 0;
+  });
+  resourceRegistry.ForEach<GLBuffer>([](GLBuffer &buffer) {
+    if (buffer.id)
+      glDeleteBuffers(1, &buffer.id);
+    buffer.id = 0;
+  });
+  // A program is not a pooled object and never was: it is compiled once from source the engine
+  // carries, so the only place it can be released is here.
+  const auto DeleteProgram = [](GLShaderBase &shader) {
+    if (shader.id)
+      glDeleteProgram(shader.id);
+    shader.id = 0;
+  };
+  resourceRegistry.ForEach<GLComputeShader>(DeleteProgram);
+  resourceRegistry.ForEach<GLLitShader>(DeleteProgram);
+  resourceRegistry.ForEach<GLUnlitShader>(DeleteProgram);
   resourceRegistry.Clear();
   assetIdToResourceId.clear();
   assetIdToPreviewId.clear();
+  // Held directly rather than through the registry, because each is a fixed part of the pipeline
+  // rather than something an asset brought with it -- and so each has to be named here by hand.
+  DeleteFramebuffer(pickFramebuffer);
+  DeleteTexture(pickTexture);
+  DeleteFramebuffer(outlineIdFramebuffer);
+  DeleteTexture(outlineIdTexture);
+  outlineIdWidth = 0;
+  outlineIdHeight = 0;
+  DeleteFramebuffer(sceneColorFramebuffer);
+  DeleteTexture(sceneColorTexture);
+  sceneColorWidth = 0;
+  sceneColorHeight = 0;
+  spotShadowCount = 0;
+  // Last, so that anything the walks above returned rather than deleted still goes.
+  bufferPool.Clear();
+  framebufferPool.Clear();
+  renderbufferPool.Clear();
+  texturePool.Clear();
+  framesSinceCollect = 0;
 }
 auto GLRenderer::CreateBuffer(const std::string &name, const int &size) -> EntityID {
   EntityID id{};
@@ -745,7 +1055,6 @@ auto GLRenderer::GetResourceID(const std::string &name) const -> EntityID {
   return resourceRegistry.GetID(name);
 }
 auto GLRenderer::GetShader(const std::string &name) -> GLShader * {
-  // TODO: make `GetComponent<T>` work with derived types so we can use `GLShader` as the type argument here
   const auto id = resourceRegistry.GetID(name);
   if (!id)
     return nullptr;
@@ -792,6 +1101,11 @@ auto GLRenderer::LoadAssets(const AssetType type) -> void {
   });
 }
 auto GLRenderer::LoadScene(Scene &scene) -> void {
+  // Picked up once a frame here rather than read in the pass that needs it, because the post chain
+  // is handed target names and nothing else. A scene with no camera keeps whatever was last set,
+  // which is the same thing it draws with.
+  if (const auto camera = scene.GetCamera(); camera)
+    exposure = camera->GetExposureStops();
   std::vector<std::pair<EntityID, EntityID>> materialsToPopulate;
   scene.ForEachEntity<MaterialHandle>([&](const EntityID id, MaterialHandle *materialHandle) {
     if (!materialHandle || materialHandle->resourceId)
@@ -908,8 +1222,38 @@ auto GLRenderer::PreviewAsset(const AssetID id) -> GLTexture * {
   }
   return nullptr;
 }
+auto GLRenderer::PresentTarget(const std::string &name) -> void {
+  const auto *target = GetTarget(name);
+  if (!target || !target->framebuffer)
+    return;
+  const auto *context = app.GetGraphicsContext();
+  if (!context)
+    return;
+  const auto [surfaceWidth, surfaceHeight] = context->GetSurfaceSize();
+  if (surfaceWidth <= 0 || surfaceHeight <= 0)
+    return;
+  // A blit rather than a textured quad, because the source is already display-encoded by the tone
+  // mapping pass and the default framebuffer wants exactly those bytes. Linear filtering matters:
+  // the render resolution and the window rarely agree, and this is the one place they are reconciled.
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, target->framebuffer);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+  glBlitFramebuffer(0, 0, target->desc.width, target->desc.height, 0, 0, surfaceWidth, surfaceHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
 auto GLRenderer::Reset() -> void {
   glClearColor(0.f, 0.f, 0.f, 0.f);
+  // The pools are given a round here rather than on a timer of their own, because this is the one
+  // place that runs once a frame with a live context and nothing borrowed: the graph calls it before
+  // it touches a target, so every resource a frame will use is still in a pool or still lent out
+  // from the last one, and neither is in the middle of being handed over.
+  if (++framesSinceCollect < POOL_COLLECT_INTERVAL)
+    return;
+  framesSinceCollect = 0;
+  const auto freed = bufferPool.Collect() + framebufferPool.Collect() + renderbufferPool.Collect() + texturePool.Collect();
+  if (freed == 0)
+    return;
+  const auto usage = GetPoolUsage();
+  spdlog::debug("[GLRenderer] pools released {} resources, {} still lent out and {} waiting across {} kinds", freed, usage.inUse, usage.available, usage.keys);
 }
 auto GLRenderer::SetPreviewSize(const int size) -> void {
   if (size == previewSize || size <= 0)
@@ -920,6 +1264,11 @@ auto GLRenderer::SetPreviewSize(const int size) -> void {
 auto GLRenderer::SetResolution(const int width, const int height) -> void {
   glViewport(0, 0, width, height);
 }
+// Nothing to trace: this backend's indirect diffuse is the image-based term and screen space
+// occlusion, and both of those already end in a graph target anyone can select. The pass is still
+// executed here because the graph is shared between the backends, and one that does nothing costs
+// the call it takes to find that out.
+auto GLRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> void {}
 auto GLRenderer::UpdateTarget(const std::string &name, const TargetDescription &desc) -> void {
   const auto id = resourceRegistry.GetID(name);
   if (!id)
@@ -927,11 +1276,23 @@ auto GLRenderer::UpdateTarget(const std::string &name, const TargetDescription &
   auto target = resourceRegistry.GetComponent<GLRenderTarget>(id);
   if (!target)
     return;
+  // Reallocated in place rather than given back and asked for again, which is cheaper and is why
+  // dragging a viewport edge does not churn the pools. The cost is that the pool would otherwise go
+  // on counting these against the size they were born at -- one key per width the window has ever
+  // been, each holding a resource that is permanently lent out and can therefore never fall idle.
+  // Moving the accounting across is what lets the abandoned sizes be collected.
+  const auto previous = target->desc;
+  const TargetDescription previousId{.format = TargetFormat::RGBA8, .type = previous.type, .width = previous.width, .height = previous.height, .samples = previous.samples};
+  const TargetDescription currentId{.format = TargetFormat::RGBA8, .type = desc.type, .width = desc.width, .height = desc.height, .samples = desc.samples};
   target->desc = desc;
+  renderbufferPool.Rekey(previous, desc);
   renderbufferPool.Reallocate(desc, target->renderbuffer);
+  texturePool.Rekey(previous, desc);
   texturePool.Reallocate(desc, target->texture);
-  if (desc.pickingBuffer)
-    texturePool.Reallocate({.format = TargetFormat::RGBA8, .type = desc.type, .width = desc.width, .height = desc.height, .samples = desc.samples}, target->idTexture);
+  if (desc.pickingBuffer) {
+    texturePool.Rekey(previousId, currentId);
+    texturePool.Reallocate(currentId, target->idTexture);
+  }
   glBindFramebuffer(GL_FRAMEBUFFER, target->framebuffer);
   const auto attachment = desc.format == TargetFormat::DEPTH ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0;
   const auto textureTarget = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
@@ -967,6 +1328,7 @@ auto GLRenderer::CreateVertexBuffer(GLMesh &mesh, const std::vector<Vertex> &ver
   glCreateVertexArrays(1, &vao);
   glCreateBuffers(1, &vbo);
   mesh.vao = vao;
+  mesh.vbo = vbo;
   auto bindingIndex = 0;
   glNamedBufferData(vbo, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
   glVertexArrayVertexBuffer(mesh.vao, bindingIndex, vbo, 0, sizeof(Vertex));
@@ -1123,6 +1485,8 @@ auto GLRenderer::LoadTexture(Texture &texture) -> GLTexture {
   glTexture.flipY = texture.flipY;
   const auto isHDR = texture.range == ColorRange::HDR;
   const auto isSRGB = texture.color == ColorSpace::sRGB;
+  if (texture.compression != TextureCompression::None)
+    return LoadCompressedTexture(texture, glTexture);
   GLenum internalFormat, format;
   switch (texture.channels) {
   case 1:
@@ -1157,9 +1521,8 @@ auto GLRenderer::LoadTexture(Texture &texture) -> GLTexture {
   }
   glTexture.desc.format = GLFormatToTarget(internalFormat);
   glCreateTextures(GL_TEXTURE_2D, 1, &glTexture.id);
-  auto mipmaps = 1;
-  if (isSRGB)
-    mipmaps = std::log2(std::max(texture.width, texture.height)) + 1;
+  const auto wantsMipmaps = texture.content != TextureContent::Skybox;
+  const auto mipmaps = wantsMipmaps ? static_cast<int>(std::log2(std::max(texture.width, texture.height))) + 1 : 1;
   glTextureStorage2D(glTexture.id, mipmaps, internalFormat, texture.width, texture.height);
   const auto type = isHDR ? GL_FLOAT : GL_UNSIGNED_BYTE;
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -1186,7 +1549,60 @@ auto GLRenderer::LoadTexture(Texture &texture) -> GLTexture {
     glGenerateTextureMipmap(glTexture.id);
     break;
   }
-  texture.data = {};
+  ReleaseTexturePixels(texture);
+  return glTexture;
+}
+/// @brief Uploads an already block-compressed mip chain, level by level.
+///
+/// Nothing is generated here. `glGenerateTextureMipmap` cannot produce compressed levels, so the
+/// chain `PrepareTexturePixels` built is the whole of what this texture will ever have, and the
+/// storage is allocated to exactly that many levels rather than to a full chain that would leave
+/// the tail undefined.
+auto GLRenderer::LoadCompressedTexture(Texture &texture, GLTexture &glTexture) -> GLTexture {
+  const auto *blocks = std::get_if<std::vector<unsigned char>>(&texture.data);
+  const auto levels = GetTextureLevels(texture);
+  if (!blocks || levels.empty()) {
+    spdlog::warn("[GLRenderer] compressed texture has no data to upload");
+    return glTexture;
+  }
+  const auto isSRGB = texture.color == ColorSpace::sRGB;
+  GLenum internalFormat;
+  switch (texture.compression) {
+  case TextureCompression::BC1:
+    internalFormat = isSRGB ? GL_COMPRESSED_SRGB_S3TC_DXT1_EXT : GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
+    break;
+  case TextureCompression::BC3:
+    internalFormat = isSRGB ? GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+    break;
+  case TextureCompression::BC4:
+    internalFormat = GL_COMPRESSED_RED_RGTC1;
+    break;
+  case TextureCompression::BC5:
+    internalFormat = GL_COMPRESSED_RG_RGTC2;
+    break;
+  default:
+    spdlog::warn("[GLRenderer] unsupported texture compression");
+    return glTexture;
+  }
+  glTexture.desc.format = TargetFormat::RGBA8;
+  glCreateTextures(GL_TEXTURE_2D, 1, &glTexture.id);
+  glTextureStorage2D(glTexture.id, static_cast<int>(levels.size()), internalFormat, texture.width, texture.height);
+  for (size_t level = 0; level < levels.size(); ++level) {
+    const auto &entry = levels[level];
+    if (entry.offset + entry.bytes > blocks->size())
+      break;
+    glCompressedTextureSubImage2D(glTexture.id, static_cast<int>(level), 0, 0, entry.width, entry.height, internalFormat, static_cast<int>(entry.bytes), blocks->data() + entry.offset);
+  }
+  glTextureParameteri(glTexture.id, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTextureParameteri(glTexture.id, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTextureParameteri(glTexture.id, GL_TEXTURE_MIN_FILTER, levels.size() > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+  glTextureParameteri(glTexture.id, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  if (texture.compression == TextureCompression::BC4) {
+    glTextureParameteri(glTexture.id, GL_TEXTURE_SWIZZLE_G, GL_RED);
+    glTextureParameteri(glTexture.id, GL_TEXTURE_SWIZZLE_B, GL_RED);
+    glTextureParameteri(glTexture.id, GL_TEXTURE_SWIZZLE_A, GL_ONE);
+  }
+  ReleaseTexturePixels(texture);
   return glTexture;
 }
 auto GLRenderer::LoadModelMaterial(ModelAsset &modelAsset, const size_t materialIndex) -> EntityID {
@@ -1283,62 +1699,6 @@ auto GLRenderer::UpdatePlaceholderScale(Scene &scene, const EntityID id, const b
   } else {
     transform->scale /= extents;
     placeholderScaledMeshes.erase(id);
-  }
-}
-auto GLRenderer::GLFormatToTarget(const unsigned int format) -> TargetFormat {
-  switch (format) {
-  case GL_R8:
-    return TargetFormat::R8;
-  case GL_RG8:
-    return TargetFormat::RG8;
-  case GL_RGB8:
-    return TargetFormat::RGB8;
-  case GL_R16F:
-    return TargetFormat::R16;
-  case GL_RG16F:
-    return TargetFormat::RG16;
-  case GL_RGB16F:
-    return TargetFormat::RGB16;
-  case GL_RGB32F:
-    return TargetFormat::RGB32;
-  case GL_RGBA8:
-    return TargetFormat::RGBA8;
-  case GL_RGBA16F:
-    return TargetFormat::RGBA16;
-  case GL_RGBA32F:
-    return TargetFormat::RGBA32;
-  case GL_DEPTH_COMPONENT:
-    return TargetFormat::DEPTH;
-  default:
-    return TargetFormat::Unknown;
-  }
-}
-auto GLRenderer::TargetFormatToGL(const TargetFormat &format) -> GLFormat {
-  switch (format) {
-  case TargetFormat::R8:
-    return {GL_R, GL_R8};
-  case TargetFormat::RG8:
-    return {GL_RG, GL_RG8};
-  case TargetFormat::RGB8:
-    return {GL_RGB, GL_RGB8};
-  case TargetFormat::R16:
-    return {GL_R, GL_R16F};
-  case TargetFormat::RG16:
-    return {GL_RG, GL_RG16F};
-  case TargetFormat::RGB16:
-    return {GL_RGB, GL_RGB16F};
-  case TargetFormat::RGB32:
-    return {GL_RGB, GL_RGB32F};
-  case TargetFormat::RGBA8:
-    return {GL_RGBA, GL_RGBA8};
-  case TargetFormat::RGBA16:
-    return {GL_RGBA, GL_RGBA16F};
-  case TargetFormat::RGBA32:
-    return {GL_RGBA, GL_RGBA32F};
-  case TargetFormat::DEPTH:
-    return {GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT};
-  default:
-    return {};
   }
 }
 } // namespace kuki

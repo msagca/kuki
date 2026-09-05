@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <enum_traits.hpp>
 #include <id.hpp>
+#include <profiler.hpp>
 #include <queue>
 #include <render_graph.hpp>
 #include <render_pass.hpp>
@@ -21,13 +23,23 @@ auto RenderGraph::AddInput(std::string name) -> RenderGraph & {
   }
   return *this;
 }
-auto RenderGraph::AddOutput(std::string name, TargetDescription desc) -> RenderGraph & {
+auto RenderGraph::AddOutput(std::string name, TargetDescription desc, const TargetSizing sizing) -> RenderGraph & {
   if (passId) {
     if (auto it = nameToDesc.find(name); it != nameToDesc.end()) {
       if (desc != it->second)
         return *this;
-    } else
+    } else {
       nameToDesc.insert_or_assign(name, desc);
+      nameToSizing.insert_or_assign(name, sizing);
+    }
+    auto &outputs = idToOutputs[passId];
+    if (auto it = std::find(outputs.begin(), outputs.end(), name); it == outputs.end())
+      outputs.emplace_back(std::move(name));
+  }
+  return *this;
+}
+auto RenderGraph::AddResource(std::string name) -> RenderGraph & {
+  if (passId) {
     auto &outputs = idToOutputs[passId];
     if (auto it = std::find(outputs.begin(), outputs.end(), name); it == outputs.end())
       outputs.emplace_back(std::move(name));
@@ -64,7 +76,6 @@ auto RenderGraph::Compile() -> void {
       const auto &srcIDs = it->second;
       for (const auto &src : srcIDs)
         for (const auto &dst : dstIDs)
-          // TODO: check if a pass has an input and an output with the same name
           CreateEdge(src, dst);
     }
   Flatten();
@@ -82,6 +93,7 @@ auto RenderGraph::Execute(Renderer &renderer) -> void {
     renderer.CreateTarget(desc, name);
   });
   ForEachPass([&](const PassID id, const RenderPass pass) {
+    KUKI_PROFILE_SCOPE(EnumTraits<RenderPass>::GetNames()[static_cast<size_t>(pass)]);
     auto inputs = GetInputs(id);
     auto outputs = GetOutputs(id);
     renderer.ExecutePass(pass, inputs, outputs);
@@ -110,14 +122,22 @@ auto RenderGraph::GetOutputs(const PassID id) -> std::span<std::string> {
   return {};
 }
 auto RenderGraph::ResizeTargets(Renderer &renderer, const int width, const int height) -> void {
-  if (width < 0 || height < 0)
+  if (width <= 0 || height <= 0)
     return;
-  for (auto &[name, desc] : nameToDesc)
-    if (desc.width != width || desc.height != height) {
-      desc.width = width;
-      desc.height = height;
-      renderer.UpdateTarget(name, desc);
-    }
+  for (auto &[name, desc] : nameToDesc) {
+    const auto it = nameToSizing.find(name);
+    const auto sizing = it != nameToSizing.end() ? it->second : TargetSizing::Viewport;
+    if (sizing == TargetSizing::Fixed)
+      continue;
+    const auto half = sizing == TargetSizing::ViewportHalf;
+    const auto scaledWidth = half ? std::max(1, width / 2) : width;
+    const auto scaledHeight = half ? std::max(1, height / 2) : height;
+    if (desc.width == scaledWidth && desc.height == scaledHeight)
+      continue;
+    desc.width = scaledWidth;
+    desc.height = scaledHeight;
+    renderer.UpdateTarget(name, desc);
+  }
 }
 auto RenderGraph::AreConnected(const PassID src, const PassID dst) -> bool {
   if (src == dst)

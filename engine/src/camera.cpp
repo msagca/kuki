@@ -3,6 +3,7 @@
 #include <camera.hpp>
 #include <camera_type.hpp>
 #include <cmath>
+#include <exposure.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -28,6 +29,9 @@ auto Camera::Frame(const BoundingBox &bounds, glm::vec3 center, glm::vec3 angle,
   UpdateTransform();
   UpdateFrustum();
   ++dirty;
+}
+auto Camera::GetExposureStops() const -> float {
+  return ComputeExposureStops(exposureMode, exposure, aperture, shutterSpeed, sensitivity);
 }
 auto Camera::GetTransform() const -> Transform {
   Transform transform;

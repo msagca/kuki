@@ -3,11 +3,18 @@
 #include <functional>
 #include <kuki_engine_export.h>
 #include <memory>
-#include <spdlog/spdlog.h>
 #include <string>
 #include <unordered_map>
 #include <utility>
 namespace kuki {
+/// @brief Logs a fired sequence, out of line so this header needs no logging library.
+///
+/// One `spdlog::info` in a template body was the sole reason `spdlog/spdlog.h` sat in a public
+/// header, and `trie.hpp` is reached from `input_manager.hpp` and `entity_manager.hpp` -- so every
+/// consumer of the engine inherited it. Behaviour is unchanged, though the message now carries the
+/// `[Trie]` prefix the rest of the engine's logging uses; it fires on every matched sequence, which
+/// is arguably louder than `info` deserves.
+auto KUKI_ENGINE_API LogActionFired(const std::string &) -> void;
 template <typename T>
 struct TrieNode {
   // TODO: add unicode support
@@ -25,7 +32,7 @@ enum class TrieMatch : uint8_t { NotFound,
   PrefixFound,
   WordFound };
 template <IsTrieNode T>
-class KUKI_ENGINE_API Trie {
+class Trie {
 public:
   Trie();
   Trie &operator=(Trie<T> &&) noexcept = default;
@@ -199,7 +206,7 @@ auto Trie<T>::Find(I begin, I end) -> TrieMatch {
       return TrieMatch::NotFound;
   if constexpr (IsActionNode<T>)
     if (node->action) {
-      spdlog::info("Firing action for trigger {}", std::string(begin, end));
+      LogActionFired(std::string(begin, end));
       node->action();
     }
   return node->last ? TrieMatch::WordFound : TrieMatch::PrefixFound;

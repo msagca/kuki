@@ -1,18 +1,14 @@
 #pragma once
 #include <asset.hpp>
-#include <assimp/Importer.hpp>
-#include <assimp/material.h>
-#include <assimp/postprocess.h>
-#include <assimp/scene.h>
 #include <bounding_box.hpp>
 #include <color.hpp>
 #include <concepts.hpp>
 #include <entity_manager.hpp>
 #include <filesystem>
-#include <fstream>
 #include <future>
 #include <id.hpp>
 #include <kuki_engine_export.h>
+#include <launch_path.hpp>
 #include <manager.hpp>
 #include <material_asset.hpp>
 #include <memory>
@@ -22,20 +18,24 @@
 #include <scene.hpp>
 #include <shader_asset.hpp>
 #include <skybox_handle.hpp>
-#include <spdlog/spdlog.h>
-#include <stb_image.h>
 #include <string>
 #include <string_view>
 #include <texture_asset.hpp>
 #include <texture_content.hpp>
 #include <texture_handle.hpp>
-#include <tinyexr.h>
 #include <unordered_set>
 #include <utility>
 namespace kuki {
 class KUKI_ENGINE_API AssetManager final : public Manager {
 public:
   AssetManager(Application &);
+  /// @brief Not copyable: it owns what it holds through `unique_ptr`.
+  ///
+  /// Explicit rather than left implicit because exporting a class from a shared library
+  /// instantiates its implicit members too, and the implicit copy of a container of `unique_ptr`
+  /// does not compile. Nothing copies this, so the declaration costs nothing and says so.
+  AssetManager(const AssetManager &) = delete;
+  auto operator=(const AssetManager &) -> AssetManager & = delete;
   auto Add(std::unique_ptr<Asset>, std::string = "") -> bool;
   auto CreatePrefab(const AssetID) -> EntityID;
   auto ForEach(this auto &, auto &&) -> void;
@@ -82,17 +82,10 @@ private:
   std::unordered_multimap<std::string, AssetID> nameToId;
   std::unordered_map<std::type_index, std::unordered_set<AssetID>> typeIndexToAssetSet;
   static const std::unordered_map<std::type_index, AssetType> typeIndexToAssetType;
-  static auto AssimpToGlmMat4(const aiMatrix4x4 &) -> glm::mat4;
-  static auto AssimpTexToContent(const aiTextureType) -> TextureContent;
   template <IsAsset T>
   static auto GetAssetType() -> AssetType;
   auto CreateNodePrefab(const AssetID, const ModelAsset &, const int = 0) -> EntityID;
   auto Load(std::unique_ptr<Asset>) -> void;
-  auto LoadMaterial(std::unordered_map<std::string, unsigned int> &, const aiMaterial &, ModelAsset &, const aiScene &, const std::filesystem::path & = {}, const std::string & = {}) -> unsigned int;
-  auto LoadMesh(const aiMesh &, ModelAsset &, BoundingBox &, unsigned int, const std::string & = {}) -> unsigned int;
-  auto LoadNode(std::unordered_map<std::string, unsigned int> &, const aiNode &, const aiScene &, ModelAsset &, const std::filesystem::path & = {}, const std::string & = {}, int = -1) -> unsigned int;
-  auto LoadTexture(std::unordered_map<std::string, unsigned int> &, const aiMaterial &, const aiTextureType, ModelMaterial &, ModelAsset &, const aiScene &, const std::filesystem::path &, const std::string & = {}) -> void;
-  auto ParseAnimations(const aiScene &, ModelAsset &) -> void;
   auto RegisterModelTextures(const ModelAsset &) -> void;
   auto ResolveNodeReferences(ModelAsset &) -> void;
   auto SetName(const AssetID, std::string) -> void;
@@ -201,7 +194,7 @@ auto AssetManager::Load(const std::filesystem::path &path, std::string name, con
   const auto id = Register<T>(path, name, forcedId);
   if (idToAsset.contains(id))
     return id;
-  auto asset = Load<T>(id, path);
+  auto asset = Load<T>(id, ResolvePath(path));
   Load(std::move(asset));
   return id;
 }
@@ -214,8 +207,8 @@ auto AssetManager::LoadAsync(const std::filesystem::path &path, std::string name
     return id;
   // FIXME: `idToAsset` is not updated until the future is completed
   if (auto it = idToFuture.find(id); it == idToFuture.end()) {
-    auto future = std::async(std::launch::async, [id, path, this]() {
-      return Load<T>(id, path);
+    auto future = std::async(std::launch::async, [id, resolved = ResolvePath(path), this]() {
+      return Load<T>(id, resolved);
     });
     if (future.valid())
       idToFuture.emplace(id, std::move(future));
@@ -276,110 +269,18 @@ auto AssetManager::Load(const AssetID, const std::filesystem::path &) -> std::un
   return nullptr;
 }
 template <>
-inline auto AssetManager::Load<ModelAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
-  const auto pathNormStr = path.lexically_normal().string();
-  Assimp::Importer importer;
-  const auto aiScene = importer.ReadFile(pathNormStr, aiProcess_CalcTangentSpace | aiProcess_GlobalScale | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_Triangulate);
-  if (!aiScene) {
-    spdlog::error("[AssetManager] {}", importer.GetErrorString());
-    return nullptr;
-  }
-  if (!aiScene->mRootNode)
-    return nullptr;
-  auto model = std::make_unique<ModelAsset>(id);
-  std::unordered_map<std::string, unsigned int> visited;
-  LoadNode(visited, *aiScene->mRootNode, *aiScene, *model.get(), path.parent_path(), path.filename().string());
-  ParseAnimations(*aiScene, *model.get());
-  ResolveNodeReferences(*model.get());
-  spdlog::info("[AssetManager] loaded model: {}", pathNormStr);
-  return model;
-}
+auto KUKI_ENGINE_API AssetManager::Load<ModelAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset>;
 template <>
-inline auto AssetManager::Load<ShaderAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
-  const auto pathNormStr = path.lexically_normal().string();
-  auto shader = std::make_unique<ShaderAsset>(id);
-  const auto ext = path.extension().string();
-  if (ext == ".vert" || ext == ".vs")
-    shader->shaderType = ShaderType::Vertex;
-  else if (ext == ".frag" || ext == ".fs")
-    shader->shaderType = ShaderType::Fragment;
-  else if (ext == ".geom" || ext == ".gs")
-    shader->shaderType = ShaderType::Geometry;
-  else if (ext == ".comp")
-    shader->shaderType = ShaderType::Compute;
-  else {
-    spdlog::warn("[AssetManager] unable to infer shader type for file: {}", pathNormStr);
-    return shader;
-  }
-  std::ifstream fs(path);
-  if (!fs) {
-    spdlog::error("[AssetManager] failed to open shader file: {}", pathNormStr);
-    return shader;
-  }
-  std::stringstream ss;
-  ss << fs.rdbuf();
-  if (fs.fail()) {
-    spdlog::error("[AssetManager] failed to read shader file: {}", pathNormStr);
-    return shader;
-  }
-  fs.close();
-  shader->text = ss.str();
-  spdlog::info("[AssetManager] loaded shader: {}", pathNormStr);
-  return shader;
-}
+auto KUKI_ENGINE_API AssetManager::Load<ShaderAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset>;
+/// @brief Reads a material from a small JSON description of its untextured surface values.
+///
+/// Materials otherwise only ever arrive inside a model file, which leaves no way to author one for
+/// a scene that is built from primitives. Every field is optional and falls back to the value
+/// `MaterialFallback` already declares, so a description only states what it changes.
 template <>
-inline auto AssetManager::Load<TextureAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
-  const auto pathNormStr = path.lexically_normal().string();
-  auto textureAsset = std::make_unique<TextureAsset>(id);
-  const auto ext = path.extension().string();
-  if (ext == ".exr") {
-    float *data = nullptr;
-    const char *errMsg = nullptr;
-    auto result = LoadEXR(&data, &textureAsset->texture.width, &textureAsset->texture.height, pathNormStr.c_str(), &errMsg);
-    if (result != TINYEXR_SUCCESS) {
-      if (errMsg) {
-        spdlog::error("[AssetManager] {}", errMsg);
-        FreeEXRErrorMessage(errMsg);
-      } else
-        spdlog::error("[AssetManager] failed to load texture: {}", pathNormStr);
-    } else if (data) {
-      textureAsset->texture.channels = 4;
-      const auto size = textureAsset->texture.width * textureAsset->texture.height * textureAsset->texture.channels;
-      textureAsset->texture.data = std::vector<float>();
-      if (auto textureData = std::get_if<std::vector<float>>(&textureAsset->texture.data))
-        textureData->assign(data, data + size);
-      textureAsset->texture.range = ColorRange::HDR;
-      textureAsset->texture.content = TextureContent::Skybox;
-      textureAsset->texture.flipY = true;
-      free(data);
-      spdlog::info("[AssetManager] loaded texture: {}", pathNormStr);
-    }
-  } else if (ext == ".hdr") {
-    if (auto data = stbi_loadf(path.string().c_str(), &textureAsset->texture.width, &textureAsset->texture.height, &textureAsset->texture.channels, 0); data) {
-      const auto size = textureAsset->texture.width * textureAsset->texture.height * textureAsset->texture.channels;
-      textureAsset->texture.data = std::vector<float>();
-      if (auto textureData = std::get_if<std::vector<float>>(&textureAsset->texture.data))
-        textureData->assign(data, data + size);
-      textureAsset->texture.range = ColorRange::HDR;
-      textureAsset->texture.content = TextureContent::Skybox;
-      stbi_image_free(data);
-      spdlog::info("[AssetManager] loaded texture: {}", pathNormStr);
-    } else
-      spdlog::error("[AssetManager] failed to load texture: {}", pathNormStr);
-  } else {
-    if (auto data = stbi_load(path.string().c_str(), &textureAsset->texture.width, &textureAsset->texture.height, &textureAsset->texture.channels, 0); data) {
-      const auto size = textureAsset->texture.width * textureAsset->texture.height * textureAsset->texture.channels;
-      textureAsset->texture.data = std::vector<unsigned char>();
-      if (auto textureData = std::get_if<std::vector<unsigned char>>(&textureAsset->texture.data))
-        textureData->assign(data, data + size);
-      textureAsset->texture.range = ColorRange::LDR;
-      stbi_image_free(data);
-      spdlog::info("[AssetManager] loaded texture: {}", pathNormStr);
-    } else
-      spdlog::error("[AssetManager] failed to load texture: {}", pathNormStr);
-  }
-  return textureAsset;
-}
+auto KUKI_ENGINE_API AssetManager::Load<MaterialAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset>;
+template <>
+auto KUKI_ENGINE_API AssetManager::Load<TextureAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset>;
 template <IsAsset T>
 auto AssetManager::Register(const std::filesystem::path &path, const std::string &name, const AssetID forcedId) -> AssetID {
   if (path.empty())

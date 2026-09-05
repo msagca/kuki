@@ -4,11 +4,12 @@
 #include <component_type.hpp>
 #include <concepts.hpp>
 #include <id.hpp>
+#include <kuki_engine_export.h>
 #include <memory>
 #include <vector>
 namespace kuki {
 inline constexpr size_t ArchetypeColumnCount = ComponentMask().size();
-struct IArchetypeColumn {
+struct KUKI_ENGINE_API IArchetypeColumn {
   virtual ~IArchetypeColumn() = default;
   virtual auto Size() const -> size_t = 0;
   virtual auto EmplaceDefault() -> void = 0;

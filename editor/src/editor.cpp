@@ -1,3 +1,7 @@
+#ifdef KUKI_HAS_DIRECTX
+#include <dx_context.hpp>
+#include <imgui_impl_dx12.h>
+#endif
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <animator.hpp>
@@ -14,6 +18,8 @@
 #include <component_reflection.hpp>
 #include <cstdint>
 #include <editor.hpp>
+#include <engine_config.hpp>
+#include <enum_traits.hpp>
 #include <filesystem>
 #include <gl_render_target.hpp>
 #include <gl_skybox.hpp>
@@ -31,8 +37,12 @@
 #include <imguizmo.hpp>
 #include <key_binding_widget.hpp>
 #include <light.hpp>
+#include <limits>
+#include <material_asset.hpp>
 #include <material_type.hpp>
 #include <model_asset.hpp>
+#include <post_process.hpp>
+#include <profiler.hpp>
 #include <property_displayer.hpp>
 #include <rendering_system.hpp>
 #include <scene_serializer.hpp>
@@ -45,12 +55,36 @@
 #include <string>
 #include <texture_asset.hpp>
 #include <texture_content.hpp>
+#include <tone_mapper.hpp>
 #include <transform.hpp>
 #include <utility>
 #include <variant>
 #include <vector>
 using namespace kuki;
 namespace {
+#ifdef KUKI_HAS_DIRECTX
+kuki::DXDescriptorHeap *gImGuiSrvHeap{};
+auto ImGuiSrvAlloc(ImGui_ImplDX12_InitInfo *, D3D12_CPU_DESCRIPTOR_HANDLE *cpu, D3D12_GPU_DESCRIPTOR_HANDLE *gpu) -> void {
+  if (!gImGuiSrvHeap)
+    return;
+  const auto index = gImGuiSrvHeap->Allocate();
+  if (index == kuki::DXDescriptorHeap::InvalidIndex)
+    return;
+  *cpu = gImGuiSrvHeap->GetCPUHandle(index);
+  *gpu = gImGuiSrvHeap->GetGPUHandle(index);
+}
+auto ImGuiSrvFree(ImGui_ImplDX12_InitInfo *, D3D12_CPU_DESCRIPTOR_HANDLE cpu, D3D12_GPU_DESCRIPTOR_HANDLE) -> void {
+  if (!gImGuiSrvHeap)
+    return;
+  const auto base = gImGuiSrvHeap->GetCPUHandle(0).ptr;
+  const auto size = gImGuiSrvHeap->GetDescriptorSize();
+  if (size > 0 && cpu.ptr >= base)
+    gImGuiSrvHeap->Free(static_cast<uint32_t>((cpu.ptr - base) / size));
+}
+#endif
+} // namespace
+namespace {
+constexpr auto DEFAULT_SCENE_FILE = "scene/cornell_box.json";
 struct ShortcutDef {
   const char *label;
   const char *description;
@@ -76,6 +110,29 @@ struct DebugViewSequenceDef {
 constexpr DebugViewSequenceDef kDebugViewSequences[] = {
   {"vf", "", "Show the final render output"},
   {"vs", "ShadowMap", "Show the directional light shadow map"},
+};
+/// @brief A shading step and the keys that put it on the screen in place of the finished pixel.
+///
+/// Separate from the table above because the two select different things. That one picks which
+/// render graph target is shown, which reaches every step of the lighting that ends in a resource.
+/// These reach the rest: values that exist inside the scene shader for the length of an expression
+/// and are summed away before anything is written, which nothing can show unless the shader is asked
+/// to write them out. Most of indirect lighting is of the second kind.
+struct LightingDebugSequenceDef {
+  const char *sequence;
+  LightingDebugView view;
+  const char *description;
+};
+constexpr LightingDebugSequenceDef kLightingDebugSequences[] = {
+  {"vi", LightingDebugView::IndirectDiffuse, "Show the probe volume's bounce on its own"},
+  {"vk", LightingDebugView::SkyIrradiance, "Show the sky's diffuse contribution on its own"},
+  {"vd", LightingDebugView::DirectLight, "Show direct light on its own, as a reference"},
+  {"vu", LightingDebugView::SurfaceOcclusion, "Show the occlusion every indirect term is scaled by"},
+  {"vy", LightingDebugView::ProbeVisibility, "Show how much of the probe field each point may believe"},
+  {"vw", LightingDebugView::ProbeWeight, "Show what the eight probe corners summed to"},
+  {"vb", LightingDebugView::ProbeFallback, "Show where the leak guard gave up and interpolated anyway"},
+  {"vc", LightingDebugView::ProbeCell, "Show the octree leaf each point landed in"},
+  {"vt", LightingDebugView::ProbeBlend, "Show where in its leaf each point sits"},
 };
 auto ShortcutName(int index) -> std::string {
   return std::string("Editor.") + kShortcuts[index].label;
@@ -129,32 +186,277 @@ struct ModelAnimationSequence final : public ImSequencer::SequenceInterface {
       DrawKey(key.time);
   }
 };
+/// @brief A panel of the editor: one window, and one toggle for it on the bottom bar.
+///
+/// `size` is a fraction of the area the panels share, which is the viewport work area minus the
+/// bar. `anchor` says where in that area the window sits, 0 being the left or top edge and 1 the
+/// right or bottom one, so a panel keeps its corner whatever the resolution is. A panel with a
+/// `dockSlot` of its own takes that half of one shared window instead, 0 being the top half and 1
+/// the bottom, and then only `size` and `anchor` of the first of them place that window. All of it
+/// only decides where a panel lands the first time it is ever shown; after that its imgui.ini entry
+/// wins, including a half the user has dragged out on its own.
+struct WindowLayout {
+  const char *name;
+  ImVec2 size;
+  ImVec2 anchor;
+  bool open;
+  int dockSlot;
+};
+/// Mutable: `open` is what the bottom bar toggles, and what a window's close button clears.
+WindowLayout gWindowLayouts[] = {
+  {"Hierarchy", {.26f, 1.f}, {1.f, .0f}, true, 0},
+  {"Properties", {.26f, 1.f}, {1.f, .0f}, true, 1},
+  {"Settings", {.5f, .5f}, {.0f, 1.f}, false, -1},
+  {"Assets", {.5f, .5f}, {.0f, 1.f}, false, -1},
+  {"Animation", {.5f, .5f}, {.0f, 1.f}, false, -1},
+  {"Profiler", {.5f, .5f}, {.0f, 1.f}, false, -1},
+};
+/// @brief The height of the bottom bar, which the panels stay clear of.
+auto BarHeight() -> float {
+  return ImGui::GetFrameHeight();
+}
+/// @brief The rectangle a layout asks for, in screen coordinates.
+auto LayoutRect(const WindowLayout &layout) -> ImRect {
+  const auto *viewport = ImGui::GetMainViewport();
+  const ImVec2 area(viewport->WorkSize.x, viewport->WorkSize.y - BarHeight());
+  const ImVec2 size(layout.size.x * area.x, layout.size.y * area.y);
+  const ImVec2 pos(viewport->WorkPos.x + layout.anchor.x * (area.x - size.x), viewport->WorkPos.y + layout.anchor.y * (area.y - size.y));
+  return ImRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+}
+/// @brief The dock node holding one half of the shared panel window, split on first use.
+///
+/// Dear ImGui would make a node on demand, but it would then inherit its rectangle from whichever
+/// panel bound to it first, and asking for that rectangle with `SetNextWindowPos` is what undocks a
+/// window in the first place. Building it outright avoids both, and splitting it in two is what
+/// stacks the panels rather than tabbing them. An imgui.ini that already carries the node wins: the
+/// halves are only worth resolving on a first run, when the panels have no entry to be placed by.
+auto PanelDockId(const int slot) -> ImGuiID {
+  static const auto rootId = ImHashStr("PanelDock");
+  static ImGuiID slotIds[]{rootId, rootId};
+  static auto built = false;
+  if (built)
+    return slotIds[slot];
+  built = true;
+  if (ImGui::DockBuilderGetNode(rootId))
+    return slotIds[slot];
+  for (const auto &layout : gWindowLayouts) {
+    if (layout.dockSlot < 0)
+      continue;
+    const auto rect = LayoutRect(layout);
+    ImGui::DockBuilderAddNode(rootId);
+    ImGui::DockBuilderSetNodePos(rootId, rect.Min);
+    ImGui::DockBuilderSetNodeSize(rootId, rect.GetSize());
+    slotIds[1] = ImGui::DockBuilderSplitNode(rootId, ImGuiDir_Down, .5f, nullptr, &slotIds[0]);
+    ImGui::DockBuilderFinish(rootId);
+    break;
+  }
+  return slotIds[slot];
+}
+/// Whether the last `BeginWindow` reached `ImGui::Begin`, so `EndWindow` knows what to close.
+bool gWindowBegun{};
+/// @brief Begins a panel window and reports whether its contents are worth drawing.
+///
+/// False means the panel is toggled off on the bar, or minimized through the arrow in its title
+/// bar. `EndWindow` pairs with every call either way and closes only what was really begun.
+auto BeginWindow(const char *name, const ImGuiWindowFlags flags = 0) -> bool {
+  WindowLayout *layout{};
+  for (auto &candidate : gWindowLayouts)
+    if (strcmp(candidate.name, name) == 0) {
+      layout = &candidate;
+      break;
+    }
+  gWindowBegun = false;
+  if (layout && !layout->open)
+    return false;
+  if (layout && layout->dockSlot >= 0) {
+    // No position for these: the node holds its half, and a position would undock the panel from it.
+    ImGui::SetNextWindowDockID(PanelDockId(layout->dockSlot), ImGuiCond_FirstUseEver);
+  } else if (layout) {
+    const auto rect = LayoutRect(*layout);
+    ImGui::SetNextWindowPos(rect.Min, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(rect.GetSize(), ImGuiCond_FirstUseEver);
+  }
+  gWindowBegun = true;
+  return ImGui::Begin(name, layout ? &layout->open : nullptr, flags);
+}
+/// @brief Closes a panel window opened by `BeginWindow`, whatever that call returned.
+auto EndWindow() -> void {
+  if (gWindowBegun)
+    ImGui::End();
+  gWindowBegun = false;
+}
 } // namespace
 Editor::Editor()
-  : SystemApplication<ScriptingSystem, AnimationSystem, PhysicsSystem, RenderingSystem>({.name = "Kuki Editor", .iconPath = "image/kuki.ico"}) {}
+  : SystemApplication<ScriptingSystem, AnimationSystem, PhysicsSystem, RenderingSystem>({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api}) {
+  context.pendingApi = GetDescription().api;
+}
+auto Editor::SaveGraphicsConfig() -> void {
+  auto config = EngineConfig::Load();
+  config.api = context.pendingApi;
+  if (auto renderingSystem = GetSystem<RenderingSystem>(); renderingSystem)
+    config.toneMapper = renderingSystem->GetToneMapper();
+  config.Save();
+}
 auto Editor::Start() -> void {
   InitImGui();
+  // Read a second time rather than carried over from the constructor, which only had the backend to
+  // pass down and no rendering system yet to hand the rest to.
+  if (auto renderingSystem = GetSystem<RenderingSystem>(); renderingSystem) {
+    const auto config = EngineConfig::Load();
+    renderingSystem->SetToneMapper(config.toneMapper);
+    context.capabilities = renderingSystem->GetCapabilities();
+    // The editor composites the same target into a dockable panel, so a full-window blit of it
+    // first would be work thrown away every frame. See `RenderingSystem::SetPresentEnabled`.
+    renderingSystem->SetPresentEnabled(false);
+  }
   LoadDefaultScene();
   for (auto i = 0; i < ShortcutCount; ++i)
     RegisterBinding(ShortcutName(i), InputManager::Trigger{kShortcuts[i].key, kShortcuts[i].mods}, kShortcuts[i].description);
-  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() { SetCursorLocked(true); auto &io = ImGui::GetIO(); io.ConfigFlags |= ImGuiConfigFlags_NoMouse; });
-  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() { SetCursorLocked(false); auto &io = ImGui::GetIO(); io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
+  // Mouse look grabs the cursor and hides it from Dear ImGui, so it may only start over the game
+  // view. The panels float on top of that view now, and a right click on one of them belongs to the
+  // panel: its own context menus would never see the press otherwise.
+  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
+    if (!IsViewportHovered())
+      return;
+    mouselookActive = true;
+    SetCursorLocked(true);
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
+  });
+  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
+    if (!mouselookActive)
+      return;
+    mouselookActive = false;
+    SetCursorLocked(false);
+    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+  }, false);
   for (const auto &def : kDebugViewSequences) {
     const std::string targetName = def.targetName;
-    RegisterInputAction(def.sequence, [this, targetName]() { context.debugViewTarget = targetName; }, def.description);
+    RegisterInputAction(def.sequence, [this, targetName]() {
+      context.debugViewTarget = targetName;
+      // Going back to the final image means going back to the scene, so the shading views come off
+      // with it. Left on, the final target would still be carrying a debug quantity and the shortcut
+      // would look like it had done nothing.
+      if (targetName.empty())
+        if (auto *camera = GetCamera())
+          camera->lightingDebugView = LightingDebugView::None;
+    }, def.description);
+  }
+  // Not registered at all on a backend whose scene shader has no branch for them, rather than
+  // registered and left to do nothing. A key that changes a label and leaves the picture alone is
+  // the worst of the three options: the shortcut list still advertises it, and the person pressing
+  // it concludes the view is broken rather than absent. The list is built from the same condition,
+  // so what it offers and what works are one thing.
+  for (const auto &def : kLightingDebugSequences) {
+    if (!context.capabilities.lightingDebugViews)
+      break;
+    const auto view = def.view;
+    RegisterInputAction(def.sequence, [this, view]() {
+      // The graph target selection is dropped at the same time. The two are independent, and a
+      // shading view written into a target nobody is looking at is a key that appears to do nothing.
+      context.debugViewTarget.clear();
+      if (auto *camera = GetCamera())
+        camera->lightingDebugView = view;
+    }, def.description);
+  }
+  if (context.capabilities.probeVolume) {
+    RegisterInputAction("vp", [this]() {
+      auto *camera = GetCamera();
+      if (!camera)
+        return;
+      // Steps through the views rather than toggling one. There are six things a probe can be coloured
+      // by and one key, and stepping is how a fault gets narrowed: the irradiance view says a probe has
+      // gone wrong, and the ones after it say which of the mechanisms maintaining it is the one that
+      // failed. Wrapping through `Off` keeps the way out on the same key it came in on.
+      const auto &names = EnumTraits<ProbeDebugView>::GetNames();
+      const auto next = (static_cast<size_t>(camera->probeDebugView) + 1) % names.size();
+      camera->probeDebugView = static_cast<ProbeDebugView>(next);
+    }, "Step through the irradiance probe visualisations");
   }
 }
 auto Editor::Update(const float deltaTime) -> void {
+  KUKI_PROFILE_SCOPE("Editor");
   UpdateIO();
   UpdateView();
 }
 auto Editor::Shutdown() -> void {
-  ImGui_ImplOpenGL3_Shutdown();
+#ifdef KUKI_HAS_DIRECTX
+  if (auto *dx = dynamic_cast<DXContext *>(GetGraphicsContext()); dx) {
+    dx->WaitForGPU();
+    ImGui_ImplDX12_Shutdown();
+    gImGuiSrvHeap = nullptr;
+  } else
+#endif
+    ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
   ImGui::DestroyContext();
 }
 auto Editor::SetInputCaptureActive(bool active) -> void {
   context.state = active ? EditorState::RebindingKey : EditorState::Normal;
+}
+auto Editor::GetFPS() -> size_t {
+  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+    return renderingSystem->GetFPS();
+  return 0;
+}
+auto Editor::GetPreviewSize() -> int {
+  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+    return renderingSystem->GetPreviewSize();
+  return 0;
+}
+auto Editor::PreviewAsset(const AssetID id) -> RenderTarget * {
+  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+    return renderingSystem->PreviewAsset(id);
+  return nullptr;
+}
+auto Editor::SetPreviewSize(const int size) -> void {
+  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+    renderingSystem->SetPreviewSize(size);
+}
+auto Editor::SetResolution(const int width, const int height) -> void {
+  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+    renderingSystem->SetResolution(width, height);
+}
+auto Editor::GetMissingEntityComponents(const EntityID id) const -> std::vector<ComponentType> {
+  if (auto scene = GetScene(); scene)
+    return scene->GetMissingEntityComponents(id);
+  return {};
+}
+auto Editor::HasComponentAnywhere(const ComponentType type) const -> bool {
+  if (auto scene = GetScene(); scene)
+    return scene->HasComponentAnywhere(type);
+  return false;
+}
+auto Editor::RemoveEntityScript(const EntityID id, const std::type_index type) -> bool {
+  if (auto scene = GetScene(); scene)
+    return scene->RemoveEntityScript(id, type);
+  return false;
+}
+auto Editor::BeginKeyCapture() -> void {
+  GetInputManager().BeginKeyCapture();
+}
+auto Editor::PollKeyCapture() -> InputManager::CaptureOutcome {
+  return GetInputManager().PollKeyCapture();
+}
+auto Editor::GetBinding(const std::string &name) -> InputManager::Trigger {
+  return GetInputManager().GetBinding(name);
+}
+auto Editor::SetBinding(const std::string &name, const InputManager::Trigger &trigger) -> void {
+  GetInputManager().SetBinding(name, trigger);
+}
+auto Editor::GetTriggerName(const InputManager::Trigger &trigger) -> std::string {
+  return GetInputManager().GetTriggerName(trigger);
+}
+auto Editor::GetBindingNames() -> const std::vector<std::string> & {
+  return GetInputManager().GetBindingNames();
+}
+auto Editor::GetBindingDescription(const std::string &name) -> std::string {
+  return GetInputManager().GetBindingDescription(name);
+}
+auto Editor::GetSequenceNames() -> const std::vector<std::string> & {
+  return GetInputManager().GetSequenceNames();
+}
+auto Editor::GetSequenceDescription(const std::string &sequence) -> std::string {
+  return GetInputManager().GetSequenceDescription(sequence);
 }
 auto Editor::GetSelectedEntity() const -> EntityID {
   return context.selectedEntityId;
@@ -168,6 +470,9 @@ auto Editor::InitImGui() -> void {
   ImGui::CreateContext();
   auto &io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_DockingEnable;
+  // The panels float over a full screen game view, so dragging must start on the title bar: without
+  // this a drag that begins on empty panel space would move the window instead of reaching the tool.
+  io.ConfigWindowsMoveFromTitleBarOnly = true;
   auto fontPath = std::filesystem::path{GetDescription().path / "font/Inter-VariableFont_opsz,wght.ttf"}.string();
   io.Fonts->AddFontFromFileTTF(fontPath.c_str(), FONT_SIZE);
   auto &style = ImGui::GetStyle();
@@ -175,54 +480,54 @@ auto Editor::InitImGui() -> void {
   style.FrameRounding = .0f;
   style.TabRounding = .0f;
   style.WindowRounding = .0f;
-  ImGui_ImplGlfw_InitForOpenGL(window, true);
-  ImGui_ImplOpenGL3_Init();
+  // The panels sit on top of the game view rather than beside it, so let it show through them.
+  auto constexpr WINDOW_ALPHA = .8f;
+  auto constexpr TITLE_ALPHA = .9f;
+  style.Colors[ImGuiCol_WindowBg].w = WINDOW_ALPHA;
+  style.Colors[ImGuiCol_TitleBg].w = TITLE_ALPHA;
+  style.Colors[ImGuiCol_TitleBgActive].w = TITLE_ALPHA;
+  style.Colors[ImGuiCol_TitleBgCollapsed].w = TITLE_ALPHA;
+#ifdef KUKI_HAS_DIRECTX
+  if (auto *dx = dynamic_cast<DXContext *>(GetGraphicsContext()); dx) {
+    ImGui_ImplGlfw_InitForOther(window, true);
+    gImGuiSrvHeap = &dx->GetSRVHeap();
+    ImGui_ImplDX12_InitInfo info{};
+    info.Device = dx->GetDevice();
+    info.CommandQueue = dx->GetCommandQueue();
+    info.NumFramesInFlight = static_cast<int>(DX_FRAME_COUNT);
+    info.RTVFormat = dx->GetBackBufferFormat();
+    info.DSVFormat = DXGI_FORMAT_UNKNOWN;
+    info.SrvDescriptorHeap = dx->GetSRVHeap().Get();
+    info.SrvDescriptorAllocFn = ImGuiSrvAlloc;
+    info.SrvDescriptorFreeFn = ImGuiSrvFree;
+    ImGui_ImplDX12_Init(&info);
+  } else
+#endif
+  {
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init();
+  }
   ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
   fileBrowser.SetTitle("Browse Files");
   sceneFileBrowser.SetTypeFilters({".json"});
 }
-auto Editor::InitLayout() -> void {
-  // TODO: if an imgui.ini file exists, restore the layout from it
-  static bool firstRun = true;
-  if (!firstRun)
-    return;
-  firstRun = false;
-  auto viewport = ImGui::GetMainViewport();
-  const auto dockspaceId = ImGui::GetID("DockSpace");
-  const auto viewportSize = viewport->Size;
-  ImGui::DockBuilderRemoveNode(dockspaceId);
-  ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
-  ImGui::DockBuilderSetNodeSize(dockspaceId, viewportSize);
-  auto mainId = dockspaceId;
-  ImGui::DockBuilderDockWindow("Scene", mainId);
-  auto rightId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Right, .3f, nullptr, &mainId);
-  ImGui::DockBuilderDockWindow("Hierarchy", rightId);
-  ImGui::DockBuilderDockWindow("Settings", rightId);
-  auto rightBottomId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Down, .5f, nullptr, &rightId);
-  ImGui::DockBuilderDockWindow("Properties", rightBottomId);
-  auto bottomId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Down, .3f, nullptr, &mainId);
-  ImGui::DockBuilderDockWindow("Assets", bottomId);
-  ImGui::DockBuilderDockWindow("Animation", bottomId);
-  ImGui::DockBuilderFinish(dockspaceId);
-}
 auto Editor::LoadDefaultScene() -> void {
   const auto sceneName = "Main";
   CreateScene(sceneName);
-  const auto scenePath = GetDescription().path / "scene/default.json";
+  const auto scenePath = GetDescription().path / DEFAULT_SCENE_FILE;
   if (!SceneSerializer::Load(*this, scenePath)) {
     spdlog::error("[Editor] failed to load default scene: {}", scenePath.string());
     return;
   }
   AttachCameraController();
+  AttachSettingsEntity();
 }
 auto Editor::UpdateIO() -> void {
   static auto stateOld = EditorState::Normal;
   if (context.state != stateOld) {
     stateOld = context.state;
-    if (context.state == EditorState::Rename || context.state == EditorState::RebindingKey)
-      DisableKeys();
-    else
-      EnableKeys();
+    const auto typing = context.state == EditorState::Rename || context.state == EditorState::RebindingKey;
+    SetInputEnabled(InputManager::InputKind::Keys, !typing);
     if (context.state != EditorState::Normal) {
       context.keyState.reset();
       context.pressState.reset();
@@ -247,51 +552,70 @@ auto Editor::UpdateIO() -> void {
 }
 auto Editor::UpdateView() -> void {
   const auto wasPicking = context.state == EditorState::PickingAsset;
-  ImGui_ImplOpenGL3_NewFrame();
+#ifdef KUKI_HAS_DIRECTX
+  const auto usingDX = dynamic_cast<DXContext *>(GetGraphicsContext()) != nullptr;
+  if (usingDX)
+    ImGui_ImplDX12_NewFrame();
+  else
+#endif
+    ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
   ImGuizmo::BeginFrame();
-  ImGui::DockSpaceOverViewport(ImGui::GetID("DockSpace"));
-  InitLayout();
+  DisplayScene();
   DisplayAssets();
   DisplayAnimation();
+  DisplayProfiler();
   DisplayHierarchy();
   DisplayProperties();
   DisplaySettings();
-  DisplayScene();
+  DisplayPanelBar();
   if (wasPicking && context.state == EditorState::PickingAsset && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
     context.state = EditorState::Normal;
   ImGui::Render();
-  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+#ifdef KUKI_HAS_DIRECTX
+  if (usingDX) {
+    auto *dx = static_cast<DXContext *>(GetGraphicsContext());
+    if (auto *commandList = dx->GetCommandList(); commandList) {
+      const auto rtv = dx->GetBackBufferRTV();
+      commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+      auto *heap = dx->GetSRVHeap().Get();
+      commandList->SetDescriptorHeaps(1, &heap);
+      ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
+    }
+  } else
+#endif
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 auto Editor::ApplyPickedAsset(const AssetID assetId) -> void {
   switch (context.pickingTarget) {
   case PickingTarget::MaterialTexture: {
     auto *material = GetEntityComponent<GLMaterial>(context.pickingEntityId);
     if (material) {
-      const auto texture = static_cast<GLTexture *>(PreviewAsset(assetId));
+      const auto texture = PreviewAsset(assetId);
       if (texture) {
+        const auto handle = static_cast<unsigned int>(texture->GetTextureHandle());
         switch (context.pickingProperty) {
         case MaterialProperty::AlbedoTexture:
-          material->textures.albedo = texture->id;
+          material->textures.albedo = handle;
           break;
         case MaterialProperty::NormalTexture:
-          material->textures.normal = texture->id;
+          material->textures.normal = handle;
           break;
         case MaterialProperty::MetalnessTexture:
-          material->textures.metalness = texture->id;
+          material->textures.metalness = handle;
           break;
         case MaterialProperty::OcclusionTexture:
-          material->textures.occlusion = texture->id;
+          material->textures.occlusion = handle;
           break;
         case MaterialProperty::RoughnessTexture:
-          material->textures.roughness = texture->id;
+          material->textures.roughness = handle;
           break;
         case MaterialProperty::SpecularTexture:
-          material->textures.specular = texture->id;
+          material->textures.specular = handle;
           break;
         case MaterialProperty::EmissiveTexture:
-          material->textures.emissive = texture->id;
+          material->textures.emissive = handle;
           break;
         }
       }
@@ -316,15 +640,15 @@ auto Editor::ApplyPickedAsset(const AssetID assetId) -> void {
 }
 auto Editor::DisplayAssets() -> void {
   const auto previewSize = static_cast<float>(GetPreviewSize());
-  ImGui::Begin("Assets");
-  DisplayAssetBrowser(previewSize);
-  ImGui::End();
+  if (BeginWindow("Assets"))
+    DisplayAssetBrowser(previewSize);
+  EndWindow();
 }
 auto Editor::DisplayAssetBrowser(const float previewSize) -> void {
-  static constexpr ImVec2 UV0(0.f, 1.f);
-  static constexpr ImVec2 UV1(1.f, 0.f);
-  static constexpr ImVec2 FLIPPED_UV0(0.f, 0.f);
-  static constexpr ImVec2 FLIPPED_UV1(1.f, 1.f);
+  static constexpr ImVec2 FLIP_UV0(0.f, 1.f);
+  static constexpr ImVec2 FLIP_UV1(1.f, 0.f);
+  static constexpr ImVec2 UV0(0.f, 0.f);
+  static constexpr ImVec2 UV1(1.f, 1.f);
   static constexpr auto POPUP_WINDOW_FLAGS = ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight;
   static constexpr auto LIST_ITEM_WIDTH = 160.f;
   const auto escapePressed = context.pressState.test(static_cast<uint8_t>(KeyBit::Escape));
@@ -385,11 +709,12 @@ auto Editor::DisplayAssetBrowser(const float previewSize) -> void {
         ImGui::EndDragDropSource();
       }
       if (ImGui::IsItemHovered()) {
-        const auto texture = static_cast<GLTexture *>(PreviewAsset(id));
+        const auto texture = PreviewAsset(id);
         if (texture && ImGui::BeginTooltip()) {
-          const auto &uv0 = texture->flipY ? FLIPPED_UV0 : UV0;
-          const auto &uv1 = texture->flipY ? FLIPPED_UV1 : UV1;
-          ImGui::ImageButton("##ListPreview", static_cast<ImTextureID>(texture->id), ImVec2(previewSize, previewSize), uv0, uv1);
+          const auto flip = texture->NeedsVerticalFlip();
+          const auto &uv0 = flip ? FLIP_UV0 : UV0;
+          const auto &uv1 = flip ? FLIP_UV1 : UV1;
+          TextureButton("##ListPreview", static_cast<ImTextureID>(texture->GetTextureHandle()), ImVec2(previewSize, previewSize), uv0, uv1);
           ImGui::EndTooltip();
         }
       }
@@ -408,11 +733,12 @@ auto Editor::DisplayAssetBrowser(const float previewSize) -> void {
         ImGui::SameLine();
       ImGui::PushID(static_cast<int>(id));
       ImGui::BeginGroup();
-      const auto texture = static_cast<GLTexture *>(PreviewAsset(id));
-      const auto tex = texture ? static_cast<ImTextureID>(texture->id) : ImTextureID{};
-      const auto &uv0 = texture && texture->flipY ? FLIPPED_UV0 : UV0;
-      const auto &uv1 = texture && texture->flipY ? FLIPPED_UV1 : UV1;
-      const auto clicked = ImGui::ImageButton("##Thumbnail", tex, ImVec2(previewSize, previewSize), uv0, uv1);
+      const auto texture = PreviewAsset(id);
+      const auto tex = texture ? static_cast<ImTextureID>(texture->GetTextureHandle()) : ImTextureID{};
+      const auto flip = !texture || texture->NeedsVerticalFlip();
+      const auto &uv0 = flip ? FLIP_UV0 : UV0;
+      const auto &uv1 = flip ? FLIP_UV1 : UV1;
+      const auto clicked = TextureButton("##Thumbnail", tex, ImVec2(previewSize, previewSize), uv0, uv1);
       if (picking && clicked)
         ApplyPickedAsset(id);
       if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
@@ -441,12 +767,17 @@ auto Editor::DisplayAssetBrowser(const float previewSize) -> void {
         LoadAssetAsync<ModelAsset>(filepath);
       else if (ext == ".hdr" || ext == ".exr")
         LoadAssetAsync<TextureAsset>(filepath);
+      else if (ext == ".mat")
+        LoadAssetAsync<MaterialAsset>(filepath);
     }
     fileBrowser.ClearSelected();
   }
 }
 auto Editor::DisplayAnimation() -> void {
-  ImGui::Begin("Animation");
+  if (!BeginWindow("Animation")) {
+    EndWindow();
+    return;
+  }
   Animator *animator{};
   Skeleton *skeleton{};
   if (!context.selectedEntities.empty()) {
@@ -460,13 +791,13 @@ auto Editor::DisplayAnimation() -> void {
   }
   if (!animator || !skeleton) {
     ImGui::TextDisabled("Select an entity with an Animator component to preview its animation.");
-    ImGui::End();
+    EndWindow();
     return;
   }
   auto modelAsset = GetAsset<ModelAsset>(animator->modelAssetId);
   if (!modelAsset || animator->clipIndex < 0 || animator->clipIndex >= static_cast<int>(modelAsset->animations.size())) {
     ImGui::TextDisabled("Selected entity's Animator has no valid clip assigned.");
-    ImGui::End();
+    EndWindow();
     return;
   }
   auto &clip = modelAsset->animations[animator->clipIndex];
@@ -486,7 +817,7 @@ auto Editor::DisplayAnimation() -> void {
   auto firstFrame = 0;
   if (ImSequencer::Sequencer(&sequence, &currentFrame, &expanded, &selectedEntry, &firstFrame, ImSequencer::SEQUENCER_CHANGE_FRAME))
     animator->time = static_cast<float>(currentFrame);
-  ImGui::End();
+  EndWindow();
 }
 auto Editor::DisplayEntity(const EntityID id) -> void {
   static constexpr auto TREE_NODE_FLAGS = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_NavLeftJumpsToParent;
@@ -603,7 +934,10 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
 }
 auto Editor::DisplayHierarchy() -> void {
   static constexpr auto POPUP_WINDOW_FLAGS = ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight;
-  ImGui::Begin("Hierarchy");
+  if (!BeginWindow("Hierarchy")) {
+    EndWindow();
+    return;
+  }
   const auto clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
   const auto windowHovered = ImGui::IsWindowHovered();
   const auto itemsHovered = ImGui::IsAnyItemHovered();
@@ -670,7 +1004,7 @@ auto Editor::DisplayHierarchy() -> void {
       LoadScene(path);
     sceneFileBrowser.ClearSelected();
   }
-  ImGui::End();
+  EndWindow();
 }
 auto Editor::SaveScene(const std::filesystem::path &path) -> void {
   if (SceneSerializer::Save(*this, path))
@@ -688,7 +1022,33 @@ auto Editor::LoadScene(const std::filesystem::path &path) -> void {
   context.state = EditorState::Normal;
   displayedEntities.clear();
   AttachCameraController();
+  AttachSettingsEntity();
   spdlog::info("[Editor] loaded scene from: {}", path.string());
+}
+auto Editor::HasSceneSingleton(const ComponentType type) const -> bool {
+  // Anywhere in the scene, not merely on the selected entity -- that is what makes it a property of
+  // the scene rather than of whatever carries it. The caller has already established this entity
+  // does not have one, so finding one at all means it is somewhere else.
+  return Component::IsSceneSingleton(type) && HasComponentAnywhere(type);
+}
+auto Editor::AttachSettingsEntity() -> EntityID {
+  // Found by the component rather than by the entity's name, which is the same way the camera
+  // controller finds its camera. A name would be a second thing to keep in step, and the component
+  // is what actually matters here -- whatever it is sitting on is the settings entity.
+  //
+  // Reused rather than replaced when one is already there, so reloading a scene does not throw away
+  // tuning that was in the middle of being done.
+  auto id = EntityID::Invalid;
+  ForEachEntity<IndirectLighting>([&id](const EntityID entity, IndirectLighting *) {
+    if (!id)
+      id = entity;
+  });
+  if (id)
+    return id;
+  id = CreateEntity("Settings");
+  if (id)
+    AddEntityComponent<IndirectLighting>(id);
+  return id;
 }
 auto Editor::AttachCameraController() -> EntityID {
   auto cameraId = EntityID::Invalid;
@@ -754,11 +1114,129 @@ static auto IsHandleComponent(const ComponentType type) -> bool {
     return false;
   }
 }
+auto Editor::DisplayProfileNode(const size_t index) -> void {
+  const auto &nodes = Profiler::Get().GetNodes();
+  const auto &node = nodes[index];
+  auto childMillis = .0;
+  for (const auto child : node.children)
+    childMillis += nodes[child].lastMillis;
+  const auto children = node.children;
+  const auto cold = node.lastCalls == 0;
+  auto flags = ImGuiTreeNodeFlags_SpanFullWidth | ImGuiTreeNodeFlags_DefaultOpen;
+  if (children.empty())
+    flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+  ImGui::TableNextRow();
+  ImGui::TableNextColumn();
+  if (cold)
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+  const auto open = ImGui::TreeNodeEx(node.name.c_str(), flags);
+  ImGui::TableNextColumn();
+  ImGui::Text("%u", node.lastCalls);
+  ImGui::TableNextColumn();
+  ImGui::Text("%.3f", node.lastMillis);
+  ImGui::TableNextColumn();
+  ImGui::Text("%.3f", node.lastMillis - childMillis);
+  ImGui::TableNextColumn();
+  ImGui::Text("%.3f", node.avgMillis);
+  ImGui::TableNextColumn();
+  ImGui::Text("%.3f", node.maxMillis);
+  ImGui::TableNextColumn();
+  if (node.sampledFrames > 0)
+    ImGui::Text("%llu", static_cast<unsigned long long>(node.maxFrame));
+  else
+    ImGui::TextUnformatted("-");
+  if (cold)
+    ImGui::PopStyleColor();
+  if (!open)
+    return;
+  for (const auto child : children)
+    DisplayProfileNode(child);
+  if (!children.empty())
+    ImGui::TreePop();
+}
+auto Editor::DisplayPanelBar() -> void {
+  static constexpr auto BAR_FLAGS = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_AlwaysAutoResize;
+  const auto *viewport = ImGui::GetMainViewport();
+  const auto height = BarHeight();
+  // Pinned to the bottom left of the viewport by its own bottom left corner and sized by its
+  // contents: with no padding and no border that makes it exactly one toggle tall, which is the
+  // room the panels leave for it. A fixed size would be pushed back up to style.WindowMinSize and
+  // leave a bare strip under the toggles that the panels above would then overlap.
+  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x, viewport->WorkPos.y + viewport->WorkSize.y), ImGuiCond_Always, ImVec2(.0f, 1.f));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(.0f, .0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, .0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(.0f, .0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(.5f, .5f));
+  ImGui::Begin("##PanelBar", nullptr, BAR_FLAGS);
+  const auto padding = ImGui::GetStyle().FramePadding.x * 2.f;
+  auto first = true;
+  for (auto &layout : gWindowLayouts) {
+    if (!first)
+      ImGui::SameLine();
+    first = false;
+    if (ImGui::Selectable(layout.name, layout.open, ImGuiSelectableFlags_None, ImVec2(ImGui::CalcTextSize(layout.name).x + padding, height)))
+      layout.open = !layout.open;
+  }
+  ImGui::End();
+  ImGui::PopStyleVar(4);
+}
+auto Editor::DisplayProfiler() -> void {
+  static constexpr auto TABLE_FLAGS = ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_ScrollY;
+  if (!BeginWindow("Profiler")) {
+    EndWindow();
+    return;
+  }
+  auto &profiler = Profiler::Get();
+  auto enabled = profiler.IsEnabled();
+  if (ImGui::Checkbox("Enabled", &enabled))
+    profiler.SetEnabled(enabled);
+  ImGui::SameLine();
+  auto paused = profiler.IsPaused();
+  if (ImGui::Checkbox("Pause", &paused))
+    profiler.SetPaused(paused);
+  ImGui::SameLine();
+  if (ImGui::Button("Reset"))
+    profiler.Reset();
+  ImGui::SameLine();
+  const auto frameMillis = profiler.GetFrameMillis();
+  ImGui::TextDisabled("frame %llu | %.2f ms | %.0f FPS", static_cast<unsigned long long>(profiler.GetFrameIndex()), frameMillis, frameMillis > .0f ? 1000.f / frameMillis : .0f);
+  const auto &history = profiler.GetFrameHistory();
+  ImGui::PlotLines("##FrameTimes", history.data(), static_cast<int>(history.size()), static_cast<int>(profiler.GetFrameHistoryOffset()), nullptr, .0f, std::numeric_limits<float>::max(), ImVec2(-1.f, 48.f));
+  if (const auto &marks = profiler.GetMarks(); !marks.empty() && ImGui::CollapsingHeader("Marks")) {
+    ImGui::TextDisabled("recorded on frame %llu", static_cast<unsigned long long>(profiler.GetMarkFrame()));
+    for (const auto &mark : marks)
+      ImGui::Text("%8.3f ms  %s", mark.millis, mark.name.c_str());
+  }
+  if (!profiler.IsEnabled())
+    ImGui::TextDisabled("Profiling is off. Nothing is being recorded.");
+  else if (profiler.IsPaused())
+    ImGui::TextDisabled("Paused. The numbers below are frozen where they were.");
+  const auto tableHeight = std::max(ImGui::GetContentRegionAvail().y, ImGui::GetTextLineHeightWithSpacing() * 4.f);
+  if (ImGui::BeginTable("ProfilerScopes", 7, TABLE_FLAGS, ImVec2(.0f, tableHeight))) {
+    ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_WidthFixed, 48.f);
+    ImGui::TableSetupColumn("Last (ms)", ImGuiTableColumnFlags_WidthFixed, 72.f);
+    ImGui::TableSetupColumn("Self (ms)", ImGuiTableColumnFlags_WidthFixed, 72.f);
+    ImGui::TableSetupColumn("Avg (ms)", ImGuiTableColumnFlags_WidthFixed, 72.f);
+    ImGui::TableSetupColumn("Max (ms)", ImGuiTableColumnFlags_WidthFixed, 72.f);
+    ImGui::TableSetupColumn("Peak frame", ImGuiTableColumnFlags_WidthFixed, 80.f);
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableHeadersRow();
+    for (const auto root : profiler.GetRoots())
+      DisplayProfileNode(root);
+    ImGui::EndTable();
+  }
+  EndWindow();
+}
 auto Editor::DisplayProperties() -> void {
   static constexpr auto POPUP_WINDOW_FLAGS = ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight;
-  if (!context.selectedEntityId)
+  const auto expanded = BeginWindow("Properties");
+  if (!expanded || !context.selectedEntityId) {
+    if (expanded)
+      ImGui::TextDisabled("Select an entity to edit its components.");
+    EndWindow();
     return;
-  ImGui::Begin("Properties");
+  }
   auto componentTypes = GetEntityComponentTypes(context.selectedEntityId);
   for (auto i = 0; i < componentTypes.size(); ++i) {
     const auto componentType = componentTypes[i];
@@ -773,7 +1251,7 @@ auto Editor::DisplayProperties() -> void {
         if (!script)
           continue;
         ImGui::PushID(static_cast<int>(s));
-        const auto scriptOpen = ImGui::CollapsingHeader(script->GetName().c_str());
+        const auto scriptOpen = ImGui::CollapsingHeader(script->GetTypeName().c_str(), ImGuiTreeNodeFlags_DefaultOpen);
         if (ImGui::BeginPopupContextItem()) {
           if (ImGui::MenuItem("Remove"))
             scriptRemoved = RemoveEntityScript(context.selectedEntityId, script->GetTypeIndex());
@@ -787,13 +1265,13 @@ auto Editor::DisplayProperties() -> void {
       }
       ImGui::PopID();
       if (scriptRemoved) {
-        ImGui::End();
+        EndWindow();
         return;
       }
       continue;
     }
     const auto name = Component::GetTypeName(componentType);
-    const auto open = ImGui::CollapsingHeader(name.c_str());
+    const auto open = ImGui::CollapsingHeader(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
     auto removed = false;
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove")) {
@@ -808,14 +1286,14 @@ auto Editor::DisplayProperties() -> void {
     }
     ImGui::PopID();
     if (removed) {
-      ImGui::End();
+      EndWindow();
       return;
     }
   }
   if (ImGui::BeginPopupContextWindow("AddComponent", POPUP_WINDOW_FLAGS)) {
     auto availableComponents = GetMissingEntityComponents(context.selectedEntityId);
     for (const auto &compType : availableComponents)
-      if (!IsHandleComponent(compType) && !Component::IsGL(compType) && compType != ComponentType::Script && ImGui::MenuItem(Component::GetTypeName(compType).c_str()))
+      if (!IsHandleComponent(compType) && !Component::IsGL(compType) && compType != ComponentType::Script && !HasSceneSingleton(compType) && ImGui::MenuItem(Component::GetTypeName(compType).c_str()))
         AddComponentByType(*this, context.selectedEntityId, compType);
     if (ImGui::BeginMenu("GL")) {
       for (const auto &compType : availableComponents)
@@ -836,18 +1314,31 @@ auto Editor::DisplayProperties() -> void {
     }
     ImGui::EndPopup();
   }
-  ImGui::End();
+  EndWindow();
 }
 auto Editor::DisplayProperties(const ComponentVariant &variant) -> void {
   PropertyDisplayer displayer{context, *this};
   std::visit(displayer, variant);
 }
 auto Editor::DisplayScene() -> void {
-  static constexpr auto SCENE_WINDOW_FLAGS = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-  static constexpr ImVec2 UV0(0.f, 1.f);
-  static constexpr ImVec2 UV1(1.f, 0.f);
+  // The game view is the backdrop the panels float over: it covers the whole viewport, has no
+  // decoration of its own, and never comes to the front when clicked.
+  static constexpr auto SCENE_WINDOW_FLAGS = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+  static constexpr ImVec2 FLIP_UV0(0.f, 1.f);
+  static constexpr ImVec2 FLIP_UV1(1.f, 0.f);
+  static constexpr ImVec2 UV0(0.f, 0.f);
+  static constexpr ImVec2 UV1(1.f, 1.f);
   static constexpr float PICK_DRAG_THRESHOLD_SQ = 4.f * 4.f;
+  const auto *viewport = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos(viewport->Pos);
+  ImGui::SetNextWindowSize(viewport->Size);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(.0f, .0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, .0f);
+  // The panels are translucent, the backdrop must not be: nothing renders behind the game view.
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(.0f, .0f, .0f, 1.f));
   ImGui::Begin("Scene", nullptr, SCENE_WINDOW_FLAGS);
+  ImGui::PopStyleColor();
+  ImGui::PopStyleVar(2);
   SetViewportHovered(ImGui::IsWindowHovered());
   if (IsBindingPressed(ShortcutName(ToggleFPS)))
     context.showFPS = !context.showFPS;
@@ -857,17 +1348,18 @@ auto Editor::DisplayScene() -> void {
     const auto sceneWidth = static_cast<int>(contentRegion.x);
     const auto sceneHeight = static_cast<int>(contentRegion.y);
     SetResolution(sceneWidth, sceneHeight);
-    const auto sceneTarget = static_cast<GLRenderTarget *>(renderingSystem->GetTarget(context.debugViewTarget));
-    if (sceneTarget && sceneTarget->texture > 0) {
+    const auto sceneTarget = renderingSystem->GetTarget(context.debugViewTarget);
+    if (sceneTarget && sceneTarget->GetTextureHandle() > 0) {
       const auto res = renderingSystem->GetResolution();
-      ImGui::Image(sceneTarget->texture, ImVec2(res.first, res.second), UV0, UV1);
+      const auto flip = sceneTarget->NeedsVerticalFlip();
+      ImGui::Image(static_cast<ImTextureID>(sceneTarget->GetTextureHandle()), ImVec2(res.first, res.second), flip ? FLIP_UV0 : UV0, flip ? FLIP_UV1 : UV1);
       const auto imageMin = ImGui::GetItemRectMin();
       const auto imageMax = ImGui::GetItemRectMax();
-      if (ImGui::IsItemHovered() && GetButtonDown(GLFW_MOUSE_BUTTON_LEFT) && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
+      if (ImGui::IsItemHovered() && IsInputPressed(GLFW_MOUSE_BUTTON_LEFT) && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
         pickPressPos = GetMousePosition();
         trackingClick = true;
       }
-      if (trackingClick && GetButtonUp(GLFW_MOUSE_BUTTON_LEFT)) {
+      if (trackingClick && IsInputReleased(GLFW_MOUSE_BUTTON_LEFT)) {
         trackingClick = false;
         const auto releasePos = GetMousePosition();
         const auto dx = releasePos.x - pickPressPos.x;
@@ -912,13 +1404,17 @@ auto Editor::DisplayScene() -> void {
     ImGui::EndDragDropTarget();
   }
   if (context.showFPS) {
-    ImGui::SetCursorPos(ImVec2(ImGui::GetTextLineHeight(), ImGui::GetFrameHeight() + ImGui::GetTextLineHeight()));
+    // The game view has no padding of its own, so this lands in the very corner of the viewport.
+    ImGui::SetCursorPos(ImVec2(.0f, .0f));
     ImGui::Text("%zu", GetFPS());
   }
   ImGui::End();
 }
 auto Editor::DisplaySettings() -> void {
-  ImGui::Begin("Settings");
+  if (!BeginWindow("Settings")) {
+    EndWindow();
+    return;
+  }
   ImGui::Checkbox("Show FPS", &context.showFPS);
   auto previewSize = GetPreviewSize();
   if (ImGui::SliderInt("Asset Preview Size", &previewSize, 32, 256, "%d", ImGuiSliderFlags_AlwaysClamp))
@@ -934,6 +1430,84 @@ auto Editor::DisplaySettings() -> void {
     });
     ImGui::EndCombo();
   }
+  ImGui::SetItemTooltip("Which render graph target is shown in place of the final image.\nThese are the steps of the lighting that end in a resource;\nthe camera's two views are the ones that do not.");
+  if (auto renderingSystem = GetSystem<RenderingSystem>(); renderingSystem) {
+    if (context.capabilities.lightingDebugViews || context.capabilities.probeVolume) {
+      ImGui::TextDisabled("Shading and probe views are on the Camera.");
+      ImGui::SetItemTooltip("A debug view is a way of looking, so it belongs to the thing that looks.\nSelect a camera in the hierarchy to set its view, and keep a second camera\non a different one to switch between them by switching camera.");
+    } else {
+      // Said once, here, rather than left for somebody to work out from a combo box that is not
+      // there. The targets above are the whole of what this backend can be asked to draw in place
+      // of the picture, and knowing that is the difference between a limitation and a suspected
+      // fault.
+      ImGui::TextDisabled("This backend has no shading or probe views.");
+      ImGui::SetItemTooltip("Those are values inside the scene shader, and this one writes finished\npixels only. The targets above are every step of the frame it can show.");
+    }
+    if (ImGui::CollapsingHeader("Passes")) {
+      // Collapsed by default. Twelve checkboxes is a lot to put in front of somebody who came here
+      // to change the tone curve, and the reason to open it -- finding out what a pass is worth by
+      // taking it away -- is a thing you go looking for rather than come across.
+      const auto &passNames = EnumTraits<RenderPass>::GetNames();
+      for (size_t i = 0; i < passNames.size(); ++i) {
+        const auto pass = static_cast<RenderPass>(i);
+        // The trace is in the graph on every backend, because the scene pass orders against its
+        // output whether or not anything fills it. Only a backend that fills it gets the checkbox:
+        // standing down a pass that does nothing is a control with nothing on the other end.
+        if (pass == RenderPass::ProbeTrace && !context.capabilities.probeVolume)
+          continue;
+        auto enabled = renderingSystem->IsPassEnabled(pass);
+        if (ImGui::Checkbox(passNames[i], &enabled))
+          renderingSystem->SetPassEnabled(pass, enabled);
+      }
+      ImGui::SetItemTooltip("A pass that is off still runs a stand-in, so the passes after it are\nhanded something usable rather than the picture from last frame.\nMostly that means the input passed through untouched.");
+      if (const auto usage = renderingSystem->GetPoolUsage(); usage.inUse || usage.available) {
+        ImGui::Separator();
+        ImGui::Text("Pools: %zu lent, %zu waiting, %zu kinds", usage.inUse, usage.available, usage.keys);
+        ImGui::SetItemTooltip("Reusable textures, buffers and framebuffers the backend is holding.\nWhat is waiting is trimmed back to recent demand every few seconds,\nand a size nothing has asked for in a while is released outright.");
+      }
+    }
+  }
+  ImGui::Separator();
+  ImGui::TextUnformatted("Graphics");
+  const auto activeApi = GetDescription().api;
+  if (ImGui::BeginCombo("Rendering API", std::string(ToString(context.pendingApi)).c_str())) {
+    for (const auto api : {RenderingAPI::OpenGL, RenderingAPI::DirectX, RenderingAPI::Vulkan}) {
+      const auto available = IsAvailable(api);
+      ImGui::BeginDisabled(!available);
+      const auto label = std::string(ToString(api)) + (available ? "" : " (unavailable)");
+      if (ImGui::Selectable(label.c_str(), context.pendingApi == api) && available) {
+        context.pendingApi = api;
+        SaveGraphicsConfig();
+      }
+      ImGui::EndDisabled();
+    }
+    ImGui::EndCombo();
+  }
+  if (auto renderingSystem = GetSystem<RenderingSystem>(); renderingSystem) {
+    const auto &toneMapperNames = EnumTraits<ToneMapper>::GetNames();
+    const auto activeToneMapper = renderingSystem->GetToneMapper();
+    if (ImGui::BeginCombo("Tone Mapping", toneMapperNames[static_cast<size_t>(activeToneMapper)])) {
+      for (size_t i = 0; i < toneMapperNames.size(); ++i)
+        if (ImGui::Selectable(toneMapperNames[i], static_cast<size_t>(activeToneMapper) == i)) {
+          renderingSystem->SetToneMapper(static_cast<ToneMapper>(i));
+          SaveGraphicsConfig();
+        }
+      ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("Curve the scene's radiance is fitted onto the display with.\nNone clips and is the reference to judge the others against;\nACES is punchy and shifts bright saturated colour towards yellow;\nAgX holds hue and desaturates towards white instead.");
+    ImGui::TextDisabled("Exposure is on the active camera.");
+    ImGui::SetItemTooltip("The curve is a property of the display you are working at, so it lives here.\nThe exposure feeding it belongs to the shot, so it lives on the Camera\ncomponent and is saved with the scene.");
+    if (const auto budget = renderingSystem->GetUploadBudget(); budget > 0) {
+      auto megabytes = static_cast<int>(budget / (1024 * 1024));
+      if (ImGui::SliderInt("Texture Upload Batch", &megabytes, 16, 512, "%d MB", ImGuiSliderFlags_AlwaysClamp))
+        renderingSystem->SetUploadBudget(static_cast<size_t>(megabytes) * 1024 * 1024);
+      ImGui::SetItemTooltip("Texture staging held in flight before the upload path waits for the GPU.\nLarger batches mean fewer waits while a model loads and more memory held while it does.");
+    }
+  }
+  if (context.pendingApi == activeApi)
+    ImGui::TextDisabled("Active: %s", std::string(ToString(activeApi)).c_str());
+  else
+    ImGui::TextColored(ImVec4(1.f, .8f, .2f, 1.f), "Restart to switch from %s to %s", std::string(ToString(activeApi)).c_str(), std::string(ToString(context.pendingApi)).c_str());
   ImGui::Separator();
   ImGui::Text("Shortcuts");
   const auto &bindingNames = GetBindingNames();
@@ -953,7 +1527,7 @@ auto Editor::DisplaySettings() -> void {
   ImGui::Text("Sequences");
   for (const auto &sequence : GetSequenceNames())
     DisplaySequenceRow(sequence, GetSequenceDescription(sequence));
-  ImGui::End();
+  EndWindow();
 }
 auto Editor::DrawManipulator(const float width, const float height) -> void {
   if (context.selectedEntities.empty())

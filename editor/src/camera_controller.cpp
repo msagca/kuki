@@ -51,6 +51,17 @@ constexpr BindingDef kBindings[BindingCount] = {
   {"Precision", "Hold to move the camera slower, for fine adjustments", GLFW_KEY_LEFT_CONTROL, 0},
   {"Focus", "Focus the camera on the selected entity", GLFW_KEY_F, 0},
 };
+/// @brief What this controller's bindings are called in the one place bindings live.
+///
+/// Registered application-wide rather than held per controller, and so shared by every controller in
+/// the scene. Two of them cannot be given different keys, which is a real limitation and the right
+/// trade: the alternative is a set of keys per instance, which nothing can edit without a panel for
+/// it, and a panel for it makes every script's input a thing the editor has to know how to display.
+///
+/// What a shared registry does buy is that a collision is detectable. `InputManager::AssignBinding`
+/// warns when one of these takes a key from something else, or when something else takes one of
+/// these -- which is the failure worth catching, and it is caught in the engine, so a build with no
+/// editor in it still reports two scripts fighting over a key.
 auto BindingName(int index) -> std::string {
   return std::string("CameraController.") + kBindings[index].label;
 }
@@ -59,6 +70,7 @@ KUKI_REGISTER_SCRIPT(CameraController)
 CameraController::CameraController()
   : Script(std::in_place_type<CameraController>) {}
 CameraController::~CameraController() {
+  auto *app = GetApp();
   if (!app)
     return;
   if (rmbPressActionId != InputManager::InvalidActionID)
@@ -77,7 +89,6 @@ CameraController::~CameraController() {
 auto CameraController::CloneTo(EntityManager &entityManager, const EntityID id) const -> void {
   auto script = entityManager.AddComponent<CameraController>(id);
   *script = *this;
-  script->app = nullptr;
   script->rmbPressActionId = InputManager::InvalidActionID;
   script->rmbReleaseActionId = InputManager::InvalidActionID;
   script->lmbPressActionId = InputManager::InvalidActionID;
@@ -92,7 +103,7 @@ auto CameraController::Display() const -> void {
   ImGui::DragFloat("Boost Ramp Up Time", &settings.boostRampUpTime, .05f, .05f, 10.f, "%.2fs");
   ImGui::DragFloat("Boost Ramp Down Time", &settings.boostRampDownTime, .05f, .05f, 10.f, "%.2fs");
 }
-auto CameraController::GetName() const -> std::string {
+auto CameraController::GetTypeName() const -> std::string {
   return "Camera Controller";
 }
 auto CameraController::GetProjection() const -> const glm::mat4 & {
@@ -105,7 +116,6 @@ auto CameraController::GetView() const -> const glm::mat4 & {
   return camera.transform.view;
 }
 auto CameraController::Start(Application &app) -> void {
-  this->app = &app;
   for (auto i = 0; i < BindingCount; ++i)
     app.RegisterBinding(BindingName(i), InputManager::Trigger{kBindings[i].key, kBindings[i].mods}, kBindings[i].description);
   rmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this, &app]() {
@@ -172,13 +182,12 @@ auto CameraController::Update(Application &app) -> void {
   if (app.IsBindingPressed(BindingName(Focus)))
     app.AlignView(app.GetSelectedEntity());
   camera.dirty += dirty;
-  auto cameraPtr = app.GetEntityComponent<Camera>(entityId);
+  auto cameraPtr = GetComponent<Camera>();
   if (cameraPtr) {
     if (cameraMissing || cameraPtr->dirty > camera.dirty)
       camera = *cameraPtr;
     else if (camera.dirty > cameraPtr->dirty)
       *cameraPtr = camera;
-    // NOTE: if `dirty` wraps around, this will temporarily misbehave
     cameraMissing = false;
   } else
     cameraMissing = true;
@@ -242,7 +251,6 @@ auto CameraController::UpdatePosition(Application &app) -> bool {
     settings.precisionTime = std::min(settings.precisionTime + deltaTime, settings.boostRampUpTime);
   else
     settings.precisionTime = std::max(0.f, settings.precisionTime - deltaTime * (settings.boostRampUpTime / settings.boostRampDownTime));
-  // NOTE: smoothstep instead of a linear ramp, for a less abrupt, more vehicle-like acceleration feel.
   const auto t = settings.boostRampUpTime > 0.f ? settings.boostTime / settings.boostRampUpTime : 1.f;
   settings.moveBoost = 1.f + (settings.moveBoostMax - 1.f) * (t * t * (3.f - 2.f * t));
   const auto pt = settings.boostRampUpTime > 0.f ? settings.precisionTime / settings.boostRampUpTime : 1.f;
@@ -271,11 +279,11 @@ auto CameraController::UpdateRotation(Application &app) -> bool {
   mouseEnter = false;
   glm::vec2 mouseDiff{};
   mouseDiff.x = (mousePos.x - mouseLast.x) * settings.mouseSensitivity;
-  mouseDiff.y = (mouseLast.y - mousePos.y) * settings.mouseSensitivity; // NOTE: y is inverted because (0,0) is the northwest corner
+  mouseDiff.y = (mouseLast.y - mousePos.y) * settings.mouseSensitivity;
   mouseLast = mousePos;
   if (glm::length2(mouseDiff) < EPSILON)
     return false;
-  yaw -= mouseDiff.x; // NOTE: x diff is inverted because positive rotation is counter-clockwise when looking in the direction of the axis
+  yaw -= mouseDiff.x;
   pitch = std::clamp(pitch + mouseDiff.y, -MAX_PITCH, MAX_PITCH);
   camera.rotation = glm::normalize(glm::angleAxis(yaw, WORLD_UP) * glm::angleAxis(pitch, WORLD_RIGHT));
   return true;

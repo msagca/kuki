@@ -1,12 +1,13 @@
 #pragma once
 #include <asset_manager.hpp>
 #include <id.hpp>
+#include <kuki_engine_export.h>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
 #include <primitive_type.hpp>
 #include <skybox_handle.hpp>
 namespace kuki {
-class ResourceManager {
+class KUKI_ENGINE_API ResourceManager {
 public:
   ResourceManager(AssetManager &);
   virtual ~ResourceManager() = default;

@@ -33,12 +33,14 @@ const std::unordered_map<std::type_index, ComponentType> Component::indexToType 
   {typeid(GLBuffer), ComponentType::GLBuffer},
   {typeid(GLComputeShader), ComponentType::GLComputeShader},
   {typeid(GLLitShader), ComponentType::GLLitShader},
+  {typeid(DXMaterial), ComponentType::DXMaterial},
   {typeid(GLMaterial), ComponentType::GLMaterial},
   {typeid(GLMesh), ComponentType::GLMesh},
   {typeid(GLRenderTarget), ComponentType::GLRenderTarget},
   {typeid(GLSkybox), ComponentType::GLSkybox},
   {typeid(GLTexture), ComponentType::GLTexture},
   {typeid(GLUnlitShader), ComponentType::GLUnlitShader},
+  {typeid(IndirectLighting), ComponentType::IndirectLighting},
   {typeid(Light), ComponentType::Light},
   {typeid(MaterialHandle), ComponentType::MaterialHandle},
   {typeid(MeshHandle), ComponentType::MeshHandle},
@@ -57,12 +59,14 @@ const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex 
   {ComponentType::GLBuffer, typeid(GLBuffer)},
   {ComponentType::GLComputeShader, typeid(GLComputeShader)},
   {ComponentType::GLLitShader, typeid(GLLitShader)},
+  {ComponentType::DXMaterial, typeid(DXMaterial)},
   {ComponentType::GLMaterial, typeid(GLMaterial)},
   {ComponentType::GLMesh, typeid(GLMesh)},
   {ComponentType::GLRenderTarget, typeid(GLRenderTarget)},
   {ComponentType::GLSkybox, typeid(GLSkybox)},
   {ComponentType::GLTexture, typeid(GLTexture)},
   {ComponentType::GLUnlitShader, typeid(GLUnlitShader)},
+  {ComponentType::IndirectLighting, typeid(IndirectLighting)},
   {ComponentType::Light, typeid(Light)},
   {ComponentType::MaterialHandle, typeid(MaterialHandle)},
   {ComponentType::MeshHandle, typeid(MeshHandle)},
@@ -81,12 +85,14 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::GLBuffer, "GLBuffer"},
   {ComponentType::GLComputeShader, "GLComputeShader"},
   {ComponentType::GLLitShader, "GLLitShader"},
+  {ComponentType::DXMaterial, "DXMaterial"},
   {ComponentType::GLMaterial, "GLMaterial"},
   {ComponentType::GLMesh, "GLMesh"},
   {ComponentType::GLRenderTarget, "GLRenderTarget"},
   {ComponentType::GLSkybox, "GLSkybox"},
   {ComponentType::GLTexture, "GLTexture"},
   {ComponentType::GLUnlitShader, "GLUnlitShader"},
+  {ComponentType::IndirectLighting, "Indirect Lighting"},
   {ComponentType::Light, "Light"},
   {ComponentType::MaterialHandle, "MaterialHandle"},
   {ComponentType::MeshHandle, "MeshHandle"},
@@ -116,6 +122,9 @@ auto Component::GetTypeName(const ComponentType type) -> std::string {
   if (auto it = typeToName.find(type); it != typeToName.end())
     return it->second;
   return {};
+}
+auto Component::IsSceneSingleton(const ComponentType type) -> bool {
+  return type == ComponentType::IndirectLighting;
 }
 auto Component::IsGL(const ComponentType type) -> bool {
   return type >= ComponentType::GLBuffer && type <= ComponentType::GLUnlitShader;

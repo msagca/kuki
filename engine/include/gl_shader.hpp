@@ -1,4 +1,5 @@
 #pragma once
+#include <indirect_lighting.hpp>
 #include <camera.hpp>
 #include <cstdint>
 #include <gl_material.hpp>
@@ -23,12 +24,20 @@ public:
   auto SetMaterialFallback(const GLMesh &, const MaterialFallback &, const unsigned int) -> void;
   auto SetTransform(const GLMesh &, const glm::mat4 &, const unsigned int) -> void;
   auto SetTransform(const GLMesh &, std::span<const glm::mat4>, const unsigned int) -> void;
+  /// @brief Binds the camera uniform block and uploads the camera transform into the given buffer.
+  ///
+  /// The caller owns the buffer and must have allocated at least `sizeof(CameraTransform)` bytes in it; no size check happens here.
   virtual auto SetCamera(const Camera &, const unsigned int) -> void;
   virtual auto SetLighting() -> void;
   virtual auto SetLighting(const Light &) -> void;
   virtual auto SetLighting(std::span<const Light>) -> void;
   virtual auto SetMaterialFallback(const GLMesh &, std::span<const MaterialFallback>, const unsigned int) -> void;
   virtual auto SetSkybox(const GLSkybox * = nullptr) -> void;
+  /// @brief Hands over the indirect lighting values this backend has a use for.
+  ///
+  /// Two of the sixteen: the sky scale and the flat fallback. The rest shape a probe field that
+  /// this backend has not got. A shader with no ambient term of its own ignores the call.
+  virtual auto SetIndirectLighting(const IndirectLighting &) -> void;
 protected:
   GLShader() = default;
   size_t entityIdCount{};

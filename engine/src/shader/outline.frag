@@ -10,7 +10,6 @@ uniform uint u_selectedIds[MAX_SELECTED];
 uniform vec2 u_texelSize;
 uniform vec3 u_outlineColor;
 uint DecodeId(vec4 idColor) {
-        // NOTE: only the low 24 bits (RGB) carry an entity ID -- see `GLRenderer::PickEntity` for why alpha is never part of the encoding
         return uint(idColor.r * 255.0 + 0.5) | (uint(idColor.g * 255.0 + 0.5) << 8) | (uint(idColor.b * 255.0 + 0.5) << 16);
 }
 bool IsSelected(uint id) {

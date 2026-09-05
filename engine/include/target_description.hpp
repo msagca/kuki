@@ -24,6 +24,20 @@ enum class TargetType : uint8_t {
   Texture2DArray,
   Texture2DMulti
 };
+/// @brief Whether a render target's size follows the viewport, half of it, or stays as declared.
+///
+/// Most targets in a graph are viewport-sized, but some deliberately are not: a shadow map is
+/// declared oversized for texel density and must keep that size when the viewport changes, or its
+/// resolution silently collapses to whatever the editor panel happens to be.
+///
+/// `ViewportHalf` tracks the viewport at half its width and height, so a quarter of the pixels. It
+/// exists for the bloom chain, whose every pass is a blur: detail there is destroyed by design, so
+/// resolving it at full size would be paying four times over for texels that get averaged away.
+enum class TargetSizing : uint8_t {
+  Viewport,
+  ViewportHalf,
+  Fixed
+};
 struct TargetDescription {
   TargetFormat format{TargetFormat::RGBA16};
   TargetType type{TargetType::Texture2D};

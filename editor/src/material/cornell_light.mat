@@ -1,0 +1,17 @@
+{
+  "albedo": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "emissive": [
+    9.0,
+    7.0,
+    4.5,
+    1.0
+  ],
+  "metalness": 0.0,
+  "roughness": 1.0,
+  "occlusion": 1.0
+}

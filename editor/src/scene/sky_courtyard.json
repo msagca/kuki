@@ -1,0 +1,328 @@
+{
+  "name": "SkyCourtyard",
+  "entities": [
+    {
+      "name": "Camera",
+      "children": [],
+      "components": {
+        "Camera": {
+          "position": {
+            "x": 0.0,
+            "y": 2.6,
+            "z": 8.0
+          },
+          "rotation": {
+            "w": 0.994,
+            "x": -0.109,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "fov": 45.0,
+          "nearPlane": 0.1,
+          "farPlane": 100.0,
+          "orthoSize": 5.0
+        }
+      }
+    },
+    {
+      "name": "Skybox",
+      "children": [],
+      "components": {
+        "SkyboxHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 3001
+          }
+        }
+      }
+    },
+    {
+      "name": "Ground",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 1.0,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 3.0,
+            "y": 1.0,
+            "z": 3.0
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2001
+          }
+        }
+      }
+    },
+    {
+      "name": "RedWall",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": -3.0,
+            "y": 2.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.707107,
+            "x": 0.0,
+            "y": 0.0,
+            "z": -0.707107
+          },
+          "scale": {
+            "x": 2.0,
+            "y": 1.0,
+            "z": 3.0
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2002
+          }
+        }
+      }
+    },
+    {
+      "name": "GreenWall",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 3.0,
+            "y": 2.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.707107,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.707107
+          },
+          "scale": {
+            "x": 2.0,
+            "y": 1.0,
+            "z": 3.0
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2003
+          }
+        }
+      }
+    },
+    {
+      "name": "BackWall",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 0.0,
+            "y": 2.0,
+            "z": -3.0
+          },
+          "rotation": {
+            "w": 0.707107,
+            "x": 0.707107,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 3.0,
+            "y": 1.0,
+            "z": 2.0
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2001
+          }
+        }
+      }
+    },
+    {
+      "name": "Pillar",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": -0.9,
+            "y": 1.2,
+            "z": -0.6
+          },
+          "rotation": {
+            "w": 1.0,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 1.2,
+            "y": 2.4,
+            "z": 1.2
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -0.5,
+            "y": -0.5,
+            "z": -0.5
+          },
+          "max": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": 0.5
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 8569614091031957600,
+            "low": 15471855482930753187
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2001
+          }
+        }
+      }
+    },
+    {
+      "name": "Block",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 1.1,
+            "y": 0.5,
+            "z": 0.8
+          },
+          "rotation": {
+            "w": 0.989016,
+            "x": 0.0,
+            "y": 0.147809,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 1.4,
+            "y": 1.0,
+            "z": 1.4
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -0.5,
+            "y": -0.5,
+            "z": -0.5
+          },
+          "max": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": 0.5
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 8569614091031957600,
+            "low": 15471855482930753187
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2001
+          }
+        }
+      }
+    }
+  ]
+}

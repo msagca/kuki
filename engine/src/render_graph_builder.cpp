@@ -15,10 +15,15 @@ auto RenderGraphBuilder::AddOutput(std::string name) -> RenderGraphBuilder & {
     renderGraph->AddOutput(std::move(name), descLast);
   return *this;
 }
-auto RenderGraphBuilder::AddOutput(std::string name, TargetDescription desc) -> RenderGraphBuilder & {
+auto RenderGraphBuilder::AddOutput(std::string name, TargetDescription desc, const TargetSizing sizing) -> RenderGraphBuilder & {
   descLast = desc;
   if (renderGraph)
-    renderGraph->AddOutput(std::move(name), desc);
+    renderGraph->AddOutput(std::move(name), desc, sizing);
+  return *this;
+}
+auto RenderGraphBuilder::AddResource(std::string name) -> RenderGraphBuilder & {
+  if (renderGraph)
+    renderGraph->AddResource(std::move(name));
   return *this;
 }
 auto RenderGraphBuilder::BeginGraph() -> RenderGraphBuilder & {

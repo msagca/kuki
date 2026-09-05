@@ -12,6 +12,7 @@
 #include <gl_skybox.hpp>
 #include <gl_texture.hpp>
 #include <gl_unlit_shader.hpp>
+#include <indirect_lighting.hpp>
 #include <light.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
@@ -43,6 +44,9 @@ auto AddComponentByType(Application &app, const EntityID id, const ComponentType
   case ComponentType::GLLitShader:
     app.AddEntityComponent<GLLitShader>(id);
     break;
+  case ComponentType::DXMaterial:
+    app.AddEntityComponent<DXMaterial>(id);
+    break;
   case ComponentType::GLMaterial:
     app.AddEntityComponent<GLMaterial>(id);
     break;
@@ -60,6 +64,9 @@ auto AddComponentByType(Application &app, const EntityID id, const ComponentType
     break;
   case ComponentType::GLUnlitShader:
     app.AddEntityComponent<GLUnlitShader>(id);
+    break;
+  case ComponentType::IndirectLighting:
+    app.AddEntityComponent<IndirectLighting>(id);
     break;
   case ComponentType::Light:
     app.AddEntityComponent<Light>(id);
@@ -104,6 +111,8 @@ auto RemoveComponentByType(Application &app, const EntityID id, const ComponentT
     return app.RemoveEntityComponent<Camera>(id);
   case ComponentType::GLBuffer:
     return app.RemoveEntityComponent<GLBuffer>(id);
+  case ComponentType::DXMaterial:
+    return app.RemoveEntityComponent<DXMaterial>(id);
   case ComponentType::GLMaterial:
     return app.RemoveEntityComponent<GLMaterial>(id);
   case ComponentType::GLMesh:
@@ -114,6 +123,8 @@ auto RemoveComponentByType(Application &app, const EntityID id, const ComponentT
     return app.RemoveEntityComponent<GLSkybox>(id);
   case ComponentType::GLTexture:
     return app.RemoveEntityComponent<GLTexture>(id);
+  case ComponentType::IndirectLighting:
+    return app.RemoveEntityComponent<IndirectLighting>(id);
   case ComponentType::Light:
     return app.RemoveEntityComponent<Light>(id);
   case ComponentType::MaterialHandle:

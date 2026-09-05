@@ -12,6 +12,5 @@ uniform Material u_material;
 void main() {
         bool useBaseTexture = (v_textureMask & 0x1) != 0;
         color = useBaseTexture ? vec4(texture(u_material.base, v_texCoords)) : v_baseColor;
-        // NOTE: alpha forced to 1.0 -- see lit.frag for why (global alpha blending would otherwise discard this write whenever the ID's 4th byte is 0, i.e. for virtually all entity IDs).
         entityColor = vec4(float((v_entityId >> 0) & 0xFFu) / 255.0, float((v_entityId >> 8) & 0xFFu) / 255.0, float((v_entityId >> 16) & 0xFFu) / 255.0, 1.0);
 }

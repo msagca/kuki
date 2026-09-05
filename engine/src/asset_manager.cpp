@@ -1,13 +1,16 @@
 #define GLM_ENABLE_EXPERIMENTAL
+#include <algorithm>
 #include <animator.hpp>
 #include <application.hpp>
 #include <asset.hpp>
 #include <asset_manager.hpp>
 #include <asset_type.hpp>
+#include <assimp/Importer.hpp>
 #include <assimp/color4.h>
 #include <assimp/material.h>
 #include <assimp/matrix4x4.h>
 #include <assimp/mesh.h>
+#include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <assimp/types.h>
 #include <bounding_box.hpp>
@@ -15,6 +18,7 @@
 #include <cmath>
 #include <color.hpp>
 #include <filesystem>
+#include <fstream>
 #include <future>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
@@ -23,6 +27,7 @@
 #include <glm/ext/vector_int4.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <id.hpp>
+#include <limits>
 #include <manager.hpp>
 #include <material_asset.hpp>
 #include <material_handle.hpp>
@@ -31,6 +36,8 @@
 #include <mesh_asset.hpp>
 #include <mesh_handle.hpp>
 #include <model_asset.hpp>
+#include <model_import.hpp>
+#include <nlohmann/json.hpp>
 #include <scene.hpp>
 #include <shader_asset.hpp>
 #include <shader_type.hpp>
@@ -38,6 +45,7 @@
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string>
+#include <texture.hpp>
 #include <texture_asset.hpp>
 #include <texture_content.hpp>
 #include <transform.hpp>
@@ -205,9 +213,9 @@ auto AssetManager::LoadComputeFromSource(const std::string_view source, std::str
 }
 auto AssetManager::LoadShader(const std::filesystem::path &vertPath, const std::filesystem::path &fragPath, std::string name, const MaterialType materialType) -> AssetID {
   auto vertId = Register<ShaderAsset>(vertPath, "");
-  Load(Load<ShaderAsset>(vertId, vertPath));
+  Load(Load<ShaderAsset>(vertId, ResolvePath(vertPath)));
   auto fragId = Register<ShaderAsset>(fragPath, std::move(name));
-  auto asset = Load<ShaderAsset>(fragId, fragPath);
+  auto asset = Load<ShaderAsset>(fragId, ResolvePath(fragPath));
   if (auto fragAsset = asset->As<ShaderAsset>(); fragAsset) {
     fragAsset->materialType = materialType;
     fragAsset->vertexShader = vertId;
@@ -240,27 +248,6 @@ auto AssetManager::Update() -> void {
   while (!loadedAssets.empty()) {
     Load(std::move(loadedAssets.front()));
     loadedAssets.pop();
-  }
-}
-auto AssetManager::AssimpToGlmMat4(const aiMatrix4x4 &m) -> glm::mat4 {
-  return {m.a1, m.b1, m.c1, m.d1, m.a2, m.b2, m.c2, m.d2, m.a3, m.b3, m.c3, m.d3, m.a4, m.b4, m.c4, m.d4};
-}
-auto AssetManager::AssimpTexToContent(const aiTextureType t) -> TextureContent {
-  switch (t) {
-  case aiTextureType_NORMALS:
-    return TextureContent::Normal;
-  case aiTextureType_METALNESS:
-    return TextureContent::Metalness;
-  case aiTextureType_AMBIENT_OCCLUSION:
-    return TextureContent::Occlusion;
-  case aiTextureType_DIFFUSE_ROUGHNESS:
-    return TextureContent::Roughness;
-  case aiTextureType_SPECULAR:
-    return TextureContent::Specular;
-  case aiTextureType_EMISSIVE:
-    return TextureContent::Emissive;
-  default:
-    return TextureContent::Albedo;
   }
 }
 auto AssetManager::CreateNodePrefab(const AssetID assetId, const ModelAsset &modelAsset, const int nodeIndex) -> EntityID {
@@ -343,173 +330,6 @@ auto AssetManager::SetName(const AssetID id, std::string name) -> void {
   idToName[id] = name;
   nameToId.emplace(std::move(name), id);
 }
-auto AssetManager::LoadMaterial(std::unordered_map<std::string, unsigned int> &visited, const aiMaterial &aiMaterial, ModelAsset &model, const aiScene &aiScene, const std::filesystem::path &path, const std::string &fallbackName) -> unsigned int {
-  const auto aiName = aiMaterial.GetName();
-  const auto name = aiName.Empty() ? path.lexically_normal().string() : aiName.C_Str();
-  if (auto it = visited.find(name); it != visited.end())
-    return it->second;
-  const unsigned int index = model.materials.size();
-  visited.insert({name, index});
-  model.materials.emplace_back();
-  auto &material = model.materials.back();
-  material.name = name;
-  int shadingModel;
-  if (aiMaterial.Get(AI_MATKEY_SHADING_MODEL, shadingModel) == AI_SUCCESS) {
-    if (shadingModel == aiShadingMode_NoShading)
-      material.type = MaterialType::Unlit;
-    else
-      material.type = MaterialType::Lit;
-  }
-  aiColor4D color;
-  float value;
-  if (aiMaterial.Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS)
-    material.fallback.albedo = {color.r, color.g, color.b, color.a};
-  if (aiMaterial.Get(AI_MATKEY_OPACITY, value) == AI_SUCCESS)
-    material.fallback.albedo.w = value;
-  if (aiMaterial.Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS)
-    material.fallback.specular = {color.r, color.g, color.b, color.a};
-  if (aiMaterial.Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS)
-    material.fallback.emissive = {color.r, color.g, color.b, color.a};
-  if (aiMaterial.Get(AI_MATKEY_METALLIC_FACTOR, value) == AI_SUCCESS || aiMaterial.Get(AI_MATKEY_REFLECTIVITY, value) == AI_SUCCESS)
-    material.fallback.metalness = value;
-  if (aiMaterial.Get(AI_MATKEY_ROUGHNESS_FACTOR, value) == AI_SUCCESS)
-    material.fallback.roughness = value;
-  else if (aiMaterial.Get(AI_MATKEY_SHININESS, value) == AI_SUCCESS)
-    material.fallback.roughness = std::sqrt(2.f / (value + 2.f));
-  if (!path.empty()) {
-    LoadTexture(visited, aiMaterial, aiTextureType_AMBIENT_OCCLUSION, material, model, aiScene, path, fallbackName);
-    LoadTexture(visited, aiMaterial, aiTextureType_DIFFUSE, material, model, aiScene, path, fallbackName);
-    LoadTexture(visited, aiMaterial, aiTextureType_DIFFUSE_ROUGHNESS, material, model, aiScene, path, fallbackName);
-    LoadTexture(visited, aiMaterial, aiTextureType_EMISSIVE, material, model, aiScene, path, fallbackName);
-    LoadTexture(visited, aiMaterial, aiTextureType_METALNESS, material, model, aiScene, path, fallbackName);
-    LoadTexture(visited, aiMaterial, aiTextureType_NORMALS, material, model, aiScene, path, fallbackName);
-    LoadTexture(visited, aiMaterial, aiTextureType_SPECULAR, material, model, aiScene, path, fallbackName);
-  }
-  return index;
-}
-auto AssetManager::LoadMesh(const aiMesh &aiMesh, ModelAsset &model, BoundingBox &bounds, unsigned int parent, const std::string &fallbackName) -> unsigned int {
-  const unsigned int index = model.meshes.size();
-  model.meshes.emplace_back();
-  auto &modelMesh = model.meshes.back();
-  modelMesh.name = aiMesh.mName.Empty() ? fallbackName : aiMesh.mName.C_Str();
-  modelMesh.parent = parent;
-  for (auto i = 0; i < aiMesh.mNumVertices; ++i) {
-    modelMesh.mesh.vertices.emplace_back();
-    auto &vertex = modelMesh.mesh.vertices.back();
-    vertex.position = glm::vec3(aiMesh.mVertices[i].x, aiMesh.mVertices[i].y, aiMesh.mVertices[i].z);
-    bounds.min = glm::min(bounds.min, vertex.position);
-    bounds.max = glm::max(bounds.max, vertex.position);
-    if (aiMesh.mNormals)
-      vertex.normal = glm::vec3(aiMesh.mNormals[i].x, aiMesh.mNormals[i].y, aiMesh.mNormals[i].z);
-    if (aiMesh.mTangents)
-      vertex.tangent = glm::vec3(aiMesh.mTangents[i].x, aiMesh.mTangents[i].y, aiMesh.mTangents[i].z);
-    vertex.boneIds = glm::ivec4(-1); // NOTE: -1 indicates that this hasn't been assigned yet, will be used later
-    if (aiMesh.mTextureCoords[0]) {
-      glm::vec2 texCoord{};
-      texCoord.x = aiMesh.mTextureCoords[0][i].x;
-      texCoord.y = 1.f - aiMesh.mTextureCoords[0][i].y;
-      vertex.texture = texCoord;
-    } else
-      vertex.texture = glm::vec2(0.f);
-  }
-  for (auto i = 0; i < aiMesh.mNumFaces; ++i) {
-    const auto &face = aiMesh.mFaces[i];
-    for (auto j = 0; j < face.mNumIndices; ++j)
-      modelMesh.mesh.indices.push_back(face.mIndices[j]);
-  }
-  const auto vertexCount = modelMesh.mesh.vertices.size();
-  std::unordered_map<std::string, int> boneNameToId;
-  for (auto i = 0; i < aiMesh.mNumBones; ++i) {
-    auto bone = aiMesh.mBones[i];
-    const auto boneName(bone->mName.C_Str());
-    auto boneId = 0u;
-    if (auto it = boneNameToId.find(boneName); it != boneNameToId.end())
-      boneId = it->second;
-    else {
-      boneId = static_cast<int>(boneNameToId.size());
-      boneNameToId[boneName] = boneId;
-      modelMesh.bones.push_back({.name = boneName, .offsetMatrix = AssimpToGlmMat4(bone->mOffsetMatrix)});
-    }
-    for (auto j = 0; j < bone->mNumWeights; ++j) {
-      const auto vertexId = bone->mWeights[j].mVertexId;
-      if (vertexId >= vertexCount)
-        continue;
-      const auto weight = bone->mWeights[j].mWeight;
-      for (auto k = 0; k < 4; ++k)
-        if (modelMesh.mesh.vertices[vertexId].boneIds[k] < 0) {
-          modelMesh.mesh.vertices[vertexId].boneIds[k] = boneId;
-          modelMesh.mesh.vertices[vertexId].boneWeights[k] = weight;
-          break;
-        }
-    }
-  }
-  if (aiMesh.mNumBones > 0)
-    for (auto &vertex : modelMesh.mesh.vertices)
-      for (auto k = 0; k < 4; ++k)
-        if (vertex.boneIds[k] < 0)
-          vertex.boneIds[k] = 0;
-  return index;
-}
-auto AssetManager::LoadNode(std::unordered_map<std::string, unsigned int> &visited, const aiNode &aiNode, const aiScene &aiScene, ModelAsset &model, const std::filesystem::path &path, const std::string &fallbackName, int parent) -> unsigned int {
-  const unsigned int index = model.nodes.size();
-  model.nodes.emplace_back();
-  model.nodes[index].name = aiNode.mName.Empty() ? fallbackName : aiNode.mName.C_Str();
-  model.nodes[index].transform = AssimpToGlmMat4(aiNode.mTransformation);
-  model.nodes[index].parent = parent;
-  for (auto i = 0; i < aiNode.mNumMeshes; ++i) {
-    const auto meshId = aiNode.mMeshes[i];
-    const auto aiMesh = aiScene.mMeshes[meshId];
-    // TODO: keep track of loaded meshes and reuse the indices
-    const auto meshIndex = LoadMesh(*aiMesh, model, model.nodes[index].bounds, index, fallbackName);
-    model.nodes[index].meshes.push_back(meshIndex);
-    auto &mesh = model.meshes.back();
-    const auto matId = aiMesh->mMaterialIndex;
-    if (matId >= 0 && matId < aiScene.mNumMaterials) {
-      const auto aiMaterial = aiScene.mMaterials[matId];
-      const auto materialIndex = LoadMaterial(visited, *aiMaterial, model, aiScene, path, fallbackName);
-      mesh.material = materialIndex;
-    }
-  }
-  for (auto i = 0; i < aiNode.mNumChildren; ++i) {
-    const auto childIndex = LoadNode(visited, *aiNode.mChildren[i], aiScene, model, path, fallbackName, index);
-    model.nodes[index].children.push_back(childIndex);
-    const auto &childNode = model.nodes[childIndex];
-    auto &node = model.nodes[index];
-    node.bounds.min = glm::min(node.bounds.min, childNode.bounds.min);
-    node.bounds.max = glm::max(node.bounds.max, childNode.bounds.max);
-  }
-  if (aiNode.mNumMeshes == 0 && aiNode.mNumChildren == 0)
-    model.nodes[index].bounds = {.min = glm::vec3(.0f), .max = glm::vec3(.0f)};
-  return index;
-}
-auto AssetManager::ParseAnimations(const aiScene &aiScene, ModelAsset &model) -> void {
-  for (auto i = 0; i < aiScene.mNumAnimations; ++i) {
-    const auto aiAnim = aiScene.mAnimations[i];
-    model.animations.emplace_back();
-    auto &clip = model.animations.back();
-    clip.name = aiAnim->mName.Empty() ? ("Animation" + std::to_string(i)) : aiAnim->mName.C_Str();
-    clip.duration = static_cast<float>(aiAnim->mDuration);
-    clip.ticksPerSecond = aiAnim->mTicksPerSecond > 0.0 ? static_cast<float>(aiAnim->mTicksPerSecond) : 25.f;
-    for (auto j = 0; j < aiAnim->mNumChannels; ++j) {
-      const auto aiChannel = aiAnim->mChannels[j];
-      clip.channels.emplace_back();
-      auto &channel = clip.channels.back();
-      channel.nodeName = aiChannel->mNodeName.C_Str();
-      for (auto k = 0; k < aiChannel->mNumPositionKeys; ++k) {
-        const auto &key = aiChannel->mPositionKeys[k];
-        channel.positions.push_back({.time = static_cast<float>(key.mTime), .value = glm::vec3(key.mValue.x, key.mValue.y, key.mValue.z)});
-      }
-      for (auto k = 0; k < aiChannel->mNumRotationKeys; ++k) {
-        const auto &key = aiChannel->mRotationKeys[k];
-        channel.rotations.push_back({.time = static_cast<float>(key.mTime), .value = glm::quat(key.mValue.w, key.mValue.x, key.mValue.y, key.mValue.z)});
-      }
-      for (auto k = 0; k < aiChannel->mNumScalingKeys; ++k) {
-        const auto &key = aiChannel->mScalingKeys[k];
-        channel.scales.push_back({.time = static_cast<float>(key.mTime), .value = glm::vec3(key.mValue.x, key.mValue.y, key.mValue.z)});
-      }
-    }
-  }
-}
 auto AssetManager::ResolveNodeReferences(ModelAsset &model) -> void {
   std::unordered_map<std::string, unsigned int> nameToNodeIndex;
   for (auto i = 0; i < model.nodes.size(); ++i)
@@ -523,46 +343,128 @@ auto AssetManager::ResolveNodeReferences(ModelAsset &model) -> void {
       if (auto it = nameToNodeIndex.find(channel.nodeName); it != nameToNodeIndex.end())
         channel.nodeIndex = it->second;
 }
-auto AssetManager::LoadTexture(std::unordered_map<std::string, unsigned int> &visited, const aiMaterial &aiMaterial, const aiTextureType aiTextureType, ModelMaterial &material, ModelAsset &model, const aiScene &aiScene, const std::filesystem::path &path, const std::string &fallbackName) -> void {
-  const auto count = aiMaterial.GetTextureCount(aiTextureType);
-  const auto content = AssimpTexToContent(aiTextureType);
-  for (auto i = 0; i < count; ++i) {
-    const unsigned int index = model.textures.size();
-    aiString texPath;
-    if (aiMaterial.GetTexture(aiTextureType, i, &texPath) != AI_SUCCESS || texPath.Empty())
-      continue;
-    const auto embedded = aiScene.GetEmbeddedTexture(texPath.C_Str());
-    const auto cacheKey = embedded ? path.lexically_normal().string() + "#" + texPath.C_Str() : (path / texPath.C_Str()).lexically_normal().string();
-    if (auto it = visited.find(cacheKey); it != visited.end()) {
-      material.textures.push_back(it->second);
-      material.fallback.textureMask.set(static_cast<int>(content));
-      continue;
-    }
-    visited.insert({cacheKey, index});
-    ModelTexture modelTexture{};
-    modelTexture.name = embedded ? fallbackName : cacheKey;
-    modelTexture.texture.content = content;
-    if (content == TextureContent::Albedo)
-      // NOTE: we assume that albedo textures are, in general, in sRGB space
-      modelTexture.texture.color = ColorSpace::sRGB;
-    unsigned char *data = nullptr;
-    if (embedded) {
-      if (embedded->mHeight == 0)
-        data = stbi_load_from_memory(reinterpret_cast<const unsigned char *>(embedded->pcData), static_cast<int>(embedded->mWidth), &modelTexture.texture.width, &modelTexture.texture.height, &modelTexture.texture.channels, 0);
-      else
-        spdlog::warn("[AssetManager] embedded texture '{}' uses uncompressed raw texel data, which is not currently supported", texPath.C_Str());
-    } else
-      data = stbi_load(cacheKey.c_str(), &modelTexture.texture.width, &modelTexture.texture.height, &modelTexture.texture.channels, 0);
-    if (data) {
-      const auto size = modelTexture.texture.width * modelTexture.texture.height * modelTexture.texture.channels;
-      modelTexture.texture.data = std::vector<unsigned char>();
-      if (auto textureData = std::get_if<std::vector<unsigned char>>(&modelTexture.texture.data))
-        textureData->assign(data, data + size);
-      stbi_image_free(data);
-      material.textures.push_back(index);
-      material.fallback.textureMask.set(static_cast<int>(modelTexture.texture.content));
-      model.textures.push_back(modelTexture);
-    }
+/// @brief Marks a `visited` entry as a texture that could not be loaded, so it is not retried.
+///
+/// Distinct from an absent entry, which means "not seen yet", and from any real index.
+template <>
+auto AssetManager::Load<ModelAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
+  const auto pathNormStr = path.lexically_normal().string();
+  Assimp::Importer importer;
+  const auto aiScene = importer.ReadFile(pathNormStr, aiProcess_CalcTangentSpace | aiProcess_GlobalScale | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_Triangulate);
+  if (!aiScene) {
+    spdlog::error("[AssetManager] {}", importer.GetErrorString());
+    return nullptr;
   }
+  if (!aiScene->mRootNode)
+    return nullptr;
+  auto model = std::make_unique<ModelAsset>(id);
+  // the scene knows both counts, and growing these while a mesh reference is live is worth avoiding
+  model->meshes.reserve(aiScene->mNumMeshes);
+  model->materials.reserve(aiScene->mNumMaterials);
+  std::unordered_map<std::string, unsigned int> visited;
+  LoadNode(visited, *aiScene->mRootNode, *aiScene, *model.get(), path.parent_path(), path.filename().string());
+  ParseAnimations(*aiScene, *model.get());
+  ResolveNodeReferences(*model.get());
+  spdlog::info("[AssetManager] loaded model: {}", pathNormStr);
+  return model;
+}
+template <>
+auto AssetManager::Load<ShaderAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
+  const auto pathNormStr = path.lexically_normal().string();
+  auto shader = std::make_unique<ShaderAsset>(id);
+  const auto ext = path.extension().string();
+  if (ext == ".vert" || ext == ".vs")
+    shader->shaderType = ShaderType::Vertex;
+  else if (ext == ".frag" || ext == ".fs")
+    shader->shaderType = ShaderType::Fragment;
+  else if (ext == ".geom" || ext == ".gs")
+    shader->shaderType = ShaderType::Geometry;
+  else if (ext == ".comp")
+    shader->shaderType = ShaderType::Compute;
+  else {
+    spdlog::warn("[AssetManager] unable to infer shader type for file: {}", pathNormStr);
+    return shader;
+  }
+  std::ifstream fs(path);
+  if (!fs) {
+    spdlog::error("[AssetManager] failed to open shader file: {}", pathNormStr);
+    return shader;
+  }
+  std::stringstream ss;
+  ss << fs.rdbuf();
+  if (fs.fail()) {
+    spdlog::error("[AssetManager] failed to read shader file: {}", pathNormStr);
+    return shader;
+  }
+  fs.close();
+  shader->text = ss.str();
+  spdlog::info("[AssetManager] loaded shader: {}", pathNormStr);
+  return shader;
+}
+template <>
+auto AssetManager::Load<MaterialAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
+  const auto pathNormStr = path.lexically_normal().string();
+  auto material = std::make_unique<MaterialAsset>(id);
+  material->type = MaterialType::Lit;
+  std::ifstream fs(path);
+  if (!fs) {
+    spdlog::error("[AssetManager] failed to open material file: {}", pathNormStr);
+    return material;
+  }
+  nlohmann::json description;
+  try {
+    fs >> description;
+  } catch (const nlohmann::json::parse_error &e) {
+    spdlog::error("[AssetManager] failed to parse material file: {} ({})", pathNormStr, e.what());
+    return material;
+  }
+  const auto ReadColor = [&description](const char *name, glm::vec4 &target) {
+    if (!description.contains(name))
+      return;
+    const auto &value = description.at(name);
+    if (!value.is_array())
+      return;
+    for (size_t i = 0; i < value.size() && i < 4; ++i)
+      target[static_cast<glm::length_t>(i)] = value[i].get<float>();
+  };
+  ReadColor("albedo", material->fallback.albedo);
+  ReadColor("specular", material->fallback.specular);
+  ReadColor("emissive", material->fallback.emissive);
+  ReadColor("attenuationColor", material->fallback.attenuation);
+  const auto alphaMode = description.value("alphaMode", std::string{});
+  if (alphaMode == "mask")
+    material->fallback.alphaMode = AlphaMode::Mask;
+  else if (alphaMode == "blend")
+    material->fallback.alphaMode = AlphaMode::Blend;
+  else if (alphaMode.empty() && material->fallback.albedo.w < 1.f)
+    material->fallback.alphaMode = AlphaMode::Blend;
+  material->fallback.alphaCutoff = description.value("alphaCutoff", material->fallback.alphaCutoff);
+  material->fallback.metalness = description.value("metalness", material->fallback.metalness);
+  material->fallback.occlusion = description.value("occlusion", material->fallback.occlusion);
+  material->fallback.roughness = description.value("roughness", material->fallback.roughness);
+  material->fallback.transmission = description.value("transmission", material->fallback.transmission);
+  material->fallback.thickness = description.value("thickness", material->fallback.thickness);
+  material->fallback.ior = description.value("ior", material->fallback.ior);
+  material->fallback.attenuation.w = description.value("attenuationDistance", material->fallback.attenuation.w);
+  if (description.value("unlit", false))
+    material->type = MaterialType::Unlit;
+  spdlog::info("[AssetManager] loaded material: {}", pathNormStr);
+  return material;
+}
+template <>
+auto AssetManager::Load<TextureAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
+  const auto pathNormStr = path.lexically_normal().string();
+  auto textureAsset = std::make_unique<TextureAsset>(id);
+  auto &texture = textureAsset->texture;
+  texture.source = pathNormStr;
+  if (!ReadTexturePixels(texture))
+    return textureAsset;
+  if (texture.range == ColorRange::HDR) {
+    texture.content = TextureContent::Skybox;
+    if (path.extension() == ".exr")
+      texture.flipY = true;
+  }
+  spdlog::info("[AssetManager] loaded texture: {}", pathNormStr);
+  return textureAsset;
 }
 } // namespace kuki

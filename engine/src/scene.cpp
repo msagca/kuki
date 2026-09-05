@@ -47,9 +47,6 @@ auto Scene::DeleteEntity(const EntityID id) -> bool {
 auto Scene::EntityHasChildren(const EntityID id) const -> bool {
   return entityManager.HasChildren(id);
 }
-auto Scene::EntityHasParent(const EntityID id) const -> bool {
-  return entityManager.HasParent(id);
-}
 auto Scene::GetEntityComponent(const EntityID id, const ComponentType type) -> std::optional<ComponentVariant> {
   return entityManager.GetComponent(id, type);
 }
@@ -71,8 +68,14 @@ auto Scene::GetMissingEntityComponents(const EntityID id) const -> std::vector<C
 auto Scene::GetStructuralGeneration() const -> size_t {
   return entityManager.GetStructuralGeneration();
 }
+auto Scene::HasComponentAnywhere(const ComponentType type) const -> bool {
+  return entityManager.HasComponentAnywhere(type);
+}
 auto Scene::IsEntity(const EntityID id) const -> bool {
   return entityManager.IsEntity(id);
+}
+auto Scene::MarkTransformDirty(const EntityID id) -> void {
+  entityManager.MarkTransformDirty(id);
 }
 auto Scene::RemoveEntityScript(const EntityID id, const std::type_index type) -> bool {
   return entityManager.RemoveScript(id, type);

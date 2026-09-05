@@ -9,7 +9,8 @@ class KUKI_ENGINE_API RenderGraphBuilder {
 public:
   auto AddInput(std::string) -> RenderGraphBuilder &;
   auto AddOutput(std::string) -> RenderGraphBuilder &;
-  auto AddOutput(std::string, TargetDescription) -> RenderGraphBuilder &;
+  auto AddOutput(std::string, TargetDescription, const TargetSizing = TargetSizing::Viewport) -> RenderGraphBuilder &;
+  auto AddResource(std::string) -> RenderGraphBuilder &;
   auto BeginGraph() -> RenderGraphBuilder &;
   auto EndGraph() -> std::unique_ptr<RenderGraph>;
   auto EndPass() -> RenderGraphBuilder &;

@@ -5,11 +5,15 @@
 #include <component.hpp>
 #include <fstream>
 #include <gl_skybox.hpp>
+#include <launch_path.hpp>
 #include <light.hpp>
+#include <material_asset.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
 #include <model_asset.hpp>
 #include <scene_serializer.hpp>
+#include <script.hpp>
+#include <script_registry.hpp>
 #include <serdes.hpp>
 #include <shader_asset.hpp>
 #include <skybox_handle.hpp>
@@ -90,6 +94,11 @@ namespace {
       {"nearPlane", c.nearPlane},
       {"farPlane", c.farPlane},
       {"orthoSize", c.orthoSize},
+      {"exposureMode", static_cast<int>(c.exposureMode)},
+      {"exposure", c.exposure},
+      {"aperture", c.aperture},
+      {"shutterSpeed", c.shutterSpeed},
+      {"sensitivity", c.sensitivity},
     };
   }
   auto FromJson(const json &j, Camera &c) -> void {
@@ -103,6 +112,19 @@ namespace {
       j.at("farPlane").get_to(c.farPlane);
     if (j.contains("orthoSize"))
       j.at("orthoSize").get_to(c.orthoSize);
+    // Absent in a scene written before the camera carried an exposure, which is why every one of
+    // these is optional: such a scene means the default, and reading it must not disturb what the
+    // camera already holds.
+    if (j.contains("exposureMode"))
+      c.exposureMode = static_cast<ExposureMode>(j.at("exposureMode").get<int>());
+    if (j.contains("exposure"))
+      j.at("exposure").get_to(c.exposure);
+    if (j.contains("aperture"))
+      j.at("aperture").get_to(c.aperture);
+    if (j.contains("shutterSpeed"))
+      j.at("shutterSpeed").get_to(c.shutterSpeed);
+    if (j.contains("sensitivity"))
+      j.at("sensitivity").get_to(c.sensitivity);
     Transform transform;
     if (j.contains("position"))
       j.at("position").get_to(transform.position);
@@ -285,20 +307,25 @@ namespace {
     const auto name = app.GetEntityName(id);
     entity["name"] = name;
     auto components = json::object();
-    auto hasScript = false;
     for (const auto type : app.GetEntityComponentTypes(id)) {
-      if (type == ComponentType::Script) {
-        hasScript = true;
+      if (type == ComponentType::Script)
         continue;
-      }
       if (!IsSerialized(type))
         continue;
       if (auto variant = app.GetEntityComponent(id, type); variant.has_value())
         components[Component::GetTypeName(type)] = std::visit(ToJsonVisitor{referenced}, *variant);
     }
-    if (hasScript)
-      spdlog::warn("[SceneSerializer] entity '{}' has script components that will not be saved", name);
     entity["components"] = std::move(components);
+    // Attachment only: which scripts are on the entity, not what any of them currently holds. A
+    // script's members are arbitrary C++ with no description of themselves anywhere, so there is
+    // nothing generic to write; what a scene can say is which behaviours belong to which entity,
+    // and a freshly constructed script is what `Start` expects to be handed anyway.
+    auto scripts = json::array();
+    for (const auto *script : app.GetEntityComponent<Script>(id))
+      if (script)
+        scripts.push_back(script->GetTypeName());
+    if (!scripts.empty())
+      entity["scripts"] = std::move(scripts);
     auto children = json::array();
     app.ForEachChildEntity(id, [&](const EntityID childId) {
       children.push_back(SerializeEntity(app, childId, referenced));
@@ -310,6 +337,14 @@ namespace {
     const auto id = app.CreateEntity(entityJson.value("name", std::string{}));
     if (parent)
       app.AddChildEntity(parent, id);
+    if (entityJson.contains("scripts"))
+      for (const auto &scriptJson : entityJson.at("scripts")) {
+        const auto scriptName = scriptJson.get<std::string>();
+        if (const auto *info = ScriptRegistry::FindByName(scriptName); info)
+          info->add(app, id);
+        else
+          spdlog::warn("[SceneSerializer] entity '{}' wants script '{}', which this build does not register", entityJson.value("name", std::string{}), scriptName);
+      }
     if (entityJson.contains("components"))
       for (const auto &[typeName, componentJson] : entityJson.at("components").items()) {
         const auto &nameToType = NameToType();
@@ -381,11 +416,12 @@ namespace {
         DeserializeEntity(app, childJson, id, remap);
   }
 } // namespace
-auto SceneSerializer::Save(Application &app, const std::filesystem::path &scenePath) -> bool {
+auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) -> bool {
   if (!app.GetScene()) {
     spdlog::error("[SceneSerializer] no active scene to save");
     return false;
   }
+  const auto scenePath = ResolvePath(path);
   std::unordered_set<AssetID> referenced;
   auto entities = json::array();
   app.ForEachRootEntity([&](const EntityID id) {
@@ -422,7 +458,8 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &sceneP
   spdlog::info("[SceneSerializer] saved scene: {} ({} referenced assets)", scenePath.string(), referenced.size());
   return true;
 }
-auto SceneSerializer::Load(Application &app, const std::filesystem::path &scenePath) -> bool {
+auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) -> bool {
+  const auto scenePath = ResolvePath(path);
   std::ifstream sceneFile(scenePath);
   if (!sceneFile) {
     spdlog::error("[SceneSerializer] failed to open file for reading: {}", scenePath.string());
@@ -448,6 +485,9 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &sceneP
         auto runtimeId = AssetID{};
         if (!pathStr.empty()) {
           switch (static_cast<AssetType>(entry.value("type", 0))) {
+          case AssetType::Material:
+            runtimeId = app.LoadAssetAsync<MaterialAsset>(pathStr, name, savedId);
+            break;
           case AssetType::Model:
             runtimeId = app.LoadAssetAsync<ModelAsset>(pathStr, name, savedId);
             break;
@@ -461,12 +501,9 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &sceneP
             break;
           }
         }
-        if (!runtimeId && !name.empty())
-          if (auto asset = app.GetAsset(name); asset)
-            runtimeId = asset->id;
         if (runtimeId)
           remap.emplace(savedId, runtimeId);
-        else
+        else if (!app.GetAsset(savedId))
           spdlog::warn("[SceneSerializer] failed to resolve referenced asset: {}", name);
       }
     } catch (const json::parse_error &e) {

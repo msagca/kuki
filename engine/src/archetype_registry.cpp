@@ -12,6 +12,7 @@
 #include <gl_skybox.hpp>
 #include <gl_texture.hpp>
 #include <gl_unlit_shader.hpp>
+#include <indirect_lighting.hpp>
 #include <light.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
@@ -95,6 +96,8 @@ auto ArchetypeRegistry::CreateColumn(const ComponentType type) -> std::unique_pt
     return std::make_unique<ArchetypeColumn<BoundingBox>>();
   case ComponentType::Camera:
     return std::make_unique<ArchetypeColumn<Camera>>();
+  case ComponentType::DXMaterial:
+    return std::make_unique<ArchetypeColumn<DXMaterial>>();
   case ComponentType::GLBuffer:
     return std::make_unique<ArchetypeColumn<GLBuffer>>();
   case ComponentType::GLComputeShader:
@@ -113,6 +116,8 @@ auto ArchetypeRegistry::CreateColumn(const ComponentType type) -> std::unique_pt
     return std::make_unique<ArchetypeColumn<GLTexture>>();
   case ComponentType::GLUnlitShader:
     return std::make_unique<ArchetypeColumn<GLUnlitShader>>();
+  case ComponentType::IndirectLighting:
+    return std::make_unique<ArchetypeColumn<IndirectLighting>>();
   case ComponentType::Light:
     return std::make_unique<ArchetypeColumn<Light>>();
   case ComponentType::MaterialHandle:

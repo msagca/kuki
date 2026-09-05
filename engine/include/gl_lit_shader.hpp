@@ -9,5 +9,6 @@ struct KUKI_ENGINE_API GLLitShader final : public GLShader {
   auto SetLighting(std::span<const Light>) -> void override;
   auto SetMaterialFallback(const GLMesh &, std::span<const MaterialFallback>, const unsigned int) -> void override;
   auto SetSkybox(const GLSkybox * = nullptr) -> void override;
+  auto SetIndirectLighting(const IndirectLighting &) -> void override;
 };
 } // namespace kuki

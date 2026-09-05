@@ -10,6 +10,13 @@ namespace kuki {
 class KUKI_ENGINE_API SceneManager final : public Manager {
 public:
   SceneManager(Application &);
+  /// @brief Not copyable: it owns what it holds through `unique_ptr`.
+  ///
+  /// Explicit rather than left implicit because exporting a class from a shared library
+  /// instantiates its implicit members too, and the implicit copy of a container of `unique_ptr`
+  /// does not compile. Nothing copies this, so the declaration costs nothing and says so.
+  SceneManager(const SceneManager &) = delete;
+  auto operator=(const SceneManager &) -> SceneManager & = delete;
   auto Create(std::string) -> SceneID;
   auto Get(this auto &self, const std::string & = "") -> ConstCorrectPointer<decltype(self), Scene>;
   auto Switch(const std::string &) -> bool;

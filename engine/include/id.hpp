@@ -2,6 +2,7 @@
 #include <functional>
 #include <kuki_engine_export.h>
 #include <string>
+#include <string_view>
 #include <uuid.hpp>
 namespace kuki {
 template <typename T>
@@ -75,6 +76,38 @@ ID<T>::operator long long() const {
 }
 using AssetID = UUID<UUID128>;
 using EntityID = ID<class Entity>;
+namespace detail {
+  /// @brief FNV-1a over a name, seeded so one string can produce both halves of a UUID.
+  inline constexpr auto Fnv1a64(const std::string_view text, uint64_t hash) -> uint64_t {
+    constexpr uint64_t PRIME = 1099511628211ULL;
+    for (const auto c : text) {
+      hash ^= static_cast<uint8_t>(c);
+      hash *= PRIME;
+    }
+    return hash;
+  }
+} // namespace detail
+/// @brief The id a built-in asset always has, derived from its name.
+///
+/// A built-in asset has no file to be identified by, so a generated id would differ every run and
+/// a scene saved yesterday would name ids that no longer exist. Deriving the id from the name makes
+/// it a property of the asset rather than of the session, so a saved reference resolves on its own
+/// and needs no search by name to rescue it.
+///
+/// Only assets a scene can reference need this. Shaders never reach a scene manifest, so they keep
+/// generated ids, and the vertex stage of a shader pair has no name to derive one from anyway.
+inline auto MakeBuiltInAssetID(const std::string_view name) -> AssetID {
+  constexpr uint64_t HIGH_BASIS = 14695981039346656037ULL;
+  constexpr uint64_t LOW_BASIS = 14695981039346656038ULL;
+  return AssetID(UUID128{detail::Fnv1a64(name, HIGH_BASIS), detail::Fnv1a64(name, LOW_BASIS)});
+}
+/// @brief `EntityID::Invalid` as the picking targets store it, in the low bits of three channels.
+///
+/// The targets carry one byte per channel, so an id survives the round trip only in its low 24
+/// bits. `EntityID::Invalid` is -1, which truncates to every one of those bits set, and the
+/// renderers read that value back as the sentinel meaning nothing was drawn at a pixel. Zero
+/// cannot serve the same purpose: it is `EntityID::First`, a real entity in any scene.
+inline constexpr uint32_t ENTITY_ID_ENCODED_INVALID = 0xFFFFFFu;
 using GenCount = ID<class Generation>;
 using PassID = ID<class Pass>;
 using SceneID = ID<class Scene>;

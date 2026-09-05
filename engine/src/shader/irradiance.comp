@@ -1,4 +1,5 @@
 #version 460 core
+const float PI = 3.14159265359;
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba32f, binding = 0) writeonly uniform imageCube u_irradianceMap;
 layout(std430, binding = 0) readonly buffer u_shCoefficients {
@@ -12,7 +13,15 @@ void main() {
         if (gid.x >= u_cubeSize || gid.y >= u_cubeSize || gid.z >= 6)
                 return;
         vec3 normal = CubeDirectionFromCoord(gid, u_cubeSize);
-        vec3 irradiance = EvaluateIrradianceSH(normal);
+        // Stored as E/PI rather than as the irradiance itself. `lit.frag` multiplies this straight
+        // by albedo, and a Lambertian surface reflects albedo/PI of the irradiance reaching it, so
+        // the division has to happen on one side or the other. It happens here because
+        // `FallbackIrradiance` already divides, and leaving it out is what made binding a skybox
+        // brighten every diffuse surface by PI against the fallback it replaced.
+        //
+        // The clamp is for ringing. A second-order fit undershoots opposite a bright source, and
+        // this target is floating point, so a negative would survive the write and subtract light.
+        vec3 irradiance = max(EvaluateIrradianceSH(normal), vec3(0.0)) / PI;
         imageStore(u_irradianceMap, gid, vec4(irradiance, 1.0));
 }
 vec3 CubeDirectionFromCoord(ivec3 coord, uint size) {

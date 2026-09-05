@@ -1,0 +1,456 @@
+{
+  "name": "CornellBox",
+  "entities": [
+    {
+      "name": "Camera",
+      "children": [],
+      "components": {
+        "Camera": {
+          "position": {
+            "x": 0.0,
+            "y": 2.0,
+            "z": 5.5
+          },
+          "rotation": {
+            "w": 1.0,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "fov": 45.0,
+          "nearPlane": 0.1,
+          "farPlane": 100.0,
+          "orthoSize": 5.0
+        }
+      }
+    },
+    {
+      "name": "Floor",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 1.0,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 2.0,
+            "y": 1.0,
+            "z": 2.0
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2001
+          }
+        }
+      }
+    },
+    {
+      "name": "Ceiling",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 0.0,
+            "y": 4.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.0,
+            "x": 1.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 2.0,
+            "y": 1.0,
+            "z": 2.0
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2001
+          }
+        }
+      }
+    },
+    {
+      "name": "BackWall",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 0.0,
+            "y": 2.0,
+            "z": -2.0
+          },
+          "rotation": {
+            "w": 0.707107,
+            "x": 0.707107,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 2.0,
+            "y": 1.0,
+            "z": 2.0
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2001
+          }
+        }
+      }
+    },
+    {
+      "name": "LeftWall",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": -2.0,
+            "y": 2.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.707107,
+            "x": -0.0,
+            "y": -0.0,
+            "z": -0.707107
+          },
+          "scale": {
+            "x": 2.0,
+            "y": 1.0,
+            "z": 2.0
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2002
+          }
+        }
+      }
+    },
+    {
+      "name": "RightWall",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 2.0,
+            "y": 2.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.707107,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.707107
+          },
+          "scale": {
+            "x": 2.0,
+            "y": 1.0,
+            "z": 2.0
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2003
+          }
+        }
+      }
+    },
+    {
+      "name": "TallBox",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": -0.72,
+            "y": 1.2,
+            "z": -0.72
+          },
+          "rotation": {
+            "w": 0.987688,
+            "x": -0.0,
+            "y": -0.156434,
+            "z": -0.0
+          },
+          "scale": {
+            "x": 1.2,
+            "y": 2.4,
+            "z": 1.2
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -0.5,
+            "y": -0.5,
+            "z": -0.5
+          },
+          "max": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": 0.5
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 8569614091031957600,
+            "low": 15471855482930753187
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2001
+          }
+        }
+      }
+    },
+    {
+      "name": "ShortBox",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 0.78,
+            "y": 0.6,
+            "z": 0.62
+          },
+          "rotation": {
+            "w": 0.989016,
+            "x": 0.0,
+            "y": 0.147809,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 1.2,
+            "y": 1.2,
+            "z": 1.2
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -0.5,
+            "y": -0.5,
+            "z": -0.5
+          },
+          "max": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": 0.5
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 8569614091031957600,
+            "low": 15471855482930753187
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2001
+          }
+        }
+      }
+    },
+    {
+      "name": "AreaLight",
+      "children": [],
+      "components": {
+        "Transform": {
+          "position": {
+            "x": 0.0,
+            "y": 3.94,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.0,
+            "x": 1.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 0.75,
+            "y": 1.0,
+            "z": 0.65
+          }
+        },
+        "BoundingBox": {
+          "min": {
+            "x": -1.0,
+            "y": 0.0,
+            "z": -1.0
+          },
+          "max": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.0
+          }
+        },
+        "MeshHandle": {
+          "assetId": {
+            "high": 1414967765654552757,
+            "low": 3425565642171139096
+          }
+        },
+        "MaterialHandle": {
+          "assetId": {
+            "high": 1,
+            "low": 2004
+          }
+        }
+      }
+    },
+    {
+      "name": "Light",
+      "children": [],
+      "components": {
+        "Light": {
+          "type": 2,
+          "position": {
+            "x": 0.0,
+            "y": 3.85,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.707107,
+            "x": -0.707107,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "ambient": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "diffuse": {
+            "x": 1.0,
+            "y": 0.93,
+            "z": 0.78
+          },
+          "specular": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "intensity": 8.0,
+          "constant": 1.0,
+          "linear": 0.09,
+          "quadratic": 0.032,
+          "innerCutoff": 0.9,
+          "outerCutoff": 0.8,
+          "nearPlane": 0.1,
+          "farPlane": 30.0,
+          "orthoSize": 5.0
+        }
+      }
+    }
+  ]
+}

@@ -7,8 +7,14 @@ namespace kuki {
 struct KUKI_ENGINE_API GLTexture final : public RenderTarget {
   unsigned int id{};
   TextureContent content{TextureContent::Albedo};
-  TargetDescription desc{};
   bool flipY{false};
   explicit operator bool() const;
+  auto GetTextureHandle() const -> uint64_t override {
+    return id;
+  }
+  /// @brief `flipY` marks source data already stored bottom-up, which cancels out OpenGL's own flip.
+  auto NeedsVerticalFlip() const -> bool override {
+    return !flipY;
+  }
 };
 } // namespace kuki

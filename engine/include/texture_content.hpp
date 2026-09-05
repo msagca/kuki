@@ -2,8 +2,11 @@
 #include <bitset>
 #include <cstdint>
 namespace kuki {
+/// @brief What a texture supplies to the shading model, and its bit position in a `TextureMask`.
+///
+/// The order is load-bearing: the lit shaders test the mask by literal bit, so reordering these
+/// silently rebinds every texture slot rather than failing to compile.
 enum class TextureContent : uint8_t {
-  // NOTE: do not change the order here, otherwise the lit shader won't function correctly
   Albedo,
   Normal,
   Metalness,

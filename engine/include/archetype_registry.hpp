@@ -18,6 +18,15 @@ struct MoveResult {
 };
 class KUKI_ENGINE_API ArchetypeRegistry {
 public:
+  // Declaring any constructor suppresses the implicit default one, so it is asked for back.
+  ArchetypeRegistry() = default;
+  /// @brief Not copyable: it owns what it holds through `unique_ptr`.
+  ///
+  /// Explicit rather than left implicit because exporting a class from a shared library
+  /// instantiates its implicit members too, and the implicit copy of a container of `unique_ptr`
+  /// does not compile. Nothing copies this, so the declaration costs nothing and says so.
+  ArchetypeRegistry(const ArchetypeRegistry &) = delete;
+  auto operator=(const ArchetypeRegistry &) -> ArchetypeRegistry & = delete;
   auto Clear() -> void;
   auto GetArchetype(this auto &, const ComponentMask &) -> decltype(auto);
   auto GetOrCreateArchetype(const ComponentMask &) -> Archetype *;

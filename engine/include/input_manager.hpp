@@ -26,29 +26,43 @@ public:
     CaptureState state{CaptureState::Pending};
     Trigger trigger{};
   };
+  /// @brief Which half of the input space a call means, or both halves at once.
+  ///
+  /// Halves rather than kinds, because underneath there is only one space: keys and mouse buttons
+  /// share `inputState`, indexed by `GLFWInputToIndex`, and what separates them is which flag gates
+  /// their callback rather than where their state is kept.
+  enum class InputKind : uint8_t { Keys,
+    Buttons,
+    All };
+  /// @brief A quad of keys read as a two-axis direction.
+  ///
+  /// The two quads had a method each and the two methods were the same nine lines with four
+  /// different key codes in them, which is what makes this a parameter rather than a name.
+  enum class KeyAxis : uint8_t { Arrows,
+    WASD };
   InputManager(Application &);
   auto BeginKeyCapture() -> void;
   auto CancelKeyCapture() -> void;
+  /// @brief Feeds a printable character into the key-sequence trie, resetting the sequence when it stops matching a known prefix.
+  ///
+  /// An action bound to the completed sequence fires during the trie traversal itself, not on return.
   auto CharCallback(GLFWwindow *, unsigned int) -> void;
   auto CursorPosCallback(GLFWwindow *, double, double) -> void;
-  auto DisableAll() -> void;
-  auto DisableButtons() -> void;
-  auto DisableKeys() -> void;
-  auto EnableAll() -> void;
-  auto EnableButtons() -> void;
-  auto EnableKeys() -> void;
-  auto GetArrowKeys() const -> glm::ivec2;
   auto GetBinding(const std::string &) const -> Trigger;
   auto GetBindingDescription(const std::string &) const -> std::string;
   auto GetBindingNames() const -> const std::vector<std::string> &;
   auto GetInactivityTime() const -> double;
+  /// @brief The direction a key quad is currently pointing, as -1, 0 or 1 per axis.
+  ///
+  /// Opposing keys held together read as nought on that axis rather than as whichever was pressed
+  /// first, which is the behaviour both quads had and is what keeps a stuck key from steering.
+  auto GetKeyAxis(const KeyAxis) const -> glm::ivec2;
   auto GetMousePosition() const -> glm::vec2;
   auto GetScrollOffset() const -> glm::vec2;
   auto GetSequenceDescription(const std::string &) const -> std::string;
   auto GetSequenceNames() const -> const std::vector<std::string> &;
   auto GetState(int) const -> bool;
   auto GetTriggerName(const Trigger &) const -> std::string;
-  auto GetWASD() const -> glm::ivec2;
   auto IsBindingHeld(const std::string &) const -> bool;
   auto IsBindingPressed(const std::string &) const -> bool;
   auto IsPressed(int) const -> bool;
@@ -61,6 +75,17 @@ public:
   auto RegisterAction(const std::string &, InputAction, std::string = "") -> ActionID;
   auto RegisterBinding(const std::string &, const Trigger &, std::string = "") -> void;
   auto SetBinding(const std::string &, const Trigger &) -> void;
+  /// @brief Turns one half of the input space on or off, or both.
+  ///
+  /// In place of six `EnableX`/`DisableX` methods over two booleans. The shape is the one
+  /// `Renderer::SetPassEnabled` already uses, and it puts the asymmetry below somewhere it can be
+  /// read rather than in whichever of the six bodies you happened to open.
+  ///
+  /// `All` also clears a half-typed key sequence and the single-half cases do not. That is the
+  /// behaviour as it stood, kept deliberately rather than tidied, but it is worth knowing: the
+  /// editor turns keys off while Dear ImGui wants text, so a sequence somebody had started survives
+  /// across the text field and can still complete on the first character after keys come back.
+  auto SetEnabled(const InputKind, const bool) -> void;
   auto UnregisterAction(ActionID) -> bool;
   auto ResetPulses() -> void;
   auto ResetScroll() -> void;

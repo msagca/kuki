@@ -6,6 +6,10 @@
 *.filters
 *.ilk
 *.in
+# A CMake package config template is a source file, not one of the generated `.in` artefacts the
+# pattern above is aimed at. Without this, `cmake/KukiEngineConfig.cmake.in` is silently left out
+# of the repository and a fresh clone cannot configure a shared build at all.
+!*.cmake.in
 *.ini
 *.lib
 *.ninja
@@ -31,7 +35,8 @@ CMakeFiles/
 CMakeScripts/
 Makefile
 [Bb]uild/
-[Dd]ebug
+[Dd]ebug/
+[Mm]odel/
 [Oo]ut/
 [Rr]elease/
 [Tt]esting/

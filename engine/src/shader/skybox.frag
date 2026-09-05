@@ -1,5 +1,6 @@
 #version 460 core
 const vec4 COLOR_GRAY = vec4(0.1, 0.1, 0.1, 1.0);
+const vec4 ENTITY_ID_INVALID = vec4(1.0, 1.0, 1.0, 1.0);
 in vec2 v_ndc;
 out vec4 color;
 layout(location = 1) out vec4 entityColor;
@@ -23,5 +24,5 @@ void main() {
                 color = vec4(gradient, 1.0);
         } else
                 color = COLOR_GRAY;
-        entityColor = vec4(1.0);
+        entityColor = ENTITY_ID_INVALID;
 }

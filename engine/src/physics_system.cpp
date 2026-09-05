@@ -1,5 +1,6 @@
 #include <application.hpp>
 #include <physics_system.hpp>
+#include <profiler.hpp>
 #include <system.hpp>
 #include <transform.hpp>
 #include <utility>
@@ -15,7 +16,7 @@ auto PhysicsSystem::Update(const float deltaTime) -> void {
     timeAccumulated -= simulationTimestep;
   }
   const auto alpha = timeAccumulated / simulationTimestep;
-  // TODO: use this value to update the state via linear interpolation to fix visual stuttering
+  KUKI_PROFILE_SCOPE("Physics");
   auto scene = app.GetScene();
   if (!scene)
     return;

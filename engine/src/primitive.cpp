@@ -50,7 +50,8 @@ auto Primitive::Cube() -> std::vector<Vertex> {
     {{-.5f, .5f, -.5f}, {0.f, 1.f, 0.f}, {0.f, 0.f}, {1.f, 0.f, 0.f}}};
 }
 auto Primitive::Cylinder(unsigned int segments) -> std::vector<Vertex> {
-  std::vector<Vertex> vertices(segments * 36);
+  std::vector<Vertex> vertices;
+  vertices.reserve(segments * 36);
   std::vector<float> segmentData(segments * 4);
   const auto circ = 2 * PI / segments;
   for (auto i = 0; i < segments; ++i) {
@@ -131,7 +132,8 @@ auto Primitive::Plane() -> std::vector<Vertex> {
 auto Primitive::Sphere(unsigned int level) -> std::vector<Vertex> {
   std::vector<Triangle> triangles = CreateIcosahedron();
   Subdivide(triangles, level);
-  std::vector<Vertex> vertices(triangles.size() * 18);
+  std::vector<Vertex> vertices;
+  vertices.reserve(triangles.size() * 3);
   for (const auto &t : triangles) {
     const std::array<glm::vec3, 3> tv{t.v1, t.v2, t.v3};
     for (const auto &v : tv) {
@@ -169,7 +171,8 @@ auto Primitive::CreateOctahedron() -> std::vector<Triangle> {
 }
 auto Primitive::Subdivide(std::vector<Triangle> &triangles, unsigned int level) -> void {
   for (auto i = 0; i < level; ++i) {
-    std::vector<Triangle> temp(triangles.size() * 4);
+    std::vector<Triangle> temp;
+    temp.reserve(triangles.size() * 4);
     for (const auto &t : triangles) {
       const auto v12 = glm::normalize(t.v1 + t.v2);
       const auto v23 = glm::normalize(t.v2 + t.v3);

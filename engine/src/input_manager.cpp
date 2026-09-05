@@ -53,7 +53,6 @@ auto InputManager::CharCallback(GLFWwindow *window, unsigned int codepoint) -> v
     return;
   const auto c = ToLowerASCII(ToASCII(codepoint));
   keyseq.push_back(c);
-  // NOTE: if there is an action registered to this sequence, it will fire during the trie traversal
   if (keymap.Find(keyseq.begin(), keyseq.end()) != TrieMatch::PrefixFound)
     keyseq.clear();
 }
@@ -63,37 +62,6 @@ auto InputManager::CursorPosCallback(GLFWwindow *window, double xpos, double ypo
   lastInputTime = glfwGetTime();
   mousePosition.x = xpos;
   mousePosition.y = ypos;
-}
-auto InputManager::DisableAll() -> void {
-  keysEnabled = false;
-  buttonsEnabled = false;
-  keyseq.clear();
-}
-auto InputManager::DisableButtons() -> void {
-  buttonsEnabled = false;
-}
-auto InputManager::DisableKeys() -> void {
-  keysEnabled = false;
-}
-auto InputManager::EnableAll() -> void {
-  keysEnabled = true;
-  buttonsEnabled = true;
-}
-auto InputManager::EnableButtons() -> void {
-  buttonsEnabled = true;
-}
-auto InputManager::EnableKeys() -> void {
-  keysEnabled = true;
-}
-auto InputManager::GetArrowKeys() const -> glm::ivec2 {
-  glm::ivec2 arrow{};
-  const auto up = GetState(GLFW_KEY_UP);
-  const auto down = GetState(GLFW_KEY_DOWN);
-  const auto left = GetState(GLFW_KEY_LEFT);
-  const auto right = GetState(GLFW_KEY_RIGHT);
-  arrow.y = up ? (down ? 0 : 1) : (down ? -1 : 0);
-  arrow.x = right ? (left ? 0 : 1) : (left ? -1 : 0);
-  return arrow;
 }
 auto InputManager::GetBinding(const std::string &name) const -> Trigger {
   auto it = nameToBinding.find(name);
@@ -105,6 +73,27 @@ auto InputManager::GetBindingDescription(const std::string &name) const -> std::
 }
 auto InputManager::GetBindingNames() const -> const std::vector<std::string> & {
   return bindingOrder;
+}
+auto InputManager::GetKeyAxis(const KeyAxis axis) const -> glm::ivec2 {
+  const auto arrows = axis == KeyAxis::Arrows;
+  const auto up = GetState(arrows ? GLFW_KEY_UP : GLFW_KEY_W);
+  const auto down = GetState(arrows ? GLFW_KEY_DOWN : GLFW_KEY_S);
+  const auto left = GetState(arrows ? GLFW_KEY_LEFT : GLFW_KEY_A);
+  const auto right = GetState(arrows ? GLFW_KEY_RIGHT : GLFW_KEY_D);
+  glm::ivec2 direction{};
+  direction.y = up ? (down ? 0 : 1) : (down ? -1 : 0);
+  direction.x = right ? (left ? 0 : 1) : (left ? -1 : 0);
+  return direction;
+}
+auto InputManager::SetEnabled(const InputKind kind, const bool enabled) -> void {
+  if (kind != InputKind::Buttons)
+    keysEnabled = enabled;
+  if (kind != InputKind::Keys)
+    buttonsEnabled = enabled;
+  // Only the both-halves case clears the sequence, which is what `DisableAll` did and the
+  // single-half calls did not. See the note on the declaration.
+  if (kind == InputKind::All && !enabled)
+    keyseq.clear();
 }
 auto InputManager::GetInactivityTime() const -> double {
   return glfwGetTime() - lastInputTime;
@@ -133,16 +122,6 @@ auto InputManager::GetTriggerName(const Trigger &trigger) const -> std::string {
     name += "Super+";
   name += GLFWKeyToString(trigger.key);
   return name;
-}
-auto InputManager::GetWASD() const -> glm::ivec2 {
-  glm::ivec2 wasd{};
-  const auto w = GetState(GLFW_KEY_W);
-  const auto s = GetState(GLFW_KEY_S);
-  const auto a = GetState(GLFW_KEY_A);
-  const auto d = GetState(GLFW_KEY_D);
-  wasd.y = w ? (s ? 0 : 1) : (s ? -1 : 0);
-  wasd.x = d ? (a ? 0 : 1) : (a ? -1 : 0);
-  return wasd;
 }
 auto InputManager::IsBindingHeld(const std::string &name) const -> bool {
   auto it = nameToBinding.find(name);
@@ -238,10 +217,21 @@ auto InputManager::SetBinding(const std::string &name, const Trigger &trigger) -
   AssignBinding(name, trigger);
 }
 auto InputManager::AssignBinding(const std::string &name, const Trigger &trigger) -> void {
+  // A key belongs to one binding, so claiming it takes it from whoever had it. That has always been
+  // the rule; what is new is that it says so. Silence here is what made a script and an editor
+  // shortcut wanting the same key look like the script's binding simply not working -- the script
+  // registers later, wins, and the shortcut stops responding with nothing anywhere to say why.
+  //
+  // Here rather than at either call site, because both of them displace: a script registering on
+  // start, and a rebind from a panel. And in the engine rather than the editor, so that a stripped
+  // build running two scripts that both want the same key still reports it. That is the case with no
+  // other way of being found out -- there is no shortcut list to look at and no panel to open.
   if (trigger.key != 0)
     for (auto &[otherName, otherTrigger] : nameToBinding)
-      if (otherName != name && otherTrigger == trigger)
+      if (otherName != name && otherTrigger == trigger) {
+        spdlog::warn("[InputManager] {} took {} from {}, which is now unbound", name, GetTriggerName(trigger), otherName);
         otherTrigger = Trigger{};
+      }
   nameToBinding[name] = trigger;
 }
 auto InputManager::UnregisterAction(const ActionID id) -> bool {

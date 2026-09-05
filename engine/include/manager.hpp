@@ -2,7 +2,7 @@
 #include <kuki_engine_export.h>
 namespace kuki {
 class Application;
-class Manager {
+class KUKI_ENGINE_API Manager {
 public:
   virtual ~Manager() = default;
 protected:

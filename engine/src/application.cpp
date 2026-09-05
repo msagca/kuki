@@ -11,12 +11,14 @@
 #include <concepts.hpp>
 #include <filesystem>
 #include <fstream>
-#include <glad/glad.h>
+#include <game_builder.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_int2.hpp>
+#include <graphics_context.hpp>
 #include <ico.h>
 #include <id.hpp>
 #include <kaitai/kaitaistream.h>
+#include <launch_path.hpp>
 #include <material_asset.hpp>
 #include <material_type.hpp>
 #include <memory>
@@ -24,6 +26,7 @@
 #include <model_asset.hpp>
 #include <optional>
 #include <primitive.hpp>
+#include <profiler.hpp>
 #include <render_target.hpp>
 #include <rendering_system.hpp>
 #include <scene.hpp>
@@ -36,7 +39,6 @@
 #include <typeindex>
 #include <utility>
 #include <vector>
-#include <whereami.h>
 namespace kuki {
 Application::Application(ApplicationDescription desc)
   : desc(std::move(desc)), assetManager(*this), inputManager(*this), sceneManager(*this) {
@@ -68,60 +70,89 @@ auto Application::PostStart() -> void {
   PostStartSystems();
 };
 auto Application::PreUpdate() -> void {
+  Profiler::Get().BeginFrame();
   const auto timeNow = std::chrono::high_resolution_clock::now();
   static auto timeLast = timeNow;
   deltaTime = std::chrono::duration<float>(timeNow - timeLast).count();
   timeLast = timeNow;
   inputManager.ResetScroll();
   inputManager.ResetPulses();
-  glfwPollEvents();
-  assetManager.Update();
-  UpdateSystems(deltaTime);
+  {
+    KUKI_PROFILE_SCOPE("Input");
+    glfwPollEvents();
+  }
+  {
+    KUKI_PROFILE_SCOPE("Assets");
+    assetManager.Update();
+  }
+  if (graphicsContext) {
+    KUKI_PROFILE_SCOPE("BeginFrame");
+    graphicsContext->BeginFrame();
+  }
+  {
+    KUKI_PROFILE_SCOPE("Systems");
+    UpdateSystems(deltaTime);
+  }
 };
 auto Application::PostUpdate() -> void {
-  glfwSwapBuffers(window);
+  if (graphicsContext) {
+    KUKI_PROFILE_SCOPE("Present");
+    graphicsContext->Present();
+  }
+  Profiler::Get().EndFrame();
 }
 auto Application::PreShutdown() -> void {
   ShutdownSystems();
+  if (graphicsContext)
+    graphicsContext->Shutdown();
   glfwDestroyWindow(window);
   glfwTerminate();
 };
+auto Application::Quit() -> void {
+  if (window)
+    glfwSetWindowShouldClose(window, GLFW_TRUE);
+}
 auto Application::Status() -> bool {
   return window && !glfwWindowShouldClose(window);
 };
 auto Application::CreateWindow() -> bool {
-  static constexpr auto GL_MAJOR = 4;
-  static constexpr auto GL_MINOR = 6;
-  constexpr auto SCREEN_WIDTH = 1920;
-  constexpr auto SCREEN_HEIGHT = 1080;
+  graphicsContext = GraphicsContext::Create(desc.api);
+  if (!graphicsContext) {
+    spdlog::error("[App] failed to create graphics context.");
+    return false;
+  }
   glfwInit();
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, GL_MAJOR);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, GL_MINOR);
-  glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-  glfwWindowHint(GLFW_SAMPLES, 4);
-  window = glfwCreateWindow(SCREEN_WIDTH, SCREEN_HEIGHT, desc.name.c_str(), nullptr, nullptr);
+  graphicsContext->ApplyWindowHints();
+  auto width = desc.width;
+  auto height = desc.height;
+  GLFWmonitor *monitor{};
+  if (desc.fullscreen) {
+    // Borderless rather than exclusive: the window is created at the monitor's current mode with
+    // the decorations off and no monitor handed to GLFW, so there is no mode switch to pay for on
+    // every alt-tab. See `ApplicationDescription::fullscreen`.
+    if (auto *primary = glfwGetPrimaryMonitor(); primary)
+      if (const auto *mode = glfwGetVideoMode(primary); mode) {
+        width = mode->width;
+        height = mode->height;
+        glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+        glfwWindowHint(GLFW_RED_BITS, mode->redBits);
+        glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
+        glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
+        glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+      }
+  }
+  window = glfwCreateWindow(width, height, desc.name.c_str(), monitor, nullptr);
   if (!window) {
     spdlog::error("[App] failed to create window.");
     glfwTerminate();
     return false;
   }
-  glfwMakeContextCurrent(window);
-  if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    spdlog::error("[App] failed to initialize GLAD.");
+  if (!graphicsContext->Initialize(window)) {
+    spdlog::error("[App] failed to initialize graphics context.");
     return false;
   }
-  auto version = reinterpret_cast<const char *>(glGetString(GL_VERSION));
-  spdlog::info("[OpenGL] version: {}", version);
-  int major, minor;
-  glGetIntegerv(GL_MAJOR_VERSION, &major);
-  glGetIntegerv(GL_MINOR_VERSION, &minor);
-  if (major < GL_MAJOR || (major == GL_MAJOR && minor < GL_MINOR)) {
-    spdlog::error("[OpenG] version {}.{} or higher is required.", GL_MAJOR, GL_MINOR);
-    return false;
-  }
+  graphicsContext->SetVSync(desc.vsync);
   SetWindowIcon();
-  glfwSwapInterval(0);
   glfwSetWindowUserPointer(window, this);
   glfwSetCursorPosCallback(window, CursorPosCallback);
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
@@ -131,19 +162,12 @@ auto Application::CreateWindow() -> bool {
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetScrollCallback(window, ScrollCallback);
   glfwSetWindowCloseCallback(window, WindowCloseCallback);
-  glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glCullFace(GL_BACK);
-  glEnable(GL_BLEND);
-  glEnable(GL_CULL_FACE);
-  glEnable(GL_DEBUG_OUTPUT);
-  glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-  glEnable(GL_DEPTH_TEST);
-  glEnable(GL_MULTISAMPLE);
-  glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-  glFrontFace(GL_CCW);
-  glDebugMessageCallback(DebugMessageCallback, nullptr);
-  glfwMaximizeWindow(window);
+  if (desc.maximized && !desc.fullscreen)
+    glfwMaximizeWindow(window);
+  int framebufferWidth{};
+  int framebufferHeight{};
+  glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+  graphicsContext->Resize(framebufferWidth, framebufferHeight);
   return true;
 }
 auto Application::AddChildEntity(const EntityID parent, const EntityID child) -> bool {
@@ -165,6 +189,16 @@ auto Application::CreateEntity(std::string name) -> EntityID {
 auto Application::CreateScene(std::string name) -> SceneID {
   return sceneManager.Create(std::move(name));
 }
+auto Application::SwitchScene(const std::string &name) -> bool {
+  return sceneManager.Switch(name);
+}
+auto Application::Game(const std::string &name) -> GameBuilder {
+  return GameBuilder(*this, name);
+}
+auto Application::SetWindowTitle(const std::string &title) -> void {
+  if (window)
+    glfwSetWindowTitle(window, title.c_str());
+}
 auto Application::DeleteEntities() -> void {
   if (auto scene = GetScene(); scene)
     scene->DeleteEntities();
@@ -176,37 +210,11 @@ auto Application::DeleteEntity(const EntityID id) -> void {
 auto Application::DeltaTime() const -> float {
   return deltaTime;
 }
-auto Application::DisableButtons() -> void {
-  inputManager.DisableButtons();
-}
-auto Application::DisableInputs() -> void {
-  inputManager.DisableAll();
-}
-auto Application::DisableKeys() -> void {
-  inputManager.DisableKeys();
-}
-auto Application::EnableButtons() -> void {
-  inputManager.EnableButtons();
-}
-auto Application::EnableInputs() -> void {
-  inputManager.EnableAll();
-}
-auto Application::EnableKeys() -> void {
-  inputManager.EnableKeys();
-}
 auto Application::EntityHasChildren(const EntityID id) const -> bool {
   if (auto scene = GetScene(); scene)
     return scene->EntityHasChildren(id);
   return false;
 }
-auto Application::EntityHasParent(const EntityID id) const -> bool {
-  if (auto scene = GetScene(); scene)
-    return scene->EntityHasParent(id);
-  return false;
-}
-auto Application::GetArrowKeys() const -> glm::ivec2 {
-  return inputManager.GetArrowKeys();
-};
 auto Application::GetAssetName(const AssetID id) const -> std::string {
   return assetManager.GetName(id);
 }
@@ -216,17 +224,11 @@ auto Application::GetAssetPath(const AssetID id) const -> std::filesystem::path 
 auto Application::GetAssetType(const AssetID id) const -> AssetType {
   return assetManager.GetType(id);
 }
-auto Application::GetButton(int button) const -> bool {
-  return inputManager.GetState(button);
-}
-auto Application::GetButtonDown(int button) const -> bool {
-  return inputManager.IsPressed(button);
-}
-auto Application::GetButtonUp(int button) const -> bool {
-  return inputManager.IsReleased(button);
-}
 auto Application::GetDescription() const -> const ApplicationDescription & {
   return desc;
+}
+auto Application::GetGraphicsContext() const -> GraphicsContext * {
+  return graphicsContext.get();
 }
 auto Application::GetEntityComponent(const EntityID id, const ComponentType type) -> std::optional<ComponentVariant> {
   if (auto scene = GetScene(); scene)
@@ -253,37 +255,27 @@ auto Application::GetEntityParent(const EntityID id) const -> EntityID {
     return scene->GetParent(id);
   return EntityID::Invalid;
 }
-auto Application::GetFPS() -> size_t {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
-    return renderingSystem->GetFPS();
-  return 0;
+auto Application::GetKeyAxis(const InputManager::KeyAxis axis) const -> glm::ivec2 {
+  return inputManager.GetKeyAxis(axis);
 }
-auto Application::GetKey(int key) const -> bool {
-  return inputManager.GetState(key);
+auto Application::IsInputHeld(const int input) const -> bool {
+  return inputManager.GetState(input);
 }
-auto Application::GetKeyDown(int key) const -> bool {
-  return inputManager.IsPressed(key);
+auto Application::IsInputPressed(const int input) const -> bool {
+  return inputManager.IsPressed(input);
 }
-auto Application::GetKeyUp(int key) const -> bool {
-  return inputManager.IsReleased(key);
+auto Application::IsInputReleased(const int input) const -> bool {
+  return inputManager.IsReleased(input);
 }
-auto Application::GetMissingEntityComponents(const EntityID id) const -> std::vector<ComponentType> {
-  if (auto scene = GetScene(); scene)
-    return scene->GetMissingEntityComponents(id);
-  return {};
+auto Application::SetInputEnabled(const InputManager::InputKind kind, const bool enabled) -> void {
+  inputManager.SetEnabled(kind, enabled);
 }
 auto Application::GetMousePosition() const -> glm::vec2 {
   return inputManager.GetMousePosition();
 };
-auto Application::GetName() const -> std::string {
-  return desc.name;
-}
 auto Application::GetScrollOffset() const -> glm::vec2 {
   return inputManager.GetScrollOffset();
 }
-auto Application::GetWASDKeys() const -> glm::ivec2 {
-  return inputManager.GetWASD();
-};
 auto Application::InstantiateAsset(const AssetID id) -> EntityID {
   if (auto scene = GetScene(); scene)
     return assetManager.Instantiate(id, *scene);
@@ -324,7 +316,7 @@ auto Application::LoadShaderFromSource(const std::string_view vertSource, const 
 auto Application::LoadPrimitive(const std::string &name) -> void {
   if (assetManager.Get(name))
     return;
-  auto meshAsset = std::make_unique<MeshAsset>(AssetID::Generate());
+  auto meshAsset = std::make_unique<MeshAsset>(MakeBuiltInAssetID(name));
   if (name == "Cube")
     meshAsset->mesh.vertices = Primitive::Cube();
   else if (name == "CubeInverted") {
@@ -344,51 +336,13 @@ auto Application::LoadPrimitive(const std::string &name) -> void {
   }
   meshAsset->bounds = BoundingBox::Calculate(meshAsset->mesh.vertices);
   if (!assetManager.Get("DefaultLit")) {
-    auto defaultLit = std::make_unique<MaterialAsset>(AssetID::Generate());
+    auto defaultLit = std::make_unique<MaterialAsset>(MakeBuiltInAssetID("DefaultLit"));
     defaultLit->type = MaterialType::Lit;
     assetManager.Add(std::move(defaultLit), "DefaultLit");
   }
   if (auto defaultLit = assetManager.Get<MaterialAsset>("DefaultLit"); defaultLit)
     meshAsset->material = defaultLit->id;
   assetManager.Add(std::move(meshAsset), name);
-}
-auto Application::GetPreviewSize() -> int {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
-    return renderingSystem->GetPreviewSize();
-  return 0;
-}
-auto Application::PreviewAsset(const AssetID id) -> RenderTarget * {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
-    return renderingSystem->PreviewAsset(id);
-  return nullptr;
-}
-auto Application::SetPreviewSize(const int size) -> void {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
-    renderingSystem->SetPreviewSize(size);
-}
-auto Application::BeginKeyCapture() -> void {
-  inputManager.BeginKeyCapture();
-}
-auto Application::CancelKeyCapture() -> void {
-  inputManager.CancelKeyCapture();
-}
-auto Application::GetBinding(const std::string &name) const -> InputManager::Trigger {
-  return inputManager.GetBinding(name);
-}
-auto Application::GetBindingDescription(const std::string &name) const -> std::string {
-  return inputManager.GetBindingDescription(name);
-}
-auto Application::GetBindingNames() const -> const std::vector<std::string> & {
-  return inputManager.GetBindingNames();
-}
-auto Application::GetSequenceDescription(const std::string &sequence) const -> std::string {
-  return inputManager.GetSequenceDescription(sequence);
-}
-auto Application::GetSequenceNames() const -> const std::vector<std::string> & {
-  return inputManager.GetSequenceNames();
-}
-auto Application::GetTriggerName(const InputManager::Trigger &trigger) const -> std::string {
-  return inputManager.GetTriggerName(trigger);
 }
 auto Application::IsBindingHeld(const std::string &name) const -> bool {
   return inputManager.IsBindingHeld(name);
@@ -399,9 +353,6 @@ auto Application::IsBindingPressed(const std::string &name) const -> bool {
 auto Application::IsSequenceInProgress() const -> bool {
   return inputManager.IsSequenceInProgress();
 }
-auto Application::PollKeyCapture() -> InputManager::CaptureOutcome {
-  return inputManager.PollKeyCapture();
-}
 auto Application::RegisterBinding(const std::string &name, const InputManager::Trigger &trigger, std::string description) -> void {
   inputManager.RegisterBinding(name, trigger, std::move(description));
 }
@@ -411,10 +362,25 @@ auto Application::RegisterInputAction(const std::string &trigger, InputAction ac
 auto Application::RegisterInputAction(int trigger, InputAction action, bool press) -> InputManager::ActionID {
   return inputManager.RegisterAction(trigger, std::move(action), press);
 }
-auto Application::RemoveEntityScript(const EntityID id, const std::type_index type) -> bool {
+auto Application::PickEntity(const glm::vec2 &position) -> EntityID {
+  auto *renderingSystem = GetRenderingSystem();
+  if (!renderingSystem || !window)
+    return EntityID::Invalid;
+  int windowWidth{};
+  int windowHeight{};
+  glfwGetWindowSize(window, &windowWidth, &windowHeight);
+  if (windowWidth <= 0 || windowHeight <= 0)
+    return EntityID::Invalid;
+  const auto [targetWidth, targetHeight] = renderingSystem->GetResolution();
+  const auto x = static_cast<int>(position.x / windowWidth * targetWidth);
+  const auto y = static_cast<int>(position.y / windowHeight * targetHeight);
+  if (x < 0 || y < 0 || x >= targetWidth || y >= targetHeight)
+    return EntityID::Invalid;
+  return renderingSystem->PickEntity(x, y);
+}
+auto Application::MarkTransformDirty(const EntityID id) -> void {
   if (auto scene = GetScene(); scene)
-    return scene->RemoveEntityScript(id, type);
-  return false;
+    scene->MarkTransformDirty(id);
 }
 auto Application::RenameAsset(const AssetID id, std::string name) -> bool {
   return assetManager.Rename(id, std::move(name));
@@ -429,9 +395,6 @@ auto Application::SetActiveCamera(const EntityID id, const std::string &sceneNam
     return scene->SetActiveCamera(id);
   return false;
 }
-auto Application::SetBinding(const std::string &name, const InputManager::Trigger &trigger) -> void {
-  inputManager.SetBinding(name, trigger);
-}
 auto Application::SetCursorLocked(bool locked) -> void {
   glfwSetInputMode(window, GLFW_CURSOR, locked ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
   if (!locked) {
@@ -443,18 +406,11 @@ auto Application::SetCursorLocked(bool locked) -> void {
 auto Application::SetViewportHovered(bool hovered) -> void {
   viewportHovered = hovered;
 }
-auto Application::SetResolution(const int width, const int height) -> void {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
-    renderingSystem->SetResolution(width, height);
-}
 auto Application::UnregisterInputAction(const InputManager::ActionID id) -> bool {
   return inputManager.UnregisterAction(id);
 }
 auto Application::GetExePath() -> std::filesystem::path {
-  int length = wai_getExecutablePath(nullptr, 0, nullptr);
-  std::string path(length, '\0');
-  wai_getExecutablePath(path.data(), length, nullptr);
-  return std::filesystem::path(path).parent_path();
+  return GetLaunchPath();
 }
 auto Application::LoadPrimitiveAssets() -> void {
   LoadPrimitive("Cube");
@@ -526,73 +482,14 @@ auto Application::CursorPosCallback(GLFWwindow *window, double xpos, double ypos
   if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance)
     instance->inputManager.CursorPosCallback(window, xpos, ypos);
 }
-auto Application::DebugMessageCallback(unsigned int source, unsigned int type, unsigned int id, unsigned int severity, int length, const char *message, const void *userParam) -> void {
-  std::string sourceStr, typeStr;
-  switch (source) {
-  case GL_DEBUG_SOURCE_API:
-    sourceStr = "API";
-    break;
-  case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
-    sourceStr = "window system";
-    break;
-  case GL_DEBUG_SOURCE_SHADER_COMPILER:
-    sourceStr = "shader compiler";
-    break;
-  case GL_DEBUG_SOURCE_THIRD_PARTY:
-    sourceStr = "third party";
-    break;
-  case GL_DEBUG_SOURCE_APPLICATION:
-    sourceStr = "application";
-    break;
-  default:
-    sourceStr = "other";
-    break;
-  }
-  switch (type) {
-  case GL_DEBUG_TYPE_ERROR:
-    typeStr = "error";
-    break;
-  case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
-    typeStr = "deprecated behavior";
-    break;
-  case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
-    typeStr = "undefined behavior";
-    break;
-  case GL_DEBUG_TYPE_PORTABILITY:
-    typeStr = "portability";
-    break;
-  case GL_DEBUG_TYPE_PERFORMANCE:
-    typeStr = "performance";
-    break;
-  case GL_DEBUG_TYPE_MARKER:
-    typeStr = "marker";
-    break;
-  case GL_DEBUG_TYPE_PUSH_GROUP:
-    typeStr = "push group";
-    break;
-  case GL_DEBUG_TYPE_POP_GROUP:
-    typeStr = "pop group";
-    break;
-  default:
-    typeStr = "other";
-    break;
-  }
-  switch (severity) {
-  case GL_DEBUG_SEVERITY_HIGH:
-    spdlog::error("[OpenGL] {} {}: {}", sourceStr, typeStr, message);
-    break;
-  case GL_DEBUG_SEVERITY_MEDIUM:
-    spdlog::warn("[OpenGL] {} {}: {}", sourceStr, typeStr, message);
-    break;
-  case GL_DEBUG_SEVERITY_LOW:
-    spdlog::info("[OpenGL] {} {}: {}", sourceStr, typeStr, message);
-    break;
-  default:
-    spdlog::debug("[OpenGL] {} {}: {}", sourceStr, typeStr, message);
-  }
-}
-auto Application::FramebufferSizeCallback(GLFWwindow *, int width, int height) -> void {
-  glViewport(0, 0, width, height);
+auto Application::FramebufferSizeCallback(GLFWwindow *window, int width, int height) -> void {
+  auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window));
+  if (!instance || !instance->graphicsContext)
+    return;
+  instance->graphicsContext->Resize(width, height);
+  // The render targets are not resized from here. An application that presents to its window asks
+  // for the surface's size every frame in `RenderingSystem::Update`, which handles a resize as a
+  // side effect and keeps one path rather than two disagreeing about who owns the resolution.
 }
 auto Application::KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) -> void {
   if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance)

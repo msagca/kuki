@@ -1,0 +1,15 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+# Only the PUBLIC dependencies need finding. Everything else the engine is built with -- assimp,
+# glad, nlohmann, stb, tinyexr, whereami and the kaitai runtimes -- is private: a shared build
+# resolves those inside the library, and a static one carries them in the archive. See the comment
+# on target_link_libraries in engine/CMakeLists.txt for which is which and why.
+find_dependency(OpenGL)
+find_dependency(glm)
+find_dependency(glfw3)
+find_dependency(spdlog)
+# Private to the engine's code, but a shared library all the same, so a consumer's runtime loads it
+# and CMake carries it in the exported target. Nothing in the installed headers mentions Assimp.
+find_dependency(assimp)
+include("${CMAKE_CURRENT_LIST_DIR}/KukiEngineTargets.cmake")
+check_required_components(KukiEngine)

@@ -77,7 +77,6 @@ auto GLShader::SetTransform(const GLMesh &mesh, std::span<const glm::mat4> trans
 }
 auto GLShader::SetCamera(const Camera &camera, const unsigned int buffer) -> void {
   cameraDirty = camera.dirty;
-  // NOTE: this assumes that enough memory was allocated for `buffer`
   constexpr auto bindingPoint = 0;
   glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, buffer);
   glNamedBufferSubData(buffer, 0, sizeof(CameraTransform), &camera.transform);
@@ -87,4 +86,5 @@ auto GLShader::SetLighting(const Light &light) -> void {}
 auto GLShader::SetLighting(std::span<const Light> lights) -> void {}
 auto GLShader::SetMaterialFallback(const GLMesh &mesh, std::span<const MaterialFallback> fallbacks, const unsigned int buffer) -> void {}
 auto GLShader::SetSkybox(const GLSkybox *skybox) -> void {}
+auto GLShader::SetIndirectLighting(const IndirectLighting &indirect) -> void {}
 } // namespace kuki

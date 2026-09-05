@@ -13,6 +13,7 @@
 #include <kuki_engine_export.h>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -26,6 +27,7 @@ public:
   auto GetAny(this auto &) -> decltype(auto);
   auto Has(const EntityID) const -> bool;
   auto Remove(const EntityID) -> bool;
+  auto ForEach(auto &&) -> void;
 private:
   std::unordered_map<EntityID, size_t> idToSlot;
   std::vector<EntityID> slotToId;
@@ -60,6 +62,11 @@ auto ResourcePool<T>::GetAny(this auto &self) -> decltype(auto) {
   if (!self.resources.empty())
     return &self.resources.front();
   return ConstCorrectPointer<decltype(self), T>(nullptr);
+}
+template <typename T>
+auto ResourcePool<T>::ForEach(auto &&func) -> void {
+  for (auto &resource : resources)
+    func(resource);
 }
 template <typename T>
 auto ResourcePool<T>::Has(const EntityID id) const -> bool {
@@ -97,6 +104,13 @@ public:
   auto GetComponent(this auto &, const EntityID) -> decltype(auto);
   template <typename T>
   auto GetComponent(this auto &, const std::string &) -> decltype(auto);
+  /// @brief Visits every resource of one kind, so a caller can hand them back to the driver.
+  ///
+  /// `Clear` cannot do that itself. The registry holds plain integer names and has no idea which
+  /// call frees which -- a texture and a framebuffer are both a `GLuint` -- so releasing them is
+  /// the renderer's business and this is what lets it reach them.
+  template <typename T>
+  auto ForEach(auto &&) -> void;
 private:
   EntityID nextId{0};
   std::unordered_set<EntityID> ids;
@@ -135,6 +149,10 @@ auto GLResourceRegistry::GetPool(this auto &self) -> decltype(auto) {
     return (self.unlitShaders);
   else
     static_assert(!sizeof(T), "GLResourceRegistry: unsupported GL resource type");
+}
+template <typename T>
+auto GLResourceRegistry::ForEach(auto &&func) -> void {
+  GetPool<T>().ForEach(std::forward<decltype(func)>(func));
 }
 template <typename T>
 auto GLResourceRegistry::AddComponent(const EntityID id) -> T * {

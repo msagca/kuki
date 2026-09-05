@@ -21,7 +21,6 @@ public:
   auto DeleteEntities() -> void;
   auto DeleteEntity(const EntityID) -> bool;
   auto EntityHasChildren(const EntityID) const -> bool;
-  auto EntityHasParent(const EntityID) const -> bool;
   auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;
   auto ForEachRootEntity(this auto &, auto &&) -> void;
   auto GetActiveCamera(this auto &) -> decltype(auto);
@@ -33,7 +32,13 @@ public:
   auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
   auto GetParent(const EntityID) const -> EntityID;
   auto GetStructuralGeneration() const -> size_t;
+  auto HasComponentAnywhere(const ComponentType) const -> bool;
   auto IsEntity(const EntityID) const -> bool;
+  /// @brief Flags an entity's transform, and everything below it, for recomputation.
+  ///
+  /// Call after writing to a transform's position, rotation or scale; the component carries no
+  /// dirty bit of its own, so an unannounced change goes unapplied.
+  auto MarkTransformDirty(const EntityID) -> void;
   auto RemoveEntityScript(const EntityID, const std::type_index) -> bool;
   auto RenameEntity(const EntityID, std::string) -> bool;
   auto SetActiveCamera(const EntityID) -> bool;

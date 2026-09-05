@@ -1,0 +1,11 @@
+{
+  "albedo": [
+    0.72,
+    0.62,
+    0.48,
+    1.0
+  ],
+  "metalness": 0.0,
+  "roughness": 0.8,
+  "occlusion": 1.0
+}

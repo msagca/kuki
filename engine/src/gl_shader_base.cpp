@@ -1,12 +1,45 @@
+#include <format>
 #include <gl_shader_base.hpp>
 #include <glad/glad.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <shader_definitions.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <string_view>
 namespace kuki {
+namespace {
+/// @brief Splices the engine's shader definitions in below a shader's `#version` line.
+///
+/// GLSL will not accept anything before `#version`, and the driver takes the whole shader as one
+/// string, so the only way to hand a shader a value the C++ decided is to edit the source on the
+/// way past. Every GLSL shader in the engine opens with `#version 460 core` and none of them use
+/// `#extension`, which has to come before any other statement, so the line after the first is
+/// always a legal place for this.
+///
+/// The `#line` that follows puts the numbering back. Without it every diagnostic from every GLSL
+/// shader would be reported as many lines further down as there are definitions, which is a poor
+/// trade for a constant most shaders never read. `#line 2` says the line after it is line two of
+/// the original file, which is what it was before the splice.
+///
+/// A shader that does not open with `#version` is handed back untouched rather than refused. There
+/// are none in the engine, and the alternative is a splice that lands somewhere illegal and fails
+/// as a compile error in a shader whose source, on disk, is perfectly correct.
+auto WithDefinitions(const char *text) -> std::string {
+  std::string source(text ? text : "");
+  const auto firstLine = source.find('\n');
+  if (firstLine == std::string::npos || !std::string_view(source).starts_with("#version"))
+    return source;
+  std::string spliced;
+  for (const auto &definition : SHADER_DEFINITIONS)
+    spliced += std::format("#define {} {}u\n", definition.name, definition.value);
+  spliced += "#line 2\n";
+  source.insert(firstLine + 1, spliced);
+  return source;
+}
+} // namespace
 auto GLShaderBase::CacheLocations() -> void {
   GLint params = 0;
   glGetProgramiv(id, GL_ACTIVE_UNIFORMS, &params);
@@ -124,7 +157,9 @@ void GLShaderBase::Use() const {
 }
 auto GLShaderBase::Compile(const char *text, const int type, const std::string &name) -> unsigned int {
   auto id = glCreateShader(type);
-  glShaderSource(id, 1, &text, nullptr);
+  const auto source = WithDefinitions(text);
+  const auto *sourceText = source.c_str();
+  glShaderSource(id, 1, &sourceText, nullptr);
   glCompileShader(id);
   int success;
   glGetShaderiv(id, GL_COMPILE_STATUS, &success);

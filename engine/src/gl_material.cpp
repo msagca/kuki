@@ -1,12 +1,21 @@
 #include <cstdint>
 #include <gl_material.hpp>
 #include <gl_shader.hpp>
+#include <glm/vec3.hpp>
+#include <material_fallback.hpp>
 #include <material_type.hpp>
 #include <texture_content.hpp>
 namespace kuki {
 auto GLMaterial::Apply(const GLShader &shader) const -> void {
   if (type != shader.type)
     return;
+  shader.SetUniform("u_alphaMode", static_cast<unsigned int>(fallback.alphaMode));
+  shader.SetUniform("u_alphaCutoff", fallback.alphaCutoff);
+  shader.SetUniform("u_transmission", fallback.transmission);
+  shader.SetUniform("u_thickness", fallback.thickness);
+  shader.SetUniform("u_ior", fallback.ior);
+  shader.SetUniform("u_attenuationColor", glm::vec3(fallback.attenuation));
+  shader.SetUniform("u_attenuationDistance", fallback.attenuation.w);
   switch (type) {
   case MaterialType::Lit:
     if (textures.albedo > 0)
@@ -30,6 +39,9 @@ auto GLMaterial::Apply(const GLShader &shader) const -> void {
   }
 }
 auto GLMaterial::operator==(const GLMaterial &other) const -> bool {
+  const auto SameSurface = [](const MaterialFallback &first, const MaterialFallback &second) {
+    return first.alphaMode == second.alphaMode && first.alphaCutoff == second.alphaCutoff && first.transmission == second.transmission && first.thickness == second.thickness && first.ior == second.ior && first.attenuation == second.attenuation;
+  };
   const auto SameTexture = [this, &other](const int id, const int otherId, const TextureContent content) {
     const auto bit = static_cast<uint8_t>(content);
     const auto thisHas = fallback.textureMask.test(bit);
@@ -40,6 +52,6 @@ auto GLMaterial::operator==(const GLMaterial &other) const -> bool {
       return false;
     return true;
   };
-  return type == other.type && SameTexture(textures.albedo, other.textures.albedo, TextureContent::Albedo) && SameTexture(textures.normal, other.textures.normal, TextureContent::Normal) && SameTexture(textures.metalness, other.textures.metalness, TextureContent::Metalness) && SameTexture(textures.occlusion, other.textures.occlusion, TextureContent::Occlusion) && SameTexture(textures.roughness, other.textures.roughness, TextureContent::Roughness) && SameTexture(textures.specular, other.textures.specular, TextureContent::Specular) && SameTexture(textures.emissive, other.textures.emissive, TextureContent::Emissive);
+  return type == other.type && SameSurface(fallback, other.fallback) && SameTexture(textures.albedo, other.textures.albedo, TextureContent::Albedo) && SameTexture(textures.normal, other.textures.normal, TextureContent::Normal) && SameTexture(textures.metalness, other.textures.metalness, TextureContent::Metalness) && SameTexture(textures.occlusion, other.textures.occlusion, TextureContent::Occlusion) && SameTexture(textures.roughness, other.textures.roughness, TextureContent::Roughness) && SameTexture(textures.specular, other.textures.specular, TextureContent::Specular) && SameTexture(textures.emissive, other.textures.emissive, TextureContent::Emissive);
 }
 } // namespace kuki

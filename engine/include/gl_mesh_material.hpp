@@ -2,8 +2,9 @@
 #include <gl_material.hpp>
 #include <gl_mesh.hpp>
 #include <hash_utils.hpp>
+#include <kuki_engine_export.h>
 namespace kuki {
-struct GLMeshMat {
+struct KUKI_ENGINE_API GLMeshMat {
   GLMesh mesh;
   GLMaterial material;
   auto operator==(const GLMeshMat &) const -> bool;

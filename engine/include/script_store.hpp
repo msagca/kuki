@@ -10,6 +10,15 @@
 namespace kuki {
 class KUKI_ENGINE_API ScriptStore {
 public:
+  // Declaring any constructor suppresses the implicit default one, so it is asked for back.
+  ScriptStore() = default;
+  /// @brief Not copyable: it owns what it holds through `unique_ptr`.
+  ///
+  /// Explicit rather than left implicit because exporting a class from a shared library
+  /// instantiates its implicit members too, and the implicit copy of a container of `unique_ptr`
+  /// does not compile. Nothing copies this, so the declaration costs nothing and says so.
+  ScriptStore(const ScriptStore &) = delete;
+  auto operator=(const ScriptStore &) -> ScriptStore & = delete;
   template <IsScript T>
   auto Add(const EntityID) -> T *;
   auto Clear() -> void;

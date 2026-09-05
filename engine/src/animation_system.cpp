@@ -5,6 +5,7 @@
 #include <glm/common.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <model_asset.hpp>
+#include <profiler.hpp>
 #include <skeleton.hpp>
 #include <system.hpp>
 #include <transform.hpp>
@@ -61,6 +62,7 @@ AnimationSystem::AnimationSystem(Application &app)
   : System(std::in_place_type<AnimationSystem>, app) {}
 void AnimationSystem::Start() {}
 void AnimationSystem::Update(const float deltaTime) {
+  KUKI_PROFILE_SCOPE("Animation");
   app.ForEachEntity<Animator, Skeleton>([&](const EntityID, Animator *animator, Skeleton *skeleton) {
     if (!animator || !skeleton || animator->clipIndex < 0)
       return;
@@ -96,7 +98,7 @@ void AnimationSystem::Update(const float deltaTime) {
         transform->rotation = SampleRotation(channel.rotations, animator->time);
       if (!channel.scales.empty())
         transform->scale = SampleScale(channel.scales, animator->time);
-      transform->dirty = true;
+      app.MarkTransformDirty(boneEntityId);
     }
   });
 }

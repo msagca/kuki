@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <application.hpp>
+#include <editor.hpp>
 #include <imgui.h>
 #include <input_manager.hpp>
 #include <key_binding_widget.hpp>
@@ -18,7 +18,7 @@ auto TruncateText(const std::string &text, float maxWidth) -> std::string {
   return truncated + ellipsis;
 }
 } // namespace
-auto DisplayKeyBindingRow(Application &app, const char *label, const std::string &description, const std::string &bindingName, int &rebindingIndex, int index) -> void {
+auto DisplayKeyBindingRow(Editor &app, const char *label, const std::string &description, const std::string &bindingName, int &rebindingIndex, int index) -> void {
   ImGui::PushID(index);
   ImGui::TextUnformatted(label);
   if (!description.empty() && ImGui::IsItemHovered())

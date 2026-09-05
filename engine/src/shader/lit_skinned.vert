@@ -7,7 +7,6 @@ out float v_roughness;
 out vec2 v_texCoords;
 out vec3 v_normal;
 out vec3 v_position;
-out vec4 v_positionL;
 out vec3 v_tangent;
 out vec4 v_albedo;
 out vec4 v_emissive;
@@ -61,6 +60,5 @@ void main() {
         v_roughness = roughness;
         v_textureMask = textureMask;
         v_entityId = entityId;
-        v_positionL = u_dirLight.projection * u_dirLight.view * worldPosition;
         gl_Position = projection * view * worldPosition;
 }

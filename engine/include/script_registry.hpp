@@ -18,6 +18,13 @@ public:
   template <typename T>
   static auto Register() -> bool;
   static auto GetTypes() -> const std::unordered_map<std::type_index, ScriptTypeInfo> &;
+  /// @brief Looks a registered script up by the name it reports, or null when nothing claims it.
+  ///
+  /// The name rather than the `type_index` because that is what survives a round trip through a
+  /// scene file. A name that nothing answers to is an ordinary outcome and not an error: scenes
+  /// are shared between binaries that register different scripts, and the editor's own camera
+  /// controller is compiled into the editor alone. The caller reports it and carries on.
+  static auto FindByName(const std::string &) -> const ScriptTypeInfo *;
 private:
   static auto Types() -> std::unordered_map<std::type_index, ScriptTypeInfo> &;
 };
@@ -29,7 +36,7 @@ auto ScriptRegistry::Register() -> bool {
   if (types.contains(type))
     return true;
   const T temp;
-  types.emplace(type, ScriptTypeInfo{temp.GetName(), [](Application &app, const EntityID id) { app.AddEntityComponent<T>(id); }});
+  types.emplace(type, ScriptTypeInfo{temp.GetTypeName(), [](Application &app, const EntityID id) { app.AddEntityComponent<T>(id); }});
   return true;
 }
 #define KUKI_REGISTER_SCRIPT(T) \

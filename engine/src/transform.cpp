@@ -9,13 +9,11 @@
 #include <transform.hpp>
 namespace kuki {
 auto Transform::operator=(const Transform &other) -> Transform & {
-  // NOTE: this override does not copy the parent ID
   position = other.position;
   rotation = other.rotation;
   scale = other.scale;
   local = other.local;
   world = other.world;
-  dirty = true;
   return *this;
 }
 auto Transform::Update(const Transform *parent) -> void {
