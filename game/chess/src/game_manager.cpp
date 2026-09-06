@@ -110,20 +110,30 @@ auto LookAt(const glm::vec3 &from, const glm::vec3 &to) -> glm::quat {
 
 /// @brief What each side's clock is drawn in, which is what its pieces are drawn in.
 ///
-/// Copied from `piece_white.mat` and `piece_black.mat` rather than read out of them: the materials
-/// are loaded by name and the overlay wants a colour before any of that, and a clock half a shade
-/// off its pieces is not a bug anyone would notice. Worth changing here if those files change.
-constexpr glm::vec3 PIECE_WHITE{.9f, .88f, .83f};
-constexpr glm::vec3 PIECE_BLACK{.06f, .06f, .07f};
-/// @brief What a clock turns when there is almost nothing left on it.
-constexpr glm::vec3 CLOCK_URGENT{.94f, .35f, .3f};
+/// The board's own blue and the red its squares take when something can be captured there, so that
+/// a chosen option and a board square are the same blue by construction rather than by two people
+/// picking similar numbers. The greens and creams are not here because nothing in code draws with
+/// them; they live in the `.mat` files alone.
+///
+/// The `.mat` files carry these same numbers as albedo. They are data and cannot include a header,
+/// so a colour changed here has to be changed there too -- which is the whole reason this block is
+/// one block: the piece colours below had already drifted a repaint out of date before it was.
+///
+/// Worth knowing when reading the values: a material's albedo is lit and tone mapped before anyone
+/// sees it, while overlay text is written straight onto the finished picture. The same number
+/// therefore arrives lighter on the board than it does in a caption, which is why the text is
+/// carried at less than full opacity rather than at a lightened shade of its own.
+constexpr glm::vec3 BOARD_BLUE{.2f, .3f, .52f};
+constexpr glm::vec3 HIGHLIGHT_RED{.66f, .16f, .14f};
+constexpr glm::vec3 PIECE_WHITE{.92f, .9f, .86f};
+constexpr glm::vec3 PIECE_BLACK{.11f, .11f, .13f};
 /// @brief The option in force, the one under the pointer, and the ones merely on offer.
 ///
-/// Hover is the active blue at less than full strength rather than a colour of its own, so that
+/// Hover is the chosen blue at less than full strength rather than a colour of its own, so that
 /// pointing at an option previews what choosing it would look like instead of introducing a third
 /// thing to learn.
-constexpr glm::vec4 OPTION_ACTIVE{.35f, .62f, 1.f, 1.f};
-constexpr glm::vec4 OPTION_HOVER{.35f, .62f, 1.f, .7f};
+constexpr glm::vec4 OPTION_ACTIVE{BOARD_BLUE, 1.f};
+constexpr glm::vec4 OPTION_HOVER{BOARD_BLUE, .7f};
 constexpr glm::vec4 OPTION_IDLE{1.f, 1.f, 1.f, .35f};
 /// @brief Index into anything kept one per side, White first.
 auto SideIndex(const PieceColor color) -> size_t {
@@ -138,19 +148,79 @@ auto ClockText(const float seconds) -> std::string {
 auto FlagText(const size_t side) -> std::string {
   return side == 0 ? "White is out of time, Black wins" : "Black is out of time, White wins";
 }
-auto StateText(const Board &board, const GameState state) -> std::string {
-  const auto mover = board.ToMove() == PieceColor::White ? "White" : "Black";
-  const auto winner = board.ToMove() == PieceColor::White ? "Black" : "White";
-  switch (state) {
-  case GameState::Check:
-    return std::string(mover) + " to move -- check";
-  case GameState::Checkmate:
-    return std::string("Checkmate, ") + winner + " wins";
-  case GameState::Stalemate:
-    return "Stalemate -- draw";
+/// @brief The letter a piece is written with. Pawns are written by their file, so they have none.
+auto PieceLetter(const PieceType type) -> const char * {
+  switch (type) {
+  case PieceType::Knight:
+    return "N";
+  case PieceType::Bishop:
+    return "B";
+  case PieceType::Rook:
+    return "R";
+  case PieceType::Queen:
+    return "Q";
+  case PieceType::King:
+    return "K";
   default:
-    return std::string(mover) + " to move";
+    return "";
   }
+}
+auto SquareName(const int square) -> std::string {
+  return std::string(1, static_cast<char>('a' + Board::FileOf(square))) + static_cast<char>('1' + Board::RankOf(square));
+}
+/// @brief A move written the way a game score writes it, read from the position before it is made.
+///
+/// Before, necessarily: what a move is called depends on what else was legal at the time. A knight
+/// written `Nf3` when the other knight could also have reached f3 names neither of them, so the
+/// file or the rank it came from has to be added -- and once the move has been applied, the other
+/// knight's options are the answer to a different question.
+///
+/// Check and mate are the other way round and are appended by the caller, since neither is knowable
+/// until the move has been made.
+auto Notation(const Board &board, const Move &move) -> std::string {
+  // The rook tells the sides apart: it starts outside the king on both, so the one that ends up
+  // nearer the centre of the board is the short castle.
+  if (move.Castle())
+    return Board::FileOf(move.rookFrom) > Board::FileOf(move.from) ? "O-O" : "O-O-O";
+  const auto piece = board.Get(move.from);
+  const auto pawn = piece.type == PieceType::Pawn;
+  std::string text = PieceLetter(piece.type);
+  if (pawn) {
+    // A pawn is named by the file it came from, and only when it takes something.
+    if (move.captured >= 0)
+      text += static_cast<char>('a' + Board::FileOf(move.from));
+  } else {
+    auto ambiguous = false;
+    auto sharesFile = false;
+    auto sharesRank = false;
+    for (auto square = 0; square < Board::SquareCount; ++square) {
+      if (square == move.from)
+        continue;
+      const auto other = board.Get(square);
+      if (other.type != piece.type || other.color != piece.color || !board.Legal(square, move.to))
+        continue;
+      ambiguous = true;
+      sharesFile = sharesFile || Board::FileOf(square) == Board::FileOf(move.from);
+      sharesRank = sharesRank || Board::RankOf(square) == Board::RankOf(move.from);
+    }
+    // The file where that tells them apart, the rank where it does not, and both where neither
+    // does -- which takes three pieces of a kind and is why the last case is not dead code.
+    if (ambiguous) {
+      if (!sharesFile)
+        text += static_cast<char>('a' + Board::FileOf(move.from));
+      else if (!sharesRank)
+        text += static_cast<char>('1' + Board::RankOf(move.from));
+      else
+        text += SquareName(move.from);
+    }
+  }
+  if (move.captured >= 0)
+    text += 'x';
+  text += SquareName(move.to);
+  // Always a queen; see `Board`, which does not offer the choice.
+  if (move.promotion)
+    text += "=Q";
+  return text;
 }
 } // namespace
 GameManager::GameManager()
@@ -168,6 +238,7 @@ auto GameManager::CloneTo(EntityManager &entityManager, const EntityID id) const
   script->timeOption = timeOption;
   script->incrementOption = incrementOption;
   script->flagged = -1;
+  script->moves = {};
   script->pieces = {};
   script->reachable = {};
   script->capturable = {};
@@ -199,6 +270,7 @@ auto GameManager::Start(Application &application) -> void {
   clocks = {StartSeconds(), StartSeconds()};
   CreateLabels();
   // Before `Refresh`, which draws the pieces and reads the king's colour off `state`.
+  UpdateStanding();
   UpdateTitle();
   Refresh();
   pressAction = app->RegisterInputAction(GLFW_MOUSE_BUTTON_LEFT, [this]() { OnPress(); });
@@ -247,6 +319,13 @@ auto GameManager::SaveSettings(Application &application) -> void {
   auto &preferences = application.GetPreferences();
   preferences.Set(PREF_MINUTES, TIME_OPTIONS[timeOption]);
   preferences.Set(PREF_INCREMENT, INCREMENT_OPTIONS[incrementOption]);
+}
+auto GameManager::PushMove(std::string text) -> void {
+  // Oldest first, so the list reads downward the way a game score does. Shifting three strings a
+  // move is not worth a ring buffer and the index arithmetic that comes with one.
+  for (size_t i = 1; i < moves.size(); ++i)
+    moves[i - 1] = std::move(moves[i]);
+  moves.back() = std::move(text);
 }
 auto GameManager::DrawOptions(Application &application) -> void {
   auto &overlay = application.GetOverlay();
@@ -304,10 +383,10 @@ auto GameManager::UpdateClocks(Application &application) -> void {
   if (clocks[side] > .0f)
     return;
   flagged = static_cast<int>(side);
+  UpdateStanding();
   // Whatever was in hand is put down: the game is over, and a piece left lifted would go on
   // offering moves that can no longer be played.
   Select(-1);
-  UpdateTitle();
   spdlog::info("[Chess] {}", FlagText(side));
 }
 auto GameManager::DrawClocks(Application &application) -> void {
@@ -320,7 +399,7 @@ auto GameManager::DrawClocks(Application &application) -> void {
     // the light pieces. Red is the one thing allowed to override that, because a clock about to run
     // out has something to say that its owner's colour cannot.
     const auto own = color == PieceColor::White ? PIECE_WHITE : PIECE_BLACK;
-    const auto tint = remaining <= CLOCK_LOW ? CLOCK_URGENT : own;
+    const auto tint = remaining <= CLOCK_LOW ? HIGHLIGHT_RED : own;
     // Faded once it is not this side's move, which is the turn indicator. Not faded to nothing --
     // both clocks stay readable, and it is the pair being unequal that says whose move it is.
     // The idle clock is dimmed rather than half dissolved. It has to stay readable -- both times
@@ -492,15 +571,22 @@ auto GameManager::RefreshPieces() -> void {
     const auto center = SquareCenter(square);
     const auto lift = selected == square ? SELECT_LIFT : .0f;
     const auto white = piece.color == PieceColor::White;
-    // The king of the side to move is the only piece that says anything about itself, and it is the
-    // only one with anything left to say: everything about a move is on the squares now.
-    const auto king = piece.type == PieceType::King && piece.color == board.ToMove();
-    // Check before the ghost, because a king in check is worth seeing through a piece standing in
-    // front of it rather than instead of it.
-    const auto *material = king && state == GameState::Checkmate ? "piece_checkmate"
-      : king && state == GameState::Check                        ? "piece_check"
-      : hidden[square] >= 0                                      ? (white ? "piece_white_ghost" : "piece_black_ghost")
-                                                                 : (white ? "piece_white" : "piece_black");
+    // The kings are the only pieces that say anything about themselves, and the only ones with
+    // anything left to say: everything about a move is on the squares now.
+    //
+    // A draw is the one standing both of them report. Check and mate belong to the side facing
+    // them -- which is the side to move, since that is whose position `Board::State` describes --
+    // but a draw is not something that happened to one player, so colouring one king would be
+    // saying it was.
+    const auto king = piece.type == PieceType::King;
+    const auto facing = king && piece.color == board.ToMove();
+    // Ahead of the ghost, because a king with something to report is worth seeing through a piece
+    // standing in front of it rather than instead of it.
+    const auto *material = king && Drawn(state) ? "piece_draw"
+      : facing && state == GameState::Checkmate ? "piece_checkmate"
+      : facing && state == GameState::Check     ? "piece_check"
+      : hidden[square] >= 0                     ? (white ? "piece_white_ghost" : "piece_black_ghost")
+                                                : (white ? "piece_white" : "piece_black");
     // Every value below is written whether the entity is new or reused. A square a knight has left
     // and a queen has arrived on keeps one entity, and anything not overwritten here would still be
     // the knight's -- so the rotation is set on all of them rather than only where it is wanted.
@@ -619,9 +705,21 @@ auto GameManager::OnPress() -> void {
         // goes to the side that has just moved, which is how an increment works: it pays for the
         // move that was made rather than for the one about to be.
         const auto mover = SideIndex(board.ToMove());
+        // Written before the move is made, which is when the position can still say what else was
+        // legal. See `Notation`.
+        auto text = Notation(board, *move);
         board.Apply(*move);
         clocks[mover] += IncrementSeconds();
-        // Before `Select`, which redraws the pieces and reads the king's colour off `state`.
+        // First, because everything below reads what it works out: the check mark on the notation,
+        // the king's colour when `Select` redraws, and whether the game is still playable.
+        UpdateStanding();
+        if (state == GameState::Checkmate)
+          text += '#';
+        else if (state == GameState::Check)
+          text += '+';
+        // Then recorded, and only then written up -- the title shows the move that was just made,
+        // so it cannot be built before the move reaches the list.
+        PushMove(std::move(text));
         UpdateTitle();
         Select(-1);
         return;
@@ -659,16 +757,39 @@ auto GameManager::Restart() -> void {
   board.Reset();
   clocks = {StartSeconds(), StartSeconds()};
   flagged = -1;
+  moves = {};
   // Before `Select` for the reason given there: the pieces are drawn from `state`, and a new game
   // whose standing still said checkmate would open with a red king.
+  UpdateStanding();
   UpdateTitle();
   Select(-1);
   spdlog::info("[Chess] New game");
 }
-auto GameManager::UpdateTitle() -> void {
+auto GameManager::UpdateStanding() -> void {
   state = board.State();
   playable = flagged < 0 && state != GameState::Checkmate && state != GameState::Stalemate;
-  if (auto *app = GetApp(); app)
-    app->SetWindowTitle("Chess -- " + (flagged >= 0 ? FlagText(static_cast<size_t>(flagged)) : StateText(board, state)));
+}
+auto GameManager::UpdateTitle() -> void {
+  auto *app = GetApp();
+  if (!app)
+    return;
+  // The name, then the moves, and nothing else. What the title used to say is now said better
+  // elsewhere: whose move it is by which clock is bright, check by the `+` the notation already
+  // writes, and a fallen flag by a clock reading nothing in red.
+  std::string title = "Kuki Chess";
+  // Most recent first, and as many as the budget allows. The first is taken whatever its length --
+  // the move just played is the one worth showing, and a title with nothing after the bar would be
+  // a worse answer than one slightly over it.
+  std::string played;
+  for (auto move = moves.rbegin(); move != moves.rend(); ++move) {
+    if (move->empty())
+      continue;
+    if (!played.empty() && played.size() + 1 + move->size() > TITLE_MOVE_BUDGET)
+      break;
+    played += played.empty() ? *move : " " + *move;
+  }
+  if (!played.empty())
+    title += " | " + played;
+  app->SetWindowTitle(title);
 }
 KUKI_REGISTER_SCRIPT(GameManager)

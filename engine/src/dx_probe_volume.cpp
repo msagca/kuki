@@ -98,6 +98,21 @@ auto HashTraceSettings(const IndirectLighting &settings) -> size_t {
 auto Combine(size_t &hash, const size_t value) -> void {
   hash ^= value + 0x9E3779B97F4A7C15ull + (hash << 6) + (hash >> 2);
 }
+/// @brief Key for finding a probe again after a rebuild: where it stands, to the bit.
+///
+/// Exact rather than approximate on purpose. An anchor is computed from the volume's origin and
+/// side, so two builds that agree about those produce bit-identical anchors for every probe that
+/// survived, and two that disagree have moved the whole lattice -- in which case nothing should be
+/// carried over and nothing is.
+auto AnchorKey(const float (&anchor)[4]) -> size_t {
+  size_t key = 0;
+  for (auto i = 0; i < 3; ++i)
+    Combine(key, std::bit_cast<uint32_t>(anchor[i]));
+  return key;
+}
+auto SameAnchor(const float (&a)[4], const float (&b)[4]) -> bool {
+  return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
+}
 auto HashGeometry(const std::vector<DXProbeGeometry> &geometry) -> size_t {
   size_t hash = geometry.size();
   for (const auto &item : geometry) {
@@ -503,11 +518,38 @@ auto DXProbeVolume::BuildOctree(const std::vector<DXProbeGeometry> &geometry) ->
     high = glm::max(high, cluster.high);
     triangles += cluster.triangles;
   }
-  const auto center = (low + high) * .5f;
   const auto span = high - low;
-  const auto half = std::max({span.x, span.y, span.z, .01f}) * .5f * 1.02f;
-  built.origin = center - glm::vec3(half);
-  built.side = half * 2.f;
+  const auto required = std::max({span.x, span.y, span.z, .01f}) * .5f * 1.02f;
+  auto center = (low + high) * .5f;
+  auto half = required;
+  // The volume keeps the frame of reference it already had, for as long as the scene still fits
+  // inside it and has not shrunk so far that the resolution is being spent on empty space.
+  //
+  // Sized to the exact bounding box, it moved whenever anything did. A probe's anchor is measured
+  // from the origin, so an origin that shifts by any amount at all renames every probe in the
+  // volume: none of them can be matched to what stood there before, the whole field is rebuilt
+  // black, and the flicker that follows is everywhere rather than near whatever moved. A piece
+  // lifting a quarter of a unit was enough to do it, by raising the top of the scene's box.
+  //
+  // Holding the cube still instead means the lattice lands on the same world positions build after
+  // build, which is what lets `CarryOverProbes` recognise a probe as the same probe. It is also the
+  // honest reading of what the volume is: a region of space being sampled, not a fit to whatever
+  // happens to be standing in it this frame.
+  const auto Inside = [&](const glm::vec3 &point) {
+    return point.x >= origin.x && point.y >= origin.y && point.z >= origin.z && point.x <= origin.x + side && point.y <= origin.y + side && point.z <= origin.z + side;
+  };
+  if (side > .0f && Inside(low) && Inside(high) && required * 2.f >= side * PROBE_VOLUME_KEEP_FRACTION) {
+    // Copied rather than recomputed, so the anchors come out bit-identical to the resident ones.
+    // A round trip through the centre and back would be arithmetically the same and need not be
+    // exactly equal, and anything less than exact equality is a probe that cannot be matched.
+    built.origin = origin;
+    built.side = side;
+    half = side * .5f;
+    center = origin + glm::vec3(half);
+  } else {
+    built.origin = center - glm::vec3(half);
+    built.side = half * 2.f;
+  }
   built.triangleCount = static_cast<uint32_t>(triangles);
   built.clusterCount = static_cast<uint32_t>(clusters.size());
   std::vector<BuildNode> nodes;
@@ -696,9 +738,15 @@ auto DXProbeVolume::Build(DXContext &context, const std::vector<DXProbeGeometry>
   pendingFrames = 0;
   pendingHash = hash;
   geometryHash = hash;
-  const auto built = BuildOctree(geometry);
+  auto built = BuildOctree(geometry);
   if (built.nodes.empty() || built.probes.empty())
     return false;
+  // What the resident probes have already learned is moved into the ones just built, before either
+  // reaches the GPU. Without this a rebuild is a blackout: the new probes carry no irradiance, the
+  // running mean is thrown away with the old ones, and every probe in the scene falls back to a
+  // single sixty-four ray estimate and reconverges in full view. That is the flicker, and it fires
+  // whenever anything in the scene moves far enough to change the tree.
+  const auto carried = CarryOverProbes(context, built.probes);
   origin = built.origin;
   side = built.side;
   leafCount = built.leafCount;
@@ -728,9 +776,19 @@ auto DXProbeVolume::Build(DXContext &context, const std::vector<DXProbeGeometry>
   probeCount = static_cast<uint32_t>(built.probes.size());
   probeState = PROBE_READ_STATE;
   tracedFrames = 0;
-  // the probes came back black, so there is no mean left to keep and no reason to wind one back
-  tracedSamples = 0;
-  traceHash = 0;
+  // Nothing came across, so there is no mean left to keep and no reason to wind one back. This is
+  // the first build of a volume, or one whose lattice moved far enough that no probe kept its
+  // place -- either way the field starts from nothing, which is what a zeroed count says.
+  //
+  // Otherwise the mean is left alone. It is not thrown away because it is not wrong: the probes it
+  // belongs to are still standing where they were, still looking at a scene that has mostly not
+  // changed. `Trace` sees the scene hash move and winds the count back to `ReactiveSamples` for
+  // it, which is the same treatment a light being moved gets and the right amount of forgetting --
+  // enough to follow what changed, not so much as to start over.
+  if (carried == 0) {
+    tracedSamples = 0;
+    traceHash = 0;
+  }
   ready = true;
   if (probeCount != loggedProbeCount) {
     loggedProbeCount = probeCount;
@@ -739,6 +797,65 @@ auto DXProbeVolume::Build(DXContext &context, const std::vector<DXProbeGeometry>
     spdlog::info("[DX12] Probe volume: {} triangles in {} clusters, {} cell lookup grid, {:.2f} MB resident", built.triangleCount, built.clusterCount, GetLookupResolution(), static_cast<double>(bytes) / (1024. * 1024.));
   }
   return true;
+}
+auto DXProbeVolume::CarryOverProbes(DXContext &context, std::vector<DXProbe> &probes) -> uint32_t {
+  // Deliberately not a `ready` test: the caller clears that flag before it starts building, and
+  // what matters here is only whether there is a resident field to read, which is what these two
+  // say. On the first build there is not, and nothing is carried.
+  if (!probeBuffer || probeCount == 0)
+    return 0;
+  auto *device = context.GetDevice();
+  auto *commandList = context.GetCommandList();
+  if (!device || !commandList)
+    return 0;
+  KUKI_PROFILE_SCOPE("ProbeVolume::CarryOver");
+  const auto bytes = static_cast<uint64_t>(probeCount) * sizeof(DXProbe);
+  const auto readbackProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+  auto desc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
+  ComPtr<ID3D12Resource> readback;
+  if (DXFailed(device->CreateCommittedResource(&readbackProperties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readback)), "CreateCommittedResource for the probe carry-over"))
+    return 0;
+  const auto toSource = CD3DX12_RESOURCE_BARRIER::Transition(probeBuffer.Get(), probeState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  commandList->ResourceBarrier(1, &toSource);
+  commandList->CopyBufferRegion(readback.Get(), 0, probeBuffer.Get(), 0, bytes);
+  const auto toPrevious = CD3DX12_RESOURCE_BARRIER::Transition(probeBuffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, probeState);
+  commandList->ResourceBarrier(1, &toPrevious);
+  // The field has to be in hand before the new one is uploaded, and a rebuild is rare enough --
+  // debounced by `PROBE_REBUILD_SETTLE_FRAMES`, and only when the tree actually changes -- to be
+  // worth a stall. The alternative is not a faster rebuild, it is a visible one.
+  context.FlushCommandList();
+  const DXProbe *resident{};
+  const CD3DX12_RANGE readRange(0, static_cast<SIZE_T>(bytes));
+  if (DXFailed(readback->Map(0, &readRange, reinterpret_cast<void **>(const_cast<DXProbe **>(&resident))), "Map the probe carry-over"))
+    return 0;
+  std::unordered_map<size_t, const DXProbe *> byAnchor;
+  byAnchor.reserve(probeCount);
+  for (uint32_t i = 0; i < probeCount; ++i)
+    byAnchor.emplace(AnchorKey(resident[i].anchor), &resident[i]);
+  auto carried = 0u;
+  for (auto &probe : probes) {
+    const auto it = byAnchor.find(AnchorKey(probe.anchor));
+    if (it == byAnchor.end() || !SameAnchor(it->second->anchor, probe.anchor))
+      continue;
+    const auto &previous = *it->second;
+    // Everything the trace accumulated, and nothing the build decided. The irradiance and the depth
+    // moments are the estimate itself; `behind` is what the probe learned about being walled in;
+    // and `position` is where relocation had nudged it, which is worth keeping for the same reason
+    // the irradiance is -- it was arrived at over many frames and the answer has not changed.
+    //
+    // The anchor, the neighbours and `exterior` come from the build and stay as built: those
+    // describe the tree, which is the thing that just changed.
+    memcpy(probe.irradiance, previous.irradiance, sizeof(probe.irradiance));
+    memcpy(probe.depth, previous.depth, sizeof(probe.depth));
+    memcpy(probe.behind, previous.behind, sizeof(probe.behind));
+    memcpy(probe.position, previous.position, sizeof(probe.position));
+    ++carried;
+  }
+  const CD3DX12_RANGE writeRange(0, 0);
+  readback->Unmap(0, &writeRange);
+  if (carried < probes.size())
+    spdlog::debug("[DX12] Probe volume: {} of {} probes kept what they had learned, {} are new", carried, probes.size(), probes.size() - carried);
+  return carried;
 }
 auto DXProbeVolume::EnsureAuditBuffers() -> bool {
   if (auditSeedData && auditResult && auditReadback)

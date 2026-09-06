@@ -78,6 +78,18 @@ private:
   static constexpr float OPTION_SPACING = 22.f;
   /// @brief Distance from one row of options to the next.
   static constexpr float OPTION_ROW_STEP = OPTION_TEXT_SIZE * 1.15f;
+  /// @brief How many recent moves are kept for the title bar.
+  ///
+  /// More than will usually fit, because what fits is decided in characters by
+  /// `TITLE_MOVE_BUDGET` rather than in moves: `O-O-O` and `e4` are not the same width.
+  static constexpr size_t MOVE_HISTORY = 12;
+  /// @brief Characters of the title given over to moves.
+  ///
+  /// A title bar is one line and cannot scroll, so without a limit the moves walk the name of the
+  /// game off the left of it. Sixty reads comfortably beside a title in a window of ordinary width;
+  /// past that the bar elides the middle and the whole row stops being worth reading. Older moves
+  /// fall off the end rather than the name giving way.
+  static constexpr size_t TITLE_MOVE_BUDGET = 60;
   /// @brief Base of the ids the option rows answer `PickOverlay` with.
   ///
   /// A row's ids run from its base, so an id says which row was clicked and which option in it.
@@ -142,6 +154,8 @@ private:
   /// @brief Which of `TIME_OPTIONS` and `INCREMENT_OPTIONS` is in force.
   size_t timeOption{};
   size_t incrementOption{};
+  /// @brief The last few moves in algebraic notation, oldest first, empty where none was played.
+  std::array<std::string, MOVE_HISTORY> moves{};
   /// @brief Index of the side whose flag has fallen, or -1 while both are still running.
   ///
   /// Kept apart from `playable` because the position cannot answer for it: `Board::State` looks at
@@ -240,6 +254,8 @@ private:
   auto StartSeconds() const -> float;
   /// @brief Seconds added to a side's clock when it completes a move.
   auto IncrementSeconds() const -> float;
+  /// @brief Adds a move to the list and drops the oldest.
+  auto PushMove(std::string) -> void;
   /// @brief Queues both rows of options down the left, and says where each one was put.
   auto DrawOptions(kuki::Application &) -> void;
   /// @brief Answers a click on an option, restarting under the new control.
@@ -255,16 +271,21 @@ private:
   /// primitives cannot say for itself, and saying it by colouring the pieces -- which was tried --
   /// made the pieces harder to read rather than the turn easier.
   auto DrawClocks(kuki::Application &) -> void;
-  /// @brief Puts the position's standing in the window's title bar.
+  /// @brief Works out where the game stands, which is `state` and `playable`.
   ///
-  /// Still the title bar now that there is an overlay to put it on instead, because the two say
-  /// different kinds of thing: the clocks are read at a glance mid-game and belong over the board,
-  /// while "checkmate, Black wins" is read once and is as much a label for the window as for the
-  /// frame. Worth revisiting if the overlay ever grows a place for a line of prose.
+  /// Split from the title because the two are wanted at different moments. This is the expensive
+  /// one -- `Board::State` generates every move for both sides -- and has to run before anything
+  /// reads what it works out: the king takes its colour from `state`, so a redraw ahead of this
+  /// draws the position as it stood a move ago. The title is cheap and has to run *after* the
+  /// move it is meant to show has been recorded.
   ///
-  /// Also the one place `state` and `playable` are refreshed, since working out what to write is
-  /// working out whether the game is over. That makes it the thing that decides what colour the
-  /// king is drawn, which is worth knowing for one reason: it has to be called *before* whatever
-  /// redraws the pieces, or they are drawn from the position as it stood a move ago.
+  /// It was one function doing both, named for the lesser half, and the order that suited one
+  /// half was wrong for the other.
+  auto UpdateStanding() -> void;
+  /// @brief Puts the game's name and its recent moves in the window's title bar.
+  ///
+  /// Only those two. Whose move it is shows in which clock is bright, check in the `+` the
+  /// notation already carries, and a fallen flag in a clock reading nothing in red -- so a
+  /// running commentary here would repeat the screen rather than add to it.
   auto UpdateTitle() -> void;
 };

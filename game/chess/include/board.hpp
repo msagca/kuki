@@ -22,6 +22,15 @@ enum class GameState : uint8_t { Playing,
   Check,
   Checkmate,
   Stalemate };
+/// @brief Whether a standing is a drawn result, of whatever kind.
+///
+/// One place to ask, so that a draw added later is reported and drawn like the one that is already
+/// here rather than needing every caller found again. Stalemate is the only one so far: there is no
+/// threefold repetition, no fifty-move rule and no insufficient-material test, which `Board` says
+/// more about below.
+constexpr auto Drawn(const GameState state) -> bool {
+  return state == GameState::Stalemate;
+}
 struct Piece {
   PieceType type{PieceType::None};
   PieceColor color{PieceColor::White};

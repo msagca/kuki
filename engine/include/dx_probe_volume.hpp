@@ -60,6 +60,17 @@ inline constexpr uint32_t PROBE_CLUSTER_TRIANGLES = 128;
 /// The same debounce `RenderingSystem::SetResolution` uses, for the same reason: a continuous edit
 /// arrives as a burst of distinct values, and only the one it settles on is worth acting on.
 inline constexpr uint32_t PROBE_REBUILD_SETTLE_FRAMES = 5;
+/// @brief How far the scene may shrink inside the volume before the volume is resized to suit it.
+///
+/// The volume is kept where it is while the scene fits inside it, so that probes keep their places
+/// and their accumulated light across a rebuild -- see `DXProbeVolume::CarryOverProbes`. Holding on
+/// forever would be wrong in the other direction: a scene that shrinks to a corner would be sampled
+/// by a lattice mostly covering space that is no longer there.
+///
+/// A half is a wide band on purpose. Resizing is the expensive answer -- it renames every probe --
+/// so it is worth reserving for a scene that has genuinely become a different size, rather than one
+/// that merely put something down.
+inline constexpr float PROBE_VOLUME_KEEP_FRACTION = .5f;
 /// @brief Rays each probe casts per frame. Must match `RAYS_PER_PROBE` in `probe_trace.hlsl`.
 ///
 /// Also the thread group size: one group per probe, one thread per ray, so the group can reduce its
@@ -403,6 +414,20 @@ public:
   ///
   /// @return False when the scene has no triangles to place probes around, or an upload failed.
   auto Build(DXContext &, const std::vector<DXProbeGeometry> &) -> bool;
+  /// @brief Moves what the resident probes have learned into the ones a rebuild has just produced.
+  ///
+  /// Matched on the anchor, which is where a probe stands in the volume rather than where it sits
+  /// in the array: a rebuild renumbers everything, and subdividing one cell shifts every index
+  /// after it, so the index says nothing about identity and the position says everything.
+  ///
+  /// A probe with no predecessor keeps the zeroed estimate it was built with and converges from
+  /// there, which is correct -- it is somewhere no probe stood before. Those are the few, and they
+  /// converge under the blend `Trace` sets from the sample count, so how quickly they catch up is
+  /// the same question as how reactive the field is after any change.
+  ///
+  /// @return How many of the new probes were given a predecessor. Zero means a fresh field: either
+  /// the first build, or a volume whose lattice moved out from under every probe it had.
+  auto CarryOverProbes(DXContext &, std::vector<DXProbe> &) -> uint32_t;
   /// @brief Samples the lookup grid across the volume once and logs whether it agrees with the tree.
   ///
   /// The three structures are built by three separate passes over the same octree, and a mistake in

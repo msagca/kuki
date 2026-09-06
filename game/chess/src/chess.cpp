@@ -18,14 +18,14 @@ namespace {
 /// Files rather than values built in code, because `AssetManager` owns asset identity and the
 /// only public route into it is a load from a path. A handful of small JSON files is a fair price
 /// for not reaching around the manager.
-constexpr const char *MATERIALS[]{"piece_white", "piece_black", "piece_check", "piece_checkmate", "piece_white_ghost", "piece_black_ghost", "square_light", "square_dark", "square_light_move", "square_dark_move", "square_light_capture", "square_dark_capture"};
+constexpr const char *MATERIALS[]{"piece_white", "piece_black", "piece_check", "piece_checkmate", "piece_draw", "piece_white_ghost", "piece_black_ghost", "square_light", "square_dark", "square_light_move", "square_dark_move", "square_light_capture", "square_dark_capture"};
 /// @brief Rotation that points a camera's forward at a target. Forward is -Z of the rotation.
 auto LookAt(const glm::vec3 &from, const glm::vec3 &to) -> glm::quat {
   return glm::quatLookAt(glm::normalize(to - from), glm::vec3(.0f, 1.f, .0f));
 }
 } // namespace
 Chess::Chess()
-  : SystemApplication(ApplicationDescription{.name = "Chess"}) {}
+  : SystemApplication(ApplicationDescription{.name = "Kuki Chess"}) {}
 auto Chess::Start() -> void {
   for (const auto *name : MATERIALS)
     LoadAsset<MaterialAsset>(ResolvePath(std::string("material/") + name + ".mat"), name);
