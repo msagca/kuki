@@ -28,7 +28,7 @@ auto DXDescriptorHeap::Allocate() -> uint32_t {
     return index;
   }
   if (highWater >= capacity) {
-    spdlog::error("[DX12] descriptor heap exhausted at {} descriptors.", capacity);
+    spdlog::error("[DX12] Descriptor heap exhausted at {} descriptors", capacity);
     return InvalidIndex;
   }
   return highWater++;
@@ -42,7 +42,7 @@ auto DXDescriptorHeap::AllocateRange(const uint32_t count) -> uint32_t {
     return first;
   }
   if (highWater + count > capacity) {
-    spdlog::error("[DX12] descriptor heap exhausted at {} descriptors, could not take a range of {}.", capacity, count);
+    spdlog::error("[DX12] Descriptor heap exhausted at {} descriptors, could not take a range of {}", capacity, count);
     return InvalidIndex;
   }
   const auto first = highWater;

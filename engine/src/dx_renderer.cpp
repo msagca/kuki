@@ -43,6 +43,23 @@ constexpr uint32_t SH_FACE_SIZE = 32;
 auto GroupCount(const uint32_t extent) -> UINT {
   return static_cast<UINT>((extent + COMPUTE_GROUP_SIZE - 1) / COMPUTE_GROUP_SIZE);
 }
+/// @brief Which of a material's texture slots were actually filled, as the mask the shaders read.
+///
+/// Binding a texture is only half of using one: the scene shader decides what to sample from this
+/// mask, so a slot filled without its bit is a texture that is uploaded, bound, and then ignored --
+/// silently, and with the material's fallback colour standing in for it.
+///
+/// Derived from the table rather than taken from the asset because the table is what the draw will
+/// actually see. A material naming a texture that failed to load leaves its slot empty, and the
+/// mask should say so rather than promising the shader something it cannot sample. The slots are
+/// indexed by `TextureContent` and so are the bits, which is what makes this a straight copy.
+auto MaskForTextures(const std::array<const kuki::DXTexture *, kuki::MATERIAL_TEXTURE_SLOTS> &textures) -> kuki::TextureMask {
+  kuki::TextureMask mask{};
+  for (uint32_t slot = 0; slot < kuki::MATERIAL_TEXTURE_SLOTS; ++slot)
+    if (textures[slot])
+      mask.set(slot);
+  return mask;
+}
 /// @brief Folds a run of four-byte fields into a hash, whatever they happen to mean.
 ///
 /// The things worth hashing here are blocks of floats and unsigned integers laid out for a shader,
@@ -205,9 +222,9 @@ auto DXRenderer::AllocateTarget(DXRenderTarget &target, const TargetDescription 
       device->CreateShaderResourceView(target.idResource.Get(), &idSrv, srvHeap.GetCPUHandle(target.idSrvIndex));
       target.idSrvGPU = srvHeap.GetGPUHandle(target.idSrvIndex);
     }
-    spdlog::debug("[DXRenderer] created entity id buffer for {} ({}x MSAA)", name, samples);
+    spdlog::debug("[DXRenderer] Created entity id buffer for {} ({}x MSAA)", name, samples);
   }
-  spdlog::debug("[DXRenderer] created render target: {} ({}x{})", name, desc.width, desc.height);
+  spdlog::debug("[DXRenderer] Created render target: {} ({}x{})", name, desc.width, desc.height);
   return true;
 }
 auto DXRenderer::ReleaseTarget(DXRenderTarget &target) -> void {
@@ -375,7 +392,7 @@ auto DXRenderer::UploadMeshData(const Mesh &source, const std::string &name) -> 
         mesh.indexBufferView.Format = DXGI_FORMAT_R32_UINT;
       }
   }
-  spdlog::info("[DXRenderer] uploaded mesh: {} ({} vertices)", name, mesh.vertexCount);
+  spdlog::info("[DXRenderer] Uploaded mesh: {} ({} vertices)", name, mesh.vertexCount);
   return mesh;
 }
 auto DXRenderer::EnsureMesh(const AssetID assetId) -> DXMesh * {
@@ -411,7 +428,7 @@ auto DXRenderer::UploadTextureData(const Texture &source, const std::string &nam
     return UploadCompressedTextureData(source, name);
   const auto channels = source.channels;
   if (channels != 4 && channels != 3) {
-    spdlog::warn("[DXRenderer] unsupported channel count {} for texture {}", channels, name);
+    spdlog::warn("[DXRenderer] Unsupported channel count {} for texture {}", channels, name);
     return texture;
   }
   const auto pixelCount = static_cast<size_t>(source.width) * source.height;
@@ -490,7 +507,7 @@ auto DXRenderer::UploadTextureData(const Texture &source, const std::string &nam
   device->CreateShaderResourceView(texture.resource.Get(), &srvDesc, srvHeap.GetCPUHandle(texture.srvIndex));
   texture.srvGPU = srvHeap.GetGPUHandle(texture.srvIndex);
   texture.format = format;
-  spdlog::info("[DXRenderer] uploaded texture: {} ({}x{})", name, source.width, source.height);
+  spdlog::info("[DXRenderer] Uploaded texture: {} ({}x{})", name, source.width, source.height);
   return texture;
 }
 /// @brief Uploads an already block-compressed mip chain as one resource of many subresources.
@@ -522,7 +539,7 @@ auto DXRenderer::UploadCompressedTextureData(const Texture &source, const std::s
     format = DXGI_FORMAT_BC5_UNORM;
     break;
   default:
-    spdlog::warn("[DXRenderer] unsupported texture compression for {}", name);
+    spdlog::warn("[DXRenderer] Unsupported texture compression for {}", name);
     return texture;
   }
   auto *device = context->GetDevice();
@@ -539,7 +556,7 @@ auto DXRenderer::UploadCompressedTextureData(const Texture &source, const std::s
   for (size_t level = 0; level < levels.size(); ++level) {
     const auto &entry = levels[level];
     if (entry.offset + entry.bytes > blocks->size()) {
-      spdlog::warn("[DXRenderer] compressed texture {} is shorter than its mip table claims", name);
+      spdlog::warn("[DXRenderer] Compressed texture {} is shorter than its mip table claims", name);
       texture.resource.Reset();
       return texture;
     }
@@ -576,7 +593,7 @@ auto DXRenderer::UploadCompressedTextureData(const Texture &source, const std::s
   texture.format = format;
   texture.mipLevels = mipLevels;
   texture.shaderMapping = mapping;
-  spdlog::info("[DXRenderer] uploaded compressed texture: {} ({}x{}, {} levels, {} KB)", name, source.width, source.height, mipLevels, blocks->size() / 1024);
+  spdlog::info("[DXRenderer] Uploaded compressed texture: {} ({}x{}, {} levels, {} KB)", name, source.width, source.height, mipLevels, blocks->size() / 1024);
   return texture;
 }
 auto DXRenderer::EnsureUploadBudget() -> void {
@@ -593,7 +610,7 @@ auto DXRenderer::EnsureUploadBudget() -> void {
   const auto adjusted = std::max(MIN_UPLOAD_BUDGET, std::min(uploadBudgetBytes, share));
   if (adjusted == uploadBudgetBytes)
     return;
-  spdlog::info("[DXRenderer] upload batch narrowed to {} MB, adapter reports {} MB of shared memory", adjusted / (1024 * 1024), heapBudget / (1024 * 1024));
+  spdlog::info("[DXRenderer] Upload batch narrowed to {} MB, adapter reports {} MB of shared memory", adjusted / (1024 * 1024), heapBudget / (1024 * 1024));
   uploadBudgetBytes = adjusted;
 }
 auto DXRenderer::RetireStaging(ComPtr<ID3D12Resource> staging, const size_t bytes) -> void {
@@ -611,7 +628,7 @@ auto DXRenderer::FlushPendingUploads() -> void {
   if (!context)
     return;
   context->FlushCommandList();
-  spdlog::info("[DXRenderer] uploaded a batch of {} textures ({} MB of staging)", pendingStaging.size(), pendingStagingBytes / (1024 * 1024));
+  spdlog::info("[DXRenderer] Uploaded a batch of {} textures ({} MB of staging)", pendingStaging.size(), pendingStagingBytes / (1024 * 1024));
   pendingStaging.clear();
   pendingStagingBytes = 0;
   context->ReleaseRetiredResources();
@@ -866,7 +883,7 @@ auto DXRenderer::CreateComputeTexture(DXComputeTexture &texture, const DXGI_FORM
     device->CreateShaderResourceView(texture.resource.Get(), &mipSrvDesc, srvHeap.GetCPUHandle(mipSrvIndex));
     texture.mipSrvIndices.push_back(mipSrvIndex);
   }
-  spdlog::debug("[DXRenderer] created compute texture: {} ({}x{}, {} mips, {} slices)", name, size, size, mipLevels, arraySize);
+  spdlog::debug("[DXRenderer] Created compute texture: {} ({}x{}, {} mips, {} slices)", name, size, size, mipLevels, arraySize);
   return true;
 }
 auto DXRenderer::ReleaseComputeTexture(DXComputeTexture &texture) -> void {
@@ -1120,7 +1137,7 @@ auto DXRenderer::BuildEnvironmentMaps(const AssetID assetId, const DXTexture &eq
   device->CopyDescriptorsSimple(1, srvHeap.GetCPUHandle(skyboxTableIndex), computeStagingHeap.GetCPUHandle(skyboxCubemap.srvIndex), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
   environmentAsset = assetId;
   environmentReady = true;
-  spdlog::info("[DXRenderer] precomputed image-based lighting for {}", app.GetAssetName(assetId));
+  spdlog::info("[DXRenderer] Precomputed image-based lighting for {}", app.GetAssetName(assetId));
   return true;
 }
 auto DXRenderer::EnsureInstanceCapacity(const uint64_t bytes) -> bool {
@@ -1149,7 +1166,7 @@ auto DXRenderer::EnsureInstanceCapacity(const uint64_t bytes) -> bool {
   instanceBuffer = std::move(grown);
   instanceData = static_cast<uint8_t *>(mapped);
   instanceCapacity = capacity;
-  spdlog::debug("[DXRenderer] instance arena grown to {} instances per frame", capacity / sizeof(DXInstanceData));
+  spdlog::debug("[DXRenderer] Instance arena grown to {} instances per frame", capacity / sizeof(DXInstanceData));
   return true;
 }
 auto DXRenderer::AllocateInstances(std::span<const DXInstanceData> instances) -> D3D12_GPU_VIRTUAL_ADDRESS {
@@ -1177,6 +1194,20 @@ auto DXRenderer::AllocateBones(const std::vector<glm::mat4> &bones) -> D3D12_GPU
     return 0;
   const auto frameOffset = instanceCapacity * (context->GetFrameIndex() % DX_FRAME_COUNT);
   memcpy(instanceData + frameOffset + offset, bones.data(), bytes);
+  instanceCursor = offset + bytes;
+  return instanceBuffer->GetGPUVirtualAddress() + frameOffset + offset;
+}
+auto DXRenderer::AllocateOverlayVertices(const std::vector<Vertex> &vertices) -> D3D12_GPU_VIRTUAL_ADDRESS {
+  auto context = GetContext();
+  if (!context || vertices.empty())
+    return 0;
+  constexpr uint64_t ALIGNMENT = D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
+  const auto offset = (instanceCursor + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+  const auto bytes = vertices.size() * sizeof(Vertex);
+  if (!EnsureInstanceCapacity(offset + bytes))
+    return 0;
+  const auto frameOffset = instanceCapacity * (context->GetFrameIndex() % DX_FRAME_COUNT);
+  memcpy(instanceData + frameOffset + offset, vertices.data(), bytes);
   instanceCursor = offset + bytes;
   return instanceBuffer->GetGPUVirtualAddress() + frameOffset + offset;
 }
@@ -1574,6 +1605,7 @@ auto DXRenderer::DrawSkybox(const Camera &camera, const DXRenderTarget &target) 
     if (!skybox)
       skybox = handle;
   });
+  memcpy(constants.background, glm::value_ptr(indirect.backgroundColor), sizeof(float) * 3);
   auto table = fallbackSkyboxTable;
   if (skybox) {
     constants.useGradient = 1u;
@@ -1913,7 +1945,7 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   if (static_cast<int>(batches.size()) != lastBatches || drawnInstances != lastInstances) {
     lastBatches = static_cast<int>(batches.size());
     lastInstances = drawnInstances;
-    spdlog::info("[DXRenderer] scene pass drew {} instances in {} batches plus {} skinned meshes", drawnInstances, batches.size(), skinnedDraws.size());
+    spdlog::info("[DXRenderer] Scene pass drew {} instances in {} batches plus {} skinned meshes", drawnInstances, batches.size(), skinnedDraws.size());
   }
 }
 auto DXRenderer::EnsureSceneColor(const DXRenderTarget &target) -> bool {
@@ -1948,7 +1980,7 @@ auto DXRenderer::EnsureSceneColor(const DXRenderTarget &target) -> bool {
   srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
   srvDesc.Texture2D.MipLevels = 1;
   device->CreateShaderResourceView(sceneColorCopy.Get(), &srvDesc, srvHeap.GetCPUHandle(sceneColorSrvIndex));
-  spdlog::info("[DXRenderer] created scene colour copy ({}x{})", sceneColorWidth, sceneColorHeight);
+  spdlog::info("[DXRenderer] Created scene colour copy ({}x{})", sceneColorWidth, sceneColorHeight);
   return true;
 }
 auto DXRenderer::CaptureSceneColor(DXRenderTarget &target) -> bool {
@@ -2103,6 +2135,67 @@ auto DXRenderer::ApplyBrightPassFilter(std::span<std::string> inputs, std::span<
 }
 auto DXRenderer::ApplyToneMapping(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   ApplyFullscreenEffect(inputs, outputs, "PSToneMapping", GAMMA);
+}
+auto DXRenderer::ApplyOverlay(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  // The picture reaches the output first and whatever happens next. Every early return below is a
+  // frame with no text on it rather than a frame with nothing on it.
+  BlitOrResolve(inputs, outputs);
+  auto &overlay = app.GetOverlay();
+  auto context = GetContext();
+  if (overlay.IsEmpty() || !context || outputs.empty())
+    return;
+  auto *commandList = context->GetCommandList();
+  auto destinationIt = nameToTarget.find(outputs[0]);
+  if (!commandList || destinationIt == nameToTarget.end() || !destinationIt->second.resource)
+    return;
+  auto &destination = destinationIt->second;
+  if (destination.desc.samples > 1 || destination.rtvIndex == DXDescriptorHeap::InvalidIndex)
+    return;
+  // Looked up rather than ensured: uploading here could flush the command list mid-pass, and
+  // `EnsureSceneResources` has already made the atlas resident. A miss means the font was set
+  // after this frame began, and the caption waits a frame rather than risking the flush.
+  const auto atlasIt = assetToTexture.find(overlay.GetAtlasAssetId());
+  if (atlasIt == assetToTexture.end() || !atlasIt->second)
+    return;
+  const auto atlas = &atlasIt->second;
+  const auto pipeline = pipelines.GetOverlayPipeline(context->GetDevice(), TargetFormatToRTVDXGI(destination.desc.format));
+  if (!pipeline || !*pipeline)
+    return;
+  overlay.Build(destination.desc.width, destination.desc.height, overlayMesh, overlayRuns);
+  if (overlayMesh.vertices.empty())
+    return;
+  const auto vertexAddress = AllocateOverlayVertices(overlayMesh.vertices);
+  if (!vertexAddress)
+    return;
+  Transition(destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  const auto rtv = context->GetRTVHeap().GetCPUHandle(destination.rtvIndex);
+  commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+  const auto viewport = CD3DX12_VIEWPORT(0.f, 0.f, static_cast<float>(destination.desc.width), static_cast<float>(destination.desc.height));
+  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination.desc.width), static_cast<LONG>(destination.desc.height));
+  commandList->RSSetViewports(1, &viewport);
+  commandList->RSSetScissorRects(1, &scissor);
+  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  commandList->SetGraphicsRootDescriptorTable(1, atlas->srvGPU);
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  D3D12_VERTEX_BUFFER_VIEW vertexView{};
+  vertexView.BufferLocation = vertexAddress;
+  vertexView.SizeInBytes = static_cast<UINT>(overlayMesh.vertices.size() * sizeof(Vertex));
+  vertexView.StrideInBytes = sizeof(Vertex);
+  commandList->IASetVertexBuffers(0, 1, &vertexView);
+  // The overlay lays its quads out in the target's pixels with y up from the bottom, which this
+  // maps straight onto clip space. The same matrix the OpenGL path builds, from the same call:
+  // nothing about it is one backend's rather than the other's.
+  const auto projection = glm::ortho(.0f, static_cast<float>(destination.desc.width), .0f, static_cast<float>(destination.desc.height));
+  DXOverlayConstants constants{};
+  memcpy(constants.projection, glm::value_ptr(projection), sizeof(constants.projection));
+  // One draw a run, because colour is the only thing that varies and a vertex has nowhere to put
+  // it. See `OverlayRun`.
+  for (const auto &run : overlayRuns) {
+    memcpy(constants.color, glm::value_ptr(run.color), sizeof(constants.color));
+    commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXOverlayConstants) / sizeof(uint32_t), &constants, 0);
+    commandList->DrawInstanced(static_cast<UINT>(run.count), 1, static_cast<UINT>(run.first), 0);
+  }
 }
 auto DXRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   std::array<std::string, 1> colorInput{};
@@ -2409,6 +2502,13 @@ auto DXRenderer::EnsureSceneResources(Scene &scene) -> void {
   DrainPendingUploads();
   EnsureDummyTexture();
   EnsureComputeFallbacks();
+  // The overlay's atlas is uploaded here with everything else rather than by the pass that draws
+  // it. An upload may flush the command list, and the overlay pass runs at the end of the graph
+  // with a frame's worth of work already recorded against targets whose states are being tracked.
+  // It is only ever the first frame that would upload, which is exactly the frame least worth
+  // taking that risk on.
+  if (const auto atlas = app.GetOverlay().GetAtlasAssetId(); atlas)
+    EnsureTexture(atlas);
   scene.ForEachEntity<MeshHandle>([&](const EntityID, const MeshHandle *handle) {
     auto residentId = handle->assetId;
     if (!app.GetAsset<MeshAsset>(residentId))
@@ -2441,7 +2541,7 @@ auto DXRenderer::EnsureSceneResources(Scene &scene) -> void {
       return;
     if (!BuildEnvironmentMaps(handle->assetId, *texture)) {
       environmentReady = false;
-      spdlog::warn("[DXRenderer] could not precompute image-based lighting, falling back to the analytic sky");
+      spdlog::warn("[DXRenderer] Could not precompute image-based lighting, falling back to the analytic sky");
     }
   });
 }
@@ -2474,7 +2574,9 @@ auto DXRenderer::LoadScene(Scene &scene) -> void {
     std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> textures{};
     for (const auto textureId : materialAsset->textures)
       Place(textures, EnsureTexture(textureId));
-    pending.emplace_back(id, Resolve(handle->assetId, 0, materialAsset->fallback, materialAsset->type, textures));
+    auto fallback = materialAsset->fallback;
+    fallback.textureMask = MaskForTextures(textures);
+    pending.emplace_back(id, Resolve(handle->assetId, 0, fallback, materialAsset->type, textures));
   });
   scene.ForEachEntity<ModelMaterialHandle>([&](const EntityID id, const ModelMaterialHandle *handle) {
     const auto modelAssetId = handle->modelAssetId;
@@ -2640,6 +2742,7 @@ auto DXRenderer::EnsurePreviewMaterial(const AssetID assetId, const MaterialAsse
     if (auto texture = EnsureTexture(textureId); texture && *texture)
       if (const auto slot = static_cast<uint32_t>(texture->content); slot < MATERIAL_TEXTURE_SLOTS)
         textures[slot] = texture;
+  shared.fallback.textureMask = MaskForTextures(textures);
   BuildMaterialTable(shared, textures);
   return &shared;
 }
@@ -2734,7 +2837,7 @@ auto DXRenderer::RenderPreview(const AssetID assetId, const std::vector<std::pai
       commandList->DrawInstanced(mesh->vertexCount, 1, 0, 0);
   }
   Transition(target, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-  spdlog::info("[DXRenderer] created preview for asset: {}", app.GetAssetName(assetId));
+  spdlog::info("[DXRenderer] Created preview for asset: {}", app.GetAssetName(assetId));
   return &target;
 }
 auto DXRenderer::PreviewAsset(const AssetID assetId) -> RenderTarget * {

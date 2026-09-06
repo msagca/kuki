@@ -9,6 +9,8 @@
 #include <input_manager.hpp>
 #include <kuki_engine_export.h>
 #include <memory>
+#include <overlay.hpp>
+#include <preferences.hpp>
 #include <primitive.hpp>
 #include <scene.hpp>
 #include <scene_manager.hpp>
@@ -59,6 +61,18 @@ public:
   /// Worth having for its own sake, and worth more than usual here: with no text rendering in the
   /// engine, the title bar is the only place a game can put a line of status.
   auto SetWindowTitle(const std::string &) -> void;
+  /// @brief Hands the asset manager something built rather than loaded, under a name.
+  ///
+  /// The route in for an asset that has no file to be loaded from: a mesh laid out in code, or a
+  /// texture generated at run time. `LoadAsset` cannot serve those -- it is keyed by path, and
+  /// there is no path -- which previously left a game with no way to make one at all.
+  ///
+  /// Give the asset an id from `MakeBuiltInAssetID` rather than a generated one where a scene may
+  /// come to reference it, for the reason that function sets out: a generated id differs every run,
+  /// and a saved scene naming one resolves to nothing.
+  ///
+  /// @return Whether it was taken. An asset already known by that id is left alone and refused.
+  auto AddAsset(std::unique_ptr<Asset>, std::string = "") -> bool;
   auto DeleteEntities() -> void;
   auto DeleteEntity(const EntityID) -> void;
   auto DeltaTime() const -> float;
@@ -97,6 +111,26 @@ public:
   auto GetEntityName(const EntityID) const -> std::string;
   auto GetEntityParent(const EntityID) const -> EntityID;
   auto GetMousePosition() const -> glm::vec2;
+  /// @brief Named values this application keeps between runs. See `Preferences`.
+  ///
+  /// Loaded before `Start` and written back after the systems have shut down, so a script may read
+  /// them as it starts and set them as it stops without arranging either itself.
+  auto GetPreferences(this auto &self) -> decltype(auto) {
+    return (self.preferences);
+  }
+  /// @brief The text queued to be drawn over this frame's picture. See `Overlay`.
+  auto GetOverlay(this auto &self) -> decltype(auto) {
+    return (self.overlay);
+  }
+  /// @brief Bakes a font for the overlay and registers its atlas as a texture asset.
+  ///
+  /// Both halves belong together, which is why this is here rather than on `Overlay`: the bake is
+  /// the overlay's business and the asset is the manager's, and a caller doing the second by hand
+  /// would have to know the name the backends look the atlas up by.
+  ///
+  /// Nothing is drawn until this succeeds -- `Overlay::DrawText` ignores a request made with no
+  /// font, rather than queueing text that could never be set.
+  auto SetOverlayFont(const std::filesystem::path &, const int = Font::DefaultPixelHeight) -> bool;
   auto GetScene(this auto &, const std::string & = "") -> decltype(auto);
   auto GetScrollOffset() const -> glm::vec2;
   auto InstantiateAsset(const AssetID) -> EntityID;
@@ -148,6 +182,12 @@ public:
   /// does its own conversion instead, from a panel that is a third space again, and calls the
   /// rendering system directly.
   auto PickEntity(const glm::vec2 &) -> EntityID;
+  /// @brief The id of the overlay text under a point in window coordinates, or `Overlay::NoHit`.
+  ///
+  /// The overlay's counterpart of `PickEntity`, and here for the same reason that one is: the
+  /// overlay is laid out in the render target's pixels and the mouse is reported in the window's,
+  /// and the two are only the same size by coincidence.
+  auto PickOverlay(const glm::vec2 &) -> int;
   /// @brief Asks the loop to stop after the current frame.
   ///
   /// The polite half of what the window's close button does, and the only way a game can end
@@ -227,6 +267,8 @@ protected:
 private:
   ApplicationDescription desc;
   AssetManager assetManager;
+  Overlay overlay;
+  Preferences preferences;
   InputManager inputManager;
   SceneManager sceneManager;
   float deltaTime{};

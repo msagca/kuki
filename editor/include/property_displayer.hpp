@@ -537,6 +537,8 @@ inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::Indirect
     ImGui::SetItemTooltip("The same, for the sky's diffuse contribution. Separate from the\nbounce because the two arrive by different routes, and finding the\nbalance between them needs both.");
     ImGui::SliderFloat("Ambient Fallback", &edited.ambientFallback, .0f, .5f, "%.3f");
     ImGui::SetItemTooltip("The flat ambient a scene falls back on with no sky, no ambient\nlight and no probe volume. Shades nothing when any of the three\nis present.");
+    ImGui::ColorEdit3("Background", &edited.backgroundColor.x, ImGuiColorEditFlags_Float);
+    ImGui::SetItemTooltip("What fills the frame behind everything with no skybox. Linear,\nand tone mapped along with the rest of the picture -- so the swatch\nis not what reaches the display. The other half of Ambient Fallback:\nthis is what a scene stands in front of, and that is the light it\ngets for standing there.");
   }
   if (probes && ImGui::CollapsingHeader("Reconstruction", ImGuiTreeNodeFlags_DefaultOpen)) {
     ImGui::TextDisabled("How the field is read at a point. Repaints immediately.");

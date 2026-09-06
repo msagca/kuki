@@ -4,6 +4,10 @@ file(
   CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
+# The board's rank and file labels are baked from this at startup. Shared with the editor rather
+# than copied here, because it is most of a megabyte and neither target has a claim on it.
+set(FONT_SOURCE_DIR "${CMAKE_SOURCE_DIR}/asset/font")
+file(GLOB_RECURSE FONT_SOURCES CONFIGURE_DEPENDS "${FONT_SOURCE_DIR}/*.ttf")
 set(MATERIAL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/material")
 file(
   GLOB_RECURSE MATERIAL_SOURCES
@@ -30,26 +34,38 @@ if(UNIX AND NOT APPLE)
   )
 endif()
 # Listed as sources so an edited material shows up in the IDE and triggers the staging below.
-target_sources(${PROJECT_NAME} PRIVATE ${MATERIAL_SOURCES})
+target_sources(${PROJECT_NAME} PRIVATE ${FONT_SOURCES} ${MATERIAL_SOURCES})
+# Its own component, named after the target, so the installer can offer this game on its own. Every
+# game does the same, and `game/CMakeLists.txt` collects the names for the installer to list.
+install(
+  DIRECTORY "${FONT_SOURCE_DIR}"
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  COMPONENT ${PROJECT_NAME}
+)
 install(
   DIRECTORY "${MATERIAL_SOURCE_DIR}"
   DESTINATION "${CMAKE_INSTALL_BINDIR}"
-  COMPONENT KukiGames
+  COMPONENT ${PROJECT_NAME}
 )
 install(
   TARGETS ${PROJECT_NAME}
   DESTINATION "${CMAKE_INSTALL_BINDIR}"
-  COMPONENT KukiGames
+  COMPONENT ${PROJECT_NAME}
 )
+kuki_hide_console(${PROJECT_NAME})
+kuki_report_binary(${PROJECT_NAME})
 # Assets resolve against the executable's directory rather than the working directory, so they are
 # staged beside it -- see `ResolvePath`. Same shape as the editor's staging, for the same reason.
 add_custom_command(
   TARGET ${PROJECT_NAME}
   POST_BUILD
   COMMAND
+    ${CMAKE_COMMAND} -E copy_directory "${FONT_SOURCE_DIR}"
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/font
+  COMMAND
     ${CMAKE_COMMAND} -E copy_directory "${MATERIAL_SOURCE_DIR}"
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/material
-  COMMENT "Staging chess materials next to the executable"
+  COMMENT "Staging chess fonts and materials next to the executable"
   VERBATIM
 )
 if(WIN32 AND DXCOMPILER_DLL AND DXIL_DLL)
@@ -67,6 +83,6 @@ if(WIN32 AND DXCOMPILER_DLL AND DXIL_DLL)
   install(
     FILES "${DXCOMPILER_DLL}" "${DXIL_DLL}"
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    COMPONENT KukiGames
+    COMPONENT ${PROJECT_NAME}
   )
 endif()

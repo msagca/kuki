@@ -8,6 +8,7 @@
 #include <dx_compute_texture.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <material_asset.hpp>
+#include <overlay.hpp>
 #include <dx_context.hpp>
 #include <dx_mesh.hpp>
 #include <dx_pipeline.hpp>
@@ -138,6 +139,7 @@ public:
   /// multisampled input is listed first and copying it instead would silently discard whatever the
   /// passes in between had already applied.
   auto ApplyOutline(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyOverlay(std::span<std::string>, std::span<std::string>) -> void override;
   auto Clear() -> void override;
   auto CreateDepthPrepass(std::span<std::string>, std::span<std::string>) -> void override;
   auto CreateShadowMap(std::span<std::string>, std::span<std::string>) -> void override;
@@ -650,6 +652,16 @@ private:
   auto CaptureSceneColor(DXRenderTarget &) -> bool;
   /// @brief Copies a bone palette into the frame's instance arena, for the skinned vertex shader.
   auto AllocateBones(const std::vector<glm::mat4> &) -> D3D12_GPU_VIRTUAL_ADDRESS;
+  /// @brief Copies the overlay's quads into the frame's instance arena, to be bound as vertices.
+  ///
+  /// The arena rather than a buffer of its own, and an upload heap is a perfectly good place to
+  /// draw vertices from: the text is written once and read once, so there is nothing for a copy
+  /// into device memory to earn. It also means the overlay inherits the arena's per-frame
+  /// ring, and so never writes over geometry a frame still in flight is reading.
+  auto AllocateOverlayVertices(const std::vector<Vertex> &) -> D3D12_GPU_VIRTUAL_ADDRESS;
+  /// @brief The overlay's geometry and the runs that colour it, kept so their capacity survives.
+  Mesh overlayMesh;
+  std::vector<OverlayRun> overlayRuns;
   /// @brief Creates a texture a compute shader writes, with a view of every mip it will write.
   ///
   /// @param arraySize Six for a cubemap, which also selects a cube view for sampling.

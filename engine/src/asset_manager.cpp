@@ -74,7 +74,7 @@ auto AssetManager::Add(std::unique_ptr<Asset> asset, std::string name) -> bool {
   const auto isVertexShader = shaderAsset && shaderAsset->shaderType == ShaderType::Vertex;
   idToAsset.emplace(id, std::move(asset));
   if (!isVertexShader)
-    spdlog::info("[AssetManager] created: {}", name);
+    spdlog::info("[AssetManager] Created: {}", name);
   SetName(id, std::move(name));
   return true;
 }
@@ -365,7 +365,7 @@ auto AssetManager::Load<ModelAsset>(const AssetID id, const std::filesystem::pat
   LoadNode(visited, *aiScene->mRootNode, *aiScene, *model.get(), path.parent_path(), path.filename().string());
   ParseAnimations(*aiScene, *model.get());
   ResolveNodeReferences(*model.get());
-  spdlog::info("[AssetManager] loaded model: {}", pathNormStr);
+  spdlog::info("[AssetManager] Loaded model: {}", pathNormStr);
   return model;
 }
 template <>
@@ -382,23 +382,23 @@ auto AssetManager::Load<ShaderAsset>(const AssetID id, const std::filesystem::pa
   else if (ext == ".comp")
     shader->shaderType = ShaderType::Compute;
   else {
-    spdlog::warn("[AssetManager] unable to infer shader type for file: {}", pathNormStr);
+    spdlog::warn("[AssetManager] Unable to infer shader type for file: {}", pathNormStr);
     return shader;
   }
   std::ifstream fs(path);
   if (!fs) {
-    spdlog::error("[AssetManager] failed to open shader file: {}", pathNormStr);
+    spdlog::error("[AssetManager] Failed to open shader file: {}", pathNormStr);
     return shader;
   }
   std::stringstream ss;
   ss << fs.rdbuf();
   if (fs.fail()) {
-    spdlog::error("[AssetManager] failed to read shader file: {}", pathNormStr);
+    spdlog::error("[AssetManager] Failed to read shader file: {}", pathNormStr);
     return shader;
   }
   fs.close();
   shader->text = ss.str();
-  spdlog::info("[AssetManager] loaded shader: {}", pathNormStr);
+  spdlog::info("[AssetManager] Loaded shader: {}", pathNormStr);
   return shader;
 }
 template <>
@@ -408,14 +408,14 @@ auto AssetManager::Load<MaterialAsset>(const AssetID id, const std::filesystem::
   material->type = MaterialType::Lit;
   std::ifstream fs(path);
   if (!fs) {
-    spdlog::error("[AssetManager] failed to open material file: {}", pathNormStr);
+    spdlog::error("[AssetManager] Failed to open material file: {}", pathNormStr);
     return material;
   }
   nlohmann::json description;
   try {
     fs >> description;
   } catch (const nlohmann::json::parse_error &e) {
-    spdlog::error("[AssetManager] failed to parse material file: {} ({})", pathNormStr, e.what());
+    spdlog::error("[AssetManager] Failed to parse material file: {} ({})", pathNormStr, e.what());
     return material;
   }
   const auto ReadColor = [&description](const char *name, glm::vec4 &target) {
@@ -448,7 +448,7 @@ auto AssetManager::Load<MaterialAsset>(const AssetID id, const std::filesystem::
   material->fallback.attenuation.w = description.value("attenuationDistance", material->fallback.attenuation.w);
   if (description.value("unlit", false))
     material->type = MaterialType::Unlit;
-  spdlog::info("[AssetManager] loaded material: {}", pathNormStr);
+  spdlog::info("[AssetManager] Loaded material: {}", pathNormStr);
   return material;
 }
 template <>
@@ -464,7 +464,7 @@ auto AssetManager::Load<TextureAsset>(const AssetID id, const std::filesystem::p
     if (path.extension() == ".exr")
       texture.flipY = true;
   }
-  spdlog::info("[AssetManager] loaded texture: {}", pathNormStr);
+  spdlog::info("[AssetManager] Loaded texture: {}", pathNormStr);
   return textureAsset;
 }
 } // namespace kuki

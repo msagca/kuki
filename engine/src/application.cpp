@@ -30,6 +30,7 @@
 #include <render_target.hpp>
 #include <rendering_system.hpp>
 #include <scene.hpp>
+#include <cstdlib>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string.h>
@@ -39,9 +40,50 @@
 #include <typeindex>
 #include <utility>
 #include <vector>
+namespace {
+/// @brief Name of the environment variable that overrides how much is logged.
+constexpr auto LOG_LEVEL_VARIABLE = "KUKI_LOG";
+/// @brief Decides how much this run logs, before anything has had a chance to log.
+///
+/// A release build says nothing at all. The logs describe what the engine is doing to whoever is
+/// working on it, and a console full of asset paths is not something to show someone playing a
+/// game -- the same judgement that hides the console window itself in release builds, which
+/// `kuki_hide_console` does at link time.
+///
+/// A debug build says everything, `debug` included. Those messages were unreachable before this:
+/// spdlog's own default is `info`, so every `spdlog::debug` in the engine was compiled in and
+/// dropped at run time whatever the build.
+///
+/// `KUKI_LOG` overrides both, which is what keeps a silent release from being an undiagnosable
+/// one -- a crash that only happens in a release build is exactly the crash that needs the log,
+/// and rebuilding as debug is both slow and liable to make it stop happening. It takes any spdlog
+/// level name (`trace`, `debug`, `info`, `warn`, `error`, `critical`, `off`); anything else is
+/// read as a request to turn logging on rather than as a level, since that is what someone
+/// setting `KUKI_LOG=1` means.
+auto ConfigureLogging() -> void {
+  const auto level = [] {
+    const auto *requested = std::getenv(LOG_LEVEL_VARIABLE);
+    if (!requested || !*requested) {
+#ifdef NDEBUG
+      return spdlog::level::off;
+#else
+      return spdlog::level::debug;
+#endif
+    }
+    // `from_str` answers `off` for anything it does not recognise, which would silence a run that
+    // asked to be noisy, so the unrecognised case is separated out rather than trusted.
+    const std::string name(requested);
+    const auto parsed = spdlog::level::from_str(name);
+    return parsed == spdlog::level::off && name != "off" ? spdlog::level::debug : parsed;
+  }();
+  spdlog::set_level(level);
+}
+} // namespace
 namespace kuki {
 Application::Application(ApplicationDescription desc)
   : desc(std::move(desc)), assetManager(*this), inputManager(*this), sceneManager(*this) {
+  // First, so that nothing this constructor goes on to do can log before the level is settled.
+  ConfigureLogging();
   this->desc.path = GetExePath();
 }
 Application::~Application() {}
@@ -61,6 +103,9 @@ auto Application::Run() -> void {
   Shutdown();
 }
 auto Application::PreStart() -> void {
+  // Before the window, so that even a launch that fails to get one has read them -- and before
+  // `Start`, which is where an application picks up whatever it saved last time.
+  preferences.Load(desc.name);
   if (!CreateWindow())
     return;
   LoadPrimitiveAssets();
@@ -103,6 +148,9 @@ auto Application::PostUpdate() -> void {
 }
 auto Application::PreShutdown() -> void {
   ShutdownSystems();
+  // After the systems, so a script that writes a preference as it stops is not writing into a file
+  // that has already been saved.
+  preferences.Save();
   if (graphicsContext)
     graphicsContext->Shutdown();
   glfwDestroyWindow(window);
@@ -118,7 +166,7 @@ auto Application::Status() -> bool {
 auto Application::CreateWindow() -> bool {
   graphicsContext = GraphicsContext::Create(desc.api);
   if (!graphicsContext) {
-    spdlog::error("[App] failed to create graphics context.");
+    spdlog::error("[App] Failed to create graphics context");
     return false;
   }
   glfwInit();
@@ -143,12 +191,12 @@ auto Application::CreateWindow() -> bool {
   }
   window = glfwCreateWindow(width, height, desc.name.c_str(), monitor, nullptr);
   if (!window) {
-    spdlog::error("[App] failed to create window.");
+    spdlog::error("[App] Failed to create window");
     glfwTerminate();
     return false;
   }
   if (!graphicsContext->Initialize(window)) {
-    spdlog::error("[App] failed to initialize graphics context.");
+    spdlog::error("[App] Failed to initialize graphics context");
     return false;
   }
   graphicsContext->SetVSync(desc.vsync);
@@ -198,6 +246,25 @@ auto Application::Game(const std::string &name) -> GameBuilder {
 auto Application::SetWindowTitle(const std::string &title) -> void {
   if (window)
     glfwSetWindowTitle(window, title.c_str());
+}
+auto Application::AddAsset(std::unique_ptr<Asset> asset, std::string name) -> bool {
+  return assetManager.Add(std::move(asset), std::move(name));
+}
+auto Application::SetOverlayFont(const std::filesystem::path &path, const int pixelHeight) -> bool {
+  if (!overlay.SetFont(path, pixelHeight))
+    return false;
+  const auto id = MakeBuiltInAssetID(Overlay::AtlasAssetName);
+  auto atlas = std::make_unique<TextureAsset>(id);
+  atlas->texture = overlay.GetFont().GetAtlas();
+  // A second call rebakes the font but cannot replace the atlas: the id is derived from the name
+  // and `AssetManager::Add` leaves an id it already holds alone. Said rather than worked around,
+  // because the fix is for the caller to settle on a font before the first frame -- swapping one
+  // afterwards would want the texture reuploaded on both backends, which is a larger thing than a
+  // font change looks.
+  if (!AddAsset(std::move(atlas), Overlay::AtlasAssetName))
+    spdlog::warn("[App] The overlay font was already baked; the atlas from the first call is the one that will be drawn with");
+  overlay.SetAtlasAssetId(id);
+  return true;
 }
 auto Application::DeleteEntities() -> void {
   if (auto scene = GetScene(); scene)
@@ -331,7 +398,7 @@ auto Application::LoadPrimitive(const std::string &name) -> void {
   else if (name == "Sphere")
     meshAsset->mesh.vertices = Primitive::Sphere();
   else {
-    spdlog::warn("[App] unknown primitive: {}", name);
+    spdlog::warn("[App] Unknown primitive: {}", name);
     return;
   }
   meshAsset->bounds = BoundingBox::Calculate(meshAsset->mesh.vertices);
@@ -377,6 +444,18 @@ auto Application::PickEntity(const glm::vec2 &position) -> EntityID {
   if (x < 0 || y < 0 || x >= targetWidth || y >= targetHeight)
     return EntityID::Invalid;
   return renderingSystem->PickEntity(x, y);
+}
+auto Application::PickOverlay(const glm::vec2 &position) -> int {
+  auto *renderingSystem = GetRenderingSystem();
+  if (!renderingSystem || !window)
+    return Overlay::NoHit;
+  int windowWidth{};
+  int windowHeight{};
+  glfwGetWindowSize(window, &windowWidth, &windowHeight);
+  if (windowWidth <= 0 || windowHeight <= 0)
+    return Overlay::NoHit;
+  const auto [targetWidth, targetHeight] = renderingSystem->GetResolution();
+  return overlay.HitTest({position.x / windowWidth * targetWidth, position.y / windowHeight * targetHeight});
 }
 auto Application::MarkTransformDirty(const EntityID id) -> void {
   if (auto scene = GetScene(); scene)
@@ -430,7 +509,7 @@ auto Application::SetWindowIcon() -> void {
     kaitai::kstream ks(&is);
     ico_t data(&ks);
     if (data.num_images() == 0) {
-      spdlog::error("[App] failed to load icon: {}", path);
+      spdlog::error("[App] Failed to load icon: {}", path);
       return;
     }
     auto iMax = 0;
@@ -448,9 +527,9 @@ auto Application::SetWindowIcon() -> void {
         std::array<GLFWimage, 1> images{width, height, data};
         glfwSetWindowIcon(window, 1, images.data());
         stbi_image_free(data);
-        spdlog::info("[App] loaded icon: {}", path);
+        spdlog::info("[App] Loaded icon: {}", path);
       } else
-        spdlog::error("[App] failed to load icon: {}", path);
+        spdlog::error("[App] Failed to load icon: {}", path);
     } else {
       pixels += 40;
       const auto width = imgPtr->width();
@@ -461,7 +540,7 @@ auto Application::SetWindowIcon() -> void {
         memcpy(&data[y * rowSize], &pixels[(height - 1 - y) * rowSize], rowSize);
       std::array<GLFWimage, 1> images{width, height, data.release()};
       glfwSetWindowIcon(window, 1, images.data());
-      spdlog::info("[App] loaded icon: {}", path);
+      spdlog::info("[App] Loaded icon: {}", path);
     }
   } else {
     int width, height, channels;
@@ -469,9 +548,9 @@ auto Application::SetWindowIcon() -> void {
       std::array<GLFWimage, 1> images{width, height, data};
       glfwSetWindowIcon(window, 1, images.data());
       stbi_image_free(data);
-      spdlog::info("[App] loaded icon: {}", path);
+      spdlog::info("[App] Loaded icon: {}", path);
     } else
-      spdlog::error("[App] failed to load icon: {}", path);
+      spdlog::error("[App] Failed to load icon: {}", path);
   }
 }
 auto Application::CharCallback(GLFWwindow *window, unsigned int codepoint) -> void {

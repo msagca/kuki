@@ -38,6 +38,12 @@ public:
   virtual auto LoadAsset(const AssetID) -> void = 0;
   virtual auto LoadAssets(const AssetType) -> void = 0;
   virtual auto ApplyOutline(std::span<std::string>, std::span<std::string>) -> void = 0;
+  /// @brief Copies the finished picture through and draws the frame's overlay text onto it.
+  ///
+  /// The copy is not conditional on there being any text. The graph gives every pass its own
+  /// output, so a pass that drew nothing would leave the one after it -- here, the present --
+  /// reading a target nobody filled.
+  virtual auto ApplyOverlay(std::span<std::string>, std::span<std::string>) -> void = 0;
   virtual auto LoadScene(Scene &) -> void = 0;
   virtual auto PickEntity(const int, const int) -> EntityID = 0;
   virtual auto PreviewAsset(const AssetID) -> RenderTarget * = 0;

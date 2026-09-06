@@ -29,12 +29,12 @@ auto DXShaderCompiler::Initialize() -> bool {
     return true;
   library = LoadLibraryW(L"dxcompiler.dll");
   if (!library) {
-    spdlog::error("[DX12] dxcompiler.dll could not be loaded; no shader can be compiled.");
+    spdlog::error("[DX12] dxcompiler.dll could not be loaded; no shader can be compiled");
     return false;
   }
   const auto createInstance = reinterpret_cast<DxcCreateInstanceProc>(reinterpret_cast<void *>(GetProcAddress(library, "DxcCreateInstance")));
   if (!createInstance) {
-    spdlog::error("[DX12] dxcompiler.dll exports no DxcCreateInstance.");
+    spdlog::error("[DX12] dxcompiler.dll exports no DxcCreateInstance");
     Shutdown();
     return false;
   }
@@ -51,7 +51,7 @@ auto DXShaderCompiler::Initialize() -> bool {
     UINT32 major{};
     UINT32 minor{};
     version->GetVersion(&major, &minor);
-    spdlog::info("[DX12] HLSL compiler {}.{} loaded.", major, minor);
+    spdlog::info("[DX12] HLSL compiler {}.{} loaded", major, minor);
   }
   return true;
 }
@@ -94,7 +94,7 @@ auto DXShaderCompiler::Compile(const std::string_view source, const std::string 
   HRESULT status{};
   const auto log = ReadLog(result.Get());
   if (FAILED(result->GetStatus(&status)) || FAILED(status)) {
-    spdlog::error("[DX12] failed to compile {} ({}): {}", name, entryPoint, log.empty() ? "no compiler output" : log);
+    spdlog::error("[DX12] Failed to compile {} ({}): {}", name, entryPoint, log.empty() ? "no compiler output" : log);
     return nullptr;
   }
   if (!log.empty())

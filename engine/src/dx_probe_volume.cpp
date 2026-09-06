@@ -705,6 +705,18 @@ auto DXProbeVolume::Build(DXContext &context, const std::vector<DXProbeGeometry>
   deepestLeaf = built.deepestLeaf;
   KUKI_PROFILE_MARK("probe volume rebuilt");
   KUKI_PROFILE_SCOPE("Upload");
+  // Handed over rather than dropped. These three are read by the scene pass of every frame, and a
+  // rebuild happens in the middle of one -- so at this point the two frames behind it are still in
+  // flight and still reading whatever is being replaced. Assigning over a `ComPtr` releases what it
+  // held there and then, which hands the memory back to the driver while the GPU is inside it: the
+  // rebuild survives, and the frame after it faults on an address that no longer belongs to anyone.
+  //
+  // Retiring instead keeps each one alive until the fence says every frame that could name it has
+  // finished. See `DXContext::RetireResource`, and `DXRenderer::EnsureInstanceCapacity`, which grows
+  // the instance arena mid-frame for the same reason and takes the same way out.
+  context.RetireResource(std::move(nodeBuffer));
+  context.RetireResource(std::move(probeBuffer));
+  context.RetireResource(std::move(lookupBuffer));
   nodeBuffer = UploadBuffer(built.nodes.data(), built.nodes.size() * sizeof(DXOctreeNode), D3D12_RESOURCE_FLAG_NONE, "CreateCommittedResource for the probe octree");
   probeBuffer = UploadBuffer(built.probes.data(), built.probes.size() * sizeof(DXProbe), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, "CreateCommittedResource for the probes");
   lookupBuffer = UploadBuffer(built.lookup.data(), built.lookup.size() * sizeof(uint32_t), D3D12_RESOURCE_FLAG_NONE, "CreateCommittedResource for the probe lookup grid");
@@ -723,8 +735,8 @@ auto DXProbeVolume::Build(DXContext &context, const std::vector<DXProbeGeometry>
   if (probeCount != loggedProbeCount) {
     loggedProbeCount = probeCount;
     const auto bytes = built.nodes.size() * sizeof(DXOctreeNode) + built.probes.size() * sizeof(DXProbe) + built.lookup.size() * sizeof(uint32_t);
-    spdlog::info("[DX12] probe volume: {} probes in {} leaves of {} nodes, deepest {} of {}, over {:.2f} units", probeCount, leafCount, nodeCount, deepestLeaf, PROBE_OCTREE_MAX_DEPTH, side);
-    spdlog::info("[DX12] probe volume: {} triangles in {} clusters, {} cell lookup grid, {:.2f} MB resident", built.triangleCount, built.clusterCount, GetLookupResolution(), static_cast<double>(bytes) / (1024. * 1024.));
+    spdlog::info("[DX12] Probe volume: {} probes in {} leaves of {} nodes, deepest {} of {}, over {:.2f} units", probeCount, leafCount, nodeCount, deepestLeaf, PROBE_OCTREE_MAX_DEPTH, side);
+    spdlog::info("[DX12] Probe volume: {} triangles in {} clusters, {} cell lookup grid, {:.2f} MB resident", built.triangleCount, built.clusterCount, GetLookupResolution(), static_cast<double>(bytes) / (1024. * 1024.));
   }
   return true;
 }
@@ -799,12 +811,12 @@ auto DXProbeVolume::Validate(DXContext &context, DXPipelineCache &pipelines) -> 
   const CD3DX12_RANGE writeRange(0, 0);
   auditReadback->Unmap(0, &writeRange);
   const auto sampled = AUDIT_GRID * AUDIT_GRID * AUDIT_GRID;
-  spdlog::info("[DX12] probe volume: audited {} points, resolving to leaves at depths {} to {}, {} fully consistent", sampled, result[6], result[5], result[7]);
+  spdlog::info("[DX12] Probe volume: audited {} points, resolving to leaves at depths {} to {}, {} fully consistent", sampled, result[6], result[5], result[7]);
   if (result[1] == 0 && result[2] == 0 && result[3] == 0 && result[4] == 0) {
-    spdlog::info("[DX12] probe volume: every point resolved to a leaf containing it, with probes on its corners.");
+    spdlog::info("[DX12] Probe volume: every point resolved to a leaf containing it, with probes on its corners");
     return;
   }
-  spdlog::error("[DX12] probe volume: {} points reached no leaf, {} landed outside the leaf they resolved to, {} found an invalid probe index, {} found a probe off its corner.", result[1], result[2], result[3], result[4]);
+  spdlog::error("[DX12] Probe volume: {} points reached no leaf, {} landed outside the leaf they resolved to, {} found an invalid probe index, {} found a probe off its corner", result[1], result[2], result[3], result[4]);
 }
 auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const DXAccelerationStructure &scene, const D3D12_GPU_VIRTUAL_ADDRESS frameConstants, const D3D12_GPU_VIRTUAL_ADDRESS skyHarmonics, const size_t sceneHash, const IndirectLighting &settings) -> void {
   KUKI_PROFILE_SCOPE("ProbeVolume::Trace");
@@ -992,7 +1004,7 @@ auto DXProbeVolume::Report(DXContext &context) -> void {
     lower /= static_cast<float>(lowerCount);
   if (upperCount > 0)
     upper /= static_cast<float>(upperCount);
-  spdlog::info("[DX12] probe trace: {} of {} probes lit after {} frames, mean irradiance {:.4f} {:.4f} {:.4f}, brightest {:.3f}", lit, probeCount, tracedFrames, total.r, total.g, total.b, brightest);
+  spdlog::info("[DX12] Probe trace: {} of {} probes lit after {} frames, mean irradiance {:.4f} {:.4f} {:.4f}, brightest {:.3f}", lit, probeCount, tracedFrames, total.r, total.g, total.b, brightest);
   // What the visibility test has to work with. The reach is clamped at `PROBE_DEPTH_RANGE` of the
   // side, so a high open fraction is health rather than a fault: it says most directions hold nothing
   // within the only range reconstruction ever asks about, which is one leaf diagonal. A deviation of
@@ -1002,19 +1014,19 @@ auto DXProbeVolume::Report(DXContext &context) -> void {
   // darkness for a room it was never in. What matters is not how many moved but that they no longer
   // have to be disbelieved for it.
   if (moved > 0)
-    spdlog::info("[DX12] probe trace: {} of {} probes walked out of the geometry they were placed in, by {:.3f} units on average", moved, probeCount, displacement / static_cast<double>(moved));
+    spdlog::info("[DX12] Probe trace: {} of {} probes walked out of the geometry they were placed in, by {:.3f} units on average", moved, probeCount, displacement / static_cast<double>(moved));
   else
-    spdlog::info("[DX12] probe trace: no probe needed to move, so the lattice landed none of them inside geometry");
+    spdlog::info("[DX12] Probe trace: no probe needed to move, so the lattice landed none of them inside geometry");
   if (filled > 0)
-    spdlog::info("[DX12] probe trace: {} of {} probes are sealed in geometry and take their neighbours' estimate rather than their own", filled, probeCount);
+    spdlog::info("[DX12] Probe trace: {} of {} probes are sealed in geometry and take their neighbours' estimate rather than their own", filled, probeCount);
   const auto texels = static_cast<double>(probeCount) * PROBE_DEPTH_TEXELS;
-  spdlog::info("[DX12] probe trace: visibility reaches {:.3f} units on average of a possible {:.3f}, spread {:.3f}, {:.1f}% of directions open to the clamp", reach / texels, range, deviation / texels, 100. * static_cast<double>(open) / texels);
+  spdlog::info("[DX12] Probe trace: visibility reaches {:.3f} units on average of a possible {:.3f}, spread {:.3f}, {:.1f}% of directions open to the clamp", reach / texels, range, deviation / texels, 100. * static_cast<double>(open) / texels);
   // What orientation adds to that. A scene whose walls are single quads puts probes on the far
   // side of them, and those probes measure the room through a surface they are behind; the share
   // is how much of the record says so, and it is the whole of what keeps them from being believed
   // through it. Nought everywhere means either a scene of closed solids or a trace that has
   // stopped recording which face it met, and the second is a fault the distances cannot show.
-  spdlog::info("[DX12] probe trace: {:.1f}% of the record was measured from the far side of a surface, and is refused on orientation rather than on distance", 100. * behind / texels);
+  spdlog::info("[DX12] Probe trace: {:.1f}% of the record was measured from the far side of a surface, and is refused on orientation rather than on distance", 100. * behind / texels);
   if (shell > 0 && coreCount > 0) {
     const auto shellAverage = shellMean / shell;
     const auto spread = std::sqrt(std::max(0., shellSquare / shell - shellAverage * shellAverage));
@@ -1026,33 +1038,33 @@ auto DXProbeVolume::Report(DXContext &context) -> void {
     // two landing together is the shell reporting the same room, at the same resolution.
     const auto coreAverage = coreMean / coreCount;
     const auto coreSpread = std::sqrt(std::max(0., coreSquare / coreCount - coreAverage * coreAverage));
-    spdlog::info("[DX12] probe trace: {} probes sit on the volume boundary, outside the scene, at mean irradiance {:.4f} with spread {:.4f}, against {:.4f} with spread {:.4f} for the {} inside it", shell, shellAverage, spread, coreAverage, coreSpread, coreCount);
+    spdlog::info("[DX12] Probe trace: {} probes sit on the volume boundary, outside the scene, at mean irradiance {:.4f} with spread {:.4f}, against {:.4f} with spread {:.4f} for the {} inside it", shell, shellAverage, spread, coreAverage, coreSpread, coreCount);
   }
   if (backfacing > 0)
-    spdlog::info("[DX12] probe trace: {} of {} probes stand behind a surface for a tenth or more of their map, which distance alone would have believed through it", backfacing, probeCount);
+    spdlog::info("[DX12] Probe trace: {} of {} probes stand behind a surface for a tenth or more of their map, which distance alone would have believed through it", backfacing, probeCount);
   // What the build's own classification found, against what the probes' rays could work out for
   // themselves. The gap between this and the sealed count is the population the trace is blind to:
   // probes outside the scene with nothing in sight, which no ray of theirs can report on.
   if (outside > 0)
-    spdlog::info("[DX12] probe trace: the build placed {} of {} probes behind the scene's surfaces, and those take their neighbours' estimate whatever their own view", outside, probeCount);
+    spdlog::info("[DX12] Probe trace: the build placed {} of {} probes behind the scene's surfaces, and those take their neighbours' estimate whatever their own view", outside, probeCount);
   else
-    spdlog::info("[DX12] probe trace: the build found every probe in front of the geometry, so each is judged on its own rays alone");
+    spdlog::info("[DX12] Probe trace: the build found every probe in front of the geometry, so each is judged on its own rays alone");
   if (lit == 0) {
-    spdlog::error("[DX12] probe trace: all {} probes are still black after {} frames.", probeCount, tracedFrames);
+    spdlog::error("[DX12] Probe trace: all {} probes are still black after {} frames", probeCount, tracedFrames);
     return;
   }
   const auto lowerSum = std::max(lower.r + lower.g + lower.b, 1e-6f);
   const auto upperSum = std::max(upper.r + upper.g + upper.b, 1e-6f);
   const auto lowerChroma = lower / lowerSum;
   const auto upperChroma = upper / upperSum;
-  spdlog::info("[DX12] probe trace: low x half {:.4f} {:.4f} {:.4f}, high x half {:.4f} {:.4f} {:.4f}", lower.r, lower.g, lower.b, upper.r, upper.g, upper.b);
-  spdlog::info("[DX12] probe trace: as chromaticity, low x {:.3f} {:.3f} {:.3f} against high x {:.3f} {:.3f} {:.3f}", lowerChroma.r, lowerChroma.g, lowerChroma.b, upperChroma.r, upperChroma.g, upperChroma.b);
+  spdlog::info("[DX12] Probe trace: low x half {:.4f} {:.4f} {:.4f}, high x half {:.4f} {:.4f} {:.4f}", lower.r, lower.g, lower.b, upper.r, upper.g, upper.b);
+  spdlog::info("[DX12] Probe trace: as chromaticity, low x {:.3f} {:.3f} {:.3f} against high x {:.3f} {:.3f} {:.3f}", lowerChroma.r, lowerChroma.g, lowerChroma.b, upperChroma.r, upperChroma.g, upperChroma.b);
   const auto separation = std::abs(lowerChroma.r - upperChroma.r) + std::abs(lowerChroma.g - upperChroma.g) + std::abs(lowerChroma.b - upperChroma.b);
   if (separation > CHROMA_SEPARATION) {
-    spdlog::info("[DX12] probe trace: the halves differ in chromaticity by {:.3f}, so the bounce carries where light came from and not merely how much.", separation);
+    spdlog::info("[DX12] Probe trace: the halves differ in chromaticity by {:.3f}, so the bounce carries where light came from and not merely how much", separation);
     return;
   }
-  spdlog::warn("[DX12] probe trace: the halves are the same colour to within {:.3f}, so the bounce may be carrying no surface colour at all.", separation);
+  spdlog::warn("[DX12] Probe trace: the halves are the same colour to within {:.3f}, so the bounce may be carrying no surface colour at all", separation);
 }
 auto DXProbeVolume::GetNodeAddress() const -> D3D12_GPU_VIRTUAL_ADDRESS {
   return ready && nodeBuffer ? nodeBuffer->GetGPUVirtualAddress() : 0;

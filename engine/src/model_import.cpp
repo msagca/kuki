@@ -277,7 +277,7 @@ auto LoadTexture(std::unordered_map<std::string, unsigned int> &visited, const a
       continue;
     }
     if (!embedded && resolved.empty()) {
-      spdlog::warn("[AssetManager] texture '{}' is not next to the model or in any texture folder around it, skipping", recordedPath.substr(recordedPath.find_last_of("/\\") + 1));
+      spdlog::warn("[AssetManager] Texture '{}' is not next to the model or in any texture folder around it, skipping", recordedPath.substr(recordedPath.find_last_of("/\\") + 1));
       visited.insert({cacheKey, MISSING_TEXTURE});
       continue;
     }
@@ -296,7 +296,7 @@ auto LoadTexture(std::unordered_map<std::string, unsigned int> &visited, const a
           loaded = true;
         }
       } else
-        spdlog::warn("[AssetManager] embedded texture '{}' uses uncompressed raw texel data, which is not currently supported", texPath.C_Str());
+        spdlog::warn("[AssetManager] Embedded texture '{}' uses uncompressed raw texel data, which is not currently supported", texPath.C_Str());
     } else {
       modelTexture.texture.source = cacheKey;
       // takes the baked chain when there is one, which skips decode, mips and compression outright

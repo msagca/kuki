@@ -13,7 +13,9 @@ set(IMAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/image")
 file(GLOB_RECURSE JPG_SOURCES CONFIGURE_DEPENDS "${IMAGE_SOURCE_DIR}/*.jpg")
 file(GLOB_RECURSE PNG_SOURCES CONFIGURE_DEPENDS "${IMAGE_SOURCE_DIR}/*.png")
 set(IMAGE_SOURCES ${JPG_SOURCES} ${PNG_SOURCES})
-set(FONT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/font")
+# Shared with the games rather than owned here: a font is the one asset more than one target in
+# this repository wants, and the file is most of a megabyte. See `asset/font`.
+set(FONT_SOURCE_DIR "${CMAKE_SOURCE_DIR}/asset/font")
 file(GLOB_RECURSE TTF_SOURCES CONFIGURE_DEPENDS "${FONT_SOURCE_DIR}/*.ttf")
 set(FONT_SOURCES ${TTF_SOURCES})
 set(MATERIAL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/material")
@@ -121,7 +123,6 @@ add_custom_command(
   COMMAND
     ${CMAKE_COMMAND} -E copy_directory "${MATERIAL_SOURCE_DIR}"
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/material
-  COMMAND
-    ${CMAKE_COMMAND} -E cmake_echo_color
-    "Build successful. Binaries can be found at: $<TARGET_FILE:${PROJECT_NAME}>"
 )
+kuki_hide_console(${PROJECT_NAME})
+kuki_report_binary(${PROJECT_NAME})

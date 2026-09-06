@@ -169,7 +169,7 @@ auto GLShaderBase::Compile(const char *text, const int type, const std::string &
     std::string log(logLength, '\0');
     if (logLength > 0)
       glGetShaderInfoLog(id, logLength, nullptr, log.data());
-    spdlog::error("[OpenGL] failed to compile shader: {}\n{}", name, log);
+    spdlog::error("[OpenGL] Failed to compile shader: {}\n{}", name, log);
   }
   return id;
 }

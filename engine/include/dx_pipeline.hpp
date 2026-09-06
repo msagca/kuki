@@ -145,6 +145,16 @@ inline constexpr uint32_t MAX_OUTLINE_SELECTED = 16;
 ///
 /// The selected set is passed inline rather than through a buffer because it is tiny and changes
 /// every frame; `uint4` groups keep the HLSL packing rules from padding each id to 16 bytes.
+/// @brief Root constants for one run of overlay text: where it goes and what colour it is.
+///
+/// Twenty dwords of the root signature's sixty-four, which is what lets the projection ride in the
+/// root rather than in a constant buffer of its own. The matrix does not change between the runs
+/// of a frame and the colour does, so they are set together once a run rather than split across
+/// two bindings for the sake of the half that is constant.
+struct DXOverlayConstants {
+  float projection[16]{};
+  float color[4]{};
+};
 struct DXOutlineConstants {
   float color[4]{};
   float texelSize[4]{};
@@ -183,7 +193,9 @@ struct DXSkyboxConstants {
   float inverseViewProjection[16]{};
   uint32_t useTexture{};
   uint32_t useGradient{};
+  /// @brief Carries `background` onto the sixteen-byte boundary an HLSL `float4` has to start on.
   uint32_t padding[2]{};
+  float background[4]{};
 };
 /// @brief Root constants for the compute shader that traces a grid of rays to check the scene.
 ///
@@ -317,6 +329,12 @@ public:
   /// Distinct from the generic post pipeline because it binds a second resource: the multisampled
   /// entity id buffer, read with `Load` so ids are never filtered.
   auto GetOutlinePipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
+  /// @brief Returns the overlay text pipeline for a target format, building it once.
+  ///
+  /// The only raster pipeline here that blends and does not test depth. Both follow from where it
+  /// runs: over a finished picture, where there is nothing to be behind and the glyph edges are
+  /// coverage rather than geometry.
+  auto GetOverlayPipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
   /// @brief Returns the skybox pipeline for a target format and sample count, building it once.
   ///
   /// Samples the same cubemap the image-based lighting passes read, which the compute path builds
@@ -372,6 +390,7 @@ private:
   ComPtr<ID3D12RootSignature> sceneRootSignature;
   ComPtr<ID3D12RootSignature> postRootSignature;
   ComPtr<ID3D12RootSignature> outlineRootSignature;
+  ComPtr<ID3D12RootSignature> overlayRootSignature;
   ComPtr<ID3D12RootSignature> shadowRootSignature;
   ComPtr<ID3D12RootSignature> skyboxRootSignature;
   ComPtr<ID3D12RootSignature> computeRootSignature;
@@ -385,6 +404,8 @@ private:
   auto GetPostRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the outline pass: source colour, entity ids, and the selected set.
   auto GetOutlineRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  /// @brief Root signature for the overlay pass: the projection and colour, and the glyph atlas.
+  auto GetOverlayRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the shadow pass: a single light-space matrix.
   auto GetShadowRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the skybox pass: the view ray transform and the environment map.

@@ -14,7 +14,7 @@ namespace {
   auto ResolveAsset(Application &app, const std::string &name) -> AssetID {
     if (const auto *asset = app.GetAsset(name); asset)
       return asset->id;
-    spdlog::warn("[GameBuilder] no asset named '{}'", name);
+    spdlog::warn("[GameBuilder] No asset named '{}'", name);
     return {};
   }
 } // namespace

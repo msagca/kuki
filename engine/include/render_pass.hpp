@@ -9,6 +9,12 @@ enum class RenderPass : uint8_t {
   BrightPassFilter,
   DepthPrepass,
   Outline,
+  /// @brief Text drawn over the finished picture, in the window's own pixels.
+  ///
+  /// Last in the chain and after tone mapping on purpose: a caption is not part of the shot. It is
+  /// not lit, not exposed, and not tone mapped, so it reads the same whatever the scene is doing --
+  /// which is what a clock has to do, and what putting it in the scene could not give it.
+  Overlay,
   ProbeTrace,
   Scene,
   ShadowMap,

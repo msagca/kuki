@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <dx_common.hpp>
 #ifdef KUKI_HAS_DIRECTX
 #include <format>
@@ -22,6 +23,56 @@ auto DXFailed(const HRESULT result, const std::string &context) -> bool {
     return false;
   spdlog::error("[DX12] {} failed, {}", context, DXResultToString(result));
   return true;
+}
+auto DXDeviceIsGone(const HRESULT result) -> bool {
+  return result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET || result == DXGI_ERROR_DEVICE_HUNG;
+}
+auto DXEnableDeviceRemovedDiagnostics() -> bool {
+  size_t length{};
+  char value[8]{};
+  if (getenv_s(&length, value, sizeof(value), "KUKI_DX_DIAGNOSTICS") != 0 || length == 0 || value[0] == '0')
+    return false;
+  ComPtr<ID3D12DeviceRemovedExtendedDataSettings> settings;
+  if (FAILED(D3D12GetDebugInterface(IID_PPV_ARGS(&settings)))) {
+    spdlog::warn("[DX12] KUKI_DX_DIAGNOSTICS is set but this system has no Device Removed Extended Data; only the removal reason will be reported");
+    return false;
+  }
+  settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+  settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+  spdlog::info("[DX12] Device removal diagnostics enabled: the driver will record breadcrumbs and page faults");
+  return true;
+}
+auto DXReportDeviceRemoved(ID3D12Device *device, const std::string &context) -> void {
+  if (!device)
+    return;
+  const auto reason = device->GetDeviceRemovedReason();
+  spdlog::error("[DX12] The device was removed during {}: {}", context, DXResultToString(reason));
+  // Present in every build; empty unless `DXEnableDeviceRemovedDiagnostics` switched it on before
+  // the device was created, in which case the driver has been keeping a record of what it was
+  // doing and this is where that record is read out.
+  ComPtr<ID3D12DeviceRemovedExtendedData> dred;
+  if (FAILED(device->QueryInterface(IID_PPV_ARGS(&dred)))) {
+    spdlog::error("[DX12] No further detail is available. Set KUKI_DX_DIAGNOSTICS=1 and reproduce to have the driver record which draw it died on");
+    return;
+  }
+  D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT breadcrumbs{};
+  if (SUCCEEDED(dred->GetAutoBreadcrumbsOutput(&breadcrumbs)))
+    for (const auto *node = breadcrumbs.pHeadAutoBreadcrumbNode; node; node = node->pNext) {
+      const auto executed = node->pLastBreadcrumbValue ? *node->pLastBreadcrumbValue : 0u;
+      // The count is what was recorded and the value is how far the GPU got, so the operation at
+      // `executed` is the first one that did not finish -- which is the one that killed it.
+      spdlog::error("[DX12] Breadcrumb: command list '{}' completed {} of {} operations", node->pCommandListDebugNameA ? node->pCommandListDebugNameA : "unnamed", executed, node->BreadcrumbCount);
+      if (executed < node->BreadcrumbCount && node->pCommandHistory)
+        spdlog::error("[DX12] It stopped on operation {}, of type {}", executed, static_cast<uint32_t>(node->pCommandHistory[executed]));
+    }
+  D3D12_DRED_PAGE_FAULT_OUTPUT pageFault{};
+  if (SUCCEEDED(dred->GetPageFaultAllocationOutput(&pageFault))) {
+    spdlog::error("[DX12] Page fault at GPU address {:#x}", pageFault.PageFaultVA);
+    for (const auto *node = pageFault.pHeadExistingAllocationNode; node; node = node->pNext)
+      spdlog::error("[DX12] The address is inside live allocation '{}'", node->ObjectNameA ? node->ObjectNameA : "unnamed");
+    for (const auto *node = pageFault.pHeadRecentFreedAllocationNode; node; node = node->pNext)
+      spdlog::error("[DX12] The address was in '{}', which has already been freed", node->ObjectNameA ? node->ObjectNameA : "unnamed");
+  }
 }
 auto DXCapabilities::SupportsInlineRaytracing() const -> bool {
   return raytracingTier >= D3D12_RAYTRACING_TIER_1_1 && shaderModel >= D3D_SHADER_MODEL_6_5;
@@ -63,7 +114,7 @@ auto DXDeviceAvailable() -> bool {
     ComPtr<ID3D12Device> device;
     const auto found = SelectDXDevice(factory.Get(), adapter, device);
     if (!found)
-      spdlog::info("[DX12] no adapter provides a feature level 11_0 device, so OpenGL is the default here.");
+      spdlog::info("[DX12] No adapter provides a feature level 11_0 device, so OpenGL is the default here");
     return found;
   }();
   return available;

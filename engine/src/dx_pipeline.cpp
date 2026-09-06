@@ -55,7 +55,7 @@ auto DXPipelineCache::GetSceneRootSignature(ID3D12Device *device) -> ID3D12RootS
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the scene root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the scene root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&sceneRootSignature)), "CreateRootSignature"))
@@ -117,7 +117,7 @@ auto DXPipelineCache::GetScenePipeline(ID3D12Device *device, const DXGI_FORMAT f
   desc.SampleDesc.Count = samples > 0 ? samples : 1;
   if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created {} {} scene pipeline (format {}, {}x MSAA)", skinned ? "skinned" : "static", blended ? "blended" : "opaque", static_cast<int>(format), samples);
+  spdlog::info("[DX12] Created {} {} scene pipeline (format {}, {}x MSAA)", skinned ? "skinned" : "static", blended ? "blended" : "opaque", static_cast<int>(format), samples);
   return &pipeline;
 }
 auto DXPipelineCache::GetPostRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -139,7 +139,7 @@ auto DXPipelineCache::GetPostRootSignature(ID3D12Device *device) -> ID3D12RootSi
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the post root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the post root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&postRootSignature)), "CreateRootSignature"))
@@ -178,7 +178,7 @@ auto DXPipelineCache::GetPostPipeline(ID3D12Device *device, const DXGI_FORMAT fo
   desc.SampleDesc.Count = 1;
   if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created post pipeline: {}", effect);
+  spdlog::info("[DX12] Created post pipeline: {}", effect);
   return &pipeline;
 }
 auto DXPipelineCache::GetOutlineRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -200,7 +200,7 @@ auto DXPipelineCache::GetOutlineRootSignature(ID3D12Device *device) -> ID3D12Roo
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the outline root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the outline root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&outlineRootSignature)), "CreateRootSignature"))
@@ -239,7 +239,85 @@ auto DXPipelineCache::GetOutlinePipeline(ID3D12Device *device, const DXGI_FORMAT
   desc.SampleDesc.Count = 1;
   if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created outline pipeline");
+  spdlog::info("[DX12] Created outline pipeline");
+  return &pipeline;
+}
+auto DXPipelineCache::GetOverlayRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (overlayRootSignature)
+    return overlayRootSignature.Get();
+  CD3DX12_DESCRIPTOR_RANGE atlasRange{};
+  atlasRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+  CD3DX12_ROOT_PARAMETER parameters[2]{};
+  // Visible to both stages: the vertex shader reads the projection out of the same block the pixel
+  // shader reads the colour from, and splitting one struct across two root entries to narrow the
+  // visibility would cost a binding to save nothing.
+  parameters[0].InitAsConstants(sizeof(DXOverlayConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+  parameters[1].InitAsDescriptorTable(1, &atlasRange, D3D12_SHADER_VISIBILITY_PIXEL);
+  // Clamped, because a glyph sits inside the atlas with a margin around it and wrapping could only
+  // ever fetch a neighbour's ink.
+  CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+  sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(2, parameters, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the overlay root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&overlayRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return overlayRootSignature.Get();
+}
+auto DXPipelineCache::GetOverlayPipeline(ID3D12Device *device, const DXGI_FORMAT format) -> const DXPipeline * {
+  if (!device)
+    return nullptr;
+  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}("overlay");
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetOverlayRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = overlayRootSignature;
+  const auto vertexShader = shaderCompiler.Compile(embedded_shader::overlay_hlsl, "VSMain", "vs_6_0", "overlay");
+  const auto pixelShader = shaderCompiler.Compile(embedded_shader::overlay_hlsl, "PSMain", "ps_6_0", "overlay");
+  if (!vertexShader || !pixelShader)
+    return nullptr;
+  // The buffer is laid out as `Vertex` like any other mesh, so the stride steps over a normal and
+  // a tangent that nothing here names. Two elements is what the text reads.
+  const D3D12_INPUT_ELEMENT_DESC inputLayout[]{
+    {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(Vertex, texture), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+  };
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+  desc.InputLayout = {inputLayout, _countof(inputLayout)};
+  desc.pRootSignature = rootSignature;
+  desc.VS = ToBytecode(vertexShader);
+  desc.PS = ToBytecode(pixelShader);
+  desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+  desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+  desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+  auto &target = desc.BlendState.RenderTarget[0];
+  target.BlendEnable = TRUE;
+  target.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+  target.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+  target.BlendOp = D3D12_BLEND_OP_ADD;
+  target.SrcBlendAlpha = D3D12_BLEND_ONE;
+  target.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+  target.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+  desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState.DepthEnable = FALSE;
+  desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+  desc.SampleMask = UINT_MAX;
+  desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+  desc.NumRenderTargets = 1;
+  desc.RTVFormats[0] = format;
+  desc.SampleDesc.Count = 1;
+  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created overlay pipeline");
   return &pipeline;
 }
 auto DXPipelineCache::GetShadowRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -254,7 +332,7 @@ auto DXPipelineCache::GetShadowRootSignature(ID3D12Device *device) -> ID3D12Root
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the shadow root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the shadow root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&shadowRootSignature)), "CreateRootSignature"))
@@ -298,7 +376,7 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipelin
   desc.SampleDesc.Count = 1;
   if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created shadow pipeline");
+  spdlog::info("[DX12] Created shadow pipeline");
   return &pipeline;
 }
 auto DXPipelineCache::GetSkyboxRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -317,7 +395,7 @@ auto DXPipelineCache::GetSkyboxRootSignature(ID3D12Device *device) -> ID3D12Root
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the skybox root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the skybox root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&skyboxRootSignature)), "CreateRootSignature"))
@@ -359,7 +437,7 @@ auto DXPipelineCache::GetSkyboxPipeline(ID3D12Device *device, const DXGI_FORMAT 
   desc.SampleDesc.Count = samples > 0 ? samples : 1;
   if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created skybox pipeline (format {}, {}x MSAA)", static_cast<int>(format), samples);
+  spdlog::info("[DX12] Created skybox pipeline (format {}, {}x MSAA)", static_cast<int>(format), samples);
   return &pipeline;
 }
 auto DXPipelineCache::GetComputeRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -380,7 +458,7 @@ auto DXPipelineCache::GetComputeRootSignature(ID3D12Device *device) -> ID3D12Roo
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the compute root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the compute root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&computeRootSignature)), "CreateRootSignature"))
@@ -406,7 +484,7 @@ auto DXPipelineCache::GetComputePipeline(ID3D12Device *device, const char *entry
   desc.CS = ToBytecode(computeShader);
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created compute pipeline: {}", entryPoint);
+  spdlog::info("[DX12] Created compute pipeline: {}", entryPoint);
   return &pipeline;
 }
 auto DXPipelineCache::GetPickRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -424,7 +502,7 @@ auto DXPipelineCache::GetPickRootSignature(ID3D12Device *device) -> ID3D12RootSi
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the pick root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the pick root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&pickRootSignature)), "CreateRootSignature"))
@@ -450,7 +528,7 @@ auto DXPipelineCache::GetPickPipeline(ID3D12Device *device) -> const DXPipeline 
   desc.CS = ToBytecode(computeShader);
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created pick pipeline");
+  spdlog::info("[DX12] Created pick pipeline");
   return &pipeline;
 }
 auto DXPipelineCache::GetRayProbeRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -467,7 +545,7 @@ auto DXPipelineCache::GetRayProbeRootSignature(ID3D12Device *device) -> ID3D12Ro
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the ray probe root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the ray probe root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&rayProbeRootSignature)), "CreateRootSignature"))
@@ -493,7 +571,7 @@ auto DXPipelineCache::GetRayProbePipeline(ID3D12Device *device) -> const DXPipel
   desc.CS = ToBytecode(computeShader);
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created ray probe pipeline (shader model 6.5, inline raytracing)");
+  spdlog::info("[DX12] Created ray probe pipeline (shader model 6.5, inline raytracing)");
   return &pipeline;
 }
 auto DXPipelineCache::GetProbeAuditRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -511,7 +589,7 @@ auto DXPipelineCache::GetProbeAuditRootSignature(ID3D12Device *device) -> ID3D12
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the probe audit root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the probe audit root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&probeAuditRootSignature)), "CreateRootSignature"))
@@ -537,7 +615,7 @@ auto DXPipelineCache::GetProbeAuditPipeline(ID3D12Device *device) -> const DXPip
   desc.CS = ToBytecode(computeShader);
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created probe audit pipeline");
+  spdlog::info("[DX12] Created probe audit pipeline");
   return &pipeline;
 }
 auto DXPipelineCache::GetProbeTraceRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -565,7 +643,7 @@ auto DXPipelineCache::GetProbeTraceRootSignature(ID3D12Device *device) -> ID3D12
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the probe trace root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the probe trace root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&probeTraceRootSignature)), "CreateRootSignature"))
@@ -591,7 +669,7 @@ auto DXPipelineCache::GetProbeTracePipeline(ID3D12Device *device) -> const DXPip
   desc.CS = ToBytecode(computeShader);
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created probe trace pipeline (shader model 6.5, inline raytracing, bindless)");
+  spdlog::info("[DX12] Created probe trace pipeline (shader model 6.5, inline raytracing, bindless)");
   return &pipeline;
 }
 auto DXPipelineCache::GetProbeDebugRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -606,7 +684,7 @@ auto DXPipelineCache::GetProbeDebugRootSignature(ID3D12Device *device) -> ID3D12
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
     const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] failed to serialise the probe debug root signature: {}", log);
+    spdlog::error("[DX12] Failed to serialise the probe debug root signature: {}", log);
     return nullptr;
   }
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&probeDebugRootSignature)), "CreateRootSignature"))
@@ -651,7 +729,7 @@ auto DXPipelineCache::GetProbeDebugPipeline(ID3D12Device *device, const DXGI_FOR
   desc.SampleDesc.Count = samples > 0 ? samples : 1;
   if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
     return nullptr;
-  spdlog::info("[DX12] created probe debug pipeline (format {}, {}x MSAA)", static_cast<int>(format), samples);
+  spdlog::info("[DX12] Created probe debug pipeline (format {}, {}x MSAA)", static_cast<int>(format), samples);
   return &pipeline;
 }
 auto DXPipelineCache::Clear() -> void {

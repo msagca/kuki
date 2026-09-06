@@ -210,7 +210,7 @@ auto DXAccelerationStructure::Build(DXContext &context, const std::vector<DXRayI
     return false;
   for (const auto *mesh : pending)
     if (!BuildMeshStructure(mesh, scratch->GetGPUVirtualAddress()))
-      spdlog::warn("[DX12] could not build a bottom-level acceleration structure; its geometry will not be traced.");
+      spdlog::warn("[DX12] Could not build a bottom-level acceleration structure; its geometry will not be traced");
   const auto frame = context.GetFrameIndex() % DX_FRAME_COUNT;
   const auto instanceOffset = static_cast<uint64_t>(frame) * capacity * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
   const auto recordOffset = static_cast<uint64_t>(frame) * capacity * sizeof(DXGeometryInfo);
@@ -321,15 +321,15 @@ auto DXAccelerationStructure::Validate(DXContext &context, DXPipelineCache &pipe
   const CD3DX12_RANGE writeRange(0, 0);
   validationReadback->Unmap(0, &writeRange);
   const auto traced = VALIDATION_GRID * VALIDATION_GRID;
-  spdlog::info("[DX12] ray scene: {} instances over {} bottom-level structures, {:.2f} MB", instanceCount, meshStructures.size(), static_cast<double>(meshStructureBytes + topLevelBytes) / (1024. * 1024.));
+  spdlog::info("[DX12] Ray scene: {} instances over {} bottom-level structures, {:.2f} MB", instanceCount, meshStructures.size(), static_cast<double>(meshStructureBytes + topLevelBytes) / (1024. * 1024.));
   if (result[0] == 0) {
-    spdlog::warn("[DX12] ray scene: none of {} camera rays hit anything. The structures traverse but hold no geometry where the camera is looking.", traced);
+    spdlog::warn("[DX12] Ray scene: none of {} camera rays hit anything. The structures traverse but hold no geometry where the camera is looking", traced);
     return;
   }
-  spdlog::info("[DX12] ray scene: {} of {} camera rays hit, at depths {:.3f} to {:.3f}", result[0], traced, static_cast<float>(result[2]) / VALIDATION_DISTANCE_SCALE, static_cast<float>(result[3]) / VALIDATION_DISTANCE_SCALE);
-  spdlog::info("[DX12] ray scene: {} hits resolved a vertex buffer and {} a material table, over at least {} distinct entities", result[5], result[6], std::popcount(result[4]));
+  spdlog::info("[DX12] Ray scene: {} of {} camera rays hit, at depths {:.3f} to {:.3f}", result[0], traced, static_cast<float>(result[2]) / VALIDATION_DISTANCE_SCALE, static_cast<float>(result[3]) / VALIDATION_DISTANCE_SCALE);
+  spdlog::info("[DX12] Ray scene: {} hits resolved a vertex buffer and {} a material table, over at least {} distinct entities", result[5], result[6], std::popcount(result[4]));
   if (result[5] < result[0] || result[6] < result[0])
-    spdlog::warn("[DX12] ray scene: some hits resolved to no geometry or no material, so their records were never filled in.");
+    spdlog::warn("[DX12] Ray scene: some hits resolved to no geometry or no material, so their records were never filled in");
 }
 auto DXAccelerationStructure::GetTopLevelAddress() const -> D3D12_GPU_VIRTUAL_ADDRESS {
   return ready && topLevel ? topLevel->GetGPUVirtualAddress() : 0;

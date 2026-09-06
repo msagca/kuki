@@ -65,7 +65,7 @@ struct EnumTraits<MaterialType> {
 template <>
 struct EnumTraits<RenderPass> {
   static const std::vector<const char *> &GetNames() {
-    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Outline", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "ToneMapping"};
+    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Outline", "Overlay", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "ToneMapping"};
     return names;
   }
 };

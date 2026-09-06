@@ -8,7 +8,7 @@
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "KUKI_BUILD_GAMES": "OFF",
+        "KUKI_BUILD_GAMES": "ON",
         "KUKI_BUILD_TESTS": "OFF"
       }
     },

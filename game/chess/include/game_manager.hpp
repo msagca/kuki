@@ -34,36 +34,79 @@ private:
   static constexpr float SQUARE_SIZE = 1.f;
   /// @brief Thickness of the slab a square is drawn as. Its upper face is the board's surface.
   static constexpr float SQUARE_HEIGHT = .2f;
-  /// @brief How far a square one step from the selected piece stands up, and how far the furthest.
-  ///
-  /// The whole of the legal-move display. Nothing is laid over the board and no square changes
-  /// colour: a destination is a square that is raised, which reads from any angle the camera can
-  /// reach and puts nothing in front of the square for a click to hit instead.
-  ///
-  /// Scaled by how far the move travels, so the shape of a piece's reach is legible before any of
-  /// the squares are read individually -- a rook down an open file climbs away from you, a pawn
-  /// barely stirs. Slight on purpose at both ends: the point is to be read at a glance, and a board
-  /// that heaves by a fifth of a square to answer a click looks broken rather than helpful.
-  static constexpr float SQUARE_RISE_MIN = .04f;
-  static constexpr float SQUARE_RISE_MAX = .13f;
-  /// @brief Distance, in squares, at which the rise reaches its maximum.
-  ///
-  /// Seven is the length of the longest move along a rank or a file. A bishop crossing corner to
-  /// corner covers half again as much ground and simply tops out, which is the right answer: past
-  /// the width of the board the exact figure has stopped telling anyone anything.
-  static constexpr float SQUARE_RISE_RANGE = 7.f;
   /// @brief How far the selected piece lifts off the square it stands on.
   static constexpr float SELECT_LIFT = .25f;
+  /// @brief Height of one line of label text in world units, which is the em the glyphs are laid
+  /// out in.
+  ///
+  /// A third of a square. Large enough to read from the camera's resting position, small enough
+  /// that the labels stay a caption on the board rather than a second thing on the table.
+  static constexpr float LABEL_SIZE = .42f;
+  /// @brief Clear space between the board's edge and the band the labels are centred in.
+  ///
+  /// The labels are centred in a band one `LABEL_SIZE` deep beginning this far out, and no glyph
+  /// fills its em, so the gap that is actually seen is this plus whatever the ink leaves.
+  static constexpr float LABEL_MARGIN = .16f;
+  /// @brief Height of the options text, in pixels, and of the clocks, which are larger.
+  ///
+  /// There is a hierarchy between the two and this is it: a clock is read over and over while a
+  /// game is played, and a time control is read once when it is chosen. The gap is small on
+  /// purpose -- enough that the eye goes to the clock first, not so much that the options read as
+  /// a footnote to it.
+  ///
+  /// Pixels rather than anything derived from the window, so the text stays the size it was drawn
+  /// at whatever the window is doing. A caption that grew with the window would be a caption that
+  /// is unreadable on a small one and absurd on a large one.
+  ///
+  /// Both are comfortably under twice the pixel height the atlas is baked at, which is where a
+  /// bitmap font starts to soften -- and the 2x oversampling in `Font::Load` means the atlas holds
+  /// about twice the detail its nominal size suggests.
+  static constexpr float OPTION_TEXT_SIZE = 52.f;
+  static constexpr float CLOCK_TEXT_SIZE = OPTION_TEXT_SIZE * 1.2f;
+  /// @brief The time controls on offer, in minutes, and the increments, in seconds.
+  ///
+  /// Arrays rather than a range, because these are the figures people actually play: bullet,
+  /// blitz, rapid. A slider over every whole number between them would offer a thousand controls
+  /// nobody wants in order to reach the six they do.
+  static constexpr int TIME_OPTIONS[]{1, 3, 5, 10, 15, 30};
+  static constexpr int INCREMENT_OPTIONS[]{0, 1, 2, 5, 10};
+  /// @brief Keys the chosen control is kept under between runs. See `kuki::Preferences`.
+  static constexpr const char *PREF_MINUTES = "clock.minutes";
+  static constexpr const char *PREF_INCREMENT = "clock.increment";
+  /// @brief Inset of the options from the window's top left corner, and the gap between options.
+  static constexpr float OPTION_MARGIN = 40.f;
+  static constexpr float OPTION_SPACING = 22.f;
+  /// @brief Distance from one row of options to the next.
+  static constexpr float OPTION_ROW_STEP = OPTION_TEXT_SIZE * 1.15f;
+  /// @brief Base of the ids the option rows answer `PickOverlay` with.
+  ///
+  /// A row's ids run from its base, so an id says which row was clicked and which option in it.
+  /// Both are well clear of `Overlay::NoHit`, which is zero.
+  static constexpr int TIME_OPTION_ID = 100;
+  static constexpr int INCREMENT_OPTION_ID = 200;
+  /// @brief Inset of the clocks from the right edge, in pixels.
+  static constexpr float CLOCK_MARGIN = 40.f;
+  /// @brief How far each clock's middle sits from the window's, so the two face one another.
+  ///
+  /// A shade under one line each side of the centre, which leaves about as much clear space
+  /// between the two as a digit is tall -- enough to read them as two clocks rather than one
+  /// stacked number, and close enough to read as a pair.
+  static constexpr float CLOCK_GAP = CLOCK_TEXT_SIZE * .7f;
+  /// @brief Seconds remaining below which a clock turns red.
+  static constexpr float CLOCK_LOW = 30.f;
   Board board;
   /// @brief The slab drawn for each square. Created once, and after that only ever moved.
   std::array<kuki::EntityID, Board::SquareCount> squares{};
+  /// @brief Every rank and file label, as one entity. Created once and never touched again.
+  kuki::EntityID labels{};
   /// @brief The entity standing on each square, or an invalid id for an empty square.
   std::array<kuki::EntityID, Board::SquareCount> pieces{};
-  /// @brief How far each square stands raised. Zero everywhere the selected piece may not go.
+  /// @brief Which squares the selected piece may move to, and so which ones are green.
   ///
-  /// The height rather than a flag, because the height is what varies: it is worked out once when
-  /// the selection changes and read back by everything that has to stand on the square.
-  std::array<float, Board::SquareCount> rise{};
+  /// The destinations rather than everything the move touches: en passant takes a pawn that is not
+  /// standing on the destination, so the square that turns green and the square that turns red are
+  /// different ones there. See `capturable`.
+  std::array<bool, Board::SquareCount> reachable{};
   /// @brief For each square holding a piece the camera cannot see past, the square it is hiding.
   ///
   /// -1 everywhere else. An opponent's piece that is not itself a target has nothing to say to a
@@ -75,11 +118,35 @@ private:
   std::array<int, Board::SquareCount> hidden{};
   /// @brief Which squares hold a piece the selected piece may take, and so which ones are red.
   ///
-  /// Kept apart from `rise` because the two are not the same set. En passant takes a pawn that is
-  /// not on the destination, so the square that rises and the square that turns red are different
-  /// ones -- and `Move::captured` is a square rather than a flag for exactly that reason.
+  /// Kept apart from `reachable` because the two are not the same set, and en passant is why: the
+  /// pawn it takes is not standing on the destination, so the square that is clicked to make the
+  /// move is green and the square holding the piece that will disappear is red. `Move::captured`
+  /// is a square rather than a flag for exactly that reason.
+  ///
+  /// For every other capture the two coincide, and red wins -- a square that can be moved to by
+  /// taking what stands on it has more to say about the piece than about the square.
   std::array<bool, Board::SquareCount> capturable{};
   int selected{-1};
+  /// @brief The position's standing, as `UpdateTitle` last worked it out.
+  ///
+  /// Cached because `Board::State` generates every move for both sides to answer, and the king's
+  /// colour is read every time the pieces are drawn -- which is whenever the occlusion changes,
+  /// and so potentially every frame. See `UpdateTitle` for when it is refreshed.
+  GameState state{GameState::Playing};
+  /// @brief Seconds left on each side's clock, White first.
+  ///
+  /// Seeded from the first control on offer so that a clock is never momentarily zero, which is
+  /// the reading that means a flag has fallen. `Start` puts the chosen control on it before the
+  /// first frame either way.
+  std::array<float, 2> clocks{TIME_OPTIONS[0] * 60.f, TIME_OPTIONS[0] * 60.f};
+  /// @brief Which of `TIME_OPTIONS` and `INCREMENT_OPTIONS` is in force.
+  size_t timeOption{};
+  size_t incrementOption{};
+  /// @brief Index of the side whose flag has fallen, or -1 while both are still running.
+  ///
+  /// Kept apart from `playable` because the position cannot answer for it: `Board::State` looks at
+  /// the pieces, and a game lost on time is one the pieces say nothing about.
+  int flagged{-1};
   /// @brief Whether the position still has a move in it.
   ///
   /// Cached rather than asked for, because `Board::State` generates every move for both sides to
@@ -104,16 +171,30 @@ private:
   kuki::InputManager::ActionID releaseAction{kuki::InputManager::InvalidActionID};
   kuki::InputManager::ActionID quitAction{kuki::InputManager::InvalidActionID};
   kuki::InputManager::ActionID restartAction{kuki::InputManager::InvalidActionID};
-  /// @brief Centre of a square in world space, with `y` at the board's unraised surface.
+  /// @brief Centre of a square in world space, with `y` on the board's surface.
   static auto SquareCenter(const int) -> glm::vec3;
-  /// @brief Height of a square's upper face, which is what anything standing on it stands on.
-  auto SquareTop(const int) const -> float;
   /// @brief Which square an entity stands on, or -1 when it is neither a piece nor a square.
   auto SquareOfEntity(const kuki::EntityID) const -> int;
   /// @brief Draws the board and the pieces the way the position and the selection say they are.
   auto Refresh() -> void;
   /// @brief Places every square, creating the slabs the first time through.
   auto RefreshSquares() -> void;
+  /// @brief Bakes a font and lays the files and ranks around two edges of the board.
+  ///
+  /// Everything the labels need is built here rather than staged as assets, because none of it can
+  /// be: a `.mat` file cannot name a texture, and the texture in question does not exist until the
+  /// font has been baked. The atlas, the material that samples it and the mesh of glyph quads are
+  /// therefore made in code and handed to the asset manager under names, which is what
+  /// `Application::AddAsset` is for.
+  ///
+  /// One mesh and one entity for all sixteen labels. They never move -- a label is a property of
+  /// the board rather than of the position -- so there is nothing to be gained by keeping them
+  /// apart, and a good deal of draw call to be saved by not doing so.
+  ///
+  /// Files along the near edge and ranks along the left, as a printed diagram has them. Not on all
+  /// four edges: the board turns under the camera, so half of any second pair would be upside down
+  /// wherever the first pair was not, and two labelled edges is what a board actually carries.
+  auto CreateLabels() -> void;
   /// @brief Brings the drawn pieces back in line with the board.
   ///
   /// Read off the board rather than moved one at a time, because three of the rules move or remove
@@ -151,12 +232,39 @@ private:
   /// @brief Moves the camera along its sphere by however far the mouse has travelled this frame.
   auto Orbit(kuki::Application &) -> void;
   auto Restart() -> void;
+  /// @brief Reads the saved time control, or leaves the defaults where none was saved.
+  auto LoadSettings(kuki::Application &) -> void;
+  /// @brief Writes the chosen time control back, to be picked up next launch.
+  auto SaveSettings(kuki::Application &) -> void;
+  /// @brief Seconds on a fresh clock under the chosen control.
+  auto StartSeconds() const -> float;
+  /// @brief Seconds added to a side's clock when it completes a move.
+  auto IncrementSeconds() const -> float;
+  /// @brief Queues both rows of options down the left, and says where each one was put.
+  auto DrawOptions(kuki::Application &) -> void;
+  /// @brief Answers a click on an option, restarting under the new control.
+  ///
+  /// @return Whether the click belonged to the options, and so should go no further.
+  auto OnOptionPressed(const int) -> bool;
+  /// @brief Takes the running side's time off its clock, and ends the game if it runs out.
+  auto UpdateClocks(kuki::Application &) -> void;
+  /// @brief Queues both clocks over this frame's picture.
+  ///
+  /// Also the turn indicator, which is the other half of what it is for: the side to move is drawn
+  /// at full strength and the other dimmed. Whose move it is, is the one thing a board of
+  /// primitives cannot say for itself, and saying it by colouring the pieces -- which was tried --
+  /// made the pieces harder to read rather than the turn easier.
+  auto DrawClocks(kuki::Application &) -> void;
   /// @brief Puts the position's standing in the window's title bar.
   ///
-  /// The title bar because the engine has no text rendering: there is no route to a glyph on the
-  /// screen from here, and a status line that cannot be read is worse than one somewhere odd.
+  /// Still the title bar now that there is an overlay to put it on instead, because the two say
+  /// different kinds of thing: the clocks are read at a glance mid-game and belong over the board,
+  /// while "checkmate, Black wins" is read once and is as much a label for the window as for the
+  /// frame. Worth revisiting if the overlay ever grows a place for a line of prose.
   ///
-  /// Also where `playable` is refreshed, since working out what to write is working out whether
-  /// the game is over.
+  /// Also the one place `state` and `playable` are refreshed, since working out what to write is
+  /// working out whether the game is over. That makes it the thing that decides what colour the
+  /// king is drawn, which is worth knowing for one reason: it has to be called *before* whatever
+  /// redraws the pieces, or they are drawn from the position as it stood a move ago.
   auto UpdateTitle() -> void;
 };

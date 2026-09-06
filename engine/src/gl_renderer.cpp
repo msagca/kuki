@@ -259,6 +259,58 @@ auto GLRenderer::ApplyToneMapping(std::span<std::string> inputs, std::span<std::
   toneShader->Draw(*mesh);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
+auto GLRenderer::EnsureOverlayBuffer(const std::vector<Vertex> &vertices) -> void {
+  if (!overlayBuffer.vao)
+    CreateVertexBuffer(overlayBuffer, vertices);
+  else
+    glNamedBufferData(overlayBuffer.vbo, vertices.size() * sizeof(Vertex), vertices.data(), GL_DYNAMIC_DRAW);
+  overlayBuffer.vertexCount = static_cast<int>(vertices.size());
+}
+auto GLRenderer::ApplyOverlay(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  // The picture reaches the output first and whatever happens next. Every early return below is a
+  // frame with no text on it rather than a frame with nothing on it.
+  BypassCopy(inputs, outputs);
+  auto &overlay = app.GetOverlay();
+  if (overlay.IsEmpty() || outputs.empty())
+    return;
+  const auto out = GetTarget(outputs[0]);
+  auto overlayShader = GetShader("Overlay");
+  if (!out || !overlayShader)
+    return;
+  const auto atlasId = overlay.GetAtlasAssetId();
+  LoadAsset(atlasId);
+  const auto atlas = resourceRegistry.GetComponent<GLTexture>(GetAssetResourceId(atlasId));
+  if (!atlas)
+    return;
+  overlay.Build(out->desc.width, out->desc.height, overlayMesh, overlayRuns);
+  if (overlayMesh.vertices.empty())
+    return;
+  EnsureOverlayBuffer(overlayMesh.vertices);
+  glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
+  glViewport(0, 0, out->desc.width, out->desc.height);
+  // No depth, because there is nothing here to be behind: the text is drawn last, over a picture
+  // that is already finished, and the only thing it can overlap is itself.
+  glDisable(GL_DEPTH_TEST);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  overlayShader->Use();
+  overlayShader->SetTexture("u_atlas", atlas->id);
+  // The overlay lays its quads out in the target's pixels with y up from the bottom, which this
+  // maps straight onto clip space. Both backends are handed the same mesh and build the same
+  // matrix; nothing about the projection is OpenGL's rather than Direct3D's.
+  overlayShader->SetUniform("u_projection", glm::ortho(.0f, static_cast<float>(out->desc.width), .0f, static_cast<float>(out->desc.height)));
+  glBindVertexArray(overlayBuffer.vao);
+  // One draw a run, because colour is the only thing that varies and a vertex has nowhere to put
+  // it. See `OverlayRun`.
+  for (const auto &run : overlayRuns) {
+    overlayShader->SetUniform("u_color", run.color);
+    glDrawArrays(GL_TRIANGLES, static_cast<GLint>(run.first), static_cast<GLsizei>(run.count));
+  }
+  glBindVertexArray(0);
+  glDisable(GL_BLEND);
+  glEnable(GL_DEPTH_TEST);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
 auto GLRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   static constexpr size_t MAX_SELECTED = 16;
   static constexpr auto OUTLINE_THICKNESS = 2.f;
@@ -859,6 +911,7 @@ auto GLRenderer::DrawSkybox() -> void {
   shader->SetTexture("u_skybox", skybox ? skybox->skybox : 0);
   shader->SetUniform("u_useGradient", skybox != nullptr);
   shader->SetUniform("u_useSkybox", skybox != nullptr && skybox->skybox > 0);
+  shader->SetUniform("u_background", indirect.backgroundColor);
   glDepthFunc(GL_LEQUAL);
   glDepthMask(GL_FALSE);
   shader->Draw(*mesh);
@@ -941,6 +994,13 @@ auto GLRenderer::Clear() -> void {
       glDeleteBuffers(1, &buffer.id);
     buffer.id = 0;
   });
+  // By hand rather than through the registry, because the overlay's buffer never went in one: it
+  // belongs to the renderer rather than to any asset, and nothing but the overlay pass draws it.
+  if (overlayBuffer.vao)
+    glDeleteVertexArrays(1, &overlayBuffer.vao);
+  if (overlayBuffer.vbo)
+    glDeleteBuffers(1, &overlayBuffer.vbo);
+  overlayBuffer = {};
   // A program is not a pooled object and never was: it is compiled once from source the engine
   // carries, so the only place it can be released is here.
   const auto DeleteProgram = [](GLShaderBase &shader) {
@@ -983,7 +1043,7 @@ auto GLRenderer::CreateBuffer(const std::string &name, const int &size) -> Entit
   auto buffer = resourceRegistry.AddComponent<GLBuffer>(id);
   if (buffer->id == 0) {
     buffer->id = BorrowBuffer(size);
-    spdlog::info("[GLRenderer] created buffer: {}", name);
+    spdlog::info("[GLRenderer] Created buffer: {}", name);
   }
   return id;
 }
@@ -996,7 +1056,7 @@ auto GLRenderer::CreateTarget(const TargetDescription &desc, const std::string &
   auto renderTarget = resourceRegistry.AddComponent<GLRenderTarget>(id);
   if (renderTarget->framebuffer == 0) {
     renderTarget->framebuffer = BorrowFramebuffer();
-    spdlog::info("[GLRenderer] created render target: {}", name);
+    spdlog::info("[GLRenderer] Created render target: {}", name);
   }
   if (renderTarget->renderbuffer == 0)
     renderTarget->renderbuffer = BorrowRenderbuffer(desc);
@@ -1036,7 +1096,7 @@ auto GLRenderer::CreateTexture(const TargetDescription &desc, const std::string 
   auto texture = resourceRegistry.AddComponent<GLTexture>(id);
   if (texture->id == 0) {
     texture->id = BorrowTexture(desc);
-    spdlog::info("[GLRenderer] created texture: {}", name);
+    spdlog::info("[GLRenderer] Created texture: {}", name);
   }
   return id;
 }
@@ -1275,7 +1335,7 @@ auto GLRenderer::Reset() -> void {
   if (freed == 0)
     return;
   const auto usage = GetPoolUsage();
-  spdlog::debug("[GLRenderer] pools released {} resources, {} still lent out and {} waiting across {} kinds", freed, usage.inUse, usage.available, usage.keys);
+  spdlog::debug("[GLRenderer] Pools released {} resources, {} still lent out and {} waiting across {} kinds", freed, usage.inUse, usage.available, usage.keys);
 }
 auto GLRenderer::SetPreviewSize(const int size) -> void {
   if (size == previewSize || size <= 0)
@@ -1538,7 +1598,7 @@ auto GLRenderer::LoadTexture(Texture &texture) -> GLTexture {
     format = GL_RGBA;
     break;
   default:
-    spdlog::warn("[GLRenderer] unsupported number of channels: {}", texture.channels);
+    spdlog::warn("[GLRenderer] Unsupported number of channels: {}", texture.channels);
     return glTexture;
   }
   glTexture.desc.format = GLFormatToTarget(internalFormat);
@@ -1584,7 +1644,7 @@ auto GLRenderer::LoadCompressedTexture(Texture &texture, GLTexture &glTexture) -
   const auto *blocks = std::get_if<std::vector<unsigned char>>(&texture.data);
   const auto levels = GetTextureLevels(texture);
   if (!blocks || levels.empty()) {
-    spdlog::warn("[GLRenderer] compressed texture has no data to upload");
+    spdlog::warn("[GLRenderer] Compressed texture has no data to upload");
     return glTexture;
   }
   const auto isSRGB = texture.color == ColorSpace::sRGB;
@@ -1603,7 +1663,7 @@ auto GLRenderer::LoadCompressedTexture(Texture &texture, GLTexture &glTexture) -
     internalFormat = GL_COMPRESSED_RG_RGTC2;
     break;
   default:
-    spdlog::warn("[GLRenderer] unsupported texture compression");
+    spdlog::warn("[GLRenderer] Unsupported texture compression");
     return glTexture;
   }
   glTexture.desc.format = TargetFormat::RGBA8;
@@ -1674,7 +1734,7 @@ auto GLRenderer::LoadModelMaterial(ModelAsset &modelAsset, const size_t material
       break;
     }
   }
-  spdlog::info("[GLRenderer] loaded material: {}", modelMaterial.name);
+  spdlog::info("[GLRenderer] Loaded material: {}", modelMaterial.name);
   return resourceId;
 }
 auto GLRenderer::LoadModelMesh(ModelAsset &modelAsset, const size_t meshIndex) -> EntityID {
@@ -1689,7 +1749,7 @@ auto GLRenderer::LoadModelMesh(ModelAsset &modelAsset, const size_t meshIndex) -
   *glMesh = LoadMesh(modelMesh.mesh, !modelMesh.bones.empty());
   const auto materialIndex = modelMesh.material;
   LoadModelMaterial(modelAsset, materialIndex);
-  spdlog::info("[GLRenderer] loaded mesh: {}", modelMesh.name);
+  spdlog::info("[GLRenderer] Loaded mesh: {}", modelMesh.name);
   return resourceId;
 }
 auto GLRenderer::LoadModelTexture(ModelAsset &modelAsset, const size_t textureIndex) -> GLTexture * {
@@ -1702,7 +1762,7 @@ auto GLRenderer::LoadModelTexture(ModelAsset &modelAsset, const size_t textureIn
   modelTexture.resourceId = resourceId;
   auto glTexture = resourceRegistry.AddComponent<GLTexture>(resourceId);
   *glTexture = LoadTexture(modelTexture.texture);
-  spdlog::info("[GLRenderer] loaded texture: {}", modelTexture.name);
+  spdlog::info("[GLRenderer] Loaded texture: {}", modelTexture.name);
   return glTexture;
 }
 auto GLRenderer::UpdatePlaceholderScale(Scene &scene, const EntityID id, const bool pending) -> void {

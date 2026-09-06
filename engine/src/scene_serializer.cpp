@@ -343,7 +343,7 @@ namespace {
         if (const auto *info = ScriptRegistry::FindByName(scriptName); info)
           info->add(app, id);
         else
-          spdlog::warn("[SceneSerializer] entity '{}' wants script '{}', which this build does not register", entityJson.value("name", std::string{}), scriptName);
+          spdlog::warn("[SceneSerializer] Entity '{}' wants script '{}', which this build does not register", entityJson.value("name", std::string{}), scriptName);
       }
     if (entityJson.contains("components"))
       for (const auto &[typeName, componentJson] : entityJson.at("components").items()) {
@@ -418,7 +418,7 @@ namespace {
 } // namespace
 auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) -> bool {
   if (!app.GetScene()) {
-    spdlog::error("[SceneSerializer] no active scene to save");
+    spdlog::error("[SceneSerializer] No active scene to save");
     return false;
   }
   const auto scenePath = ResolvePath(path);
@@ -432,7 +432,7 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
   sceneJson["entities"] = std::move(entities);
   std::ofstream sceneFile(scenePath);
   if (!sceneFile) {
-    spdlog::error("[SceneSerializer] failed to open file for writing: {}", scenePath.string());
+    spdlog::error("[SceneSerializer] Failed to open file for writing: {}", scenePath.string());
     return false;
   }
   sceneFile << sceneJson.dump(2);
@@ -450,26 +450,26 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
   const auto manifestPath = ManifestPath(scenePath);
   std::ofstream manifestFile(manifestPath);
   if (!manifestFile) {
-    spdlog::error("[SceneSerializer] failed to open file for writing: {}", manifestPath.string());
+    spdlog::error("[SceneSerializer] Failed to open file for writing: {}", manifestPath.string());
     return false;
   }
   manifestFile << manifest.dump(2);
   manifestFile.close();
-  spdlog::info("[SceneSerializer] saved scene: {} ({} referenced assets)", scenePath.string(), referenced.size());
+  spdlog::info("[SceneSerializer] Saved scene: {} ({} referenced assets)", scenePath.string(), referenced.size());
   return true;
 }
 auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) -> bool {
   const auto scenePath = ResolvePath(path);
   std::ifstream sceneFile(scenePath);
   if (!sceneFile) {
-    spdlog::error("[SceneSerializer] failed to open file for reading: {}", scenePath.string());
+    spdlog::error("[SceneSerializer] Failed to open file for reading: {}", scenePath.string());
     return false;
   }
   json sceneJson;
   try {
     sceneFile >> sceneJson;
   } catch (const json::parse_error &e) {
-    spdlog::error("[SceneSerializer] failed to parse scene file: {} ({})", scenePath.string(), e.what());
+    spdlog::error("[SceneSerializer] Failed to parse scene file: {} ({})", scenePath.string(), e.what());
     return false;
   }
   std::unordered_map<AssetID, AssetID> remap;
@@ -504,13 +504,13 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) 
         if (runtimeId)
           remap.emplace(savedId, runtimeId);
         else if (!app.GetAsset(savedId))
-          spdlog::warn("[SceneSerializer] failed to resolve referenced asset: {}", name);
+          spdlog::warn("[SceneSerializer] Failed to resolve referenced asset: {}", name);
       }
     } catch (const json::parse_error &e) {
-      spdlog::warn("[SceneSerializer] failed to parse asset manifest: {} ({})", manifestPath.string(), e.what());
+      spdlog::warn("[SceneSerializer] Failed to parse asset manifest: {} ({})", manifestPath.string(), e.what());
     }
   } else
-    spdlog::warn("[SceneSerializer] no asset manifest found: {}", manifestPath.string());
+    spdlog::warn("[SceneSerializer] No asset manifest found: {}", manifestPath.string());
   app.DeleteEntities();
   if (sceneJson.contains("entities"))
     for (const auto &entityJson : sceneJson.at("entities"))
@@ -518,7 +518,7 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) 
   app.ForEachEntity<Animator>([&](const EntityID id, Animator *animator) {
     app.ResolveModelInstance(id, animator->modelAssetId);
   });
-  spdlog::info("[SceneSerializer] loaded scene: {}", scenePath.string());
+  spdlog::info("[SceneSerializer] Loaded scene: {}", scenePath.string());
   return true;
 }
 } // namespace kuki

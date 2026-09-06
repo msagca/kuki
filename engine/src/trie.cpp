@@ -3,6 +3,6 @@
 #include <trie.hpp>
 namespace kuki {
 auto LogActionFired(const std::string &trigger) -> void {
-  spdlog::info("[Trie] firing action for trigger {}", trigger);
+  spdlog::info("[Trie] Firing action for trigger {}", trigger);
 }
 } // namespace kuki

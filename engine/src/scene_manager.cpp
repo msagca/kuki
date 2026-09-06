@@ -20,13 +20,13 @@ auto SceneManager::Create(std::string name) -> SceneID {
   idToName[id] = std::move(name);
   if (!activeScene)
     activeScene = id;
-  spdlog::info("[SceneManager] created scene: {}", idToName[id]);
+  spdlog::info("[SceneManager] Created scene: {}", idToName[id]);
   return id;
 }
 auto SceneManager::Switch(const std::string &name) -> bool {
   if (auto it = nameToId.find(name); it != nameToId.end()) {
     activeScene = it->second;
-    spdlog::info("[SceneManager] switched to scene: {}", name);
+    spdlog::info("[SceneManager] Switched to scene: {}", name);
     return true;
   }
   return false;

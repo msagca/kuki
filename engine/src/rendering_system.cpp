@@ -59,6 +59,7 @@ auto RenderingSystem::Start() -> void {
   app.LoadShaderFromSource(standard_m_vert, outline_frag, "Outline");
   app.LoadShaderFromSource(standard_m_vert, pick_frag, "Pick");
   app.LoadShaderFromSource(unlit_vert, unlit_frag, "Unlit");
+  app.LoadShaderFromSource(overlay_vert, overlay_frag, "Overlay");
   if (activeRenderer)
     activeRenderer->LoadAssets(AssetType::Shader);
   if (activeRenderer)
@@ -127,6 +128,20 @@ auto RenderingSystem::Start() -> void {
                   .AddInput("SceneOutlined")
                   .AddOutput("SceneSRGB", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
+                  // Last, so the text is laid over a picture that is finished being a picture. A
+                  // caption drawn before tone mapping would be exposed and mapped along with the
+                  // scene, which is to say it would change brightness according to how bright the
+                  // room it is captioning happens to be.
+                  //
+                  // It costs a copy in every frame that draws no text, since the graph gives each
+                  // pass its own output and the one after this reads what this leaves. That is one
+                  // more full-screen blit in a chain that already has several, and the alternative
+                  // -- a pass writing over its own input -- is the one thing the graph cannot
+                  // order safely.
+                  .BeginPass(RenderPass::Overlay)
+                  .AddInput("SceneSRGB")
+                  .AddOutput("SceneOverlay", {.width = screenWidth, .height = screenHeight, .samples = 1})
+                  .EndPass()
                   .EndGraph();
   if (renderGraph)
     renderGraph->Compile();
@@ -145,8 +160,12 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   ++frameCounter;
   KUKI_PROFILE_SCOPE("Rendering");
   auto scene = app.GetScene();
-  if (!scene)
+  if (!scene) {
+    // Drained here as well as at the end, so that a frame with nothing to draw into still finishes
+    // the queue rather than letting it accumulate. See the note at the bottom of this function.
+    app.GetOverlay().Clear();
     return;
+  }
   // Transforms as well as cameras, and not only because it is convenient here. `UpdateTransforms`
   // used to be reached from `PhysicsSystem::Update` alone, which made drawing the right picture
   // depend on a system a game has every reason to leave out: `SystemApplication` takes its systems
@@ -198,6 +217,11 @@ auto RenderingSystem::Update(float deltaTime) -> void {
       activeRenderer->PresentTarget(renderGraph->GetFinalOutputName());
     }
   }
+  // Emptied by the frame that drew it, which is what makes the overlay immediate mode: a caption
+  // appears for exactly as long as something keeps asking for it, and there is no handle to hold
+  // or to forget to release. Here rather than at the top of the frame so that a renderer which
+  // never ran -- no scene, no backend -- does not silently swallow what was queued for it.
+  app.GetOverlay().Clear();
 }
 auto RenderingSystem::IsPresentEnabled() const -> bool {
   return presentEnabled;
@@ -313,11 +337,11 @@ auto RenderingSystem::SetRenderer(const RenderingAPI api) -> void {
   }
 #else
   case RenderingAPI::DirectX:
-    spdlog::warn("[RenderingSystem] DirectX is not available in this build, falling back to OpenGL.");
+    spdlog::warn("[RenderingSystem] DirectX is not available in this build, falling back to OpenGL");
     [[fallthrough]];
 #endif
   case RenderingAPI::Vulkan:
-    spdlog::warn("[RenderingSystem] Vulkan is not implemented, falling back to OpenGL.");
+    spdlog::warn("[RenderingSystem] Vulkan is not implemented, falling back to OpenGL");
     [[fallthrough]];
   default:
     const auto index = static_cast<uint8_t>(RenderingAPI::OpenGL);
@@ -359,7 +383,7 @@ auto RenderingSystem::UpdateSkyboxLight(Scene &scene) -> void {
   light->forward = dominant->direction;
   light->diffuse = dominant->color;
   light->specular = dominant->color;
-  spdlog::info("[RenderingSystem] adopted a directional light from the skybox");
+  spdlog::info("[RenderingSystem] Adopted a directional light from the skybox");
 }
 auto RenderingSystem::NearlyEqual(const int a, const int b) -> bool {
   return std::abs(a - b) < RESOLUTION_CHANGE_THRESHOLD;
@@ -369,7 +393,7 @@ auto RenderingSystem::CommitResolution(const int width, const int height) -> voi
   screenHeight = height;
   if (activeRenderer && renderGraph)
     renderGraph->ResizeTargets(*activeRenderer, screenWidth, screenHeight);
-  spdlog::debug("[RenderingSystem] resolution now {}x{}", screenWidth, screenHeight);
+  spdlog::debug("[RenderingSystem] Resolution now {}x{}", screenWidth, screenHeight);
 }
 auto RenderingSystem::UpdatePendingResolution(const int width, const int height) -> void {
   if (NearlyEqual(width, screenWidth) && NearlyEqual(height, screenHeight)) {

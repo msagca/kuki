@@ -180,7 +180,7 @@ namespace {
         spdlog::error("[Texture] {}", errMsg);
         FreeEXRErrorMessage(errMsg);
       } else
-        spdlog::error("[Texture] failed to read {}", texture.source);
+        spdlog::error("[Texture] Failed to read {}", texture.source);
       return false;
     }
     if (!data)
@@ -195,7 +195,7 @@ namespace {
   auto ReadHDR(Texture &texture) -> bool {
     auto *data = stbi_loadf(texture.source.c_str(), &texture.width, &texture.height, &texture.channels, 0);
     if (!data) {
-      spdlog::error("[Texture] failed to read {}", texture.source);
+      spdlog::error("[Texture] Failed to read {}", texture.source);
       return false;
     }
     texture.range = ColorRange::HDR;
@@ -207,7 +207,7 @@ namespace {
   auto ReadLDR(Texture &texture) -> bool {
     auto *data = stbi_load(texture.source.c_str(), &texture.width, &texture.height, &texture.channels, 0);
     if (!data) {
-      spdlog::error("[Texture] failed to read {}", texture.source);
+      spdlog::error("[Texture] Failed to read {}", texture.source);
       return false;
     }
     texture.range = ColorRange::LDR;
@@ -400,7 +400,7 @@ auto WriteCachedTexture(const Texture &texture) -> bool {
   }
   // logged on the write and not on the read, so a cold run says what it is spending its time on
   // and a warm run stays silent, which is the difference the reader is actually looking for
-  spdlog::info("[Texture] baked {} ({} KB, {} levels)", std::filesystem::path(texture.source).filename().string(), blob->size() / 1024, texture.levels.size());
+  spdlog::info("[Texture] Baked {} ({} KB, {} levels)", std::filesystem::path(texture.source).filename().string(), blob->size() / 1024, texture.levels.size());
   return true;
 }
 auto PrepareTextureCached(Texture &texture) -> bool {

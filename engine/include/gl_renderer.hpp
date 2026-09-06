@@ -29,6 +29,7 @@
 #include <light.hpp>
 #include <light_limits.hpp>
 #include <material_asset.hpp>
+#include <overlay.hpp>
 #include <material_fallback.hpp>
 #include <mesh_asset.hpp>
 #include <model_asset.hpp>
@@ -115,6 +116,7 @@ public:
   /// input that carries an id buffer, rather than by name, so the pass works wherever a graph puts
   /// it and whatever the pass feeding it is called.
   auto ApplyOutline(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyOverlay(std::span<std::string>, std::span<std::string>) -> void override;
   auto BorrowBuffer(const int & = 0) -> unsigned int;
   auto BorrowFramebuffer() -> unsigned int;
   auto BorrowRenderbuffer(const TargetDescription &) -> unsigned int;
@@ -202,6 +204,20 @@ public:
   auto ReturnTexture(const TargetDescription &, Vals &&...) -> void;
 private:
   GLResourceRegistry resourceRegistry;
+  /// @brief Uploads the overlay's quads, creating its vertex array the first time it draws.
+  ///
+  /// One buffer for the life of the renderer rather than a mesh a frame. The text changes every
+  /// frame and the vertex count with it, so the contents are respecified outright each time --
+  /// which also orphans the old storage, and is what keeps the upload from waiting on the draw
+  /// that is still reading it.
+  auto EnsureOverlayBuffer(const std::vector<Vertex> &) -> void;
+  /// @brief The overlay's vertex array, its geometry, and the runs that colour it.
+  ///
+  /// Members rather than locals so their capacity survives the frame. A caption redrawn every
+  /// frame would otherwise allocate and free the same few kilobytes forever.
+  GLMesh overlayBuffer{};
+  Mesh overlayMesh{};
+  std::vector<OverlayRun> overlayRuns;
   auto BypassPass(const RenderPass, std::span<std::string>, std::span<std::string>) -> void override;
   auto BypassCopy(std::span<std::string>, std::span<std::string>) -> void override;
   auto BypassClear(std::span<std::string>) -> void override;
@@ -326,35 +342,62 @@ inline auto GLRenderer::LoadAsset<MaterialAsset>(MaterialAsset &materialAsset) -
   auto glMaterial = resourceRegistry.AddComponent<GLMaterial>(id);
   glMaterial->fallback = materialAsset.fallback;
   glMaterial->type = materialAsset.type;
+  // Each binding sets its bit as well, exactly as `LoadModelMaterial` does. Binding a texture is
+  // only half of using one: the shaders decide what to sample from this mask, so a slot filled
+  // without its bit is a texture that is uploaded, bound, and then ignored -- silently, and with
+  // the material's fallback colour standing in for it.
+  //
+  // Cleared first so that what follows derives the mask rather than adding to whatever the asset
+  // happened to carry. This is the point at which it is known which textures actually resolved,
+  // and a material naming one that did not load should not go on claiming to have it -- the mask
+  // would then promise the shader a slot with nothing bound to it. `DXRenderer::LoadScene` builds
+  // its mask the same way and from the same reasoning.
+  glMaterial->fallback.textureMask.reset();
   for (const auto &id : materialAsset.textures) {
     LoadAsset(id);
-    const auto textureAsset = app.GetAsset<TextureAsset>(id);
-    const auto texture = resourceRegistry.GetComponent<GLTexture>(GetAssetResourceId(textureAsset->id));
+    // Skipped rather than assumed, as `LoadModelMaterial` skips one it could not load. A material
+    // may name a texture that is missing, failed to decode, or is not a texture at all, and each of
+    // those arrives here as an id with no `GLTexture` behind it. What follows leaves the slot empty
+    // and the bit clear, so the material draws with its fallback colour -- which is the same
+    // picture a material that never named a texture gets, and a good deal better than the crash
+    // this was.
+    const auto texture = resourceRegistry.GetComponent<GLTexture>(GetAssetResourceId(id));
+    if (!texture) {
+      spdlog::warn("[GLRenderer] Material {} names a texture that did not load, and will draw without it", name);
+      continue;
+    }
     switch (texture->content) {
     case TextureContent::Emissive:
       glMaterial->textures.emissive = texture->id;
+      glMaterial->fallback.textureMask.set(static_cast<int>(TextureContent::Emissive));
       break;
     case TextureContent::Metalness:
       glMaterial->textures.metalness = texture->id;
+      glMaterial->fallback.textureMask.set(static_cast<int>(TextureContent::Metalness));
       break;
     case TextureContent::Normal:
       glMaterial->textures.normal = texture->id;
+      glMaterial->fallback.textureMask.set(static_cast<int>(TextureContent::Normal));
       break;
     case TextureContent::Occlusion:
       glMaterial->textures.occlusion = texture->id;
+      glMaterial->fallback.textureMask.set(static_cast<int>(TextureContent::Occlusion));
       break;
     case TextureContent::Roughness:
       glMaterial->textures.roughness = texture->id;
+      glMaterial->fallback.textureMask.set(static_cast<int>(TextureContent::Roughness));
       break;
     case TextureContent::Specular:
       glMaterial->textures.specular = texture->id;
+      glMaterial->fallback.textureMask.set(static_cast<int>(TextureContent::Specular));
       break;
     default:
       glMaterial->textures.albedo = texture->id;
+      glMaterial->fallback.textureMask.set(static_cast<int>(TextureContent::Albedo));
       break;
     }
   }
-  spdlog::info("[GLRenderer] loaded material: {}", name);
+  spdlog::info("[GLRenderer] Loaded material: {}", name);
 }
 template <>
 inline auto GLRenderer::LoadAsset<MeshAsset>(MeshAsset &meshAsset) -> void {
@@ -366,7 +409,7 @@ inline auto GLRenderer::LoadAsset<MeshAsset>(MeshAsset &meshAsset) -> void {
   auto glMesh = resourceRegistry.AddComponent<GLMesh>(id);
   *glMesh = LoadMesh(meshAsset.mesh);
   LoadAsset(meshAsset.material);
-  spdlog::info("[GLRenderer] loaded mesh: {}", name);
+  spdlog::info("[GLRenderer] Loaded mesh: {}", name);
 }
 template <>
 inline auto GLRenderer::LoadAsset<ModelAsset>(ModelAsset &modelAsset) -> void {
@@ -396,14 +439,14 @@ inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &shaderAsset) -> void
     glGetProgramiv(programId, GL_LINK_STATUS, &success);
     if (success) {
       compute->CacheLocations();
-      spdlog::info("[GLRenderer] created compute: {}", name);
+      spdlog::info("[GLRenderer] Created compute: {}", name);
     } else {
       int logLength{};
       glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &logLength);
       std::string log(logLength, '\0');
       if (logLength > 0)
         glGetProgramInfoLog(programId, logLength, nullptr, log.data());
-      spdlog::error("[GLRenderer] failed to create compute: {}\n{}", name, log);
+      spdlog::error("[GLRenderer] Failed to create compute: {}\n{}", name, log);
     }
   } else if (shaderAsset.shaderType == ShaderType::Fragment) {
     auto &fragShader = shaderAsset;
@@ -447,14 +490,14 @@ inline auto GLRenderer::LoadAsset<ShaderAsset>(ShaderAsset &shaderAsset) -> void
     glGetProgramiv(programId, GL_LINK_STATUS, &success);
     if (success) {
       shader->CacheLocations();
-      spdlog::info("[GLRenderer] created shader: {}", name);
+      spdlog::info("[GLRenderer] Created shader: {}", name);
     } else {
       int logLength{};
       glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &logLength);
       std::string log(logLength, '\0');
       if (logLength > 0)
         glGetProgramInfoLog(programId, logLength, nullptr, log.data());
-      spdlog::error("[GLRenderer] failed to create shader: {}\n{}", name, log);
+      spdlog::error("[GLRenderer] Failed to create shader: {}\n{}", name, log);
     }
   }
 }
@@ -479,7 +522,7 @@ inline auto GLRenderer::LoadAsset<TextureAsset>(TextureAsset &textureAsset) -> v
     glSkybox->prefilter = CreatePrefilterMap({.format = TargetFormat::RGBA32, .type = TargetType::Cubemap, .width = 256, .height = 256, .mipmaps = 7}, glSkybox->skybox);
     glSkybox->brdf = CreateBRDF_LUT({.format = TargetFormat::RG16, .width = 512, .height = 512});
   }
-  spdlog::info("[GLRenderer] loaded texture: {}", name);
+  spdlog::info("[GLRenderer] Loaded texture: {}", name);
 }
 template <IsAsset T>
 auto GLRenderer::PreviewAsset(T &) -> GLTexture * {
@@ -531,7 +574,7 @@ inline auto GLRenderer::PreviewAsset<MeshAsset>(MeshAsset &meshAsset) -> GLTextu
   ReturnBuffer(cameraBuffer, materialBuffer, transformBuffer);
   ReturnRenderbuffer(desc, renderbuffer);
   ReturnFramebuffer(framebuffer);
-  spdlog::info("[GLRenderer] created preview for asset: {}", app.GetAssetName(meshAsset.id));
+  spdlog::info("[GLRenderer] Created preview for asset: {}", app.GetAssetName(meshAsset.id));
   return texture;
 }
 template <>
@@ -594,7 +637,7 @@ inline auto GLRenderer::PreviewAsset<ModelAsset>(ModelAsset &modelAsset) -> GLTe
   ReturnBuffer(cameraBuffer, materialBuffer, transformBuffer);
   ReturnRenderbuffer(desc, renderbuffer);
   ReturnFramebuffer(framebuffer);
-  spdlog::info("[GLRenderer] created preview for asset: {}", app.GetAssetName(modelAsset.id));
+  spdlog::info("[GLRenderer] Created preview for asset: {}", app.GetAssetName(modelAsset.id));
   return texture;
 }
 template <>
@@ -650,7 +693,7 @@ inline auto GLRenderer::PreviewAsset<MaterialAsset>(MaterialAsset &materialAsset
   ReturnBuffer(cameraBuffer, materialBuffer, transformBuffer);
   ReturnRenderbuffer(desc, renderbuffer);
   ReturnFramebuffer(framebuffer);
-  spdlog::info("[GLRenderer] created preview for asset: {}", app.GetAssetName(materialAsset.id));
+  spdlog::info("[GLRenderer] Created preview for asset: {}", app.GetAssetName(materialAsset.id));
   return texture;
 }
 } // namespace kuki

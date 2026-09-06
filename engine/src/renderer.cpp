@@ -19,6 +19,8 @@ auto Renderer::ExecutePass(const RenderPass pass, std::span<std::string> inputs,
     return ApplyToneMapping(inputs, outputs);
   case RenderPass::Outline:
     return ApplyOutline(inputs, outputs);
+  case RenderPass::Overlay:
+    return ApplyOverlay(inputs, outputs);
   case RenderPass::DepthPrepass:
     return CreateDepthPrepass(inputs, outputs);
   case RenderPass::ShadowMap:

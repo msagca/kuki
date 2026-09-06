@@ -2,10 +2,11 @@ cbuffer SkyboxConstants : register(b0) {
   float4x4 u_inverseViewProjection;
   uint u_useTexture;
   uint u_useGradient;
+  uint2 u_padding;
+  float4 u_background;
 };
 TextureCube g_skybox : register(t0);
 SamplerState g_sampler : register(s0);
-static const float4 COLOR_GRAY = float4(0.1, 0.1, 0.1, 1.0);
 static const float4 ENTITY_ID_INVALID = float4(1.0, 1.0, 1.0, 1.0);
 struct PSInput {
   float4 position : SV_POSITION;
@@ -34,7 +35,7 @@ PSOutput PSMain(PSInput input) {
     float3 zenith = float3(0.0, 0.1, 0.4);
     output.color = float4(lerp(horizon, zenith, t), 1.0);
   } else
-    output.color = COLOR_GRAY;
+    output.color = float4(u_background.rgb, 1.0);
   output.entityId = ENTITY_ID_INVALID;
   return output;
 }

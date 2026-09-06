@@ -9,6 +9,7 @@
 #include <light.hpp>
 #include <light_type.hpp>
 #include <material_asset.hpp>
+#include <spdlog/spdlog.h>
 #include <string>
 using namespace kuki;
 namespace {
@@ -17,7 +18,7 @@ namespace {
 /// Files rather than values built in code, because `AssetManager` owns asset identity and the
 /// only public route into it is a load from a path. A handful of small JSON files is a fair price
 /// for not reaching around the manager.
-constexpr const char *MATERIALS[]{"piece_white", "piece_black", "piece_capture", "piece_white_ghost", "piece_black_ghost", "piece_white_dim", "piece_black_dim", "square_light", "square_dark"};
+constexpr const char *MATERIALS[]{"piece_white", "piece_black", "piece_check", "piece_checkmate", "piece_white_ghost", "piece_black_ghost", "square_light", "square_dark", "square_light_move", "square_dark_move", "square_light_capture", "square_dark_capture"};
 /// @brief Rotation that points a camera's forward at a target. Forward is -Z of the rotation.
 auto LookAt(const glm::vec3 &from, const glm::vec3 &to) -> glm::quat {
   return glm::quatLookAt(glm::normalize(to - from), glm::vec3(.0f, 1.f, .0f));
@@ -28,6 +29,10 @@ Chess::Chess()
 auto Chess::Start() -> void {
   for (const auto *name : MATERIALS)
     LoadAsset<MaterialAsset>(ResolvePath(std::string("material/") + name + ".mat"), name);
+  // Before the scene, because `GameManager::Start` draws the board's labels out of this same atlas
+  // and scripts start after this function returns.
+  if (!SetOverlayFont(ResolvePath(CHESS_FONT)))
+    spdlog::warn("[Chess] No font, so the clocks and the board's labels will not be drawn");
   // The whole scene skeleton in one expression. `Entity` asks for scene scope, so each call
   // discards the entity frame the previous one left open -- which is what lets these run on after
   // one another without a closing call between them. See `Application::Game`.
@@ -57,6 +62,10 @@ auto Chess::Start() -> void {
       // There is no skybox here, so the flat fallback is all the ambient the scene gets. The
       // default of 0.03 is tuned for a scene that has one, and leaves this board's shadows black.
       lighting.ambientFallback = .18f;
+      // Lighter than the engine's default, because the clocks are drawn in the colours of the
+      // pieces and the dark one has to be dark against something. A mid ground is the only kind
+      // that can hold both: darker and Black's clock disappears into it, lighter and White's does.
+      lighting.backgroundColor = {.34f, .35f, .4f};
     })
     .Entity("GameManager")
     .Script<GameManager>();

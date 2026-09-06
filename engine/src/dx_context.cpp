@@ -39,7 +39,7 @@ auto DXContext::Initialize(GLFWwindow *window) -> bool {
   this->window = window;
   hwnd = glfwGetWin32Window(window);
   if (!hwnd) {
-    spdlog::error("[DX12] failed to obtain the native window handle.");
+    spdlog::error("[DX12] Failed to obtain the native window handle");
     return false;
   }
   glfwGetFramebufferSize(window, &width, &height);
@@ -49,22 +49,25 @@ auto DXContext::Initialize(GLFWwindow *window) -> bool {
     return false;
   if (!CreateFrameResources())
     return false;
-  spdlog::info("[DX12] initialised on {}", DescribeAdapter(adapter.Get()));
-  spdlog::info("[DX12] shader model {}, raytracing tier {}, resource binding tier {}", DXShaderModelToString(capabilities.shaderModel), DescribeRaytracingTier(capabilities.raytracingTier), static_cast<int>(capabilities.bindingTier));
-  spdlog::info("[DX12] bindless {}, inline raytracing {}", capabilities.SupportsBindless() ? "available" : "unavailable", capabilities.SupportsInlineRaytracing() ? "available" : "unavailable");
+  spdlog::info("[DX12] Initialised on {}", DescribeAdapter(adapter.Get()));
+  spdlog::info("[DX12] Shader model {}, raytracing tier {}, resource binding tier {}", DXShaderModelToString(capabilities.shaderModel), DescribeRaytracingTier(capabilities.raytracingTier), static_cast<int>(capabilities.bindingTier));
+  spdlog::info("[DX12] Bindless {}, inline raytracing {}", capabilities.SupportsBindless() ? "available" : "unavailable", capabilities.SupportsInlineRaytracing() ? "available" : "unavailable");
   if (!capabilities.SupportsBindless() || !capabilities.SupportsInlineRaytracing())
-    spdlog::warn("[DX12] the passes that trace rays need both; they will be skipped.");
-  spdlog::info("[DX12] tearing {}", tearingSupported ? "supported, and used when vsync is off" : "UNSUPPORTED - the compositor will pace presents to the refresh rate");
+    spdlog::warn("[DX12] The passes that trace rays need both; they will be skipped");
+  spdlog::info("[DX12] Tearing {}", tearingSupported ? "supported, and used when vsync is off" : "UNSUPPORTED - the compositor will pace presents to the refresh rate");
   return true;
 }
 auto DXContext::CreateDeviceAndQueue() -> bool {
   uint32_t factoryFlags = 0;
+  // Before anything else here: Device Removed Extended Data cannot be switched on once a device
+  // exists, so a run that did not ask for it at this point cannot be asked about it later.
+  DXEnableDeviceRemovedDiagnostics();
 #ifndef NDEBUG
   ComPtr<ID3D12Debug> debugController;
   if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
     debugController->EnableDebugLayer();
     factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
-    spdlog::info("[DX12] debug layer enabled.");
+    spdlog::info("[DX12] Debug layer enabled");
   }
 #endif
   if (DXFailed(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&factory)), "CreateDXGIFactory2"))
@@ -75,7 +78,7 @@ auto DXContext::CreateDeviceAndQueue() -> bool {
   // The same choice `DXDeviceAvailable` made before the backend was picked, so what runs is what
   // was probed rather than a second opinion about the same machine.
   if (!SelectDXDevice(factory.Get(), adapter, device)) {
-    spdlog::error("[DX12] no adapter supports feature level 11_0.");
+    spdlog::error("[DX12] No adapter supports feature level 11_0");
     return false;
   }
   capabilities = QueryDXCapabilities(device.Get());
@@ -138,7 +141,7 @@ auto DXContext::CreateFrameResources() -> bool {
   fenceValues.fill(0);
   fenceEvent = CreateEventA(nullptr, FALSE, FALSE, nullptr);
   if (!fenceEvent) {
-    spdlog::error("[DX12] failed to create the fence event.");
+    spdlog::error("[DX12] Failed to create the fence event");
     return false;
   }
   return true;
@@ -193,8 +196,14 @@ auto DXContext::Present() -> void {
   commandQueue->ExecuteCommandLists(1, lists);
   frameOpen = false;
   const auto flags = tearingSupported && !vsync ? DXGI_PRESENT_ALLOW_TEARING : 0u;
-  if (DXFailed(swapChain->Present(vsync ? 1u : 0u, flags), "SwapChain::Present"))
+  if (const auto presented = swapChain->Present(vsync ? 1u : 0u, flags); DXFailed(presented, "SwapChain::Present")) {
+    // Present is usually the first call to notice, because it is the first one that waits on the
+    // GPU rather than merely recording for it. Everything after this fails with the same code, so
+    // the reason is asked for here and once.
+    if (DXDeviceIsGone(presented))
+      DXReportDeviceRemoved(device.Get(), "Present");
     return;
+  }
   MoveToNextFrame();
 }
 auto DXContext::MoveToNextFrame() -> void {
@@ -277,7 +286,7 @@ auto DXContext::WaitForGPU() -> void {
 }
 auto DXContext::SetVSync(const bool enabled) -> void {
   vsync = enabled;
-  spdlog::info("[DX12] vsync {} (sync interval {})", enabled ? "on" : "off", enabled ? 1 : 0);
+  spdlog::info("[DX12] Vsync {} (sync interval {})", enabled ? "on" : "off", enabled ? 1 : 0);
 }
 auto DXContext::OnResize(const int newWidth, const int newHeight) -> void {
   if (!swapChain || newWidth <= 0 || newHeight <= 0)

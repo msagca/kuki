@@ -82,7 +82,7 @@ auto EngineConfig::Load() -> EngineConfig {
     return config;
   std::ifstream stream(path);
   if (!stream) {
-    spdlog::warn("[Config] could not open {}", path.string());
+    spdlog::warn("[Config] Could not open {}", path.string());
     return config;
   }
   try {
@@ -92,7 +92,7 @@ auto EngineConfig::Load() -> EngineConfig {
     if (const auto it = json.find("toneMapper"); it != json.end() && it->is_string())
       config.toneMapper = ParseToneMapper(it->get<std::string>(), config.toneMapper);
   } catch (const nlohmann::json::exception &exception) {
-    spdlog::warn("[Config] malformed {}, using defaults: {}", path.string(), exception.what());
+    spdlog::warn("[Config] Malformed {}, using defaults: {}", path.string(), exception.what());
     return {};
   }
   if (!IsAvailable(config.api)) {
@@ -108,11 +108,11 @@ auto EngineConfig::Save() const -> bool {
   json["toneMapper"] = EnumTraits<ToneMapper>::GetNames()[static_cast<size_t>(toneMapper)];
   std::ofstream stream(path);
   if (!stream) {
-    spdlog::error("[Config] could not write {}", path.string());
+    spdlog::error("[Config] Could not write {}", path.string());
     return false;
   }
   stream << json.dump(2) << '\n';
-  spdlog::info("[Config] saved {}", path.string());
+  spdlog::info("[Config] Saved {}", path.string());
   return true;
 }
 } // namespace kuki

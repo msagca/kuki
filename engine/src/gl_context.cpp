@@ -25,16 +25,16 @@ auto GLContext::Initialize(GLFWwindow *window) -> bool {
   this->window = window;
   glfwMakeContextCurrent(window);
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    spdlog::error("[GLContext] failed to initialize GLAD.");
+    spdlog::error("[OpenGL] Failed to initialize GLAD");
     return false;
   }
   auto version = reinterpret_cast<const char *>(glGetString(GL_VERSION));
-  spdlog::info("[OpenGL] version: {}", version);
+  spdlog::info("[OpenGL] Version: {}", version);
   int major, minor;
   glGetIntegerv(GL_MAJOR_VERSION, &major);
   glGetIntegerv(GL_MINOR_VERSION, &minor);
   if (major < GL_MAJOR || (major == GL_MAJOR && minor < GL_MINOR)) {
-    spdlog::error("[OpenGL] version {}.{} or higher is required.", GL_MAJOR, GL_MINOR);
+    spdlog::error("[OpenGL] Version {}.{} or higher is required", GL_MAJOR, GL_MINOR);
     return false;
   }
   glfwSwapInterval(0);

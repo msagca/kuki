@@ -516,7 +516,7 @@ auto Editor::LoadDefaultScene() -> void {
   CreateScene(sceneName);
   const auto scenePath = GetDescription().path / DEFAULT_SCENE_FILE;
   if (!SceneSerializer::Load(*this, scenePath)) {
-    spdlog::error("[Editor] failed to load default scene: {}", scenePath.string());
+    spdlog::error("[Editor] Failed to load default scene: {}", scenePath.string());
     return;
   }
   AttachCameraController();
@@ -758,7 +758,7 @@ auto Editor::DisplayAssetBrowser(const float previewSize) -> void {
   if (fileBrowser.HasSelected()) {
     const auto filepath = fileBrowser.GetSelected();
     if (!std::filesystem::exists(filepath))
-      spdlog::error("File does not exist: {}", filepath.string());
+      spdlog::error("[Editor] File does not exist: {}", filepath.string());
     else {
       const auto ext = filepath.extension();
       if (ext == ".vert" || ext == ".frag" || ext == ".comp")
@@ -971,7 +971,7 @@ auto Editor::DisplayHierarchy() -> void {
       const auto id = CreateEntity("Entity");
       context.state = EditorState::Rename;
       context.renamedEntityId = id;
-      spdlog::info("[Editor] created a new entity.");
+      spdlog::info("[Editor] Created a new entity");
       ImGui::CloseCurrentPopup();
     }
     if (ImGui::MenuItem("Paste", nullptr, false, !entityClipboardRoots.empty())) {
@@ -1008,13 +1008,13 @@ auto Editor::DisplayHierarchy() -> void {
 }
 auto Editor::SaveScene(const std::filesystem::path &path) -> void {
   if (SceneSerializer::Save(*this, path))
-    spdlog::info("[Editor] saved scene to: {}", path.string());
+    spdlog::info("[Editor] Saved scene to: {}", path.string());
   else
-    spdlog::error("[Editor] failed to save scene to: {}", path.string());
+    spdlog::error("[Editor] Failed to save scene to: {}", path.string());
 }
 auto Editor::LoadScene(const std::filesystem::path &path) -> void {
   if (!SceneSerializer::Load(*this, path)) {
-    spdlog::error("[Editor] failed to load scene from: {}", path.string());
+    spdlog::error("[Editor] Failed to load scene from: {}", path.string());
     return;
   }
   context.selectedEntities.clear();
@@ -1023,7 +1023,7 @@ auto Editor::LoadScene(const std::filesystem::path &path) -> void {
   displayedEntities.clear();
   AttachCameraController();
   AttachSettingsEntity();
-  spdlog::info("[Editor] loaded scene from: {}", path.string());
+  spdlog::info("[Editor] Loaded scene from: {}", path.string());
 }
 auto Editor::HasSceneSingleton(const ComponentType type) const -> bool {
   // Anywhere in the scene, not merely on the selected entity -- that is what makes it a property of
@@ -1082,7 +1082,7 @@ auto Editor::CopySelectedEntities() -> void {
     if (const auto clipboardId = scene->CopyEntityTo(id, entityClipboard); clipboardId)
       entityClipboardRoots.emplace_back(clipboardId, GetEntityParent(id));
   }
-  spdlog::info("[Editor] copied {} entities.", entityClipboardRoots.size());
+  spdlog::info("[Editor] Copied {} entities", entityClipboardRoots.size());
 }
 auto Editor::PasteEntities() -> void {
   auto scene = GetScene();
@@ -1099,7 +1099,7 @@ auto Editor::PasteEntities() -> void {
     context.selectedEntities.insert(newId);
     context.selectedEntityId = newId;
   }
-  spdlog::info("[Editor] pasted {} entities.", context.selectedEntities.size());
+  spdlog::info("[Editor] Pasted {} entities", context.selectedEntities.size());
 }
 static auto IsHandleComponent(const ComponentType type) -> bool {
   switch (type) {

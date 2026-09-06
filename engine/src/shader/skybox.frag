@@ -1,11 +1,11 @@
 #version 460 core
-const vec4 COLOR_GRAY = vec4(0.1, 0.1, 0.1, 1.0);
 const vec4 ENTITY_ID_INVALID = vec4(1.0, 1.0, 1.0, 1.0);
 in vec2 v_ndc;
 out vec4 color;
 layout(location = 1) out vec4 entityColor;
 uniform bool u_useSkybox;
 uniform bool u_useGradient;
+uniform vec3 u_background;
 uniform samplerCube u_skybox;
 layout(std140, binding = 0) uniform u_cameraTransform {
         mat4 view;
@@ -23,6 +23,6 @@ void main() {
                 vec3 gradient = mix(horizon, zenith, t);
                 color = vec4(gradient, 1.0);
         } else
-                color = COLOR_GRAY;
+                color = vec4(u_background, 1.0);
         entityColor = ENTITY_ID_INVALID;
 }

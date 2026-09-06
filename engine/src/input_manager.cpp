@@ -193,7 +193,7 @@ auto InputManager::PollKeyCapture() -> CaptureOutcome {
 auto InputManager::RegisterAction(int trigger, InputAction action, bool press) -> ActionID {
   const auto index = GLFWInputToIndex(trigger);
   if (index == 255) {
-    spdlog::warn("[InputManager] failed to register action: invalid key/button");
+    spdlog::warn("[InputManager] Failed to register action: invalid key/button");
     return InvalidActionID;
   }
   if (press && trigger >= GLFW_KEY_SPACE && trigger <= GLFW_KEY_GRAVE_ACCENT) {
@@ -208,7 +208,7 @@ auto InputManager::RegisterAction(int trigger, InputAction action, bool press) -
   registration.kind = press ? Registration::Kind::Press : Registration::Kind::Release;
   registration.mapIt = press ? pressActions.emplace(index, std::move(action)) : releaseActions.emplace(index, std::move(action));
   idToRegistration.emplace(id, std::move(registration));
-  spdlog::info("[InputManager] registered {} action for key/button: {}", press ? "press" : "release", GLFWKeyToString(trigger));
+  spdlog::info("[InputManager] Registered {} action for key/button: {}", press ? "press" : "release", GLFWKeyToString(trigger));
   return id;
 }
 auto InputManager::RegisterBinding(const std::string &name, const Trigger &trigger, std::string description) -> void {
@@ -284,10 +284,10 @@ auto InputManager::RegisterSequence(std::string sequence, InputAction action, st
   if (auto it = sequenceToId.find(sequence); it != sequenceToId.end())
     UnregisterAction(it->second);
   if (!keymap.Insert(sequence, std::move(action))) {
-    spdlog::warn("[InputManager] failed to register action for trigger: {}", sequence);
+    spdlog::warn("[InputManager] Failed to register action for trigger: {}", sequence);
     return InvalidActionID;
   }
-  spdlog::info("[InputManager] registered action for trigger: {}", sequence);
+  spdlog::info("[InputManager] Registered action for trigger: {}", sequence);
   const auto id = nextActionId++;
   Registration registration;
   registration.kind = Registration::Kind::Sequence;

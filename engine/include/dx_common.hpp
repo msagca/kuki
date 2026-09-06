@@ -49,6 +49,32 @@ inline constexpr uint32_t DX_FRAME_COUNT = 3;
 auto DXFailed(const HRESULT, const std::string &) -> bool;
 /// @brief Formats an HRESULT as an 0x-prefixed code plus the system message, for logging.
 auto DXResultToString(const HRESULT) -> std::string;
+/// @brief Whether an HRESULT means the device is gone rather than that one call went wrong.
+///
+/// Worth telling apart because nothing after it can succeed: once the device is removed every
+/// subsequent call fails with the same code, so a log fills with consequences of one cause. The
+/// first one to notice is the one worth asking `GetDeviceRemovedReason`.
+auto DXDeviceIsGone(const HRESULT) -> bool;
+/// @brief Logs why the device was removed, and the GPU's own account of it where that is enabled.
+///
+/// `GetDeviceRemovedReason` gives the class of failure -- a hang, a page fault, a driver upgrade
+/// underneath a running process. That is usually enough to say whose problem it is, and it costs
+/// nothing to ask, so it is asked whenever a call fails with a device-removed code.
+///
+/// The GPU's own account -- which draw was in flight, what address faulted -- comes from Device
+/// Removed Extended Data, and that has to be switched on before the device exists. See
+/// `DXEnableDeviceRemovedDiagnostics`.
+auto DXReportDeviceRemoved(ID3D12Device *, const std::string &) -> void;
+/// @brief Turns on Device Removed Extended Data, if this run has asked for it.
+///
+/// Off unless `KUKI_DX_DIAGNOSTICS` is set in the environment, because auto-breadcrumbs make the
+/// driver record every draw and that is not a cost to pay on every run of every game. Set it when
+/// chasing a device removal and the next one names the draw it died on.
+///
+/// Must be called before the device is created; there is no way to switch it on afterwards, which
+/// is the whole difficulty with diagnosing this class of bug and the reason it is a switch rather
+/// than something the crash handler can turn on for itself.
+auto DXEnableDeviceRemovedDiagnostics() -> bool;
 /// @brief What the adapter and its driver can do beyond the feature level the device was created at.
 ///
 /// A Direct3D 12 device is created at a feature level and then interrogated for everything else,

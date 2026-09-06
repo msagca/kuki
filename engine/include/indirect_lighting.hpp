@@ -1,4 +1,5 @@
 #pragma once
+#include <glm/ext/vector_float3.hpp>
 #include <cstdint>
 namespace kuki {
 /// @brief Every value the indirect lighting is shaped by, as a component on an entity.
@@ -64,6 +65,20 @@ struct IndirectLighting {
   /// setting one of them up. One of the two values every backend reads, being the one case that
   /// needs no probe field and no sky to arrive by.
   float ambientFallback{.03f};
+  /// @brief What fills the frame behind everything when the scene has no skybox.
+  ///
+  /// Here rather than on the camera because it is the other half of `ambientFallback`: with no sky
+  /// to sample, this is what a scene is standing in front of and that is the light it gets from
+  /// standing there. Two answers to the same absence, and a scene that changes one usually wants
+  /// to change the other.
+  ///
+  /// Linear, and it goes through the tone mapping curve like everything else in the frame -- so
+  /// the value set here is not the value that reaches the display, and a background is worth
+  /// picking by looking at it rather than by naming a colour.
+  ///
+  /// The default is the grey this was hard-coded to before it could be set at all, so a scene that
+  /// never touches it renders exactly what it rendered.
+  glm::vec3 backgroundColor{.1f, .1f, .1f};
   /// @brief A step off the surface before the field is sampled, as a fraction of the leaf spacing.
   ///
   /// `PROBE_SURFACE_BIAS`. Read both by the shading pass and by the trace's own sampling of the

@@ -91,7 +91,7 @@ auto ExtractDominantLight(const Texture &texture, const float minimumContrast) -
     return std::nullopt;
   const auto contrast = peakLuminance / mean;
   if (contrast < minimumContrast) {
-    spdlog::info("[SkyboxLight] no dominant light: peak is only {:.2f}x the average, below the {:.2f}x threshold", contrast, minimumContrast);
+    spdlog::info("[SkyboxLight] No dominant light: peak is only {:.2f}x the average, below the {:.2f}x threshold", contrast, minimumContrast);
     return std::nullopt;
   }
   const auto binColumn = peakIndex % BIN_COLUMNS;
@@ -104,7 +104,7 @@ auto ExtractDominantLight(const Texture &texture, const float minimumContrast) -
   const auto peakColor = bins[peakIndex].color / static_cast<float>(bins[peakIndex].weight);
   result.color = peakLuminance > .0f ? peakColor / peakLuminance : glm::vec3(1.f);
   result.contrast = contrast;
-  spdlog::info("[SkyboxLight] dominant light at {:.2f}x average, direction ({:.2f}, {:.2f}, {:.2f})", contrast, result.direction.x, result.direction.y, result.direction.z);
+  spdlog::info("[SkyboxLight] Dominant light at {:.2f}x average, direction ({:.2f}, {:.2f}, {:.2f})", contrast, result.direction.x, result.direction.y, result.direction.z);
   return result;
 }
 } // namespace kuki
