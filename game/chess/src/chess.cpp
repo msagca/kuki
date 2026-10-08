@@ -121,12 +121,22 @@ auto Chess::Start() -> void {
     //
     // The wind is slow enough that the deck reads as weather rather than as a moving texture: at
     // twelve metres a second a cloud takes a couple of minutes to cross the frame.
+    //
+    // Lighter and thinner than the defaults, which are tuned for a cumulus field seen from below.
+    // From above, at the default extinction and cover, the deck closed into one slab whose tops
+    // were a dull grey: the sun ray from each sample crossed so much cloud that little of it
+    // survived, and the powder term darkened every edge on top of that. Less cover opens gaps
+    // between the clouds, half the extinction lets the sun reach further in, a weaker powder term
+    // stops the edges going bruised, and more of the sky's fill brightens the shaded sides.
     .With<VolumetricClouds>([](VolumetricClouds &clouds) {
       clouds.bottomAltitude = 1.f;
       clouds.topAltitude = 2.6f;
       clouds.shapeScale = 9.f;
       clouds.detailScale = .8f;
-      clouds.coverage = .5f;
+      clouds.coverage = .4f;
+      clouds.density = 6.f;
+      clouds.powder = .3f;
+      clouds.ambient = 1.3f;
       clouds.windSpeed = .012f;
     })
     // Thin. The board is in clear air two kilometres up, so almost nothing here is the scene's own
