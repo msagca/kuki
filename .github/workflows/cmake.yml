@@ -8,11 +8,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Windows only for now. The Linux build has not been checked against the GPU probe octree
+        # and the sky, cloud and fog work; put `ubuntu-latest` back here, with its include entry
+        # (cc: clang, cxx: clang++), once it has.
+        os: [windows-latest]
         include:
-          - os: ubuntu-latest
-            cc: clang
-            cxx: clang++
           - os: windows-latest
             cc: cl
             cxx: cl
