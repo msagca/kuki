@@ -184,6 +184,143 @@ struct DXIBLConstants {
   uint32_t faceSize{};
   uint32_t padding{};
 };
+/// @brief Views the skybox pass binds: the sky cubemap, and the sun's transmitted colour.
+inline constexpr uint32_t SKYBOX_SRV_SLOTS = 2;
+/// @brief Slots the atmosphere root signature binds: the two tables, and the two write targets.
+inline constexpr uint32_t ATMOSPHERE_SRV_SLOTS = 2;
+inline constexpr uint32_t ATMOSPHERE_UAV_SLOTS = 2;
+/// @brief Root constants describing an atmosphere, for all three of its compute passes.
+///
+/// A mirror of `AtmosphereConstants` in `atmosphere.hlsl`, and the field order is load-bearing: the
+/// layout is arranged so every `float3` starts on a sixteen byte boundary, which is what stops HLSL
+/// inserting padding the C++ side does not have. Seven `float4` rows, twenty-eight dwords, no gaps.
+/// Reordering these to read more nicely is how the sky ends up with somebody's ozone width in its
+/// sun direction.
+///
+/// Separate from `DXIBLConstants` rather than bolted onto it, even though these passes sit in the
+/// middle of that chain. Twenty-eight dwords in every image-based lighting dispatch would be paid
+/// by twenty-one dispatches that read eight of them, and the two sets have nothing in common beyond
+/// running on the compute queue.
+struct DXAtmosphereConstants {
+  float bottomRadius{};
+  float topRadius{};
+  float rayleighScaleHeight{};
+  float mieScaleHeight{};
+  float rayleighScattering[3]{};
+  float mieScattering{};
+  float mieExtinction{};
+  float mieAnisotropy{};
+  float groundAlbedo{};
+  float multiscatterStrength{};
+  float ozoneAbsorption[3]{};
+  float ozoneCenter{};
+  float sunDirection[3]{};
+  float ozoneWidth{};
+  float sunIntensity{};
+  float viewAltitude{};
+  uint32_t marchSteps{};
+  uint32_t width{};
+  uint32_t height{};
+  uint32_t size{};
+  uint32_t padding[2]{};
+};
+static_assert(sizeof(DXAtmosphereConstants) == 112, "DXAtmosphereConstants must stay seven float4 rows to match the HLSL cbuffer");
+/// @brief Views the cloud pipelines bind: the two noise volumes, the sun table, the sky, the depth.
+inline constexpr uint32_t CLOUD_SRV_SLOTS = 5;
+/// @brief What they write: a noise volume while it is being built, and the sun transmittance texel.
+inline constexpr uint32_t CLOUD_UAV_SLOTS = 2;
+/// @brief Views the fog pass binds. See `volumetric.hlsl` for what each of the seven is.
+inline constexpr uint32_t VOLUMETRIC_SRV_SLOTS = 7;
+/// @brief Root constants describing a cloud layer, for the march and for the two noise builds.
+///
+/// A mirror of `CloudConstants` in `clouds.hlsl`, and the field order is load-bearing in exactly the
+/// way `DXAtmosphereConstants` above is: every `float3` starts on a sixteen byte boundary, so HLSL
+/// inserts no padding the C++ side does not also have. Twelve `float4` rows, forty-eight dwords.
+///
+/// One block for all four entry points rather than one each, because three of the four are the same
+/// question asked of the same layer -- what the noise looks like, what the sun has left after it,
+/// and what the camera sees of it -- and a build that disagreed with the march about the layer's
+/// altitudes would shade a cloud that is not where the cloud is.
+struct DXCloudConstants {
+  float inverseViewProjection[16]{};
+  float sunDirection[3]{};
+  float sunIntensity{};
+  /// @brief How far the layer has drifted, in kilometres, already multiplied out on the processor.
+  ///
+  /// Sent as a displacement rather than as a direction and a speed with the time beside it, so that
+  /// the shader adds a vector instead of multiplying one out per sample. It also keeps the growing
+  /// quantity on the side that has a double to hold it: at a hundredth of a kilometre a second this
+  /// passes a float's ability to resolve a metre after about a day of running, and the accumulation
+  /// happens in `DXRenderer` where that can be noticed.
+  float windOffset[3]{};
+  float time{};
+  float bottomRadius{};
+  float topRadius{};
+  float viewAltitude{};
+  /// @brief Kilometres one unit of the scaled atmosphere is, for turning a position into a noise
+  /// coordinate. The planet's radius, since everything is divided through by it.
+  float kilometres{};
+  float cloudBottom{};
+  float cloudTop{};
+  float coverage{};
+  float density{};
+  float shapeScale{};
+  float detailScale{};
+  float detailStrength{};
+  float anisotropy{};
+  float backscatter{};
+  float powder{};
+  float ambient{};
+  float scatteringScale{};
+  float shadowStrength{};
+  uint32_t steps{};
+  uint32_t lightSteps{};
+  uint32_t noiseSize{};
+  /// @brief Extents of the transmittance table, which this reads through the same mapping the sky
+  /// was marched with. Not the cloud buffer's size -- see the note in `DXRenderer::DispatchClouds`.
+  uint32_t width{};
+  uint32_t height{};
+  uint32_t frame{};
+  uint32_t padding{};
+};
+static_assert(sizeof(DXCloudConstants) == 192, "DXCloudConstants must stay twelve float4 rows to match the HLSL cbuffer");
+/// @brief Root constants for the volumetric fog pass. Twelve rows, on the same terms as above.
+///
+/// Everything about the lights is absent, and deliberately: this pass binds the shading pass's own
+/// `DXFrameConstants` as a second constant buffer and reads the lights and their shadow matrices
+/// straight out of it. A second copy would be a second gather of the same scene per frame, and two
+/// answers to the question of where a light is.
+struct DXVolumetricConstants {
+  float inverseViewProjection[16]{};
+  float cameraPosition[3]{};
+  float maxDistance{};
+  float albedo[3]{};
+  float anisotropy{};
+  float ambient[3]{};
+  float lightScale{};
+  float density{};
+  float baseHeight{};
+  float heightFalloff{};
+  float aerialPerspective{};
+  /// @brief The atmosphere's medium evaluated once at the scene's own altitude, per kilometre.
+  ///
+  /// Constants rather than a march, because a scene is tens of units across where the Rayleigh scale
+  /// height is eight kilometres: the medium does not measurably change between the near plane and
+  /// the far one, which turns the integral through it into one that can be written down. Evaluated
+  /// on the processor from `AtmosphereSky`, whose density profile is two exponentials and a tent.
+  float rayleighScattering[3]{};
+  float mieScattering{};
+  float extinction[3]{};
+  float mieAnisotropy{};
+  uint32_t steps{};
+  uint32_t frame{};
+  uint32_t hasAtmosphere{};
+  uint32_t hasClouds{};
+  float kilometresPerUnit{};
+  float sunIntensity{};
+  float padding[2]{};
+};
+static_assert(sizeof(DXVolumetricConstants) == 192, "DXVolumetricConstants must stay twelve float4 rows to match the HLSL cbuffer");
 /// @brief Root constants for the skybox pass.
 ///
 /// The inverse view-projection turns a screen-space position back into a world-space view ray.
@@ -196,6 +333,17 @@ struct DXSkyboxConstants {
   /// @brief Carries `background` onto the sixteen-byte boundary an HLSL `float4` has to start on.
   uint32_t padding[2]{};
   float background[4]{};
+  /// @brief Direction towards the sun, and the cosine of the angular radius of its disc.
+  ///
+  /// The disc is drawn here rather than written into the sky cubemap, and the reason is not its
+  /// size. The cubemap is projected to spherical harmonics and prefiltered for reflections, and
+  /// both of those are how the sky lights the scene -- but the scene already has a directional
+  /// light standing for the sun. A disc in the cubemap would be the same sun counted twice.
+  float sunDirection[3]{};
+  float sunCosRadius{};
+  /// @brief What the disc is worth, after the air between the viewer and space has taken its share.
+  float sunRadiance[3]{};
+  uint32_t useSunDisc{};
 };
 /// @brief Root constants for the compute shader that traces a grid of rays to check the scene.
 ///
@@ -383,6 +531,28 @@ public:
   /// Keyed on format and sample count like the scene pipeline, because it draws into the scene's
   /// own render targets and a pipeline whose output description disagrees with them is rejected.
   auto GetProbeDebugPipeline(ID3D12Device *, const DXGI_FORMAT, const uint32_t) -> const DXPipeline *;
+  /// @brief Returns one of the atmosphere compute pipelines, building it once.
+  ///
+  /// Its own root signature rather than the shared compute one, because what it binds is a different
+  /// shape: two tables it samples with a linear filter and two it writes, one of them a plain 2D
+  /// table and one a cube face array. Plain Shader Model 6.0 -- it marches and samples and needs
+  /// nothing later.
+  ///
+  /// @param entryPoint `CSTransmittance`, `CSMultiscatter` or `CSSkyToCubemap`.
+  auto GetAtmospherePipeline(ID3D12Device *, const char *) -> const DXPipeline *;
+  /// @brief Returns one of the cloud compute pipelines, building it once.
+  ///
+  /// Shares its root signature with the pipeline below, which D3D12 permits and which is what should
+  /// happen here: the noise builds, the sun transmittance texel and the march are all described by
+  /// the same block of constants, and giving them separate signatures would be two layouts to keep
+  /// in step for no gain.
+  ///
+  /// @param entryPoint `CSShapeNoise`, `CSDetailNoise` or `CSSunTransmittance`.
+  auto GetCloudComputePipeline(ID3D12Device *, const char *) -> const DXPipeline *;
+  /// @brief Returns the pipeline that marches the cloud layer, one per output format.
+  auto GetCloudPipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
+  /// @brief Returns the pipeline that scatters the lights out of the air, one per output format.
+  auto GetVolumetricPipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
   auto Clear() -> void;
 private:
   std::unordered_map<uint64_t, DXPipeline> pipelines;
@@ -394,12 +564,19 @@ private:
   ComPtr<ID3D12RootSignature> shadowRootSignature;
   ComPtr<ID3D12RootSignature> skyboxRootSignature;
   ComPtr<ID3D12RootSignature> computeRootSignature;
+  ComPtr<ID3D12RootSignature> atmosphereRootSignature;
+  ComPtr<ID3D12RootSignature> cloudRootSignature;
+  ComPtr<ID3D12RootSignature> volumetricRootSignature;
   ComPtr<ID3D12RootSignature> pickRootSignature;
   ComPtr<ID3D12RootSignature> rayProbeRootSignature;
   ComPtr<ID3D12RootSignature> probeAuditRootSignature;
   ComPtr<ID3D12RootSignature> probeTraceRootSignature;
   ComPtr<ID3D12RootSignature> probeDebugRootSignature;
   auto GetSceneRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  /// @brief Root signature shared by every cloud pipeline, compute and graphics alike.
+  auto GetCloudRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  /// @brief Root signature for the fog pass: its own constants, the shading pass's, and seven views.
+  auto GetVolumetricRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature shared by every post pass: one source texture plus a scalar parameter.
   auto GetPostRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the outline pass: source colour, entity ids, and the selected set.
@@ -412,6 +589,7 @@ private:
   auto GetSkyboxRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature shared by every image-based lighting compute shader.
   auto GetComputeRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  auto GetAtmosphereRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the pick: the texel to read, the id buffer, and a result to write.
   ///
   /// The id buffer goes through a table because it is a texture and already has a view in the shared

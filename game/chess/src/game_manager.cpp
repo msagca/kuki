@@ -9,6 +9,8 @@
 #include <font.hpp>
 #include <game_builder.hpp>
 #include <game_manager.hpp>
+#include <glm/common.hpp>
+#include <glm/exponential.hpp>
 #include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
@@ -39,29 +41,30 @@ constexpr glm::vec3 ORBIT_CENTER{.0f, .0f, .0f};
 constexpr auto ORBIT_SPEED = .005f;
 /// @brief Mesh, footprint and standing height for each kind of piece.
 ///
-/// Built from the engine's primitives rather than from models, so the game needs no art to run
-/// and no art to package. Rank is conveyed by height, which is what makes a board of cylinders
-/// and cubes readable at a glance.
+/// The meshes are the Blender models staged under `model/`, built to the board's units and standing
+/// on their origins, so the radius and height here are the models' own -- read off the exports,
+/// and needing to change with them. They bound the piece for `UpdateOcclusion` and nothing else:
+/// the drawn size is the model's, at unit scale. Rank still reads as height, king tallest.
 struct PieceShape {
   const char *mesh;
-  glm::vec3 scale;
+  float radius;
+  float height;
 };
 auto ShapeOf(const PieceType type) -> PieceShape {
   switch (type) {
   case PieceType::Pawn:
-    return {"Sphere", {.55f, .55f, .55f}};
+    return {"pawn", .27f, .6f};
   case PieceType::Knight:
-    return {"Cube", {.4f, .75f, .6f}};
+    return {"knight", .3f, .87f};
   case PieceType::Bishop:
-    return {"Cylinder", {.5f, .95f, .5f}};
+    return {"bishop", .29f, .95f};
   case PieceType::Rook:
-    return {"Cube", {.6f, .7f, .6f}};
+    return {"rook", .3f, .76f};
   case PieceType::Queen:
-    return {"Cylinder", {.62f, 1.15f, .62f}};
+    return {"queen", .32f, 1.14f};
   case PieceType::King:
-    return {"Cylinder", {.66f, 1.35f, .66f}};
   default:
-    return {"Cube", {.5f, .5f, .5f}};
+    return {"king", .33f, 1.36f};
   }
 }
 /// @brief Whether an upright cylinder stands between the eye and a point.
@@ -108,42 +111,128 @@ auto LookAt(const glm::vec3 &from, const glm::vec3 &to) -> glm::quat {
   return glm::quatLookAt(glm::normalize(to - from), glm::vec3(.0f, 1.f, .0f));
 }
 
-/// @brief What each side's clock is drawn in, which is what its pieces are drawn in.
+/// @brief Colours the code draws with: the board's own blue, for the chosen time control, and the
+/// red its squares take when something can be captured there, for a clock that is running out.
 ///
-/// The board's own blue and the red its squares take when something can be captured there, so that
-/// a chosen option and a board square are the same blue by construction rather than by two people
-/// picking similar numbers. The greens and creams are not here because nothing in code draws with
-/// them; they live in the `.mat` files alone.
-///
-/// The `.mat` files carry these same numbers as albedo. They are data and cannot include a header,
-/// so a colour changed here has to be changed there too -- which is the whole reason this block is
-/// one block: the piece colours below had already drifted a repaint out of date before it was.
+/// The `.mat` files carry the board's numbers as albedo. They are data and cannot include a header,
+/// so a colour changed here has to be changed there too.
 ///
 /// Worth knowing when reading the values: a material's albedo is lit and tone mapped before anyone
 /// sees it, while overlay text is written straight onto the finished picture. The same number
 /// therefore arrives lighter on the board than it does in a caption, which is why the text is
 /// carried at less than full opacity rather than at a lightened shade of its own.
-constexpr glm::vec3 BOARD_BLUE{.2f, .3f, .52f};
 constexpr glm::vec3 HIGHLIGHT_RED{.66f, .16f, .14f};
-constexpr glm::vec3 PIECE_WHITE{.92f, .9f, .86f};
-constexpr glm::vec3 PIECE_BLACK{.11f, .11f, .13f};
+/// @brief The green a square showing a legal move is mixed toward, and how far.
+///
+/// Mixed rather than flat, because a flat green over both shades would say where the piece may go
+/// and take the board's pattern away while it said it, which is most of what tells one square from
+/// the next. These are the numbers the blue theme's `.mat` files were drawn with before themes
+/// existed, worked back out of them -- so the blue board looks exactly as it did.
+constexpr glm::vec3 MOVE_GREEN{.24f, .58f, .28f};
+constexpr auto HIGHLIGHT_MIX = .7f;
+/// @brief A look for the board: its two shades of square and its frame.
+///
+/// The chosen time option is drawn in the theme's dark shade, so the settings and the board agree
+/// by construction rather than by two people picking similar numbers.
+struct BoardTheme {
+  const char *key;
+  const char *name;
+  glm::vec3 light;
+  glm::vec3 dark;
+  glm::vec3 frame;
+  float roughness;
+};
+/// @brief The themes on offer, first being the default.
+///
+/// Blue is the board the game shipped with. Walnut is a club board: maple and walnut, with a frame
+/// in the darker wood and a satin finish -- flat colour, since a `.mat` cannot carry the grain.
+/// Slate is a stone board, cool and polished, and Violet is there for a look none of the others
+/// gives. Green, the commonest tournament colour, is missing on purpose: a move is shown by mixing
+/// toward green, and on a green board that says nothing.
+constexpr BoardTheme THEMES[]{
+  {"blue", "Blue", {.78f, .74f, .62f}, {.2f, .3f, .52f}, {.23f, .14f, .08f}, .8f},
+  {"walnut", "Walnut", {.8f, .62f, .4f}, {.42f, .24f, .12f}, {.34f, .19f, .09f}, .55f},
+  {"slate", "Slate", {.8f, .8f, .78f}, {.3f, .31f, .34f}, {.12f, .12f, .13f}, .35f},
+  {"violet", "Violet", {.8f, .76f, .84f}, {.42f, .3f, .55f}, {.18f, .13f, .22f}, .7f},
+};
+/// @brief Name of a theme's material for one shade of square, plain or highlighted.
+///
+/// `kind` is empty for the plain square, or `_move` or `_capture`.
+auto SquareMaterial(const BoardTheme &theme, const bool light, const std::string_view kind) -> std::string {
+  return std::string("square_") + theme.key + (light ? "_light" : "_dark") + std::string(kind);
+}
+auto FrameMaterial(const BoardTheme &theme) -> std::string {
+  return std::string("board_frame_") + theme.key;
+}
+/// @brief Names of a theme's clock materials: the body in the frame's colour and the screens and the
+/// rocker in the light shade, so the clock reads as a piece of the same set. The light shade
+/// rather than the dark for the rocker because in some themes the dark square and the frame are
+/// near the same colour, and the rocker is the part that has to be seen to move.
+auto ClockMaterial(const BoardTheme &theme, const std::string_view part) -> std::string {
+  return std::string("clock_") + std::string(part) + "_" + theme.key;
+}
+/// @brief A material's albedo as an overlay colour.
+///
+/// The overlay writes its colours straight onto the finished picture, while the board's albedo is
+/// linear and arrives lit and tone mapped. Taken to the display's curve, a swatch reads as the
+/// shade the board is drawn in rather than as a darker cousin of it.
+auto Swatch(const glm::vec3 &albedo) -> glm::vec4 {
+  return {glm::pow(albedo, glm::vec3(1.f / 2.2f)), 1.f};
+}
+/// @brief What the clock's figures are printed in, running and waiting.
+///
+/// Printed rather than lit: albedo and not emission, like ink on a reflective display. The screens
+/// they sit on are the theme's light shade, so these are neutral and read on any of them. Near black
+/// for the time that is counting, a mid grey for the one that is waiting -- both times are worth
+/// knowing at a glance, and it is the pair being unequal that says whose move it is. The board's
+/// capture red, darkened to ink, once a time is low.
+constexpr glm::vec3 CLOCK_INK{.02f, .02f, .02f};
+constexpr glm::vec3 CLOCK_INK_IDLE{.34f, .34f, .34f};
+constexpr glm::vec3 CLOCK_INK_LOW{HIGHLIGHT_RED * .7f};
+constexpr glm::vec3 CLOCK_INK_LOW_IDLE{.4f, .24f, .2f};
 /// @brief The option in force, the one under the pointer, and the ones merely on offer.
 ///
 /// Hover is the chosen blue at less than full strength rather than a colour of its own, so that
 /// pointing at an option previews what choosing it would look like instead of introducing a third
 /// thing to learn.
-constexpr glm::vec4 OPTION_ACTIVE{BOARD_BLUE, 1.f};
-constexpr glm::vec4 OPTION_HOVER{BOARD_BLUE, .7f};
 constexpr glm::vec4 OPTION_IDLE{1.f, 1.f, 1.f, .35f};
 /// @brief Index into anything kept one per side, White first.
 auto SideIndex(const PieceColor color) -> size_t {
   return color == PieceColor::White ? 0 : 1;
 }
-/// @brief A clock as minutes and seconds, rounded up so that it reads 0:00 only once it is spent.
-auto ClockText(const float seconds) -> std::string {
-  const auto total = static_cast<int>(std::ceil(std::max(seconds, .0f)));
+/// @brief A clock as the characters on its screen, `MM:SS`, rounded up so that it reads 0:00 only
+/// once it is spent. The tens of minutes are a space below ten, as a clock's display leaves them.
+///
+/// Capped at 99:59, which is all five slots can say. The longest control on offer is half an hour,
+/// so only an increment collected over a very long game could reach it.
+auto ClockGlyphs(const float seconds) -> std::array<char, 5> {
+  const auto total = std::min(static_cast<int>(std::ceil(std::max(seconds, .0f))), 99 * 60 + 59);
+  const auto minutes = total / 60;
   const auto rest = total % 60;
-  return std::to_string(total / 60) + (rest < 10 ? ":0" : ":") + std::to_string(rest);
+  return {minutes >= 10 ? static_cast<char>('0' + minutes / 10) : ' ', static_cast<char>('0' + minutes % 10), ':', static_cast<char>('0' + rest / 10), static_cast<char>('0' + rest % 10)};
+}
+/// @brief Name of the glyph mesh a clock slot shows for a character.
+auto GlyphName(const char c) -> std::string {
+  return std::string("clock_glyph_") + c;
+}
+/// @brief Registers a material that draws text cut from the overlay's atlas.
+///
+/// A cutout rather than a blend. The atlas is white everywhere with the glyph in its alpha, so
+/// what is wanted is the ink and nothing else -- and a cutout writes depth and needs no sorting,
+/// where a blended quad would have to be drawn after everything opaque.
+auto AddTextMaterial(Application &app, const AssetID atlasId, const std::string &name, const glm::vec4 &albedo, const glm::vec3 &emissive) -> AssetID {
+  const auto materialId = MakeBuiltInAssetID("chess/" + name);
+  auto materialAsset = std::make_unique<MaterialAsset>(materialId);
+  materialAsset->type = MaterialType::Lit;
+  materialAsset->fallback.albedo = albedo;
+  materialAsset->fallback.emissive = {emissive, 1.f};
+  materialAsset->fallback.metalness = .0f;
+  materialAsset->fallback.roughness = .9f;
+  materialAsset->fallback.alphaMode = AlphaMode::Mask;
+  materialAsset->fallback.alphaCutoff = .5f;
+  materialAsset->textures.push_back(atlasId);
+  app.AddAsset(std::move(materialAsset), name);
+  return materialId;
 }
 auto FlagText(const size_t side) -> std::string {
   return side == 0 ? "White is out of time, Black wins" : "Black is out of time, White wins";
@@ -234,6 +323,13 @@ auto GameManager::CloneTo(EntityManager &entityManager, const EntityID id) const
   script->board = board;
   script->squares = {};
   script->labels = {};
+  script->frame = {};
+  script->clock = {};
+  script->faces = {};
+  script->clockBody = {};
+  script->clockScreen = {};
+  script->rocker = {};
+  script->rockerAngle = .0f;
   script->clocks = {StartSeconds(), StartSeconds()};
   script->timeOption = timeOption;
   script->incrementOption = incrementOption;
@@ -268,7 +364,10 @@ auto GameManager::Start(Application &application) -> void {
     return;
   LoadSettings(application);
   clocks = {StartSeconds(), StartSeconds()};
+  CreateThemeMaterials();
+  CreateFrame();
   CreateLabels();
+  CreateClock();
   // Before `Refresh`, which draws the pieces and reads the king's colour off `state`.
   UpdateStanding();
   UpdateTitle();
@@ -288,8 +387,9 @@ auto GameManager::Update(Application &application) -> void {
   if (orbiting)
     Orbit(application);
   UpdateClocks(application);
-  DrawClocks(application);
+  UpdateClock(application);
   DrawOptions(application);
+  DrawThemes(application);
   // Which pieces are in the way depends on where the camera is and not only on what is selected, so
   // it is re-checked every frame: turning the board takes a piece out of the way as surely as
   // taking it does. Nothing is redrawn unless the answer has actually changed.
@@ -314,11 +414,16 @@ auto GameManager::LoadSettings(Application &application) -> void {
   for (size_t i = 0; i < std::size(INCREMENT_OPTIONS); ++i)
     if (INCREMENT_OPTIONS[i] == increment)
       incrementOption = i;
+  const auto theme = preferences.GetString(PREF_THEME, THEMES[themeOption].key);
+  for (size_t i = 0; i < std::size(THEMES); ++i)
+    if (theme == THEMES[i].key)
+      themeOption = i;
 }
 auto GameManager::SaveSettings(Application &application) -> void {
   auto &preferences = application.GetPreferences();
   preferences.Set(PREF_MINUTES, TIME_OPTIONS[timeOption]);
   preferences.Set(PREF_INCREMENT, INCREMENT_OPTIONS[incrementOption]);
+  preferences.Set(PREF_THEME, std::string(THEMES[themeOption].key));
 }
 auto GameManager::PushMove(std::string text) -> void {
   // Oldest first, so the list reads downward the way a game score does. Shifting three strings a
@@ -336,6 +441,8 @@ auto GameManager::DrawOptions(Application &application) -> void {
   // frame put things -- which is what the pointer is actually over, since that is the frame on
   // screen while it is being pointed at.
   const auto hovered = application.PickOverlay(application.GetMousePosition());
+  const glm::vec4 active{THEMES[themeOption].dark, 1.f};
+  const glm::vec4 hover{THEMES[themeOption].dark, .7f};
   const auto Row = [&](const auto &options, const size_t chosen, const int idBase, const char *suffix, const bool plus, const float y) {
     auto x = OPTION_MARGIN;
     for (size_t i = 0; i < std::size(options); ++i) {
@@ -346,8 +453,8 @@ auto GameManager::DrawOptions(Application &application) -> void {
       if (!font.Bounds(text, min, max))
         continue;
       const auto id = idBase + static_cast<int>(i);
-      const auto tint = i == chosen ? OPTION_ACTIVE : id == hovered ? OPTION_HOVER
-                                                                    : OPTION_IDLE;
+      const auto tint = i == chosen ? active : id == hovered ? hover
+                                                             : OPTION_IDLE;
       overlay.DrawText(text, {x, y}, OPTION_TEXT_SIZE, tint, TextAnchor::TopLeft, id);
       x += (max.x - min.x) * OPTION_TEXT_SIZE + OPTION_SPACING;
     }
@@ -373,7 +480,19 @@ auto GameManager::OnOptionPressed(const int id) -> bool {
     }
     return true;
   };
-  return Choose(TIME_OPTION_ID, std::size(TIME_OPTIONS), timeOption) || Choose(INCREMENT_OPTION_ID, std::size(INCREMENT_OPTIONS), incrementOption);
+  if (Choose(TIME_OPTION_ID, std::size(TIME_OPTIONS), timeOption) || Choose(INCREMENT_OPTION_ID, std::size(INCREMENT_OPTIONS), incrementOption))
+    return true;
+  // A theme is not a reason to throw the game away either, so this one is applied in place.
+  const auto theme = static_cast<size_t>(id - THEME_OPTION_ID);
+  if (id < THEME_OPTION_ID || theme >= std::size(THEMES))
+    return false;
+  if (theme != themeOption) {
+    themeOption = theme;
+    if (auto *app = GetApp(); app)
+      SaveSettings(*app);
+    ApplyTheme();
+  }
+  return true;
 }
 auto GameManager::UpdateClocks(Application &application) -> void {
   if (!playable)
@@ -389,32 +508,64 @@ auto GameManager::UpdateClocks(Application &application) -> void {
   Select(-1);
   spdlog::info("[Chess] {}", FlagText(side));
 }
-auto GameManager::DrawClocks(Application &application) -> void {
-  auto &overlay = application.GetOverlay();
-  const auto Draw = [&](const PieceColor color, const float y) {
-    const auto side = SideIndex(color);
-    const auto remaining = clocks[side];
-    const auto running = playable && color == board.ToMove();
-    // The side's own colour, so a clock needs no label to say whose it is: the light one belongs to
-    // the light pieces. Red is the one thing allowed to override that, because a clock about to run
-    // out has something to say that its owner's colour cannot.
-    const auto own = color == PieceColor::White ? PIECE_WHITE : PIECE_BLACK;
-    const auto tint = remaining <= CLOCK_LOW ? HIGHLIGHT_RED : own;
-    // Faded once it is not this side's move, which is the turn indicator. Not faded to nothing --
-    // both clocks stay readable, and it is the pair being unequal that says whose move it is.
-    // The idle clock is dimmed rather than half dissolved. It has to stay readable -- both times
-    // are worth knowing at a glance, and it is the pair being unequal that says whose move it is,
-    // which a smaller difference carries just as well as a large one.
-    const glm::vec4 shade{tint.x, tint.y, tint.z, running ? 1.f : .7f};
-    // Right-anchored, so the digits hold still where they are read rather than sliding left as the
-    // minutes fall from two figures to one.
-    overlay.DrawText(ClockText(remaining), {-CLOCK_MARGIN, y}, CLOCK_TEXT_SIZE, shade, TextAnchor::Right);
-  };
-  // Facing one another across the middle of the right edge, Black above and White below -- the
-  // order they sit in on the board from where the camera starts, so a player finds their own clock
-  // at their own end of it.
-  Draw(PieceColor::Black, -CLOCK_GAP);
-  Draw(PieceColor::White, CLOCK_GAP);
+auto GameManager::UpdateClock(Application &application) -> void {
+  auto *app = GetApp();
+  if (!app || !clock)
+    return;
+  // Asked for only on a frame that changes something. This runs every frame and almost every frame
+  // changes nothing -- a reading moves once a second -- and naming the scene is a scene switch.
+  const auto Builder = [app] { return app->Game().Scene("Main"); };
+  for (size_t side = 0; side < faces.size(); ++side) {
+    const auto color = side == 0 ? PieceColor::White : PieceColor::Black;
+    // White's half is the model's +x; see `CLOCK_YAW`.
+    const auto x = side == 0 ? SCREEN_X : -SCREEN_X;
+    // Black while it is counting, and black once more when it is the clock that ran out -- a fallen
+    // flag is the one reading worth more attention than the side to move.
+    const auto counting = playable ? color == board.ToMove() : flagged == static_cast<int>(side);
+    const auto low = clocks[side] <= CLOCK_LOW;
+    const std::string_view material = low ? (counting ? "clock_ink_low" : "clock_ink_low_idle") : (counting ? "clock_ink" : "clock_ink_idle");
+    const auto restyle = faces[side].material != material;
+    faces[side].material = material;
+    const auto glyphs = ClockGlyphs(clocks[side]);
+    for (size_t slot = 0; slot < CLOCK_SLOTS; ++slot) {
+      auto &id = faces[side].slots[slot];
+      const auto c = glyphs[slot];
+      if (c == ' ') {
+        if (id)
+          app->DeleteEntity(id);
+        id = {};
+        faces[side].shown[slot] = c;
+        continue;
+      }
+      if (id && c == faces[side].shown[slot] && !restyle)
+        continue;
+      faces[side].shown[slot] = c;
+      if (id) {
+        Builder().Entity(id).Mesh(GlyphName(c)).Material(std::string(material));
+        continue;
+      }
+      // On the glass, leaning with it. The glyph meshes face +z and the tilt about x lays them on
+      // the screen's slope, so each slot is only ever placed along the model's x.
+      id = Builder()
+             .Entity(clock)
+             .Child("clock" + std::to_string(side) + "_" + std::to_string(slot))
+             .Mesh(GlyphName(c))
+             .Material(std::string(material))
+             .Scale(glyphSize)
+             .At({x + slotOffsets[slot], SCREEN_Y, SCREEN_Z})
+             .RotateEuler({SCREEN_TILT, .0f, .0f})
+             .Id();
+    }
+  }
+  // Down at the end of whoever is waiting: they pressed it to hand the move over, which is what
+  // making a move does here. Once the game is over it stays as the last move left it.
+  const auto target = board.ToMove() == PieceColor::White ? ROCKER_TILT : -ROCKER_TILT;
+  if (rockerAngle == target || !rocker)
+    return;
+  rockerAngle += (target - rockerAngle) * (1.f - std::exp(-ROCKER_SPEED * application.DeltaTime()));
+  if (std::abs(target - rockerAngle) < 1e-3f)
+    rockerAngle = target;
+  Builder().Entity(rocker).RotateEuler({.0f, .0f, rockerAngle});
 }
 auto GameManager::Orbit(Application &application) -> void {
   auto *camera = application.GetCamera();
@@ -478,9 +629,8 @@ auto GameManager::RefreshSquares() -> void {
     // Red before green, because a square that can be moved to by taking what stands on it has more
     // to say about the piece than about the square -- and for every capture but en passant the two
     // are the same square, so one of them has to win.
-    const auto *material = capturable[square] ? (light ? "square_light_capture" : "square_dark_capture")
-      : reachable[square]                     ? (light ? "square_light_move" : "square_dark_move")
-                                              : (light ? "square_light" : "square_dark");
+    const auto material = SquareMaterial(THEMES[themeOption], light, capturable[square] ? "_capture" : reachable[square] ? "_move"
+                                                                                                                      : "");
     // Full width, so a square meets its neighbours rather than floating in a grid of gaps. The
     // slab is positioned by its upper face, since that is the surface everything else stands on.
     squares[square] = (squares[square] ? builder.Entity(squares[square]) : builder.Entity("square" + std::to_string(square)))
@@ -503,20 +653,8 @@ auto GameManager::CreateLabels() -> void {
   const auto atlasId = app->GetOverlay().GetAtlasAssetId();
   if (!font.IsLoaded() || !atlasId)
     return;
-  const auto materialId = MakeBuiltInAssetID("chess/label");
-  auto materialAsset = std::make_unique<MaterialAsset>(materialId);
-  materialAsset->type = MaterialType::Lit;
-  // Off-white and matt, so the labels read as painted onto the table rather than as another piece.
-  materialAsset->fallback.albedo = {.86f, .84f, .79f, 1.f};
-  materialAsset->fallback.metalness = .0f;
-  materialAsset->fallback.roughness = .9f;
-  // A cutout rather than a blend. The atlas is white everywhere with the glyph in its alpha, so
-  // what is wanted is the ink and nothing else -- and a cutout writes depth and needs no sorting,
-  // where a blended quad lying on the ground would have to be drawn after everything opaque.
-  materialAsset->fallback.alphaMode = AlphaMode::Mask;
-  materialAsset->fallback.alphaCutoff = .5f;
-  materialAsset->textures.push_back(atlasId);
-  app->AddAsset(std::move(materialAsset), "label");
+  // Off-white and matt, so the labels read as painted onto the frame rather than as another piece.
+  const auto materialId = AddTextMaterial(*app, atlasId, "label", {.86f, .84f, .79f, 1.f}, glm::vec3(.0f));
   // Half the board's width, which is where the squares stop and the labels begin.
   constexpr auto EDGE = Board::Size * SQUARE_SIZE * .5f;
   constexpr auto BAND = EDGE + LABEL_MARGIN + LABEL_SIZE * .5f;
@@ -547,12 +685,159 @@ auto GameManager::CreateLabels() -> void {
              .Mesh("labels")
              .Material("label")
              .Scale(LABEL_SIZE)
-             // Level with the board's surface, and a quarter turn about x to lay the
+             // Just above the frame's top face, and a quarter turn about x to lay the
              // glyphs face-up: that turn takes the mesh's +z normal to +y and its +y to -z, so the
              // text both faces the sky and reads from White's side of the board.
-             .At({.0f, .0f, .0f})
+             .At({.0f, LABEL_LIFT, .0f})
              .RotateEuler({-90.f, .0f, .0f})
              .Id();
+}
+auto GameManager::CreateFrame() -> void {
+  auto *app = GetApp();
+  if (!app || frame)
+    return;
+  // The frame's top is level with the squares' and its recess is exactly their size and depth, so
+  // it is placed at the origin and the squares drop into it as they are.
+  frame = app->Game().Scene("Main").Entity("Frame").Mesh("board").Material(FrameMaterial(THEMES[themeOption])).At({.0f, .0f, .0f}).Id();
+}
+auto GameManager::CreateThemeMaterials() -> void {
+  auto *app = GetApp();
+  if (!app)
+    return;
+  const auto Add = [&](const std::string &name, const glm::vec3 &albedo, const glm::vec3 &emissive, const float roughness) {
+    // Registered once per run. A second `Start` -- a cloned scene -- finds them already there.
+    if (app->GetAsset(name))
+      return;
+    auto material = std::make_unique<MaterialAsset>(MakeBuiltInAssetID("chess/" + name));
+    material->type = MaterialType::Lit;
+    material->fallback.albedo = {albedo, 1.f};
+    material->fallback.emissive = {emissive, 1.f};
+    material->fallback.metalness = .0f;
+    material->fallback.roughness = roughness;
+    app->AddAsset(std::move(material), name);
+  };
+  for (const auto &theme : THEMES) {
+    for (const auto light : {true, false}) {
+      const auto base = light ? theme.light : theme.dark;
+      // The faint glow keeps a highlighted square reading as lit on the shaded side of the board.
+      // The light shade carries a little more, as it did in the files these replace.
+      Add(SquareMaterial(theme, light, ""), base, glm::vec3(.0f), theme.roughness);
+      Add(SquareMaterial(theme, light, "_move"), glm::mix(base, MOVE_GREEN, HIGHLIGHT_MIX), light ? glm::vec3(.03f, .1f, .04f) : glm::vec3(.02f, .07f, .03f), .75f);
+      Add(SquareMaterial(theme, light, "_capture"), glm::mix(base, HIGHLIGHT_RED, HIGHLIGHT_MIX), light ? glm::vec3(.12f, .01f, .01f) : glm::vec3(.09f, .01f, .01f), .75f);
+    }
+    Add(FrameMaterial(theme), theme.frame, glm::vec3(.0f), theme.roughness);
+    // Smoother than the board, as a moulded case is; the screens most of all, like glass.
+    Add(ClockMaterial(theme, "case"), theme.frame, glm::vec3(.0f), .4f);
+    Add(ClockMaterial(theme, "screen"), theme.light, glm::vec3(.0f), .25f);
+    Add(ClockMaterial(theme, "lever"), theme.light, glm::vec3(.0f), .35f);
+  }
+}
+auto GameManager::ApplyTheme() -> void {
+  auto *app = GetApp();
+  if (!app)
+    return;
+  const auto &theme = THEMES[themeOption];
+  if (frame)
+    app->Game().Scene("Main").Entity(frame).Material(FrameMaterial(theme));
+  if (clockBody)
+    app->Game().Scene("Main").Entity(clockBody).Material(ClockMaterial(theme, "case"));
+  if (clockScreen)
+    app->Game().Scene("Main").Entity(clockScreen).Material(ClockMaterial(theme, "screen"));
+  if (rocker)
+    app->Game().Scene("Main").Entity(rocker).Material(ClockMaterial(theme, "lever"));
+  RefreshSquares();
+}
+auto GameManager::DrawThemes(Application &application) -> void {
+  auto &overlay = application.GetOverlay();
+  const auto &font = overlay.GetFont();
+  if (!font.IsLoaded())
+    return;
+  const auto hovered = application.PickOverlay(application.GetMousePosition());
+  for (size_t i = 0; i < std::size(THEMES); ++i) {
+    const auto &theme = THEMES[i];
+    const auto id = THEME_OPTION_ID + static_cast<int>(i);
+    const auto chosen = i == themeOption;
+    // A row to a theme, level with the time options' rows, measured in from the right edge.
+    const auto y = OPTION_MARGIN + static_cast<float>(i) * OPTION_ROW_STEP;
+    const auto right = -OPTION_MARGIN;
+    // The chosen pair is ringed and the one under the pointer faintly so: a ring rather than a
+    // change to the swatches, because the swatches are the thing being compared and must not
+    // change colour to say which one is chosen.
+    if (chosen || id == hovered)
+      overlay.DrawRect({right + SWATCH_RING, y - SWATCH_RING}, {SWATCH_SIZE * 2.f + SWATCH_RING * 2.f, SWATCH_SIZE + SWATCH_RING * 2.f}, {1.f, 1.f, 1.f, chosen ? .9f : .4f}, TextAnchor::TopRight, id);
+    // Light then dark, the way the board's own corner reads from White's side.
+    overlay.DrawRect({right - SWATCH_SIZE, y}, glm::vec2(SWATCH_SIZE), Swatch(theme.light), TextAnchor::TopRight, id);
+    overlay.DrawRect({right, y}, glm::vec2(SWATCH_SIZE), Swatch(theme.dark), TextAnchor::TopRight, id);
+    // The name to the left, its ink centred on the swatches. None of the names has a descender,
+    // so the ink's height is the cap height and the centring holds row to row.
+    glm::vec2 min, max;
+    if (!font.Bounds(theme.name, min, max))
+      continue;
+    const auto ink = (max.y - min.y) * THEME_TEXT_SIZE;
+    const glm::vec4 tint = chosen ? glm::vec4(1.f, 1.f, 1.f, .95f) : id == hovered ? glm::vec4(1.f, 1.f, 1.f, .7f)
+                                                                                    : OPTION_IDLE;
+    overlay.DrawText(theme.name, {right - SWATCH_SIZE * 2.f - SWATCH_RING - OPTION_SPACING, y + (SWATCH_SIZE - ink) * .5f}, THEME_TEXT_SIZE, tint, TextAnchor::TopRight, id);
+  }
+}
+auto GameManager::CreateClock() -> void {
+  auto *app = GetApp();
+  if (!app || clock)
+    return;
+  const auto &font = app->GetOverlay().GetFont();
+  const auto atlasId = app->GetOverlay().GetAtlasAssetId();
+  // Without the font the screen would be blank, but the clock still stands and its rocker still
+  // says whose move it is.
+  if (font.IsLoaded() && atlasId) {
+    const auto inkId = AddTextMaterial(*app, atlasId, "clock_ink", {CLOCK_INK, 1.f}, glm::vec3(.0f));
+    AddTextMaterial(*app, atlasId, "clock_ink_idle", {CLOCK_INK_IDLE, 1.f}, glm::vec3(.0f));
+    AddTextMaterial(*app, atlasId, "clock_ink_low", {CLOCK_INK_LOW, 1.f}, glm::vec3(.0f));
+    AddTextMaterial(*app, atlasId, "clock_ink_low_idle", {CLOCK_INK_LOW_IDLE, 1.f}, glm::vec3(.0f));
+    // Every digit takes the widest digit's cell, as a clock's display does, so a reading never
+    // shifts sideways as it counts down. The colon gets its own advance, which is narrower.
+    auto digitAdvance = .0f;
+    for (auto c = '0'; c <= '9'; ++c)
+      digitAdvance = std::max(digitAdvance, font.Measure(std::string(1, c)));
+    const auto colonAdvance = font.Measure(":");
+    const std::array<float, CLOCK_SLOTS> cells{digitAdvance, digitAdvance, colonAdvance, digitAdvance, digitAdvance};
+    auto total = .0f;
+    for (const auto cell : cells)
+      total += cell;
+    if (total > .0f) {
+      glyphSize = SCREEN_TEXT_WIDTH / total;
+      auto left = -total * .5f;
+      for (size_t slot = 0; slot < CLOCK_SLOTS; ++slot) {
+        slotOffsets[slot] = (left + cells[slot] * .5f) * glyphSize;
+        left += cells[slot];
+      }
+    }
+    // Every digit is centred on the ink of a zero rather than its own, so the figures share a
+    // baseline and a cap height the way printed figures do; a 7 centred on itself would sit high.
+    // The colon is centred on its own ink, which is what puts it between the figures' middles.
+    glm::vec2 zeroMin, zeroMax;
+    const auto digitMiddle = font.Bounds("0", zeroMin, zeroMax) ? (zeroMin.y + zeroMax.y) * .5f : .0f;
+    for (const auto c : std::string_view("0123456789:")) {
+      const std::string text(1, c);
+      glm::vec2 min, max;
+      if (!font.Bounds(text, min, max))
+        continue;
+      const auto middle = c == ':' ? (min.y + max.y) * .5f : digitMiddle;
+      Mesh mesh;
+      font.Append(text, mesh, {-(min.x + max.x) * .5f, -middle});
+      auto meshAsset = std::make_unique<MeshAsset>(MakeBuiltInAssetID("chess/" + GlyphName(c)));
+      meshAsset->material = inkId;
+      meshAsset->bounds = BoundingBox::Calculate(mesh.vertices);
+      meshAsset->mesh = std::move(mesh);
+      app->AddAsset(std::move(meshAsset), GlyphName(c));
+    }
+  }
+  clock = app->Game().Scene("Main").Entity("Clock").At(CLOCK_POSITION).RotateEuler({.0f, CLOCK_YAW, .0f}).Id();
+  // Children of the clock, so the model's own coordinates place them -- the numbers in the header
+  // are the ones Blender printed, and they hold wherever the clock is put.
+  const auto &theme = THEMES[themeOption];
+  clockBody = app->Game().Scene("Main").Entity(clock).Child("ClockBody").Mesh("clock_body").Material(ClockMaterial(theme, "case")).Id();
+  clockScreen = app->Game().Scene("Main").Entity(clock).Child("ClockScreen").Mesh("clock_screen").Material(ClockMaterial(theme, "screen")).Id();
+  // Placed by its pivot, which is its origin, so leaning it is a rotation and nothing else.
+  rocker = app->Game().Scene("Main").Entity(clock).Child("ClockRocker").Mesh("clock_rocker").Material(ClockMaterial(theme, "lever")).At(ROCKER_PIVOT).RotateEuler({.0f, .0f, rockerAngle}).Id();
 }
 auto GameManager::RefreshPieces() -> void {
   auto *app = GetApp();
@@ -593,11 +878,14 @@ auto GameManager::RefreshPieces() -> void {
     pieces[square] = (pieces[square] ? builder.Entity(pieces[square]) : builder.Entity("piece" + std::to_string(square)))
                        .Mesh(shape.mesh)
                        .Material(material)
-                       .Scale(shape.scale)
-                       // Standing on the board's surface, which is what the slabs' upper faces are.
-                       .At({center.x, shape.scale.y * .5f + lift, center.z})
-                       // A knight is turned off-axis so its cube is not mistaken for a rook's.
-                       .RotateEuler({.0f, piece.type == PieceType::Knight ? 25.f : .0f, .0f})
+                       .Scale(1.f)
+                       // Standing on the board's surface, which is what the slabs' upper faces
+                       // are, and what each model's origin is the middle of the base of.
+                       .At({center.x, lift, center.z})
+                       // The models face -z, which is toward Black, so Black's are turned round to
+                       // face White. Only the knight and the bishop's mitre show it, but a knight
+                       // looking back over its own shoulder is the one thing that would be noticed.
+                       .RotateEuler({.0f, white ? .0f : 180.f, .0f})
                        .Id();
   }
 }
@@ -645,7 +933,7 @@ auto GameManager::UpdateOcclusion() -> bool {
         wanted[target] = true;
         // The middle of the piece rather than the square under it, because the piece is what a
         // click picking it up would be aimed at.
-        aim[target] = {centre.x, ShapeOf(piece.type).scale.y * .5f, centre.z};
+        aim[target] = {centre.x, ShapeOf(piece.type).height * .5f, centre.z};
       }
     }
     for (auto square = 0; square < Board::SquareCount; ++square) {
@@ -656,10 +944,9 @@ auto GameManager::UpdateOcclusion() -> bool {
         continue;
       const auto shape = ShapeOf(piece.type);
       const auto standing = SquareCenter(square);
-      const auto radius = std::max(shape.scale.x, shape.scale.z) * .5f;
       auto nearest = std::numeric_limits<float>::max();
       for (auto target = 0; target < Board::SquareCount; ++target) {
-        if (!wanted[target] || !Blocks(camera->position, aim[target], standing, radius, .0f, shape.scale.y))
+        if (!wanted[target] || !Blocks(camera->position, aim[target], standing, shape.radius, .0f, shape.height))
           continue;
         // The nearest of them, because that is the one a click aimed through this piece would have
         // reached first if the piece were not there.

@@ -4,8 +4,13 @@ cbuffer SkyboxConstants : register(b0) {
   uint u_useGradient;
   uint2 u_padding;
   float4 u_background;
+  float3 u_sunDirection;
+  float u_sunCosRadius;
+  float3 u_sunRadiance;
+  uint u_useSunDisc;
 };
 TextureCube g_skybox : register(t0);
+Texture2D g_sunTransmittance : register(t1);
 SamplerState g_sampler : register(s0);
 static const float4 ENTITY_ID_INVALID = float4(1.0, 1.0, 1.0, 1.0);
 struct PSInput {
@@ -36,6 +41,22 @@ PSOutput PSMain(PSInput input) {
     output.color = float4(lerp(horizon, zenith, t), 1.0);
   } else
     output.color = float4(u_background.rgb, 1.0);
+  // Added over whatever the sky turned out to be, rather than replacing it, so the disc sits in
+  // front of the air between it and the viewer instead of cutting a hole through it.
+  //
+  // Only where an atmosphere computed the sky. A photographed one already has a sun somewhere in
+  // the image, and drawing a second one over it would be a sun beside a sun.
+  if (u_useSunDisc != 0) {
+    float cosAngle = dot(direction, u_sunDirection);
+    // Softened across a band rather than cut off at the edge. The disc is a quarter of a degree
+    // across and brighter than everything near it by some orders of magnitude, so a hard step would
+    // crawl along its rim as the camera turns, and the multisampling only has four samples to
+    // spend on it. The band is a twentieth of the radius, which is below what can be seen and far
+    // more than enough to settle the edge.
+    float edge = (1.0 - u_sunCosRadius) * 0.05;
+    float disc = smoothstep(u_sunCosRadius - edge, u_sunCosRadius + edge, cosAngle);
+    output.color.rgb += u_sunRadiance * g_sunTransmittance.SampleLevel(g_sampler, float2(0.5, 0.5), 0.0).rgb * disc;
+  }
   output.entityId = ENTITY_ID_INVALID;
   return output;
 }

@@ -48,6 +48,11 @@ auto Overlay::DrawText(std::string text, const glm::vec2 &offset, const float si
     return;
   items.push_back({std::move(text), offset, color, size, anchor, id});
 }
+auto Overlay::DrawRect(const glm::vec2 &offset, const glm::vec2 &size, const glm::vec4 &color, const TextAnchor anchor, const int id) -> void {
+  if (!font.IsLoaded() || size.x <= .0f || size.y <= .0f)
+    return;
+  items.push_back({{}, offset, color, .0f, anchor, id, size});
+}
 auto Overlay::HitTest(const glm::vec2 &point) const -> int {
   // Into the space the rectangles were recorded in, which measures up from the bottom.
   const glm::vec2 flipped{point.x, builtHeight - point.y};
@@ -74,6 +79,23 @@ auto Overlay::Build(const int width, const int height, Mesh &mesh, std::vector<O
     return;
   const glm::vec2 extent{static_cast<float>(width), static_cast<float>(height)};
   for (const auto &item : items) {
+    if (item.text.empty()) {
+      // The same anchoring as text below, with the box standing in for the ink.
+      const auto fraction = AnchorFraction(item.anchor);
+      const glm::vec2 anchorPoint{extent.x * fraction.x + item.offset.x, extent.y * (1.f - fraction.y) - item.offset.y};
+      const auto low = anchorPoint - glm::vec2(item.box.x * fraction.x, item.box.y * (1.f - fraction.y));
+      const auto high = low + item.box;
+      const auto uv = font.GetSolidCoord();
+      const auto Corner = [&](const float x, const float y) {
+        return Vertex{.position = {x, y, .0f}, .normal = {.0f, .0f, 1.f}, .texture = uv, .tangent = {1.f, .0f, .0f}};
+      };
+      const auto first = mesh.vertices.size();
+      mesh.vertices.insert(mesh.vertices.end(), {Corner(low.x, low.y), Corner(high.x, low.y), Corner(high.x, high.y), Corner(low.x, low.y), Corner(high.x, high.y), Corner(low.x, high.y)});
+      runs.push_back({first, mesh.vertices.size() - first, item.color});
+      if (item.id != NoHit)
+        hits.push_back({low, high, item.id});
+      continue;
+    }
     glm::vec2 min, max;
     // The ink rather than the line box. A clock is placed by where its digits are, and the line box
     // carries the ascender and descender of glyphs the string does not contain -- so anchoring on

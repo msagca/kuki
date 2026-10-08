@@ -48,12 +48,14 @@ struct BuildNode {
   bool leaf{};
   /// @brief Clusters overlapping this cell, by index. Dropped once the node becomes a leaf.
   std::vector<uint32_t> clusters;
-  /// @brief Triangles this cell holds, estimated from how much of each cluster falls inside it.
+  /// @brief Surface area this cell holds, estimated from how much of each cluster falls inside it.
   ///
   /// Fractional because a cluster is a box: a cell covering half of one is credited with half its
-  /// triangles. The leaf threshold compares against this, so it keeps meaning what it meant when
-  /// every triangle was tested individually.
-  float density{};
+  /// area. Weighting this way is what keeps a subdivided node's children summing to roughly what the
+  /// parent held, so the threshold means the same thing at every depth.
+  ///
+  /// Area rather than a triangle count, which is what this was. See `PROBE_OCTREE_LEAF_SURFACE`.
+  float surface{};
 };
 /// @brief The half-precision bits of a finite, non-negative float, which is all a probe stores.
 ///
@@ -148,6 +150,11 @@ struct ClusterTriangle {
   glm::vec3 low{};
   glm::vec3 high{};
   uint32_t code{};
+  /// @brief The triangle's own area, taken from its vertices while they are still to hand.
+  ///
+  /// Kept per triangle rather than recovered from the box later, because a box says nothing useful
+  /// about the area inside it: a diagonal sliver and a full quad can share one.
+  float area{};
 };
 /// @brief Groups a mesh's triangles into spatially compact runs and reduces each run to a box.
 ///
@@ -170,6 +177,7 @@ auto BuildClusters(const DXProbeGeometry &geometry) -> std::vector<DXProbeCluste
     ClusterTriangle triangle;
     triangle.low = glm::min(a, glm::min(b, c));
     triangle.high = glm::max(a, glm::max(b, c));
+    triangle.area = .5f * glm::length(glm::cross(b - a, c - a));
     meshLow = glm::min(meshLow, triangle.low);
     meshHigh = glm::max(meshHigh, triangle.high);
     triangles.push_back(triangle);
@@ -199,10 +207,11 @@ auto BuildClusters(const DXProbeGeometry &geometry) -> std::vector<DXProbeCluste
   clusters.reserve(triangles.size() / PROBE_CLUSTER_TRIANGLES + 1);
   for (size_t first = 0; first < triangles.size(); first += PROBE_CLUSTER_TRIANGLES) {
     const auto count = std::min<size_t>(PROBE_CLUSTER_TRIANGLES, triangles.size() - first);
-    DXProbeCluster cluster{.low = triangles[first].low, .high = triangles[first].high, .triangles = static_cast<uint32_t>(count)};
+    DXProbeCluster cluster{.low = triangles[first].low, .high = triangles[first].high, .triangles = static_cast<uint32_t>(count), .area = triangles[first].area};
     for (size_t offset = 1; offset < count; ++offset) {
       cluster.low = glm::min(cluster.low, triangles[first + offset].low);
       cluster.high = glm::max(cluster.high, triangles[first + offset].high);
+      cluster.area += triangles[first + offset].area;
     }
     clusters.push_back(cluster);
   }
@@ -221,7 +230,12 @@ auto TransformCluster(const DXProbeCluster &cluster, const glm::mat4 &transform)
     low = glm::min(low, world);
     high = glm::max(high, world);
   }
-  return {.low = low, .high = high, .triangles = cluster.triangles};
+  // Area scales as the two-thirds power of the volume scale, which is exact for a uniform scale and
+  // the fair compromise for anything else: a matrix that stretches one axis changes a surface's area
+  // by an amount that depends on how that surface is turned, and a cluster no longer knows.
+  const auto volumeScale = glm::length(glm::vec3(transform[0])) * glm::length(glm::vec3(transform[1])) * glm::length(glm::vec3(transform[2]));
+  const auto areaScale = volumeScale > 1e-12f ? std::cbrt(volumeScale * volumeScale) : 1.f;
+  return {.low = low, .high = high, .triangles = cluster.triangles, .area = cluster.area * areaScale};
 }
 auto OverlapsCell(const DXProbeCluster &cluster, const glm::vec3 &center, const float extent) -> bool {
   return glm::all(glm::lessThanEqual(cluster.low, center + extent)) && glm::all(glm::greaterThanEqual(cluster.high, center - extent));
@@ -232,10 +246,17 @@ auto AxisFraction(const float overlap, const float span) -> float {
 }
 /// @brief How much of a cluster lies inside a cell, as a fraction of the cluster.
 ///
-/// Without this a cluster would contribute its whole triangle count to all eight children it
-/// straddles, so density would grow with every level and every node would look dense enough to
-/// split. Weighting by the shared volume keeps a subdivided node's children summing to roughly what
-/// the parent held, which is what the leaf threshold was tuned against when it counted triangles.
+/// Without this a cluster would contribute its whole area to all eight children it straddles, so
+/// what each node held would grow with every level and every node would look busy enough to split.
+/// Weighting by the shared volume keeps a subdivided node's children summing to roughly what the
+/// parent held, which is what lets one threshold apply at every depth.
+///
+/// The weight is a volume share against an area measure, which is not the identity it would be for a
+/// count -- a wall crossing half a cell has half its area inside, and the box around that wall has
+/// half its volume inside, so the two agree for the flat clusters most surfaces produce and part
+/// company only for a cluster whose box is thick. Conservative in the direction that matters: such a
+/// cluster is one holding folded geometry, and crediting it generously is what the threshold is
+/// looking for anyway.
 auto OverlapFraction(const DXProbeCluster &cluster, const glm::vec3 &center, const float extent) -> float {
   const auto low = glm::max(cluster.low, center - extent);
   const auto high = glm::min(cluster.high, center + extent);
@@ -248,10 +269,14 @@ auto OverlapFraction(const DXProbeCluster &cluster, const glm::vec3 &center, con
 auto CornerOffset(const uint32_t corner, const float extent) -> glm::vec3 {
   return {(corner & 1) ? extent : -extent, (corner & 2) ? extent : -extent, (corner & 4) ? extent : -extent};
 }
-auto Subdivide(std::vector<BuildNode> &nodes, const uint32_t index, const std::vector<DXProbeCluster> &clusters) -> void {
+auto Subdivide(std::vector<BuildNode> &nodes, const uint32_t index, const std::vector<DXProbeCluster> &clusters, const uint32_t uniformDepth) -> void {
   const auto depth = nodes[index].depth;
-  const auto dense = nodes[index].density > static_cast<float>(PROBE_OCTREE_LEAF_TRIANGLES);
-  if (depth >= PROBE_OCTREE_MAX_DEPTH || (depth >= PROBE_OCTREE_MIN_DEPTH && !dense)) {
+  // Against the cell's own face rather than an absolute figure, which is what makes the test mean
+  // the same thing at every depth and in every scene: one flat surface crossing a cell reads as 1
+  // however large the cell is. See `PROBE_OCTREE_LEAF_SURFACE`.
+  const auto side = nodes[index].extent * 2.f;
+  const auto dense = nodes[index].surface > PROBE_OCTREE_LEAF_SURFACE * side * side;
+  if (depth >= PROBE_OCTREE_MAX_DEPTH || (depth >= uniformDepth && !dense)) {
     nodes[index].leaf = true;
     nodes[index].clusters.clear();
     nodes[index].clusters.shrink_to_fit();
@@ -270,13 +295,13 @@ auto Subdivide(std::vector<BuildNode> &nodes, const uint32_t index, const std::v
     for (const auto cluster : inherited)
       if (OverlapsCell(clusters[cluster], child.center, childExtent)) {
         child.clusters.push_back(cluster);
-        child.density += static_cast<float>(clusters[cluster].triangles) * OverlapFraction(clusters[cluster], child.center, childExtent);
+        child.surface += clusters[cluster].area * OverlapFraction(clusters[cluster], child.center, childExtent);
       }
     nodes[index].children[corner] = static_cast<uint32_t>(nodes.size());
     nodes.push_back(std::move(child));
   }
   for (uint32_t corner = 0; corner < 8; ++corner)
-    Subdivide(nodes, nodes[index].children[corner], clusters);
+    Subdivide(nodes, nodes[index].children[corner], clusters, uniformDepth);
 }
 /// @brief Which side of the scene's surfaces one cell of the classification grid stands on.
 ///
@@ -513,10 +538,12 @@ auto DXProbeVolume::BuildOctree(const std::vector<DXProbeGeometry> &geometry) ->
   auto low = clusters.front().low;
   auto high = clusters.front().high;
   auto triangles = uint64_t{};
+  auto area = 0.f;
   for (const auto &cluster : clusters) {
     low = glm::min(low, cluster.low);
     high = glm::max(high, cluster.high);
     triangles += cluster.triangles;
+    area += cluster.area;
   }
   const auto span = high - low;
   const auto required = std::max({span.x, span.y, span.z, .01f}) * .5f * 1.02f;
@@ -552,19 +579,24 @@ auto DXProbeVolume::BuildOctree(const std::vector<DXProbeGeometry> &geometry) ->
   }
   built.triangleCount = static_cast<uint32_t>(triangles);
   built.clusterCount = static_cast<uint32_t>(clusters.size());
+  built.surfaceArea = area;
+  // Taken from the volume that was settled on just above rather than from the scene's own extent,
+  // because the volume is what the lattice is laid over -- and it is deliberately not the scene's
+  // box, since it is held still across rebuilds for `CarryOverProbes` to match against.
+  built.uniformDepth = ProbeUniformDepth(built.side);
   std::vector<BuildNode> nodes;
   nodes.reserve(1024);
   BuildNode root;
   root.center = center;
   root.extent = half;
-  root.density = static_cast<float>(triangles);
+  root.surface = area;
   root.clusters.resize(clusters.size());
   for (uint32_t cluster = 0; cluster < root.clusters.size(); ++cluster)
     root.clusters[cluster] = cluster;
   nodes.push_back(std::move(root));
   {
     KUKI_PROFILE_SCOPE("Subdivide");
-    Subdivide(nodes, 0, clusters);
+    Subdivide(nodes, 0, clusters, built.uniformDepth);
   }
   const auto lattice = 1u << PROBE_OCTREE_MAX_DEPTH;
   const auto cellSize = built.side / static_cast<float>(lattice);
@@ -680,7 +712,7 @@ auto DXProbeVolume::BuildOctree(const std::vector<DXProbeGeometry> &geometry) ->
     // it finds an occupied corner, and gives up past the stride of the coarsest leaf allowed, which
     // is the furthest a genuine neighbour can be.
     KUKI_PROFILE_SCOPE("ProbeNeighbours");
-    const auto reach = static_cast<long>(lattice >> PROBE_OCTREE_MIN_DEPTH);
+    const auto reach = static_cast<long>(lattice >> built.uniformDepth);
     const auto span = static_cast<long>(corners);
     for (size_t key = 0; key < placed.size(); ++key) {
       const auto index = placed[key];
@@ -794,7 +826,8 @@ auto DXProbeVolume::Build(DXContext &context, const std::vector<DXProbeGeometry>
     loggedProbeCount = probeCount;
     const auto bytes = built.nodes.size() * sizeof(DXOctreeNode) + built.probes.size() * sizeof(DXProbe) + built.lookup.size() * sizeof(uint32_t);
     spdlog::info("[DX12] Probe volume: {} probes in {} leaves of {} nodes, deepest {} of {}, over {:.2f} units", probeCount, leafCount, nodeCount, deepestLeaf, PROBE_OCTREE_MAX_DEPTH, side);
-    spdlog::info("[DX12] Probe volume: {} triangles in {} clusters, {} cell lookup grid, {:.2f} MB resident", built.triangleCount, built.clusterCount, GetLookupResolution(), static_cast<double>(bytes) / (1024. * 1024.));
+    spdlog::info("[DX12] Probe volume: {} triangles of {:.1f} square units in {} clusters, {} cell lookup grid, {:.2f} MB resident", built.triangleCount, built.surfaceArea, built.clusterCount, GetLookupResolution(), static_cast<double>(bytes) / (1024. * 1024.));
+    spdlog::info("[DX12] Probe volume: uniform to depth {} for {:.2f} units between probes, against a target of {:.2f}", built.uniformDepth, side / static_cast<float>(1u << built.uniformDepth), PROBE_TARGET_SPACING);
   }
   return true;
 }

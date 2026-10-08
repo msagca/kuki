@@ -1,4 +1,5 @@
 #pragma once
+#include <anti_aliasing.hpp>
 #include <camera_type.hpp>
 #include <debug_view.hpp>
 #include <exposure.hpp>
@@ -63,9 +64,16 @@ struct EnumTraits<MaterialType> {
   }
 };
 template <>
+struct EnumTraits<AntiAliasingMode> {
+  static const std::vector<const char *> &GetNames() {
+    static const std::vector<const char *> names = {"Off", "MSAA 2x", "MSAA 4x", "MSAA 8x"};
+    return names;
+  }
+};
+template <>
 struct EnumTraits<RenderPass> {
   static const std::vector<const char *> &GetNames() {
-    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Outline", "Overlay", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "ToneMapping"};
+    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Outline", "Overlay", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "ToneMapping", "Volumetric Clouds", "Volumetric Fog"};
     return names;
   }
 };

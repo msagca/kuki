@@ -1,4 +1,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
+#include <anti_aliasing.hpp>
+#include <atmosphere_sky.hpp>
 #include <application.hpp>
 #include <array>
 #include <asset_type.hpp>
@@ -104,8 +106,33 @@ auto RenderingSystem::Start() -> void {
                   .AddInput("SceneMulti")
                   .AddOutput("Scene", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
-                  .BeginPass(RenderPass::BrightPassFilter)
+                  // Half the viewport on each axis, which is the one place a resolution is chosen
+                  // here rather than inherited. A cloud has no edges of its own -- it is a smooth
+                  // thing seen across the whole sky -- so a quarter of the samples is a quarter of
+                  // the cost and very nearly the same picture, and the pass that reads this scales
+                  // it back up against the depth buffer so it does not bleed across a silhouette.
+                  .BeginPass(RenderPass::VolumetricClouds)
+                  .AddInput("SceneDepth")
+                  .AddOutput("Clouds", {.width = bloomWidth, .height = bloomHeight, .samples = 1}, TargetSizing::ViewportHalf)
+                  .EndPass()
+                  // Everything the air needs at once: the picture to put haze in front of, the depth
+                  // that says how far away each pixel is, both shadow maps to decide what the lights
+                  // reach, and the clouds so that a shaft is broken by the one standing in front of
+                  // the sun. The graph orders all five ahead of this without being told to.
+                  //
+                  // Before the bright pass rather than after it, which is what makes a shaft bloom.
+                  // A god ray is a bright thing in a dark frame and is exactly what the bloom chain
+                  // is for; running this afterwards would leave every beam with a hard edge.
+                  .BeginPass(RenderPass::VolumetricFog)
                   .AddInput("Scene")
+                  .AddInput("SceneDepth")
+                  .AddInput("ShadowMap")
+                  .AddInput("SpotShadowMap")
+                  .AddInput("Clouds")
+                  .AddOutput("SceneVolumetric", {.width = screenWidth, .height = screenHeight, .samples = 1})
+                  .EndPass()
+                  .BeginPass(RenderPass::BrightPassFilter)
+                  .AddInput("SceneVolumetric")
                   .AddOutput("SceneBright", {.width = bloomWidth, .height = bloomHeight, .samples = 1}, TargetSizing::ViewportHalf)
                   .EndPass()
                   .BeginPass(RenderPass::BlurEffect)
@@ -115,7 +142,7 @@ auto RenderingSystem::Start() -> void {
                   .AddOutput("SceneBlurredPong", {.width = bloomWidth, .height = bloomHeight, .samples = 1}, TargetSizing::ViewportHalf)
                   .EndPass()
                   .BeginPass(RenderPass::BloomEffect)
-                  .AddInput("Scene")
+                  .AddInput("SceneVolumetric")
                   .AddInput("SceneBlurred")
                   .AddOutput("SceneBloom", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
@@ -204,6 +231,18 @@ auto RenderingSystem::Update(float deltaTime) -> void {
       activeRenderer->SetLightingDebugView(camera->lightingDebugView);
       activeRenderer->SetProbeDebugView(camera->probeDebugView);
     }
+    // Pushed to the graph rather than to the renderer, because what the sample count describes is
+    // the scene target -- and the graph is what declared that target and what will hand its size
+    // back on the next resize. A copy held on `Renderer` would be a second writer of the same
+    // field, and the two would disagree the first time a window was dragged.
+    //
+    // Asked every frame like the settings above, and free on every frame that changes nothing:
+    // `SetTargetSamples` compares the count before it reallocates anything. A scene with no such
+    // component leaves the target at whatever the graph declared, which is the four samples this
+    // was fixed at before it could be set at all.
+    if (renderGraph)
+      if (const auto *antiAliasing = scene->GetAnyComponent<AntiAliasing>())
+        renderGraph->SetTargetSamples(*activeRenderer, "SceneMulti", SampleCount(antiAliasing->mode));
   }
   if (activeRenderer) {
     {
@@ -351,6 +390,13 @@ auto RenderingSystem::SetRenderer(const RenderingAPI api) -> void {
   }
 }
 auto RenderingSystem::UpdateSkyboxLight(Scene &scene) -> void {
+  // Nothing to derive from a sky that is computed, and the dependency runs the other way besides.
+  // This reads a light out of the brightest region of an image; an atmosphere has no image, and it
+  // is the light that decides what the sky looks like rather than the reverse. Adopting a light
+  // here would mean the sun moved because the sky changed, which is backwards, and the guard below
+  // could not catch it -- there is no asset id to have already been handled.
+  if (scene.GetAnyComponent<AtmosphereSky>())
+    return;
   AssetID skyboxAsset{};
   EntityID skyboxEntity{};
   scene.ForEachEntity<SkyboxHandle>([&](const EntityID id, const SkyboxHandle *handle) {

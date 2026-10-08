@@ -382,8 +382,10 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipelin
 auto DXPipelineCache::GetSkyboxRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (skyboxRootSignature)
     return skyboxRootSignature.Get();
+  // Two: the sky cubemap, and the one texel holding what the sun's own colour has become on its
+  // way down to the viewer.
   CD3DX12_DESCRIPTOR_RANGE equirectRange{};
-  equirectRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+  equirectRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, SKYBOX_SRV_SLOTS, 0);
   CD3DX12_ROOT_PARAMETER parameters[2]{};
   parameters[0].InitAsConstants(sizeof(DXSkyboxConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
   parameters[1].InitAsDescriptorTable(1, &equirectRange, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -464,6 +466,211 @@ auto DXPipelineCache::GetComputeRootSignature(ID3D12Device *device) -> ID3D12Roo
   if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&computeRootSignature)), "CreateRootSignature"))
     return nullptr;
   return computeRootSignature.Get();
+}
+auto DXPipelineCache::GetAtmosphereRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (atmosphereRootSignature)
+    return atmosphereRootSignature.Get();
+  CD3DX12_DESCRIPTOR_RANGE srvRange{};
+  srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, ATMOSPHERE_SRV_SLOTS, 0);
+  CD3DX12_DESCRIPTOR_RANGE uavRange{};
+  uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, ATMOSPHERE_UAV_SLOTS, 0);
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
+  parameters[0].InitAsConstants(sizeof(DXAtmosphereConstants) / sizeof(uint32_t), 0);
+  parameters[1].InitAsDescriptorTable(1, &srvRange);
+  parameters[2].InitAsDescriptorTable(1, &uavRange);
+  // Clamped on every axis, which the transmittance table depends on rather than merely tolerates:
+  // its edges are the horizon and the top of the atmosphere, and a wrapped sample there would read
+  // the opposite extreme of the sky.
+  CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(3, parameters, 1, &sampler);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the atmosphere root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&atmosphereRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return atmosphereRootSignature.Get();
+}
+auto DXPipelineCache::GetAtmospherePipeline(ID3D12Device *device, const char *entryPoint) -> const DXPipeline * {
+  if (!device || !entryPoint)
+    return nullptr;
+  const auto key = std::hash<std::string>{}(std::string("atmosphere:") + entryPoint);
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetAtmosphereRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = atmosphereRootSignature;
+  const auto computeShader = shaderCompiler.Compile(embedded_shader::atmosphere_hlsl, entryPoint, "cs_6_0", "atmosphere");
+  if (!computeShader)
+    return nullptr;
+  D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.CS = ToBytecode(computeShader);
+  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created atmosphere pipeline: {}", entryPoint);
+  return &pipeline;
+}
+auto DXPipelineCache::GetCloudRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (cloudRootSignature)
+    return cloudRootSignature.Get();
+  CD3DX12_DESCRIPTOR_RANGE srvRange{};
+  srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, CLOUD_SRV_SLOTS, 0);
+  CD3DX12_DESCRIPTOR_RANGE uavRange{};
+  uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, CLOUD_UAV_SLOTS, 0);
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
+  parameters[0].InitAsConstants(sizeof(DXCloudConstants) / sizeof(uint32_t), 0);
+  parameters[1].InitAsDescriptorTable(1, &srvRange);
+  parameters[2].InitAsDescriptorTable(1, &uavRange);
+  // Three samplers because three things are being sampled and no two of them want the same
+  // addressing. The noise volumes tile and are read with coordinates that grow without limit as the
+  // layer drifts, so they must wrap; the transmittance table's edges are the horizon and the top of
+  // the atmosphere, where a wrapped sample reads the opposite extreme of the sky; and the depth
+  // buffer is compared rather than blended, so filtering it would invent surfaces between two that
+  // are really there.
+  CD3DX12_STATIC_SAMPLER_DESC samplers[3]{};
+  samplers[0] = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+  samplers[1] = CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+  samplers[2] = CD3DX12_STATIC_SAMPLER_DESC(2, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(3, parameters, 3, samplers);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the cloud root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&cloudRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return cloudRootSignature.Get();
+}
+auto DXPipelineCache::GetVolumetricRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (volumetricRootSignature)
+    return volumetricRootSignature.Get();
+  CD3DX12_DESCRIPTOR_RANGE srvRange{};
+  srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, VOLUMETRIC_SRV_SLOTS, 0);
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
+  parameters[0].InitAsConstants(sizeof(DXVolumetricConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+  // The shading pass's own constant buffer, bound unchanged. See `DXVolumetricConstants` for why
+  // the lights are read out of it rather than gathered a second time.
+  parameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+  parameters[2].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+  CD3DX12_STATIC_SAMPLER_DESC samplers[2]{};
+  samplers[0] = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+  samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+  samplers[1] = CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+  samplers[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(3, parameters, 2, samplers);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the volumetric root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&volumetricRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return volumetricRootSignature.Get();
+}
+auto DXPipelineCache::GetCloudComputePipeline(ID3D12Device *device, const char *entryPoint) -> const DXPipeline * {
+  if (!device || !entryPoint)
+    return nullptr;
+  const auto key = std::hash<std::string>{}(std::string("cloud:") + entryPoint);
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetCloudRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = cloudRootSignature;
+  const auto computeShader = shaderCompiler.Compile(embedded_shader::clouds_hlsl, entryPoint, "cs_6_0", "clouds");
+  if (!computeShader)
+    return nullptr;
+  D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.CS = ToBytecode(computeShader);
+  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created cloud compute pipeline: {}", entryPoint);
+  return &pipeline;
+}
+auto DXPipelineCache::GetCloudPipeline(ID3D12Device *device, const DXGI_FORMAT format) -> const DXPipeline * {
+  if (!device)
+    return nullptr;
+  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}("cloudDraw");
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetCloudRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = cloudRootSignature;
+  const auto vertexShader = shaderCompiler.Compile(embedded_shader::clouds_hlsl, "VSMain", "vs_6_0", "clouds");
+  const auto pixelShader = shaderCompiler.Compile(embedded_shader::clouds_hlsl, "PSMain", "ps_6_0", "clouds");
+  if (!vertexShader || !pixelShader)
+    return nullptr;
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.VS = ToBytecode(vertexShader);
+  desc.PS = ToBytecode(pixelShader);
+  desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+  desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+  desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState.DepthEnable = FALSE;
+  desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+  desc.SampleMask = UINT_MAX;
+  desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+  desc.NumRenderTargets = 1;
+  desc.RTVFormats[0] = format;
+  desc.SampleDesc.Count = 1;
+  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created cloud pipeline");
+  return &pipeline;
+}
+auto DXPipelineCache::GetVolumetricPipeline(ID3D12Device *device, const DXGI_FORMAT format) -> const DXPipeline * {
+  if (!device)
+    return nullptr;
+  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}("volumetric");
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetVolumetricRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = volumetricRootSignature;
+  const auto vertexShader = shaderCompiler.Compile(embedded_shader::volumetric_hlsl, "VSMain", "vs_6_0", "volumetric");
+  const auto pixelShader = shaderCompiler.Compile(embedded_shader::volumetric_hlsl, "PSMain", "ps_6_0", "volumetric");
+  if (!vertexShader || !pixelShader)
+    return nullptr;
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.VS = ToBytecode(vertexShader);
+  desc.PS = ToBytecode(pixelShader);
+  desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+  desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+  desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState.DepthEnable = FALSE;
+  desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+  desc.SampleMask = UINT_MAX;
+  desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+  desc.NumRenderTargets = 1;
+  desc.RTVFormats[0] = format;
+  desc.SampleDesc.Count = 1;
+  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created volumetric pipeline");
+  return &pipeline;
 }
 auto DXPipelineCache::GetComputePipeline(ID3D12Device *device, const char *entryPoint) -> const DXPipeline * {
   if (!device || !entryPoint)
@@ -740,6 +947,12 @@ auto DXPipelineCache::Clear() -> void {
   shadowRootSignature.Reset();
   skyboxRootSignature.Reset();
   computeRootSignature.Reset();
+  // These four were missing, and a root signature that outlives a `Clear` is one the next pipeline
+  // built against it silently shares with a device that may no longer be the same one.
+  overlayRootSignature.Reset();
+  atmosphereRootSignature.Reset();
+  cloudRootSignature.Reset();
+  volumetricRootSignature.Reset();
   pickRootSignature.Reset();
   rayProbeRootSignature.Reset();
   probeAuditRootSignature.Reset();

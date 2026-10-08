@@ -1,6 +1,7 @@
 #pragma once
 #include <glm/detail/type_vec3.hpp>
 #include <glm/ext/quaternion_float.hpp>
+#include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <id.hpp>
 #include <nlohmann/json.hpp>
@@ -23,6 +24,16 @@ struct adl_serializer<kuki::AssetID> {
   }
   static void from_json(const nlohmann::json &j, kuki::AssetID &obj) {
     obj = kuki::AssetID(j.get<kuki::UUID128>());
+  }
+};
+template <>
+struct adl_serializer<glm::vec2> {
+  static void to_json(nlohmann::json &j, const glm::vec2 &obj) {
+    j = nlohmann::json{{"x", obj.x}, {"y", obj.y}};
+  }
+  static void from_json(const nlohmann::json &j, glm::vec2 &obj) {
+    j.at("x").get_to(obj.x);
+    j.at("y").get_to(obj.y);
   }
 };
 template <>

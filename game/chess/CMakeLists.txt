@@ -35,6 +35,13 @@ if(UNIX AND NOT APPLE)
 endif()
 # Listed as sources so an edited material shows up in the IDE and triggers the staging below.
 target_sources(${PROJECT_NAME} PRIVATE ${FONT_SOURCES} ${MATERIAL_SOURCES})
+# Pieces, board and clock, modelled in one .blend and exported to `model/` beside the executable
+# as one glTF a mesh. `Chess::Start` loads them by those names.
+kuki_add_blender_models(
+  ${PROJECT_NAME}
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/model/chess.blend"
+  model
+)
 # Its own component, named after the target, so the installer can offer this game on its own. Every
 # game does the same, and `game/CMakeLists.txt` collects the names for the installer to list.
 install(

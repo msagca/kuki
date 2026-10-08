@@ -3,70 +3,70 @@ const float PI = 3.14159265359;
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba32f, binding = 0) writeonly uniform imageCube u_irradianceMap;
 layout(std430, binding = 0) readonly buffer u_shCoefficients {
-        vec4 shCoefficients[9];
+  vec4 shCoefficients[9];
 };
 uniform uint u_cubeSize;
 vec3 CubeDirectionFromCoord(ivec3, uint);
 vec3 EvaluateIrradianceSH(vec3);
 void main() {
-        ivec3 gid = ivec3(gl_GlobalInvocationID);
-        if (gid.x >= u_cubeSize || gid.y >= u_cubeSize || gid.z >= 6)
-                return;
-        vec3 normal = CubeDirectionFromCoord(gid, u_cubeSize);
-        // Stored as E/PI rather than as the irradiance itself. `lit.frag` multiplies this straight
-        // by albedo, and a Lambertian surface reflects albedo/PI of the irradiance reaching it, so
-        // the division has to happen on one side or the other. It happens here because
-        // `FallbackIrradiance` already divides, and leaving it out is what made binding a skybox
-        // brighten every diffuse surface by PI against the fallback it replaced.
-        //
-        // The clamp is for ringing. A second-order fit undershoots opposite a bright source, and
-        // this target is floating point, so a negative would survive the write and subtract light.
-        vec3 irradiance = max(EvaluateIrradianceSH(normal), vec3(0.0)) / PI;
-        imageStore(u_irradianceMap, gid, vec4(irradiance, 1.0));
+  ivec3 gid = ivec3(gl_GlobalInvocationID);
+  if (gid.x >= u_cubeSize || gid.y >= u_cubeSize || gid.z >= 6)
+    return;
+  vec3 normal = CubeDirectionFromCoord(gid, u_cubeSize);
+  // Stored as E/PI rather than as the irradiance itself. `lit.frag` multiplies this straight
+  // by albedo, and a Lambertian surface reflects albedo/PI of the irradiance reaching it, so
+  // the division has to happen on one side or the other. It happens here because
+  // `FallbackIrradiance` already divides, and leaving it out is what made binding a skybox
+  // brighten every diffuse surface by PI against the fallback it replaced.
+  //
+  // The clamp is for ringing. A second-order fit undershoots opposite a bright source, and
+  // this target is floating point, so a negative would survive the write and subtract light.
+  vec3 irradiance = max(EvaluateIrradianceSH(normal), vec3(0.0)) / PI;
+  imageStore(u_irradianceMap, gid, vec4(irradiance, 1.0));
 }
 vec3 CubeDirectionFromCoord(ivec3 coord, uint size) {
-        uint face = coord.z;
-        float u = (float(coord.x) + 0.5) / float(size);
-        float v = (float(coord.y) + 0.5) / float(size);
-        float s = 2.0 * u - 1.0;
-        float t = 2.0 * v - 1.0;
-        vec3 dir;
-        switch (face) {
-                case 0:
-                dir = vec3(1.0, -t, -s);
-                break;
-                case 1:
-                dir = vec3(-1.0, -t, s);
-                break;
-                case 2:
-                dir = vec3(s, 1.0, t);
-                break;
-                case 3:
-                dir = vec3(s, -1.0, -t);
-                break;
-                case 4:
-                dir = vec3(s, -t, 1.0);
-                break;
-                case 5:
-                dir = vec3(-s, -t, -1.0);
-                break;
-        }
-        return normalize(dir);
+  uint face = coord.z;
+  float u = (float(coord.x) + 0.5) / float(size);
+  float v = (float(coord.y) + 0.5) / float(size);
+  float s = 2.0 * u - 1.0;
+  float t = 2.0 * v - 1.0;
+  vec3 dir;
+  switch (face) {
+    case 0:
+    dir = vec3(1.0, -t, -s);
+    break;
+    case 1:
+    dir = vec3(-1.0, -t, s);
+    break;
+    case 2:
+    dir = vec3(s, 1.0, t);
+    break;
+    case 3:
+    dir = vec3(s, -1.0, -t);
+    break;
+    case 4:
+    dir = vec3(s, -t, 1.0);
+    break;
+    case 5:
+    dir = vec3(-s, -t, -1.0);
+    break;
+  }
+  return normalize(dir);
 }
 vec3 EvaluateIrradianceSH(vec3 n) {
-        const float c1 = 0.429043;
-        const float c2 = 0.511664;
-        const float c3 = 0.743125;
-        const float c4 = 0.886227;
-        const float c5 = 0.247708;
-        vec3 L00 = shCoefficients[0].rgb;
-        vec3 L1m1 = shCoefficients[1].rgb;
-        vec3 L10 = shCoefficients[2].rgb;
-        vec3 L11 = shCoefficients[3].rgb;
-        vec3 L2m2 = shCoefficients[4].rgb;
-        vec3 L2m1 = shCoefficients[5].rgb;
-        vec3 L20 = shCoefficients[6].rgb;
-        vec3 L21 = shCoefficients[7].rgb;
-        vec3 L22 = shCoefficients[8].rgb;
-        return c1 * L22 * (n.x * n.x - n.y * n.y) + c3 * L20 * n.z * n.z + c4 * L00 - c5 * L20 + 2.0 * c1 * (L2m2 * n.x * n.y + L21 * n.x * n.z + L2m1 * n.y * n.z) + 2.0 * c2 * (L11 * n.x + L1m1 * n.y + L10 * n.z);
+  const float c1 = 0.429043;
+  const float c2 = 0.511664;
+  const float c3 = 0.743125;
+  const float c4 = 0.886227;
+  const float c5 = 0.247708;
+  vec3 L00 = shCoefficients[0].rgb;
+  vec3 L1m1 = shCoefficients[1].rgb;
+  vec3 L10 = shCoefficients[2].rgb;
+  vec3 L11 = shCoefficients[3].rgb;
+  vec3 L2m2 = shCoefficients[4].rgb;
+  vec3 L2m1 = shCoefficients[5].rgb;
+  vec3 L20 = shCoefficients[6].rgb;
+  vec3 L21 = shCoefficients[7].rgb;
+  vec3 L22 = shCoefficients[8].rgb;
+  return c1 * L22 * (n.x * n.x - n.y * n.y) + c3 * L20 * n.z * n.z + c4 * L00 - c5 * L20 + 2.0 * c1 * (L2m2 * n.x * n.y + L21 * n.x * n.z + L2m1 * n.y * n.z) + 2.0 * c2 * (L11 * n.x + L1m1 * n.y + L10 * n.z);
 }

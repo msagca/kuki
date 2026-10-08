@@ -4,6 +4,7 @@
 *.tesc linguist-language=GLSL
 *.tese linguist-language=GLSL
 *.vert linguist-language=GLSL
+*.blend filter=lfs diff=lfs merge=lfs -text
 *.exr filter=lfs diff=lfs merge=lfs -text
 *.fbx filter=lfs diff=lfs merge=lfs -text
 *.gltf filter=lfs diff=lfs merge=lfs -text

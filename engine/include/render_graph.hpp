@@ -36,6 +36,20 @@ public:
   auto GetInputs(const PassID) -> std::span<std::string>;
   auto GetOutputs(const PassID) -> std::span<std::string>;
   auto ResizeTargets(Renderer &, const int, const int) -> void;
+  /// @brief Changes how many samples a declared target is rasterised at, after the graph was built.
+  ///
+  /// The one field of a description the graph will change on request. Width and height are not
+  /// offered because `ResizeTargets` owns them and a second writer would fight it; the format and
+  /// the type are not offered because a pass is written against them.
+  ///
+  /// A sample count is different in kind: nothing in a pass depends on it -- both backends ask the
+  /// target how many samples it carries rather than assuming a number -- so it is the one thing
+  /// about a target that can move while the graph around it stays as it was compiled.
+  ///
+  /// Reallocates through the renderer immediately, and does nothing at all when the count already
+  /// matches. That matters because the caller is `RenderingSystem::Update`, which pushes the
+  /// setting every frame for the reason it pushes `IndirectLighting` every frame.
+  auto SetTargetSamples(Renderer &, const std::string &, const int) -> void;
   auto ForEachPass(auto &&) const -> void;
   auto ForEachTarget(auto &&) const -> void;
 private:

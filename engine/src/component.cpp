@@ -1,4 +1,6 @@
 #include <animator.hpp>
+#include <anti_aliasing.hpp>
+#include <atmosphere_sky.hpp>
 #include <bone_data.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
@@ -24,9 +26,13 @@
 #include <transform.hpp>
 #include <typeindex>
 #include <unordered_map>
+#include <volumetric_clouds.hpp>
+#include <volumetric_fog.hpp>
 namespace kuki {
 const std::unordered_map<std::type_index, ComponentType> Component::indexToType = {
   {typeid(Animator), ComponentType::Animator},
+  {typeid(AntiAliasing), ComponentType::AntiAliasing},
+  {typeid(AtmosphereSky), ComponentType::AtmosphereSky},
   {typeid(BoneData), ComponentType::BoneData},
   {typeid(BoundingBox), ComponentType::BoundingBox},
   {typeid(Camera), ComponentType::Camera},
@@ -50,9 +56,13 @@ const std::unordered_map<std::type_index, ComponentType> Component::indexToType 
   {typeid(Skeleton), ComponentType::Skeleton},
   {typeid(SkyboxHandle), ComponentType::SkyboxHandle},
   {typeid(TextureHandle), ComponentType::TextureHandle},
-  {typeid(Transform), ComponentType::Transform}};
+  {typeid(Transform), ComponentType::Transform},
+  {typeid(VolumetricClouds), ComponentType::VolumetricClouds},
+  {typeid(VolumetricFog), ComponentType::VolumetricFog}};
 const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex = {
   {ComponentType::Animator, typeid(Animator)},
+  {ComponentType::AntiAliasing, typeid(AntiAliasing)},
+  {ComponentType::AtmosphereSky, typeid(AtmosphereSky)},
   {ComponentType::BoneData, typeid(BoneData)},
   {ComponentType::BoundingBox, typeid(BoundingBox)},
   {ComponentType::Camera, typeid(Camera)},
@@ -76,9 +86,13 @@ const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex 
   {ComponentType::Skeleton, typeid(Skeleton)},
   {ComponentType::SkyboxHandle, typeid(SkyboxHandle)},
   {ComponentType::TextureHandle, typeid(TextureHandle)},
-  {ComponentType::Transform, typeid(Transform)}};
+  {ComponentType::Transform, typeid(Transform)},
+  {ComponentType::VolumetricClouds, typeid(VolumetricClouds)},
+  {ComponentType::VolumetricFog, typeid(VolumetricFog)}};
 const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::Animator, "Animator"},
+  {ComponentType::AntiAliasing, "Anti Aliasing"},
+  {ComponentType::AtmosphereSky, "Atmosphere Sky"},
   {ComponentType::BoneData, "BoneData"},
   {ComponentType::BoundingBox, "BoundingBox"},
   {ComponentType::Camera, "Camera"},
@@ -102,7 +116,9 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::Skeleton, "Skeleton"},
   {ComponentType::SkyboxHandle, "SkyboxHandle"},
   {ComponentType::TextureHandle, "TextureHandle"},
-  {ComponentType::Transform, "Transform"}};
+  {ComponentType::Transform, "Transform"},
+  {ComponentType::VolumetricClouds, "Volumetric Clouds"},
+  {ComponentType::VolumetricFog, "Volumetric Fog"}};
 auto Component::GetBit(const std::type_index &typeIndex) -> size_t {
   if (auto it = indexToType.find(typeIndex); it != indexToType.end())
     return static_cast<size_t>(it->second);
@@ -124,7 +140,7 @@ auto Component::GetTypeName(const ComponentType type) -> std::string {
   return {};
 }
 auto Component::IsSceneSingleton(const ComponentType type) -> bool {
-  return type == ComponentType::IndirectLighting;
+  return type == ComponentType::AntiAliasing || type == ComponentType::AtmosphereSky || type == ComponentType::IndirectLighting || type == ComponentType::VolumetricClouds || type == ComponentType::VolumetricFog;
 }
 auto Component::IsGL(const ComponentType type) -> bool {
   return type >= ComponentType::GLBuffer && type <= ComponentType::GLUnlitShader;

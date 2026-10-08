@@ -1,5 +1,7 @@
 #pragma once
 #include <animator.hpp>
+#include <anti_aliasing.hpp>
+#include <atmosphere_sky.hpp>
 #include <bone_data.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
@@ -25,9 +27,11 @@
 #include <typeindex>
 #include <unordered_map>
 #include <variant>
+#include <volumetric_clouds.hpp>
+#include <volumetric_fog.hpp>
 namespace kuki {
-using ComponentVariant = std::variant<Animator *, BoneData *, BoundingBox *, Camera *, DXMaterial *, GLBuffer *, GLComputeShader *, GLLitShader *, GLMaterial *, GLMesh *, GLRenderTarget *, GLSkybox *, GLTexture *, GLUnlitShader *, IndirectLighting *, Light *, MaterialHandle *, MeshHandle *, ModelMaterialHandle *, ModelMeshHandle *, Script *, Skeleton *, SkyboxHandle *, TextureHandle *, Transform *>;
-using ConstComponentVariant = std::variant<const Animator *, const BoneData *, const BoundingBox *, const Camera *, const DXMaterial *, const GLBuffer *, const GLComputeShader *, const GLLitShader *, const GLMaterial *, const GLMesh *, const GLRenderTarget *, const GLSkybox *, const GLTexture *, const GLUnlitShader *, const IndirectLighting *, const Light *, const MaterialHandle *, const MeshHandle *, const ModelMaterialHandle *, const ModelMeshHandle *, const Script *, const Skeleton *, const SkyboxHandle *, const TextureHandle *, const Transform *>;
+using ComponentVariant = std::variant<Animator *, AntiAliasing *, AtmosphereSky *, BoneData *, BoundingBox *, Camera *, DXMaterial *, GLBuffer *, GLComputeShader *, GLLitShader *, GLMaterial *, GLMesh *, GLRenderTarget *, GLSkybox *, GLTexture *, GLUnlitShader *, IndirectLighting *, Light *, MaterialHandle *, MeshHandle *, ModelMaterialHandle *, ModelMeshHandle *, Script *, Skeleton *, SkyboxHandle *, TextureHandle *, Transform *, VolumetricClouds *, VolumetricFog *>;
+using ConstComponentVariant = std::variant<const Animator *, const AntiAliasing *, const AtmosphereSky *, const BoneData *, const BoundingBox *, const Camera *, const DXMaterial *, const GLBuffer *, const GLComputeShader *, const GLLitShader *, const GLMaterial *, const GLMesh *, const GLRenderTarget *, const GLSkybox *, const GLTexture *, const GLUnlitShader *, const IndirectLighting *, const Light *, const MaterialHandle *, const MeshHandle *, const ModelMaterialHandle *, const ModelMeshHandle *, const Script *, const Skeleton *, const SkyboxHandle *, const TextureHandle *, const Transform *, const VolumetricClouds *, const VolumetricFog *>;
 class KUKI_ENGINE_API Component {
 public:
   static auto ForEachSetType(const ComponentMask &, auto &&) -> void;

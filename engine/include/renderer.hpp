@@ -56,6 +56,22 @@ public:
   /// that is worth stating once as a dependency instead of arranging by hand at every call site.
   /// Backends without a probe volume do nothing here.
   virtual auto TraceProbes(std::span<std::string>, std::span<std::string>) -> void = 0;
+  /// @brief Marches the scene's cloud layer, where it has one, into a buffer of its own.
+  ///
+  /// Premultiplied: the colour channels carry scattered light already scaled by how much of the
+  /// pixel the cloud covers, and the alpha carries that coverage. Compositing is therefore
+  /// `behind * (1 - alpha) + rgb`, and a buffer of zeroes is a clear sky rather than a black one --
+  /// which is what makes an empty run of this pass cost a clear and nothing else.
+  ///
+  /// Backends without a procedural sky do nothing here. There is no cloud without an atmosphere to
+  /// put it in, and `RendererCapabilities::proceduralSky` is what says whether there is one.
+  virtual auto MarchClouds(std::span<std::string>, std::span<std::string>) -> void = 0;
+  /// @brief Scatters the scene's lights out of the air between the camera and the geometry.
+  ///
+  /// Composites as it goes rather than writing a buffer for someone else to composite: it is handed
+  /// the finished scene colour and returns it with the haze and the shafts already in it. The
+  /// alternative would be a fourth full-screen target to hold a term that has exactly one consumer.
+  virtual auto ApplyVolumetricFog(std::span<std::string>, std::span<std::string>) -> void = 0;
   /// @brief Draws a finished target onto the window's own surface, scaled to fill it.
   ///
   /// The render graph ends in an offscreen target, which is the right shape for an editor: the

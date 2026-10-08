@@ -139,6 +139,14 @@ auto RenderGraph::ResizeTargets(Renderer &renderer, const int width, const int h
     renderer.UpdateTarget(name, desc);
   }
 }
+auto RenderGraph::SetTargetSamples(Renderer &renderer, const std::string &name, const int samples) -> void {
+  const auto wanted = std::max(1, samples);
+  auto it = nameToDesc.find(name);
+  if (it == nameToDesc.end() || it->second.samples == wanted)
+    return;
+  it->second.samples = wanted;
+  renderer.UpdateTarget(name, it->second);
+}
 auto RenderGraph::AreConnected(const PassID src, const PassID dst) -> bool {
   if (src == dst)
     return true;

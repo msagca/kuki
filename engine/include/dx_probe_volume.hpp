@@ -1,5 +1,7 @@
 #pragma once
 #ifdef KUKI_HAS_DIRECTX
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <dx_common.hpp>
@@ -25,23 +27,45 @@ class DXPipelineCache;
 /// decides how much the volume costs. Five is 32 cells per axis and a lattice of at most 35937
 /// probe positions, of which a real scene uses a small fraction.
 inline constexpr uint32_t PROBE_OCTREE_MAX_DEPTH = 5;
-/// @brief Depth every region subdivides to before triangle density is consulted at all.
+/// @brief Probe spacing the uniform part of the volume aims for, in world units.
 ///
-/// Triangle count alone is the wrong measure below a certain scale, and a Cornell box shows why: six
-/// quads is twelve triangles, so no threshold worth applying to a detailed mesh ever splits it, and
-/// the volume ends up with eight probes around a room whose lighting varies across every wall.
-/// Density is a reason to add probes, not the reason to have them.
+/// The floor on spacing is a distance, not a depth, and the difference is the whole point. A fixed
+/// depth is a fixed number of cells per axis, so it means completely different spacing in different
+/// scenes: three levels gave a four unit room half a unit between probes and a four hundred unit
+/// level fifty. Neither of those was asked for; both were what one constant happened to imply.
 ///
-/// So the volume is a uniform grid at this depth with an adaptive tree on top: three levels give
-/// eight cells per axis everywhere, including empty air, and dense geometry keeps subdividing from
-/// there. This is the floor on probe spacing, and the octree above it is the part that varies.
-inline constexpr uint32_t PROBE_OCTREE_MIN_DEPTH = 3;
-/// @brief Triangle count above which a node past the minimum depth keeps subdividing.
+/// Stated as a distance, the same number means the same thing in both -- a probe roughly every unit
+/// -- and the depth is whatever gets there. See `ProbeUniformDepth`.
 ///
-/// This is the whole of "denser probes in dense geometry": past `PROBE_OCTREE_MIN_DEPTH` a node
-/// holding more than this splits and its children get probes at half the spacing, while a node
-/// holding fewer stops and keeps the uniform spacing. Nothing else steers the adaptive part.
-inline constexpr uint32_t PROBE_OCTREE_LEAF_TRIANGLES = 32;
+/// One unit is chosen for the scenes here, which are rooms measured in units that read as metres,
+/// and a metre is where diffuse indirect light stops changing much between one probe and the next.
+/// A scene built at a different scale wants this changed with it; it is the one number in this file
+/// that is about the world rather than about the algorithm.
+inline constexpr float PROBE_TARGET_SPACING = 1.f;
+/// @brief Shallowest uniform grid the volume will settle for, whatever its size implies.
+///
+/// Two levels is four cells per axis and a hundred and twenty-five probe positions. A volume smaller
+/// than the target spacing would otherwise be handed a single cell with eight probes on its corners,
+/// and eight probes around a room is not a light field -- it is a box with a colour at each corner.
+inline constexpr uint32_t PROBE_OCTREE_MIN_DEPTH_FLOOR = 2;
+/// @brief Surface area a node may hold, as a multiple of its own cross-section, before it splits.
+///
+/// The adaptive half of the tree, and what it measures is deliberately not triangles. Triangle count
+/// is a modelling decision: the same wall is two triangles or two thousand depending on who built
+/// it, and the irradiance around it is identical either way. Steering on it meant a high resolution
+/// model imported at a small scale dragged every cell it touched down to the maximum depth while the
+/// low poly room around it stayed coarse -- probes packed most densely exactly where they were least
+/// needed, which is the opposite of what the octree was added to do.
+///
+/// Area answers the question that was meant. A cell is compared against its own face, so the measure
+/// is free of both scale and tessellation: one flat surface crossing a cell reads as 1 whatever the
+/// cell's size and whatever the surface is made of, two walls meeting in it read as 2, and the
+/// corner where three meet reads as 3. Past that a cell is holding genuinely folded or cluttered
+/// geometry, where the light field really does vary faster than the uniform spacing can follow.
+///
+/// Four is therefore just above the busiest arrangement that is still simple. It is a ratio, so it
+/// needs no retuning when a scene is built at a different size.
+inline constexpr float PROBE_OCTREE_LEAF_SURFACE = 4.f;
 /// @brief Triangles per cluster, which is how much geometry one box in the subdivision stands for.
 ///
 /// Chosen by measurement rather than by reasoning, because the reasoning points the wrong way.
@@ -55,6 +79,26 @@ inline constexpr uint32_t PROBE_OCTREE_LEAF_TRIANGLES = 32;
 /// by under one percent in time while 512 inflates the volume by a tenth. So this is the point
 /// where the curve stops paying and the tree is still the one that was wanted.
 inline constexpr uint32_t PROBE_CLUSTER_TRIANGLES = 128;
+/// @brief Depth every region subdivides to before the surface measure is consulted at all.
+///
+/// The volume is a uniform grid at this depth with an adaptive tree on top: the grid puts probes in
+/// empty air as well as against geometry, because a room's light varies across the middle of it and
+/// not only where something is standing, and the tree adds more where the geometry earns them.
+///
+/// Rounded rather than floored or ceiled: the target is a spacing to land near, so the nearest power
+/// of two to it is the honest reading. A four unit room comes out at two levels and a spacing of
+/// 1.02; sixteen units comes out at four levels and exactly 1.
+///
+/// Clamped at both ends. The floor keeps a volume smaller than the target from collapsing to one
+/// cell, and the ceiling is the lattice the lookup grid is built on -- a scene far larger than the
+/// target simply cannot have the spacing it asked for, and gets the finest the tree can express.
+inline auto ProbeUniformDepth(const float side) -> uint32_t {
+  if (!(side > .0f))
+    return PROBE_OCTREE_MIN_DEPTH_FLOOR;
+  const auto levels = std::lround(std::log2(static_cast<double>(side) / PROBE_TARGET_SPACING));
+  const auto clamped = std::clamp<long>(levels, PROBE_OCTREE_MIN_DEPTH_FLOOR, PROBE_OCTREE_MAX_DEPTH);
+  return static_cast<uint32_t>(clamped);
+}
 /// @brief Frames the geometry must hold still before a changed scene is rebuilt.
 ///
 /// The same debounce `RenderingSystem::SetResolution` uses, for the same reason: a continuous edit
@@ -357,6 +401,12 @@ struct DXProbeCluster {
   glm::vec3 low{};
   glm::vec3 high{};
   uint32_t triangles{};
+  /// @brief Surface area of the triangles in this cluster, which is what the subdivision steers on.
+  ///
+  /// Carried beside the count rather than instead of it: the count is still what the build reports,
+  /// and it is the honest figure for how much geometry a scene holds. It simply no longer decides
+  /// anything. See `PROBE_OCTREE_LEAF_SURFACE`.
+  float area{};
 };
 /// @brief Everything a rebuild produces, before any of it reaches the GPU.
 ///
@@ -372,6 +422,10 @@ struct DXProbeOctree {
   uint32_t deepestLeaf{};
   uint32_t triangleCount{};
   uint32_t clusterCount{};
+  /// @brief The uniform depth this build chose from the volume's size. See `ProbeUniformDepth`.
+  uint32_t uniformDepth{};
+  /// @brief Total surface area the clusters hold, reported so a build can be read against the ratio.
+  float surfaceArea{};
 };
 /// @brief Where irradiance is sampled from and how a shading point finds the samples near it.
 ///

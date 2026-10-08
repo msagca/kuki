@@ -29,6 +29,10 @@ auto Renderer::ExecutePass(const RenderPass pass, std::span<std::string> inputs,
     return CreateSpotShadowMap(inputs, outputs);
   case RenderPass::ProbeTrace:
     return TraceProbes(inputs, outputs);
+  case RenderPass::VolumetricClouds:
+    return MarchClouds(inputs, outputs);
+  case RenderPass::VolumetricFog:
+    return ApplyVolumetricFog(inputs, outputs);
   default:
     return RenderScene(inputs, outputs);
   }
@@ -45,6 +49,12 @@ auto Renderer::BypassPass(const RenderPass pass, std::span<std::string> inputs, 
   // produce a value no one reads. Bloom itself is where turning bloom off is felt.
   case RenderPass::BrightPassFilter:
   case RenderPass::BlurEffect:
+    return;
+  // Nothing either, and the one pass that reads this one is what makes that safe: the fog pass asks
+  // whether the clouds are running before it samples them, so a buffer left holding the last frame
+  // it was filled in is a buffer nobody opens. Clearing it would be the tidier-looking answer and a
+  // full-screen write per frame to produce zeroes that go unread.
+  case RenderPass::VolumetricClouds:
     return;
   // Emptied. A depth target clears to the far plane, which is the honest neutral for all three: a
   // shadow map that reaches nothing shadows nothing, and a prepass that found no surfaces occludes

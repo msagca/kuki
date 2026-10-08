@@ -8,38 +8,38 @@ uniform bool u_invert;
 vec2 SampleSphericalMap(vec3);
 vec3 GetDirection(ivec3, ivec2);
 void main() {
-        ivec3 gid = ivec3(gl_GlobalInvocationID);
-        if (gid.x >= u_size || gid.y >= u_size || gid.z >= 6)
-                return;
-        vec3 dir = GetDirection(gid, ivec2(u_size));
-        vec2 uv = SampleSphericalMap(dir);
-        if (u_invert)
-                uv.y = 1.0 - uv.y;
-        vec3 color = texture(u_equirect, uv).rgb;
-        imageStore(u_cubemap, gid, vec4(color, 1.0));
+  ivec3 gid = ivec3(gl_GlobalInvocationID);
+  if (gid.x >= u_size || gid.y >= u_size || gid.z >= 6)
+    return;
+  vec3 dir = GetDirection(gid, ivec2(u_size));
+  vec2 uv = SampleSphericalMap(dir);
+  if (u_invert)
+    uv.y = 1.0 - uv.y;
+  vec3 color = texture(u_equirect, uv).rgb;
+  imageStore(u_cubemap, gid, vec4(color, 1.0));
 }
 vec3 GetDirection(ivec3 coord, ivec2 size) {
-        uint face = coord.z;
-        vec2 uv = (coord.xy + 0.5) / size * 2.0 - 1.0;
-        switch (face) {
-                case 0:
-                return normalize(vec3(1.0, -uv.y, -uv.x));
-                case 1:
-                return normalize(vec3(-1.0, -uv.y, uv.x));
-                case 2:
-                return normalize(vec3(uv.x, 1.0, uv.y));
-                case 3:
-                return normalize(vec3(uv.x, -1.0, -uv.y));
-                case 4:
-                return normalize(vec3(uv.x, -uv.y, 1.0));
-                case 5:
-                return normalize(vec3(-uv.x, -uv.y, -1.0));
-        }
-        return vec3(0.0);
+  uint face = coord.z;
+  vec2 uv = (coord.xy + 0.5) / size * 2.0 - 1.0;
+  switch (face) {
+    case 0:
+    return normalize(vec3(1.0, -uv.y, -uv.x));
+    case 1:
+    return normalize(vec3(-1.0, -uv.y, uv.x));
+    case 2:
+    return normalize(vec3(uv.x, 1.0, uv.y));
+    case 3:
+    return normalize(vec3(uv.x, -1.0, -uv.y));
+    case 4:
+    return normalize(vec3(uv.x, -uv.y, 1.0));
+    case 5:
+    return normalize(vec3(-uv.x, -uv.y, -1.0));
+  }
+  return vec3(0.0);
 }
 vec2 SampleSphericalMap(vec3 v) {
-        vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
-        uv *= INV_ATAN;
-        uv += 0.5;
-        return uv;
+  vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
+  uv *= INV_ATAN;
+  uv += 0.5;
+  return uv;
 }

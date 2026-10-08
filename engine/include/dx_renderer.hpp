@@ -5,6 +5,9 @@
 #include <desktop_size.hpp>
 #include <dx_acceleration_structure.hpp>
 #include <dx_common.hpp>
+#include <atmosphere_sky.hpp>
+#include <volumetric_clouds.hpp>
+#include <volumetric_fog.hpp>
 #include <dx_compute_texture.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <material_asset.hpp>
@@ -206,6 +209,8 @@ public:
   /// complaint one level down.
   auto GetCapabilities() const -> RendererCapabilities override;
   auto TraceProbes(std::span<std::string>, std::span<std::string>) -> void override;
+  auto MarchClouds(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyVolumetricFog(std::span<std::string>, std::span<std::string>) -> void override;
   auto UpdateTarget(const std::string &, const TargetDescription &) -> void override;
 private:
   DXPipelineCache pipelines;
@@ -279,6 +284,70 @@ private:
   DXComputeTexture irradianceMap;
   DXComputeTexture prefilterMap;
   DXComputeTexture brdfLUT;
+  /// @brief The two tables the procedural sky march reads, rebuilt with the sky that reads them.
+  ///
+  /// Not `TargetDescription` render targets and not in the render graph, for the reason the four
+  /// above are not: the graph allocates viewport-sized colour targets and resizes them with the
+  /// window, and every one of these is a fixed-size table whose contents a resize would throw away
+  /// for nothing. See `RenderGraph::AddResource` for the same argument made about the probe field.
+  DXComputeTexture transmittanceLUT;
+  DXComputeTexture multiscatterLUT;
+  /// @brief One texel: what the sun's own colour has become by the time it reaches the scene.
+  ///
+  /// A texture rather than a number on this class because the value is an integral through the
+  /// atmosphere, and the atmosphere is described in a shader. Working it out on the processor would
+  /// mean a second implementation of the medium to keep in step with the first.
+  DXComputeTexture sunTransmittanceLUT;
+  /// @brief The two noise volumes the cloud march samples its medium out of.
+  ///
+  /// Built once and kept, unlike the three tables above, which are rebuilt whenever the sky they
+  /// describe changes. Nothing in `VolumetricClouds` can change what is in these: the component's
+  /// scales say how large a feature is in kilometres and its coverage says how much of the field
+  /// survives, and both of those are applied where the volume is read rather than where it is
+  /// written. So a layer can be retuned from the editor without rebuilding anything.
+  DXComputeTexture cloudShapeNoise;
+  DXComputeTexture cloudDetailNoise;
+  /// @brief One texel: what the sun has left after the cloud layer, for the passes below it.
+  ///
+  /// The cloud layer's counterpart of `sunTransmittanceLUT`, and here for the same reason -- see
+  /// `CSSunTransmittance` in `clouds.hlsl`. It is what lets a cloud drifting across the sun take
+  /// the frame's light shafts with it at the cost of one fetch.
+  DXComputeTexture cloudSunTransmittanceLUT;
+  /// @brief Whether the volumes above have been built, which is asked once and answered for good.
+  bool cloudNoiseReady{};
+  /// @brief Whether the cloud pass actually filled its buffer this frame.
+  ///
+  /// Consumed by the fog pass, which composites the cloud buffer only when there is something in it.
+  /// A flag rather than a look at the scene, because the two passes can disagree about that: the
+  /// cloud pass may be stood down, or may have failed to build its pipeline, and in either case the
+  /// scene still holds the component that says there are clouds.
+  bool cloudsReady{};
+  /// @brief How far the cloud layer has drifted, in kilometres, since the renderer came up.
+  ///
+  /// Accumulated rather than multiplied out of a running clock, so that changing the wind changes
+  /// where the layer goes next rather than teleporting it to where it would have been had the new
+  /// wind always been blowing. Kept as doubles because it grows without bound: at the default speed
+  /// a float stops resolving a metre after about a day, and this is the one place that can be
+  /// noticed before it reaches a shader.
+  glm::dvec3 cloudWindOffset{};
+  /// @brief Frames the renderer has drawn, which is what turns the marches' dither over.
+  ///
+  /// Both volumetric passes offset each pixel's first step by a hash of its coordinates, and a hash
+  /// that did not move would draw the same grain in the same places every frame -- which reads as a
+  /// pattern laid over the picture rather than as noise. Wrapped into the low bits in the shader, so
+  /// the width here only has to outlast a session.
+  uint32_t volumetricFrame{};
+  /// @brief The address the scene pass uploaded this frame's `DXFrameConstants` to, or zero.
+  ///
+  /// Cached rather than rebuilt, because the fog pass wants exactly what the shading pass used: the
+  /// same lights, the same shadow matrices, the same counts. Gathering the scene a second time would
+  /// cost a second walk of it and could disagree with the first.
+  ///
+  /// Cleared as it is read, which is what makes it safe. The upload ring is reused within a frame,
+  /// so an address from the previous frame may by now point at somebody else's constants; consuming
+  /// it means a fog pass that runs without a scene pass ahead of it finds nothing and passes the
+  /// picture through, rather than shading the air by last frame's lights.
+  D3D12_GPU_VIRTUAL_ADDRESS sceneFrameConstantAddress{};
   /// @brief A one-texel cube standing in wherever a real environment map is absent.
   ///
   /// Serves two purposes: it keeps the scene shader's cube registers pointing at something real
@@ -311,7 +380,17 @@ private:
   uint32_t fallbackSkyboxIndex{DXDescriptorHeap::InvalidIndex};
   D3D12_GPU_DESCRIPTOR_HANDLE fallbackSkyboxTable{};
   /// @brief The skybox texture the current environment maps were built from.
+  ///
+  /// Zero when they came from an atmosphere instead, which `environmentAtmosphere` then identifies.
+  /// Exactly one of the two is set, and which one decides what a change has to be compared against
+  /// before the maps are rebuilt.
   AssetID environmentAsset{};
+  /// @brief Hash of the atmosphere and sun the current environment maps were computed from.
+  ///
+  /// A hash rather than a copy of the component because that is all it is ever asked: whether the
+  /// sky still stands for what the scene now says. Everything the march reads goes into it,
+  /// including the sun direction, so moving the light rebuilds the sky and nothing else does.
+  size_t environmentAtmosphere{};
   bool environmentReady{};
   /// @brief Per-frame-in-flight storage for `DXFrameConstants`, mapped for the process's lifetime.
   ///
@@ -694,7 +773,58 @@ private:
   /// once per skybox texture, at load time.
   ///
   /// @return False when anything failed, leaving the ambient term on its analytic fallback.
-  auto BuildEnvironmentMaps(const AssetID, const DXTexture &) -> bool;
+  /// @param equirect Fills the cubemap from a photograph, or null to fill it by scattering.
+  /// @param atmosphere Fills it by scattering, or null to fill it from `equirect`. Exactly one of
+  ///        the two is expected; the rest of the chain is identical either way, which is the whole
+  ///        reason the procedural sky is a different first dispatch rather than a second pipeline.
+  /// @param sunDirection Direction towards the sun, unit length. Read only for an atmosphere.
+  auto BuildEnvironmentMaps(const AssetID, const DXTexture *, const AtmosphereSky *, const glm::vec3 &) -> bool;
+  /// @brief Creates a plain non-square table a compute shader writes and another samples.
+  ///
+  /// `CreateComputeTexture` cannot: it takes one extent for both axes and gives every mip its own
+  /// views, which is right for a cube being filtered and wrong for a lookup table. These have one
+  /// level, two different extents and no array, so the dimensions live in the constants that are
+  /// passed to the shader rather than on the texture -- they are compile-time constants here, not
+  /// data that could disagree.
+  auto CreateComputeTable(DXComputeTexture &, const DXGI_FORMAT, const uint32_t, const uint32_t, const std::string &) -> bool;
+  /// @brief Points the atmosphere root signature's tables at one dispatch's resources.
+  ///
+  /// Allocates a fresh descriptor block per dispatch for the reason `BindComputeResources` does:
+  /// the GPU reads these later, so rewriting one block would corrupt a dispatch already recorded.
+  ///
+  /// @param sources Views for `t0` and `t1`; null entries fall back to the stand-in cube's own.
+  /// @param table The `u0` plain table this dispatch writes, or null when it writes the cubemap.
+  /// @param cubemap The `u1` cube face array this dispatch writes, or null when it writes a table.
+  auto BindAtmosphereResources(const std::array<uint32_t, ATMOSPHERE_SRV_SLOTS> &, const uint32_t, const uint32_t) -> bool;
+  /// @brief Fills the sky cubemap by marching the atmosphere, in place of the equirect unpack.
+  ///
+  /// Records three dispatches against the open command list and nothing else: the transmittance
+  /// table, the multiple-scattering estimate that samples it, and the sky that samples both. The
+  /// caller owns everything after, because everything after is the same as for a photograph.
+  auto DispatchAtmosphere(const AtmosphereSky &, const glm::vec3 &) -> bool;
+  /// @brief Creates a three-dimensional compute texture, which only the cloud noise wants.
+  ///
+  /// Separate from `CreateComputeTable` rather than a flag on it, because a volume differs in the
+  /// resource description, the view dimension for both the view and the write, and the dispatch
+  /// shape -- which between them is the whole of what that function does.
+  auto CreateComputeVolume(DXComputeTexture &, const DXGI_FORMAT, const uint32_t, const std::string &) -> bool;
+  /// @brief Points the cloud root signature's two tables at one dispatch's or draw's resources.
+  ///
+  /// @param graphics Whether to bind through the graphics root or the compute one. The signature is
+  ///        shared between the march and the three compute entry points, and D3D12 keeps the two
+  ///        binding points apart even where the layout behind them is the same object.
+  auto BindCloudResources(const std::array<uint32_t, CLOUD_SRV_SLOTS> &, ID3D12Resource *, const std::array<uint32_t, CLOUD_UAV_SLOTS> &, const bool) -> bool;
+  /// @brief Builds the two noise volumes, once, and says whether they are there to be sampled.
+  auto EnsureCloudNoise() -> bool;
+  /// @brief Fills the constants both cloud passes take from a layer and the atmosphere it sits in.
+  ///
+  /// One place rather than two, because the march and the sun transmittance texel have to agree
+  /// about where the layer is down to the kilometre: the texel says how much light reaches the
+  /// scene and the march says what the cloud that took it looks like, and a disagreement shows as
+  /// shafts that are not broken by the cloud standing in front of them.
+  auto FillCloudConstants(const VolumetricClouds &, const AtmosphereSky &, const glm::vec3 &, DXCloudConstants &) const -> void;
+  /// @brief Marches the sun ray through the cloud layer into `cloudSunTransmittanceLUT`.
+  auto DispatchCloudSunTransmittance(const DXCloudConstants &) -> bool;
   /// @brief Creates the one-texel cube and the coefficient buffer the compute tables always bind.
   auto EnsureComputeFallbacks() -> bool;
   /// @brief Renders an asset once into a small cached target, framed by its own bounds.

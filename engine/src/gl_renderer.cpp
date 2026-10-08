@@ -115,7 +115,16 @@ auto GLRenderer::BypassCopy(std::span<std::string> inputs, std::span<std::string
   }
   glBindFramebuffer(GL_READ_FRAMEBUFFER, source->framebuffer);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, out->framebuffer);
-  glBlitFramebuffer(0, 0, out->desc.width, out->desc.height, 0, 0, out->desc.width, out->desc.height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+  // The source rectangle is the source's own size, and the destination's is the destination's. They
+  // were both the output's, which is right exactly while the two targets happen to be the same size
+  // and silently wrong the moment they are not: a larger source would have its bottom-left corner
+  // blown up to fill the output, and a smaller one would be read past its edge.
+  //
+  // Nothing in the graph hits that today -- every pass that falls through to here is handed a
+  // picture the size of the one it produces -- but a bypass is reached by a pass being switched off
+  // rather than by anything about the targets, so the pairing is not something this can rely on. A
+  // half-resolution input reaching a full-resolution output is one `SetPassEnabled` away.
+  glBlitFramebuffer(0, 0, source->desc.width, source->desc.height, 0, 0, out->desc.width, out->desc.height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 auto GLRenderer::BypassClear(std::span<std::string> outputs) -> void {
@@ -331,7 +340,12 @@ auto GLRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::stri
       continue;
     if (!sceneMulti && target->idTexture != 0)
       sceneMulti = target;
-    if (!in && target->desc.samples <= 1)
+    // Told apart by the picking buffer rather than by the sample count alone. The two inputs here
+    // are the scene target, which carries the ids, and the finished picture the outline is drawn
+    // over. Sample count separated them only while the scene was always multisampled: with
+    // antialiasing off it has one sample like everything else, and the first test to match it
+    // would have picked the scene as the picture and quietly dropped the bloom.
+    if (!in && target->idTexture == 0 && target->desc.samples <= 1)
       in = target;
   }
   const auto out = GetTarget(outputs[0]);
@@ -1067,7 +1081,7 @@ auto GLRenderer::CreateTarget(const TargetDescription &desc, const std::string &
   renderTarget->desc = desc;
   glBindFramebuffer(GL_FRAMEBUFFER, renderTarget->framebuffer);
   const auto attachment = desc.format == TargetFormat::DEPTH ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0;
-  const auto textureTarget = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+  const auto textureTarget = TargetTypeToGL(desc);
   if (desc.type == TargetType::Texture2DArray)
     glFramebufferTextureLayer(GL_FRAMEBUFFER, attachment, renderTarget->texture, 0, 0);
   else
@@ -1351,6 +1365,17 @@ auto GLRenderer::SetResolution(const int width, const int height) -> void {
 // executed here because the graph is shared between the backends, and one that does nothing costs
 // the call it takes to find that out.
 auto GLRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> void {}
+/// Nothing, for the reason `TraceProbes` above does nothing: there is no atmosphere on this backend
+/// to hang a cloud in. The buffer this would have filled is read only by the pass below, which does
+/// not run here either, so leaving it untouched costs a frame nothing rather than saving a clear.
+auto GLRenderer::MarchClouds(std::span<std::string>, std::span<std::string>) -> void {}
+/// The picture through, unaltered. The shafts want a depth buffer, both shadow maps and a medium
+/// described by the same tables the sky is marched from, and this backend has the first two -- so
+/// what is missing is the atmosphere rather than the plumbing, and `RendererCapabilities` says so
+/// rather than this quietly drawing a worse version.
+auto GLRenderer::ApplyVolumetricFog(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  BypassCopy(inputs, outputs);
+}
 auto GLRenderer::UpdateTarget(const std::string &name, const TargetDescription &desc) -> void {
   const auto id = resourceRegistry.GetID(name);
   if (!id)
@@ -1377,7 +1402,7 @@ auto GLRenderer::UpdateTarget(const std::string &name, const TargetDescription &
   }
   glBindFramebuffer(GL_FRAMEBUFFER, target->framebuffer);
   const auto attachment = desc.format == TargetFormat::DEPTH ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0;
-  const auto textureTarget = desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+  const auto textureTarget = TargetTypeToGL(desc);
   if (desc.type == TargetType::Texture2DArray)
     glFramebufferTextureLayer(GL_FRAMEBUFFER, attachment, target->texture, 0, 0);
   else

@@ -451,6 +451,33 @@
           "orthoSize": 5.0
         }
       }
+    },
+    {
+      "name": "Air",
+      "children": [],
+      "components": {
+        "Volumetric Fog": {
+          "density": 0.055,
+          "baseHeight": 0.0,
+          "heightFalloff": 0.12,
+          "albedo": {
+            "x": 0.92,
+            "y": 0.92,
+            "z": 0.9
+          },
+          "anisotropy": 0.3,
+          "ambient": {
+            "x": 0.05,
+            "y": 0.045,
+            "z": 0.04
+          },
+          "lightScale": 1.6,
+          "maxDistance": 14.0,
+          "aerialPerspective": 0.0,
+          "kilometresPerUnit": 0.0035,
+          "steps": 48
+        }
+      }
     }
   ]
 }

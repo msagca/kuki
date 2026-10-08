@@ -184,10 +184,29 @@ auto CameraController::Update(Application &app) -> void {
   camera.dirty += dirty;
   auto cameraPtr = GetComponent<Camera>();
   if (cameraPtr) {
-    if (cameraMissing || cameraPtr->dirty > camera.dirty)
-      camera = *cameraPtr;
-    else if (camera.dirty > cameraPtr->dirty)
-      *cameraPtr = camera;
+    // Where the camera is, and nothing else. These three are the whole of what this controller
+    // writes -- movement and orbit set the first two, the scroll wheel sets the third under an
+    // orthographic projection -- so they are the whole of what it has any business putting back.
+    //
+    // It used to assign the component wholesale, and that quietly reverted every field on a camera
+    // that nothing here touches. `dirty` is what arbitrates the two directions, and only the
+    // placement controls in the properties panel bump it: the exposure controls do not, and neither
+    // does selecting a debug view. So each of those was written to the component, lost the
+    // comparison that decides the direction, and was overwritten by this controller's copy of the
+    // value it held before -- the moment the camera was next flown. Turning a probe visualisation
+    // on and then looking around was enough to switch it off again.
+    if (!cameraMissing && camera.dirty > cameraPtr->dirty) {
+      cameraPtr->position = camera.position;
+      cameraPtr->rotation = camera.rotation;
+      cameraPtr->orthoSize = camera.orthoSize;
+      cameraPtr->dirty = camera.dirty;
+    }
+    // Then read the whole of it back, in every case rather than only when the component moved last.
+    // The component is the camera and this is a cache of it, so refreshing unconditionally is what
+    // keeps the two from drifting on anything the list above does not mention -- the aspect ratio
+    // the render target hands it, a field of view set in the panel -- and it keeps that list the
+    // only place the split between them is stated. The cache can no longer overwrite anything.
+    camera = *cameraPtr;
     cameraMissing = false;
   } else
     cameraMissing = true;

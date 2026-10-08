@@ -66,6 +66,13 @@ public:
   /// texture arrives in the shader as `(r, 0, 0, 1)`, and it is the alpha that a cutout material
   /// tests. White beneath means the material's own albedo is what colours the text.
   auto GetAtlas() const -> const Texture &;
+  /// @brief A texture coordinate in the middle of a small block of the atlas that is opaque
+  /// everywhere.
+  ///
+  /// What a solid shape drawn with the atlas samples, so that a rectangle can ride the same mesh,
+  /// the same texture and the same draws as the text beside it. The block is a few texels across
+  /// rather than one, so filtering at its centre never reaches past its edge.
+  auto GetSolidCoord() const -> glm::vec2;
   /// @brief Distance between the baselines of two consecutive lines, in ems.
   auto GetLineHeight() const -> float;
   /// @brief How far the pen travels across a string, in ems. Newlines are not accounted for.
@@ -92,6 +99,7 @@ private:
   auto Find(const char) const -> const Glyph *;
   std::array<Glyph, CharCount> glyphs{};
   Texture atlas{};
+  glm::vec2 solidCoord{};
   float lineHeight{1.f};
   bool loaded{};
 };

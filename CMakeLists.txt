@@ -97,6 +97,75 @@ function(kuki_report_binary target)
     VERBATIM
   )
 endfunction()
+# Blender, for the games whose models are kept as .blend files and exported at build time.
+#
+# Looked for on PATH first, then where the Windows installer and the macOS bundle put it -- newest
+# version first, since a .blend saved by a newer Blender may not open in an older one. Passing
+# -DKUKI_BLENDER_EXECUTABLE=<path> outranks all of it.
+file(
+  GLOB _kuki_blender_dirs
+  LIST_DIRECTORIES true
+  "$ENV{ProgramFiles}/Blender Foundation/Blender*"
+)
+list(SORT _kuki_blender_dirs COMPARE NATURAL ORDER DESCENDING)
+find_program(
+  KUKI_BLENDER_EXECUTABLE
+  NAMES blender
+  HINTS ${_kuki_blender_dirs} "/Applications/Blender.app/Contents/MacOS"
+  DOC "Blender, which exports the games' .blend models to glTF during the build"
+)
+unset(_kuki_blender_dirs)
+# Exports a .blend's `Export` collection to glTF beside a target's executable, one file a mesh.
+#
+# The .blend is the source and the only copy in the repository; the glTF files are build products,
+# as an object file is. Blender runs headless and only when the .blend or the export script has
+# changed. See `cmake/export_blend_gltf.py` for what is exported and how files are named.
+#
+# The export goes to a directory of its own in the build tree and is copied next to the executable
+# by the same command, rather than by a POST_BUILD step: that step runs only when the executable
+# relinks, and a model edited on its own would never reach a binary that had not changed. The
+# install takes the exported directory as it stands.
+#
+# Without Blender the target still builds, with a warning and no models, rather than the configure
+# failing: a missing model is something a game can report and carry on past, and a build machine
+# with no use for the game should not need Blender to build the engine.
+function(kuki_add_blender_models target blend destination)
+  if(NOT KUKI_BLENDER_EXECUTABLE)
+    message(
+      WARNING
+      "Blender was not found, so ${target} is built without the models in ${blend}. Install Blender or set KUKI_BLENDER_EXECUTABLE."
+    )
+    return()
+  endif()
+  set(script "${CMAKE_SOURCE_DIR}/cmake/export_blend_gltf.py")
+  set(exported "${CMAKE_CURRENT_BINARY_DIR}/${destination}.export")
+  set(stamp "${CMAKE_CURRENT_BINARY_DIR}/${destination}.stamp")
+  add_custom_command(
+    OUTPUT "${stamp}"
+    COMMAND
+      "${KUKI_BLENDER_EXECUTABLE}" --background --factory-startup "${blend}"
+      --python-exit-code 1 --python "${script}" -- "${exported}" "${stamp}"
+    COMMAND
+      ${CMAKE_COMMAND} -E copy_directory "${exported}"
+      "$<TARGET_FILE_DIR:${target}>/${destination}"
+    DEPENDS "${blend}" "${script}"
+    COMMENT "Exporting ${blend} to glTF"
+    VERBATIM
+  )
+  add_custom_target(${target}Models DEPENDS "${stamp}")
+  add_dependencies(${target} ${target}Models)
+  # Listed on the target so the .blend shows up beside the sources in an IDE.
+  target_sources(${target} PRIVATE "${blend}")
+  set_source_files_properties(
+    "${blend}"
+    PROPERTIES HEADER_FILE_ONLY TRUE VS_TOOL_OVERRIDE "None"
+  )
+  install(
+    DIRECTORY "${exported}/"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}/${destination}"
+    COMPONENT ${target}
+  )
+endfunction()
 project(Kuki VERSION 1.0.0)
 string(TOUPPER ${PROJECT_NAME} PROJECT_NAME_UPPER)
 # Whether a directory can actually be written to, asked by writing to it.

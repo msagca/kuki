@@ -19,10 +19,7 @@ auto GLTexturePool::Reallocate(const TargetDescription &desc, unsigned int &text
   if (texture == 0)
     return;
   const auto format = TargetFormatToGL(desc.format);
-  const auto target = desc.type == TargetType::Cubemap                              ? GL_TEXTURE_CUBE_MAP
-                      : desc.type == TargetType::Texture2DArray                     ? GL_TEXTURE_2D_ARRAY
-                      : desc.type == TargetType::Texture2DMulti || desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE
-                                                                                    : GL_TEXTURE_2D;
+  const auto target = TargetTypeToGL(desc);
   const auto type = format.external == GL_DEPTH_COMPONENT ? GL_FLOAT : GL_UNSIGNED_BYTE;
   glBindTexture(target, texture);
   if (target == GL_TEXTURE_2D_MULTISAMPLE)

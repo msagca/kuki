@@ -46,6 +46,11 @@ struct OverlayText {
   /// is the one question a caller cannot answer for itself because only the overlay knows where
   /// the text ended up.
   int id{};
+  /// @brief Size in pixels of a solid rectangle, drawn in place of text when `text` is empty.
+  ///
+  /// One queue for both rather than one each, because the order things are drawn in is the order
+  /// they overlap and are hit in, and two queues would lose it.
+  glm::vec2 box{};
 };
 /// @brief Where a piece of text ended up, so that a later click can be matched against it.
 struct OverlayHit {
@@ -94,6 +99,15 @@ public:
   /// Pass a non-zero `id` to make the text answer `HitTest`. Ids are the caller's to choose and
   /// need only be unique among the text drawn in one frame.
   auto DrawText(std::string, const glm::vec2 &, const float, const glm::vec4 & = glm::vec4(1.f), const TextAnchor = TextAnchor::TopLeft, const int = NoHit) -> void;
+  /// @brief Queues a solid rectangle for this frame, placed exactly as text of that size would be.
+  ///
+  /// Sampled from a block of the font's atlas that is opaque everywhere, so it is drawn by the
+  /// same mesh and the same draws as the text and needs nothing of either backend. That is also
+  /// why it needs a font set, like text does: there is no atlas to sample without one.
+  ///
+  /// The anchor's point of the rectangle lands on the offset -- a `TopRight` swatch keeps its top
+  /// right corner where it was put. A non-zero `id` makes it answer `HitTest`, unpadded.
+  auto DrawRect(const glm::vec2 &, const glm::vec2 &, const glm::vec4 & = glm::vec4(1.f), const TextAnchor = TextAnchor::TopLeft, const int = NoHit) -> void;
   /// @brief The id of the text under a point, or `NoHit`.
   ///
   /// Answers from where the last built frame put things, which is a frame behind whatever is being

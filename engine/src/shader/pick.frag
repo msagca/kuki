@@ -12,15 +12,15 @@ uniform int u_coordY;
 uniform int u_sampleCount;
 const uint ENTITY_ID_INVALID = 0xFFFFFFu;
 uint DecodeId(vec4 encoded) {
-        return uint(encoded.r * 255.0 + 0.5) | (uint(encoded.g * 255.0 + 0.5) << 8) | (uint(encoded.b * 255.0 + 0.5) << 16);
+  return uint(encoded.r * 255.0 + 0.5) | (uint(encoded.g * 255.0 + 0.5) << 8) | (uint(encoded.b * 255.0 + 0.5) << 16);
 }
 void main() {
-        ivec2 coord = ivec2(u_coordX, u_coordY);
-        // Sample 0 first, because that is the one the outline pass draws from: a click and the
-        // highlight it produces should agree about what is under the cursor. The rest are consulted
-        // only when sample 0 is background, which lets a click land on a piece from a pixel the
-        // piece covers by a quarter -- generous at the silhouette, never generous towards nothing.
-        color = texelFetch(u_idImage, coord, 0);
-        for (int i = 1; i < u_sampleCount && DecodeId(color) == ENTITY_ID_INVALID; ++i)
-                color = texelFetch(u_idImage, coord, i);
+  ivec2 coord = ivec2(u_coordX, u_coordY);
+  // Sample 0 first, because that is the one the outline pass draws from: a click and the
+  // highlight it produces should agree about what is under the cursor. The rest are consulted
+  // only when sample 0 is background, which lets a click land on a piece from a pixel the
+  // piece covers by a quarter -- generous at the silhouette, never generous towards nothing.
+  color = texelFetch(u_idImage, coord, 0);
+  for (int i = 1; i < u_sampleCount && DecodeId(color) == ENTITY_ID_INVALID; ++i)
+    color = texelFetch(u_idImage, coord, i);
 }

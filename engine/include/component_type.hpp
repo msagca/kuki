@@ -3,6 +3,8 @@
 namespace kuki {
 enum class ComponentType : uint8_t {
   Animator,
+  AntiAliasing,
+  AtmosphereSky,
   BoneData,
   BoundingBox,
   Camera,
@@ -26,8 +28,10 @@ enum class ComponentType : uint8_t {
   Skeleton,
   SkyboxHandle,
   TextureHandle,
-  Transform
+  Transform,
+  VolumetricClouds,
+  VolumetricFog
 };
-using ComponentMask = std::bitset<static_cast<uint8_t>(ComponentType::Transform) + 1>;
+using ComponentMask = std::bitset<static_cast<uint8_t>(ComponentType::VolumetricFog) + 1>;
 static_assert(static_cast<uint8_t>(ComponentType::GLUnlitShader) - static_cast<uint8_t>(ComponentType::GLBuffer) == 8, "GL component types (GLBuffer..GLUnlitShader) must stay contiguous -- Component::IsGL relies on this range");
 } // namespace kuki

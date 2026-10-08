@@ -24,6 +24,12 @@ constexpr int ATLAS_PADDING = 2;
 /// between a stem that is sampled twice per axis and one that is sampled once is the difference
 /// between an `a` and a smudge. Costs four times the rasterisation, once, at load.
 constexpr int ATLAS_OVERSAMPLE = 2;
+/// @brief Edge, in texels, of the opaque block kept in the atlas's bottom left corner.
+///
+/// Reserved by handing the packer an atlas this much shorter than it is, so no glyph can land in
+/// the rows the block occupies. Four leaves the middle two texels clear of anything bilinear
+/// filtering could pull in from outside it.
+constexpr int SOLID_BLOCK = 4;
 auto ReadFile(const std::filesystem::path &path) -> std::vector<unsigned char> {
   std::ifstream fs(path, std::ios::binary | std::ios::ate);
   if (!fs)
@@ -63,7 +69,7 @@ auto Font::Load(const std::filesystem::path &path, const int pixelHeight) -> boo
   for (const auto size : ATLAS_SIZES) {
     coverage.assign(static_cast<size_t>(size) * size, 0);
     stbtt_pack_context context;
-    if (!stbtt_PackBegin(&context, coverage.data(), size, size, 0, ATLAS_PADDING, nullptr))
+    if (!stbtt_PackBegin(&context, coverage.data(), size, size - SOLID_BLOCK, size, ATLAS_PADDING, nullptr))
       continue;
     stbtt_PackSetOversampling(&context, ATLAS_OVERSAMPLE, ATLAS_OVERSAMPLE);
     const auto fits = stbtt_PackFontRange(&context, file.data(), 0, static_cast<float>(pixelHeight), FirstChar, static_cast<int>(CharCount), packed.data());
@@ -98,6 +104,11 @@ auto Font::Load(const std::filesystem::path &path, const int pixelHeight) -> boo
     glyph.max = {quad.x1 / scale, -quad.y0 / scale};
     glyph.advance = x / scale;
   }
+  for (auto y = edge - SOLID_BLOCK; y < edge; ++y)
+    for (auto x = 0; x < SOLID_BLOCK; ++x)
+      coverage[static_cast<size_t>(y) * edge + x] = 0xFF;
+  // Row zero is the atlas's top and the smallest v, as it is for the glyphs above.
+  solidCoord = glm::vec2(SOLID_BLOCK * .5f, static_cast<float>(edge) - SOLID_BLOCK * .5f) / static_cast<float>(edge);
   // The packer writes one byte of coverage per texel and the material wants four channels; white
   // underneath leaves the colour of the text to the material rather than baking one in here.
   std::vector<unsigned char> pixels(coverage.size() * 4, 0xFF);
@@ -119,6 +130,9 @@ auto Font::IsLoaded() const -> bool {
 }
 auto Font::GetAtlas() const -> const Texture & {
   return atlas;
+}
+auto Font::GetSolidCoord() const -> glm::vec2 {
+  return solidCoord;
 }
 auto Font::GetLineHeight() const -> float {
   return lineHeight;

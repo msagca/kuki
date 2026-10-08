@@ -7,6 +7,7 @@
 #include <input_manager.hpp>
 #include <script.hpp>
 #include <string>
+#include <string_view>
 namespace kuki {
 class Application;
 class EntityManager;
@@ -47,22 +48,16 @@ private:
   /// The labels are centred in a band one `LABEL_SIZE` deep beginning this far out, and no glyph
   /// fills its em, so the gap that is actually seen is this plus whatever the ink leaves.
   static constexpr float LABEL_MARGIN = .16f;
-  /// @brief Height of the options text, in pixels, and of the clocks, which are larger.
-  ///
-  /// There is a hierarchy between the two and this is it: a clock is read over and over while a
-  /// game is played, and a time control is read once when it is chosen. The gap is small on
-  /// purpose -- enough that the eye goes to the clock first, not so much that the options read as
-  /// a footnote to it.
+  /// @brief Height of the options text, in pixels.
   ///
   /// Pixels rather than anything derived from the window, so the text stays the size it was drawn
   /// at whatever the window is doing. A caption that grew with the window would be a caption that
   /// is unreadable on a small one and absurd on a large one.
   ///
-  /// Both are comfortably under twice the pixel height the atlas is baked at, which is where a
-  /// bitmap font starts to soften -- and the 2x oversampling in `Font::Load` means the atlas holds
-  /// about twice the detail its nominal size suggests.
+  /// Comfortably under twice the pixel height the atlas is baked at, which is where a bitmap font
+  /// starts to soften -- and the 2x oversampling in `Font::Load` means the atlas holds about twice
+  /// the detail its nominal size suggests.
   static constexpr float OPTION_TEXT_SIZE = 52.f;
-  static constexpr float CLOCK_TEXT_SIZE = OPTION_TEXT_SIZE * 1.2f;
   /// @brief The time controls on offer, in minutes, and the increments, in seconds.
   ///
   /// Arrays rather than a range, because these are the figures people actually play: bullet,
@@ -73,6 +68,9 @@ private:
   /// @brief Keys the chosen control is kept under between runs. See `kuki::Preferences`.
   static constexpr const char *PREF_MINUTES = "clock.minutes";
   static constexpr const char *PREF_INCREMENT = "clock.increment";
+  /// @brief Key the chosen board theme is kept under, by the theme's key rather than its place in
+  /// the list, for the same reason the time control is kept by value.
+  static constexpr const char *PREF_THEME = "board.theme";
   /// @brief Inset of the options from the window's top left corner, and the gap between options.
   static constexpr float OPTION_MARGIN = 40.f;
   static constexpr float OPTION_SPACING = 22.f;
@@ -96,14 +94,61 @@ private:
   /// Both are well clear of `Overlay::NoHit`, which is zero.
   static constexpr int TIME_OPTION_ID = 100;
   static constexpr int INCREMENT_OPTION_ID = 200;
-  /// @brief Inset of the clocks from the right edge, in pixels.
-  static constexpr float CLOCK_MARGIN = 40.f;
-  /// @brief How far each clock's middle sits from the window's, so the two face one another.
+  static constexpr int THEME_OPTION_ID = 300;
+  /// @brief Edge of one preview square in the theme picker, and the ring round the chosen pair.
   ///
-  /// A shade under one line each side of the centre, which leaves about as much clear space
-  /// between the two as a digit is tall -- enough to read them as two clocks rather than one
-  /// stacked number, and close enough to read as a pair.
-  static constexpr float CLOCK_GAP = CLOCK_TEXT_SIZE * .7f;
+  /// About the height of a figure in the time options beside it, so the picker's rows sit level
+  /// with theirs and the top of the window reads as one band of settings rather than two.
+  static constexpr float SWATCH_SIZE = 38.f;
+  static constexpr float SWATCH_RING = 4.f;
+  /// @brief Height of a theme's name, smaller than the time options: the name is a caption to the
+  /// swatches, which are what the eye compares.
+  static constexpr float THEME_TEXT_SIZE = OPTION_TEXT_SIZE * .7f;
+  /// @brief How far the labels sit above the board frame's top face, which is also the squares'.
+  ///
+  /// The labels are painted onto the frame, and two surfaces at the same height fight over which
+  /// one the depth test shows. This is far more than the depth buffer can resolve at the distances
+  /// the camera works at and far less than anyone can see.
+  static constexpr float LABEL_LIFT = .004f;
+  /// @brief Where the clock stands: to White's right, beside the board, on the plane the board's
+  /// foot rests on.
+  ///
+  /// The model's long axis is its x and its face looks along its +z, tilted up. A quarter turn
+  /// about y puts the long axis along the board's z -- White's half of the clock at White's end --
+  /// and turns the face in toward the board, which is the side the camera looks from. Facing out,
+  /// as a clock at a tournament does, would show the camera its back.
+  static constexpr glm::vec3 CLOCK_POSITION{6.f, -.39f, .0f};
+  static constexpr float CLOCK_YAW = -90.f;
+  /// @brief Where each screen's glass is in the clock model's own space, and how it leans.
+  ///
+  /// Read off the model rather than worked out here: these are the numbers Blender printed when
+  /// the clock was built, and they have to change with it. White's screen is the one at +x, which
+  /// the turn above puts at White's end. The glyphs sit a few thousandths in front of the glass
+  /// for the same reason the labels sit above the frame.
+  ///
+  /// The clock is drawn minimal rather than as any real model: a plain body, a rocker, and two
+  /// screens that take up most of its face, one a side with a slim gap between them.
+  static constexpr float SCREEN_X = .8f;
+  static constexpr float SCREEN_Y = .6032f;
+  static constexpr float SCREEN_Z = .4043f;
+  static constexpr float SCREEN_TILT = -22.f;
+  /// @brief How much of each screen's 1.46 width the widest reading, `00:00`, is allowed to fill.
+  ///
+  /// The glyph size is worked out from this and the font's own advances rather than set, so the
+  /// figures fill the glass however wide the typeface draws its digits.
+  static constexpr float SCREEN_TEXT_WIDTH = 1.16f;
+  /// @brief Where the rocker turns in the clock model's space, and how far it leans either way.
+  ///
+  /// The rocker is the one bar across the clock's top that both players press: whichever end is
+  /// down belongs to the player who pressed it, and so to the player who is waiting. Its top dips
+  /// to the middle, so the end that is down lies near level, as a real one does.
+  static constexpr glm::vec3 ROCKER_PIVOT{.0f, .97f, -.17f};
+  static constexpr float ROCKER_TILT = 7.f;
+  /// @brief How quickly the rocker swings to where it is going, as a rate of exponential approach.
+  ///
+  /// Fast enough to read as a press -- most of the way over in about a tenth of a second -- and
+  /// not so fast that it jumps, which would look like the model being swapped rather than moved.
+  static constexpr float ROCKER_SPEED = 22.f;
   /// @brief Seconds remaining below which a clock turns red.
   static constexpr float CLOCK_LOW = 30.f;
   Board board;
@@ -111,6 +156,39 @@ private:
   std::array<kuki::EntityID, Board::SquareCount> squares{};
   /// @brief Every rank and file label, as one entity. Created once and never touched again.
   kuki::EntityID labels{};
+  /// @brief The frame the squares sit in. Created once and never touched again.
+  kuki::EntityID frame{};
+  /// @brief Character slots on one of the clock's screens, left to right: tens and units of
+  /// minutes, the colon, tens and units of seconds.
+  ///
+  /// One entity a character rather than one a reading, because a mesh is uploaded once and never
+  /// again: a reading baked into a mesh of its own would be a new asset every second. Each slot
+  /// instead swaps between eleven glyph meshes made once at startup -- the same move a square makes
+  /// when its material changes. A slot with nothing to show, which is the tens of minutes below
+  /// ten, has no entity at all rather than an empty mesh.
+  static constexpr size_t CLOCK_SLOTS = 5;
+  struct ClockFace {
+    std::array<kuki::EntityID, CLOCK_SLOTS> slots{};
+    /// @brief What each slot is showing, so a slot is only written when its reading changes.
+    std::array<char, CLOCK_SLOTS> shown{};
+    /// @brief The material the whole face is lit with, likewise.
+    std::string_view material{};
+  };
+  /// @brief The clock's root, which places it; everything else on it is a child.
+  kuki::EntityID clock{};
+  /// @brief One face a side, White first.
+  std::array<ClockFace, 2> faces{};
+  /// @brief The parts of the clock the theme colours, which is all of it but the figures.
+  kuki::EntityID clockBody{};
+  kuki::EntityID clockScreen{};
+  kuki::EntityID rocker{};
+  /// @brief The rocker's current lean in degrees about the model's z, travelling toward
+  /// `ROCKER_TILT` one way or the other. Positive lifts White's end.
+  float rockerAngle{};
+  /// @brief Each slot's centre along the screen, and the glyphs' em, in clock units. Worked out
+  /// with the glyphs, from the font's advances.
+  std::array<float, CLOCK_SLOTS> slotOffsets{};
+  float glyphSize{};
   /// @brief The entity standing on each square, or an invalid id for an empty square.
   std::array<kuki::EntityID, Board::SquareCount> pieces{};
   /// @brief Which squares the selected piece may move to, and so which ones are green.
@@ -154,6 +232,8 @@ private:
   /// @brief Which of `TIME_OPTIONS` and `INCREMENT_OPTIONS` is in force.
   size_t timeOption{};
   size_t incrementOption{};
+  /// @brief Which of the board themes is in force. See `THEMES` in the source.
+  size_t themeOption{};
   /// @brief The last few moves in algebraic notation, oldest first, empty where none was played.
   std::array<std::string, MOVE_HISTORY> moves{};
   /// @brief Index of the side whose flag has fallen, or -1 while both are still running.
@@ -264,13 +344,31 @@ private:
   auto OnOptionPressed(const int) -> bool;
   /// @brief Takes the running side's time off its clock, and ends the game if it runs out.
   auto UpdateClocks(kuki::Application &) -> void;
-  /// @brief Queues both clocks over this frame's picture.
+  /// @brief Lays the board's frame under the squares. Created once; recoloured by `ApplyTheme`.
+  auto CreateFrame() -> void;
+  /// @brief Registers every theme's square and frame materials, so switching is a renaming.
   ///
-  /// Also the turn indicator, which is the other half of what it is for: the side to move is drawn
-  /// at full strength and the other dimmed. Whose move it is, is the one thing a board of
-  /// primitives cannot say for itself, and saying it by colouring the pieces -- which was tried --
-  /// made the pieces harder to read rather than the turn easier.
-  auto DrawClocks(kuki::Application &) -> void;
+  /// Made in code rather than staged as `.mat` files because each theme needs seven of them and
+  /// six are worked out from the other two: a square showing a move or a capture is its own shade
+  /// mixed toward green or red, so stating a theme is stating its two shades and its frame. The
+  /// clock is made of the same three colours, so its materials are made here too.
+  auto CreateThemeMaterials() -> void;
+  /// @brief Puts the chosen theme on the squares, the frame and the clock. The game carries on.
+  auto ApplyTheme() -> void;
+  /// @brief Queues the theme picker down the top right: a name and a pair of squares a theme.
+  auto DrawThemes(kuki::Application &) -> void;
+  /// @brief Builds the clock: body, screens, rocker, and the glyph meshes the screens show.
+  ///
+  /// The glyphs are cut from the same atlas as the labels, one character to a mesh and each
+  /// centred on its own cell, so a slot can show any of them without being moved.
+  auto CreateClock() -> void;
+  /// @brief Brings the clock in line with the game: the two readings and the rocker.
+  ///
+  /// Also the turn indicator, which is the other half of what it is for. The side to move has its
+  /// figures drawn black and the other's greyed, and the rocker is down at its opponent's end --
+  /// a player presses their own end to stop their clock and start the other, so the end that is
+  /// down belongs to whoever is waiting. The clock presses itself: making the move is the press.
+  auto UpdateClock(kuki::Application &) -> void;
   /// @brief Works out where the game stands, which is `state` and `playable`.
   ///
   /// Split from the title because the two are wanted at different moments. This is the expensive
@@ -284,8 +382,8 @@ private:
   auto UpdateStanding() -> void;
   /// @brief Puts the game's name and its recent moves in the window's title bar.
   ///
-  /// Only those two. Whose move it is shows in which clock is bright, check in the `+` the
-  /// notation already carries, and a fallen flag in a clock reading nothing in red -- so a
-  /// running commentary here would repeat the screen rather than add to it.
+  /// Only those two. Whose move it is shows in which time is drawn black and which way the rocker
+  /// leans, check in the `+` the notation already carries, and a fallen flag in a time reading
+  /// nothing in red -- so a running commentary here would repeat the scene rather than add to it.
   auto UpdateTitle() -> void;
 };

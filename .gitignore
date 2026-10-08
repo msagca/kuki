@@ -36,7 +36,6 @@ CMakeScripts/
 Makefile
 [Bb]uild/
 [Dd]ebug/
-[Mm]odel/
 [Oo]ut/
 [Rr]elease/
 [Tt]esting/
@@ -45,3 +44,5 @@ Makefile
 _deps/
 compile_commands.json
 install_manifest.txt
+# Blender's backup of the previous save, written beside every .blend
+*.blend1

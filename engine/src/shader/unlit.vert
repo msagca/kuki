@@ -15,14 +15,14 @@ layout(location = 8) in vec4 baseColor;
 layout(location = 9) in int textureMask;
 layout(location = 15) in uint entityId;
 layout(std140, binding = 0) uniform u_cameraTransform {
-        mat4 view;
-        mat4 projection;
+  mat4 view;
+  mat4 projection;
 };
 void main() {
-        mat4 model = mat4(model0, model1, model2, model3);
-        v_baseColor = baseColor;
-        v_texCoords = texCoords;
-        v_textureMask = textureMask;
-        v_entityId = entityId;
-        gl_Position = projection * view * model * vec4(position, 1.0);
+  mat4 model = mat4(model0, model1, model2, model3);
+  v_baseColor = baseColor;
+  v_texCoords = texCoords;
+  v_textureMask = textureMask;
+  v_entityId = entityId;
+  gl_Position = projection * view * model * vec4(position, 1.0);
 }

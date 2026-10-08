@@ -30,6 +30,18 @@ auto GLFormatToTarget(const unsigned int format) -> TargetFormat {
     return TargetFormat::Unknown;
   }
 }
+auto TargetTypeToGL(const TargetDescription &desc) -> unsigned int {
+  switch (desc.type) {
+  case TargetType::Cubemap:
+    return GL_TEXTURE_CUBE_MAP;
+  case TargetType::Texture2DArray:
+    return GL_TEXTURE_2D_ARRAY;
+  case TargetType::Texture2DMulti:
+    return GL_TEXTURE_2D_MULTISAMPLE;
+  default:
+    return desc.samples > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+  }
+}
 auto TargetFormatToGL(const TargetFormat &format) -> GLFormat {
   switch (format) {
   case TargetFormat::R8:

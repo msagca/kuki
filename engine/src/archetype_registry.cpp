@@ -1,4 +1,6 @@
 #include <animator.hpp>
+#include <anti_aliasing.hpp>
+#include <atmosphere_sky.hpp>
 #include <archetype_registry.hpp>
 #include <bone_data.hpp>
 #include <bounding_box.hpp>
@@ -20,6 +22,8 @@
 #include <skybox_handle.hpp>
 #include <texture_handle.hpp>
 #include <transform.hpp>
+#include <volumetric_clouds.hpp>
+#include <volumetric_fog.hpp>
 namespace kuki {
 auto ArchetypeRegistry::Clear() -> void {
   archetypes.clear();
@@ -90,6 +94,10 @@ auto ArchetypeRegistry::CreateColumn(const ComponentType type) -> std::unique_pt
   switch (type) {
   case ComponentType::Animator:
     return std::make_unique<ArchetypeColumn<Animator>>();
+  case ComponentType::AntiAliasing:
+    return std::make_unique<ArchetypeColumn<AntiAliasing>>();
+  case ComponentType::AtmosphereSky:
+    return std::make_unique<ArchetypeColumn<AtmosphereSky>>();
   case ComponentType::BoneData:
     return std::make_unique<ArchetypeColumn<BoneData>>();
   case ComponentType::BoundingBox:
@@ -138,6 +146,10 @@ auto ArchetypeRegistry::CreateColumn(const ComponentType type) -> std::unique_pt
     return std::make_unique<ArchetypeColumn<TextureHandle>>();
   case ComponentType::Transform:
     return std::make_unique<ArchetypeColumn<Transform>>();
+  case ComponentType::VolumetricClouds:
+    return std::make_unique<ArchetypeColumn<VolumetricClouds>>();
+  case ComponentType::VolumetricFog:
+    return std::make_unique<ArchetypeColumn<VolumetricFog>>();
   }
   return nullptr;
 }

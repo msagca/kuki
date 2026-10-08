@@ -35,5 +35,27 @@ struct RendererCapabilities {
   /// this tracks the same backend as the field above, and it is asked as its own question because
   /// the answer will not always be the same one.
   bool lightingDebugViews{};
+  /// @brief Whether the backend can compute a sky from an atmosphere instead of sampling one.
+  ///
+  /// Gates the whole `AtmosphereSky` panel and its entry in the add-component menu. A component the
+  /// running backend cannot act on is worse than an absent one: it would sit in the hierarchy
+  /// looking like the scene had a sky, while the picture showed the flat background.
+  ///
+  /// Not a statement about the hardware, unlike `probeVolume`. The march is plain Shader Model 6.0
+  /// compute writing a cubemap the backend already keeps, so a backend either has the path or does
+  /// not -- and the OpenGL one does not, because its environment chain is fed from a texture asset
+  /// and there is no texture here.
+  bool proceduralSky{};
+  /// @brief Whether the backend marches the air: the cloud layer, the shafts and the distance haze.
+  ///
+  /// One flag for both passes rather than two, because they are one piece of work seen from either
+  /// end -- the fog pass reads the cloud pass's buffer so that a shaft is broken by the cloud in
+  /// front of it, and a backend with one and not the other would draw a beam straight through an
+  /// overcast sky. Nothing would be gained by letting a backend claim half of that.
+  ///
+  /// Gates both panels and both entries in the add-component menu. Unlike `proceduralSky` the fog
+  /// half needs no atmosphere and works in a sealed room off a spot light's shadow map, so this is
+  /// not implied by that flag and is asked separately.
+  bool volumetrics{};
 };
 } // namespace kuki

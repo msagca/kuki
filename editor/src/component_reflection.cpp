@@ -1,4 +1,6 @@
 #include <animator.hpp>
+#include <anti_aliasing.hpp>
+#include <atmosphere_sky.hpp>
 #include <bone_data.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
@@ -20,11 +22,19 @@
 #include <skybox_handle.hpp>
 #include <texture_handle.hpp>
 #include <transform.hpp>
+#include <volumetric_clouds.hpp>
+#include <volumetric_fog.hpp>
 using namespace kuki;
 auto AddComponentByType(Application &app, const EntityID id, const ComponentType type) -> void {
   switch (type) {
   case ComponentType::Animator:
     app.AddEntityComponent<Animator>(id);
+    break;
+  case ComponentType::AntiAliasing:
+    app.AddEntityComponent<AntiAliasing>(id);
+    break;
+  case ComponentType::AtmosphereSky:
+    app.AddEntityComponent<AtmosphereSky>(id);
     break;
   case ComponentType::BoneData:
     app.AddEntityComponent<BoneData>(id);
@@ -97,6 +107,12 @@ auto AddComponentByType(Application &app, const EntityID id, const ComponentType
   case ComponentType::Transform:
     app.AddEntityComponent<Transform>(id);
     break;
+  case ComponentType::VolumetricClouds:
+    app.AddEntityComponent<VolumetricClouds>(id);
+    break;
+  case ComponentType::VolumetricFog:
+    app.AddEntityComponent<VolumetricFog>(id);
+    break;
   }
 }
 auto RemoveComponentByType(Application &app, const EntityID id, const ComponentType type) -> bool {
@@ -143,6 +159,17 @@ auto RemoveComponentByType(Application &app, const EntityID id, const ComponentT
     return app.RemoveEntityComponent<TextureHandle>(id);
   case ComponentType::Transform:
     return app.RemoveEntityComponent<Transform>(id);
+  // The three settings components, which were reachable through the add menu and not through this
+  // one -- so `AtmosphereSky` could be put on a scene and not taken off again, and its own
+  // documentation says that removing it is how a scene goes back to a photographed sky.
+  case ComponentType::AntiAliasing:
+    return app.RemoveEntityComponent<AntiAliasing>(id);
+  case ComponentType::AtmosphereSky:
+    return app.RemoveEntityComponent<AtmosphereSky>(id);
+  case ComponentType::VolumetricClouds:
+    return app.RemoveEntityComponent<VolumetricClouds>(id);
+  case ComponentType::VolumetricFog:
+    return app.RemoveEntityComponent<VolumetricFog>(id);
   default:
     return false;
   }

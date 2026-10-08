@@ -29,6 +29,13 @@ struct DXComputeTexture {
   uint32_t size{};
   uint32_t mipLevels{1};
   uint32_t arraySize{1};
+  /// @brief Slices, for a texture that is a volume rather than an image or an array of them.
+  ///
+  /// One everywhere except the cloud noise, which is genuinely three dimensional: a cloud is
+  /// sampled at a position in the air, and a stack of slices would have to be filtered between by
+  /// hand at every one of the several dozen fetches a marched pixel takes. Left at one, the views
+  /// built over a texture are the two-dimensional ones every other user of this struct wants.
+  uint32_t depth{1};
   explicit operator bool() const {
     return resource && srvIndex != DXDescriptorHeap::InvalidIndex;
   }

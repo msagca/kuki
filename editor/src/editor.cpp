@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <animator.hpp>
+#include <anti_aliasing.hpp>
 #include <application.hpp>
 #include <application_description.hpp>
 #include <array>
@@ -124,6 +125,12 @@ struct LightingDebugSequenceDef {
   const char *description;
 };
 constexpr LightingDebugSequenceDef kLightingDebugSequences[] = {
+  // First, and in this table rather than beside `vf`, because turning a shading view off is a
+  // selection within this group and nothing to do with which graph target is being shown. It is
+  // the only entry here that is not a step of the shading, and the group needs it: without a key
+  // that means `None`, a view could be turned on from the keyboard and only taken off again from
+  // the properties panel.
+  {"vn", LightingDebugView::None, "Stop writing a shading step and go back to the finished pixel"},
   {"vi", LightingDebugView::IndirectDiffuse, "Show the probe volume's bounce on its own"},
   {"vk", LightingDebugView::SkyIrradiance, "Show the sky's diffuse contribution on its own"},
   {"vd", LightingDebugView::DirectLight, "Show direct light on its own, as a reference"},
@@ -329,16 +336,21 @@ auto Editor::Start() -> void {
     SetCursorLocked(false);
     ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
   }, false);
+  // The three view groups -- which graph target is shown, which shading step the scene pass writes
+  // out, and what the probes are drawn as -- are independent, and each key here sets only its own.
+  // Selecting within a group replaces what that group held; nothing else is touched.
+  //
+  // These two tables used to clear each other, on the argument that a shading view left on while
+  // the final target is selected makes the target key look like it did nothing. The argument was
+  // about one key rather than about the rule, and the cost of it was the rule: a view you had set
+  // up came off because you looked at something else for a moment, and there was nothing to say
+  // which of the keys you had pressed since was the one that took it away. Each group now keeps
+  // what it was given until it is given something else, or set back to its own off entry -- `vf`
+  // here, `None` in the shading list, `Off` in the probe cycle.
   for (const auto &def : kDebugViewSequences) {
     const std::string targetName = def.targetName;
     RegisterInputAction(def.sequence, [this, targetName]() {
       context.debugViewTarget = targetName;
-      // Going back to the final image means going back to the scene, so the shading views come off
-      // with it. Left on, the final target would still be carrying a debug quantity and the shortcut
-      // would look like it had done nothing.
-      if (targetName.empty())
-        if (auto *camera = GetCamera())
-          camera->lightingDebugView = LightingDebugView::None;
     }, def.description);
   }
   // Not registered at all on a backend whose scene shader has no branch for them, rather than
@@ -351,9 +363,6 @@ auto Editor::Start() -> void {
       break;
     const auto view = def.view;
     RegisterInputAction(def.sequence, [this, view]() {
-      // The graph target selection is dropped at the same time. The two are independent, and a
-      // shading view written into a target nobody is looking at is a key that appears to do nothing.
-      context.debugViewTarget.clear();
       if (auto *camera = GetCamera())
         camera->lightingDebugView = view;
     }, def.description);
@@ -1038,16 +1047,24 @@ auto Editor::AttachSettingsEntity() -> EntityID {
   //
   // Reused rather than replaced when one is already there, so reloading a scene does not throw away
   // tuning that was in the middle of being done.
+  //
+  // Each settings component is then added only if it is missing, rather than as a block on a newly
+  // created entity. An entity that already carries one of them and not the other is the case that
+  // matters: a settings entity outlives the addition of a new setting to this list, and a person
+  // who removed one deliberately gets it back the next time a scene is loaded either way.
   auto id = EntityID::Invalid;
   ForEachEntity<IndirectLighting>([&id](const EntityID entity, IndirectLighting *) {
     if (!id)
       id = entity;
   });
-  if (id)
+  if (!id)
+    id = CreateEntity("Settings");
+  if (!id)
     return id;
-  id = CreateEntity("Settings");
-  if (id)
+  if (!GetEntityComponent<IndirectLighting>(id))
     AddEntityComponent<IndirectLighting>(id);
+  if (!GetEntityComponent<AntiAliasing>(id))
+    AddEntityComponent<AntiAliasing>(id);
   return id;
 }
 auto Editor::AttachCameraController() -> EntityID {
@@ -1292,9 +1309,18 @@ auto Editor::DisplayProperties() -> void {
   }
   if (ImGui::BeginPopupContextWindow("AddComponent", POPUP_WINDOW_FLAGS)) {
     auto availableComponents = GetMissingEntityComponents(context.selectedEntityId);
-    for (const auto &compType : availableComponents)
+    for (const auto &compType : availableComponents) {
+      // Offered only where it reaches something. A computed sky on the OpenGL backend would sit
+      // in the hierarchy looking like the scene had one while the picture showed the flat
+      // background, which reads as a broken renderer rather than an absent feature -- the same
+      // argument `RendererCapabilities` makes about the indirect lighting sliders.
+      if (compType == ComponentType::AtmosphereSky && !context.capabilities.proceduralSky)
+        continue;
+      if ((compType == ComponentType::VolumetricClouds || compType == ComponentType::VolumetricFog) && !context.capabilities.volumetrics)
+        continue;
       if (!IsHandleComponent(compType) && !Component::IsGL(compType) && compType != ComponentType::Script && !HasSceneSingleton(compType) && ImGui::MenuItem(Component::GetTypeName(compType).c_str()))
         AddComponentByType(*this, context.selectedEntityId, compType);
+    }
     if (ImGui::BeginMenu("GL")) {
       for (const auto &compType : availableComponents)
         if (Component::IsGL(compType) && ImGui::MenuItem(Component::GetTypeName(compType).c_str()))
@@ -1443,6 +1469,13 @@ auto Editor::DisplaySettings() -> void {
       ImGui::TextDisabled("This backend has no shading or probe views.");
       ImGui::SetItemTooltip("Those are values inside the scene shader, and this one writes finished\npixels only. The targets above are every step of the frame it can show.");
     }
+    // Said here because this is where it will be looked for. The fold below has an AntiAliasing
+    // checkbox, and that stands the resolve down rather than changing how many samples there were
+    // to resolve -- a different question with the same word on it. How many samples describes the
+    // scene rather than the installation, so it sits with the scene's other renderer settings and
+    // not in this panel.
+    ImGui::TextDisabled("How much antialiasing is on the Settings entity.");
+    ImGui::SetItemTooltip("Select it in the hierarchy to change the sample count. The checkbox in\nthe fold below is a different control: it stands the resolve pass down,\nrather than changing how many samples there were to resolve.");
     if (ImGui::CollapsingHeader("Passes")) {
       // Collapsed by default. Twelve checkboxes is a lot to put in front of somebody who came here
       // to change the tone curve, and the reason to open it -- finding out what a pass is worth by

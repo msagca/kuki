@@ -20,7 +20,14 @@ public:
   auto GetType() const -> const kuki::CameraType &;
   auto GetView() const -> const glm::mat4 &;
   auto Start(kuki::Application &) -> void override;
-  /// @brief Syncs the controller's cached camera with the entity's `Camera` component, newest `dirty` counter winning.
+  /// @brief Applies the frame's input, then syncs with the entity's `Camera` component.
+  ///
+  /// The sync is deliberately lopsided. Outwards it writes only the placement -- position, rotation
+  /// and orthographic size -- and only when this controller's `dirty` counter is the newer of the
+  /// two, so a position set in the properties panel or by `AlignView` is not undone. Inwards it
+  /// copies the whole component every frame, because the component is the camera and this is a
+  /// cache of it: anything the placement list does not mention belongs to somebody else and must
+  /// not be written back from here.
   ///
   /// The comparison is on a wrapping counter, so the sync direction briefly inverts if `dirty` wraps around.
   auto Update(kuki::Application &) -> void override;

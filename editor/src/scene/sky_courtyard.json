@@ -12,8 +12,8 @@
             "z": 8.0
           },
           "rotation": {
-            "w": 0.994,
-            "x": -0.109,
+            "w": 1.0,
+            "x": 0.0,
             "y": 0.0,
             "z": 0.0
           },
@@ -33,6 +33,53 @@
             "high": 1,
             "low": 3001
           }
+        },
+        "Atmosphere Sky": {
+          "viewAltitude": 0.05,
+          "sunIntensity": 10.0
+        },
+        "Volumetric Clouds": {
+          "bottomAltitude": 1.2,
+          "topAltitude": 3.6,
+          "coverage": 0.45,
+          "density": 12.0,
+          "windDirection": {
+            "x": 1.0,
+            "y": 0.35
+          },
+          "windSpeed": 0.014,
+          "shapeScale": 7.0,
+          "detailScale": 0.6,
+          "detailStrength": 0.35,
+          "anisotropy": 0.72,
+          "backscatter": 0.25,
+          "powder": 0.6,
+          "ambient": 0.9,
+          "scatteringScale": 1.0,
+          "shadowStrength": 0.7,
+          "steps": 64,
+          "lightSteps": 6
+        },
+        "Volumetric Fog": {
+          "density": 0.012,
+          "baseHeight": 0.0,
+          "heightFalloff": 0.55,
+          "albedo": {
+            "x": 0.86,
+            "y": 0.9,
+            "z": 1.0
+          },
+          "anisotropy": 0.4,
+          "ambient": {
+            "x": 0.05,
+            "y": 0.06,
+            "z": 0.08
+          },
+          "lightScale": 1.4,
+          "maxDistance": 60.0,
+          "aerialPerspective": 1.0,
+          "kilometresPerUnit": 0.004,
+          "steps": 40
         }
       }
     },
@@ -321,6 +368,50 @@
             "high": 1,
             "low": 2001
           }
+        }
+      }
+    },
+    {
+      "name": "Sun",
+      "children": [],
+      "components": {
+        "Light": {
+          "type": 0,
+          "position": {
+            "x": 0.0,
+            "y": 6.0,
+            "z": -6.0
+          },
+          "rotation": {
+            "w": -0.210206,
+            "x": 0.046458,
+            "y": 0.953542,
+            "z": 0.210743
+          },
+          "ambient": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "diffuse": {
+            "x": 1.0,
+            "y": 0.94,
+            "z": 0.84
+          },
+          "specular": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "intensity": 3.5,
+          "constant": 1.0,
+          "linear": 0.09,
+          "quadratic": 0.032,
+          "innerCutoff": 0.9,
+          "outerCutoff": 0.8,
+          "nearPlane": 0.1,
+          "farPlane": 30.0,
+          "orthoSize": 5.0
         }
       }
     }

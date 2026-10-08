@@ -35,11 +35,35 @@ constexpr uint32_t COMPUTE_STAGING_CAPACITY = 256;
 constexpr uint32_t COMPUTE_GROUP_SIZE = 8;
 constexpr uint32_t SKYBOX_CUBE_SIZE = 1024;
 constexpr uint32_t SKYBOX_CUBE_MIPS = 11;
+/// @brief Edge of the cloud shape volume, which says where there is cloud at all.
+///
+/// A hundred and twenty-eight cubed of four channels is eight megabytes, built once and kept. The
+/// field tiles over `VolumetricClouds::shapeScale` kilometres, so this is how finely a cloud's
+/// silhouette is described across that distance rather than a resolution in the sky.
+constexpr uint32_t CLOUD_SHAPE_NOISE_SIZE = 128;
+/// @brief Edge of the detail volume, which only ever erodes an edge and needs far less of one.
+constexpr uint32_t CLOUD_DETAIL_NOISE_SIZE = 32;
 constexpr uint32_t IRRADIANCE_SIZE = 64;
 constexpr uint32_t PREFILTER_SIZE = 256;
 constexpr uint32_t PREFILTER_MIPS = 7;
 constexpr uint32_t BRDF_SIZE = 512;
 constexpr uint32_t SH_FACE_SIZE = 32;
+/// @brief Extents of the two tables the sky march reads.
+///
+/// Bruneton's own figures for the transmittance table, and Hillaire's for the multiple-scattering
+/// one. Both are smooth functions of two angles, which is why so few texels do: the transmittance
+/// wants its width because that axis is the view zenith and the interesting part of it is the
+/// degree either side of the horizon, and the multiscatter estimate has no such feature anywhere.
+constexpr uint32_t TRANSMITTANCE_WIDTH = 256;
+constexpr uint32_t TRANSMITTANCE_HEIGHT = 64;
+constexpr uint32_t MULTISCATTER_WIDTH = 32;
+constexpr uint32_t MULTISCATTER_HEIGHT = 32;
+/// @brief Steps the transmittance table's own integration takes, which is not the sky's step count.
+///
+/// Independent of `AtmosphereSky::marchSteps` because it is a different integral with a different
+/// error: the table is built once and read many times, so it is worth over-integrating, and it has
+/// no phase function to resolve. Forty is past the point where the result stops moving.
+constexpr uint32_t TRANSMITTANCE_STEPS = 40;
 auto GroupCount(const uint32_t extent) -> UINT {
   return static_cast<UINT>((extent + COMPUTE_GROUP_SIZE - 1) / COMPUTE_GROUP_SIZE);
 }
@@ -72,6 +96,40 @@ auto HashWords(size_t &hash, const void *data, const size_t bytes) -> void {
     memcpy(&word, cursor + offset, sizeof(word));
     hash_combine(hash, word);
   }
+}
+/// @brief Identifies the sky the environment maps were built from, so an unchanged one is not redone.
+///
+/// Covers the sun as well as the atmosphere, because the sun is what usually moves and the whole
+/// point of the hash is to notice. Hashed over the bytes of both, which is safe here for the reason
+/// it is not in general: every member of `AtmosphereSky` is a float or a uint, there are no padding
+/// holes in it under any alignment these fields could have, and the direction is three more floats.
+auto HashAtmosphere(const AtmosphereSky &sky, const glm::vec3 &sunDirection) -> size_t {
+  size_t hash = 0x9e3779b97f4a7c15ull;
+  HashWords(hash, &sky, sizeof(sky));
+  HashWords(hash, &sunDirection, sizeof(sunDirection));
+  // Never zero, because zero is what `environmentAtmosphere` holds when the environment came from a
+  // photograph instead. A sky that hashed to it would be taken for one that was never built.
+  return hash ? hash : 1;
+}
+/// @brief Direction towards the sun, taken from the scene's first directional light.
+///
+/// The sun is not a field on `AtmosphereSky` deliberately: a scene with a sun already has a
+/// directional light, and two places to set its direction is two things to get out of step. So the
+/// light is the sun, and rotating it moves the sky.
+///
+/// Negated because `Light::forward` is the direction the light travels and the atmosphere needs the
+/// direction it came from. Straight up with no directional light in the scene, which is noon -- an
+/// arbitrary choice, but the one that leaves a sky somebody can see rather than a black one.
+auto SunDirection(Scene &scene) -> glm::vec3 {
+  const Light *directional{};
+  scene.ForEachEntity<Light>([&](const EntityID, const Light *light) {
+    if (!directional && light && light->type == LightType::Directional)
+      directional = light;
+  });
+  if (!directional)
+    return glm::vec3(.0f, 1.f, .0f);
+  const auto forward = directional->forward;
+  return glm::dot(forward, forward) > 1.0e-12f ? -glm::normalize(forward) : glm::vec3(.0f, 1.f, .0f);
 }
 /// @brief Hashes the part of the frame constants the probe trace shades its ray hits from.
 ///
@@ -975,11 +1033,12 @@ auto DXRenderer::EnsureComputeFallbacks() -> bool {
   }
   if (fallbackSkyboxIndex == DXDescriptorHeap::InvalidIndex) {
     auto &visibleHeap = context->GetSRVHeap();
-    fallbackSkyboxIndex = visibleHeap.Allocate();
+    fallbackSkyboxIndex = visibleHeap.AllocateRange(SKYBOX_SRV_SLOTS);
     if (fallbackSkyboxIndex == DXDescriptorHeap::InvalidIndex)
       return false;
     fallbackSkyboxTable = visibleHeap.GetGPUHandle(fallbackSkyboxIndex);
     device->CopyDescriptorsSimple(1, visibleHeap.GetCPUHandle(fallbackSkyboxIndex), computeStagingHeap.GetCPUHandle(dummyCubemap.srvIndex), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    device->CopyDescriptorsSimple(1, visibleHeap.GetCPUHandle(fallbackSkyboxIndex + 1), computeStagingHeap.GetCPUHandle(dummyEquirectSrv), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
   }
   return true;
 }
@@ -1013,9 +1072,664 @@ auto DXRenderer::BindComputeResources(const std::array<uint32_t, COMPUTE_SRV_SLO
   RetireDescriptorRange(block, COMPUTE_SRV_SLOTS + COMPUTE_UAV_SLOTS);
   return true;
 }
-auto DXRenderer::BuildEnvironmentMaps(const AssetID assetId, const DXTexture &equirect) -> bool {
+auto DXRenderer::CreateComputeTable(DXComputeTexture &texture, const DXGI_FORMAT format, const uint32_t width, const uint32_t height, const std::string &name) -> bool {
   auto context = GetContext();
-  if (!context || !equirect)
+  if (!context || !context->GetDevice())
+    return false;
+  ReleaseComputeTexture(texture);
+  auto *device = context->GetDevice();
+  auto resourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+  const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+  if (DXFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&texture.resource)), "CreateCommittedResource for " + name))
+    return false;
+  texture.state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  texture.size = width;
+  texture.mipLevels = 1;
+  texture.arraySize = 1;
+  texture.srvIndex = computeStagingHeap.Allocate();
+  if (texture.srvIndex == DXDescriptorHeap::InvalidIndex)
+    return false;
+  D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+  srvDesc.Format = format;
+  srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+  srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+  srvDesc.Texture2D.MipLevels = 1;
+  device->CreateShaderResourceView(texture.resource.Get(), &srvDesc, computeStagingHeap.GetCPUHandle(texture.srvIndex));
+  const auto uavIndex = computeStagingHeap.Allocate();
+  if (uavIndex == DXDescriptorHeap::InvalidIndex)
+    return false;
+  D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+  uavDesc.Format = format;
+  uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+  device->CreateUnorderedAccessView(texture.resource.Get(), nullptr, &uavDesc, computeStagingHeap.GetCPUHandle(uavIndex));
+  texture.mipUavIndices.push_back(uavIndex);
+  spdlog::debug("[DXRenderer] Created compute table: {} ({}x{})", name, width, height);
+  return true;
+}
+auto DXRenderer::CreateComputeVolume(DXComputeTexture &texture, const DXGI_FORMAT format, const uint32_t size, const std::string &name) -> bool {
+  auto context = GetContext();
+  if (!context || !context->GetDevice())
+    return false;
+  ReleaseComputeTexture(texture);
+  auto *device = context->GetDevice();
+  auto resourceDesc = CD3DX12_RESOURCE_DESC::Tex3D(format, size, size, static_cast<UINT16>(size), 1, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+  const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+  if (DXFailed(device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&texture.resource)), "CreateCommittedResource for " + name))
+    return false;
+  texture.state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  texture.size = size;
+  texture.depth = size;
+  texture.mipLevels = 1;
+  texture.arraySize = 1;
+  texture.srvIndex = computeStagingHeap.Allocate();
+  if (texture.srvIndex == DXDescriptorHeap::InvalidIndex)
+    return false;
+  D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+  srvDesc.Format = format;
+  srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+  srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+  srvDesc.Texture3D.MipLevels = 1;
+  device->CreateShaderResourceView(texture.resource.Get(), &srvDesc, computeStagingHeap.GetCPUHandle(texture.srvIndex));
+  const auto uavIndex = computeStagingHeap.Allocate();
+  if (uavIndex == DXDescriptorHeap::InvalidIndex)
+    return false;
+  D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+  uavDesc.Format = format;
+  uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+  // Every slice, which is the whole point of the resource. Left at zero this writes one slice and
+  // the other hundred and twenty-seven stay at whatever the allocation left behind.
+  uavDesc.Texture3D.WSize = size;
+  device->CreateUnorderedAccessView(texture.resource.Get(), nullptr, &uavDesc, computeStagingHeap.GetCPUHandle(uavIndex));
+  texture.mipUavIndices.push_back(uavIndex);
+  spdlog::debug("[DXRenderer] Created compute volume: {} ({}^3)", name, size);
+  return true;
+}
+auto DXRenderer::BindCloudResources(const std::array<uint32_t, CLOUD_SRV_SLOTS> &sources, ID3D12Resource *depth, const std::array<uint32_t, CLOUD_UAV_SLOTS> &targets, const bool graphics) -> bool {
+  auto context = GetContext();
+  if (!context)
+    return false;
+  auto *commandList = context->GetCommandList();
+  auto *device = context->GetDevice();
+  if (!commandList || !device)
+    return false;
+  auto &srvHeap = context->GetSRVHeap();
+  const auto block = srvHeap.AllocateRange(CLOUD_SRV_SLOTS + CLOUD_UAV_SLOTS);
+  if (block == DXDescriptorHeap::InvalidIndex)
+    return false;
+  // The stand-in cube fills whatever a given dispatch neither reads nor writes, exactly as it does
+  // for the atmosphere: every descriptor a bound table covers has to resolve to a resource even
+  // where the shader never touches it.
+  const uint32_t fallbackSrv = dummyCubemap.srvIndex;
+  const uint32_t fallbackUav = dummyCubemap.mipUavIndices.front();
+  for (uint32_t slot = 0; slot < CLOUD_SRV_SLOTS; ++slot) {
+    const auto index = sources[slot] != DXDescriptorHeap::InvalidIndex ? sources[slot] : fallbackSrv;
+    device->CopyDescriptorsSimple(1, srvHeap.GetCPUHandle(block + slot), computeStagingHeap.GetCPUHandle(index), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  }
+  // The depth buffer is the one view here that is not a compute texture, and a render target's own
+  // descriptor already lives in the shader-visible heap -- which cannot be a copy source. So it is
+  // built a second time directly in the slot instead, which is what material tables do with a
+  // texture for the same reason. See `DXTexture::format`.
+  if (depth) {
+    D3D12_SHADER_RESOURCE_VIEW_DESC depthSrv{};
+    depthSrv.Format = DXGI_FORMAT_R32_FLOAT;
+    depthSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    depthSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    depthSrv.Texture2D.MipLevels = 1;
+    device->CreateShaderResourceView(depth, &depthSrv, srvHeap.GetCPUHandle(block + CLOUD_SRV_SLOTS - 1));
+  }
+  for (uint32_t slot = 0; slot < CLOUD_UAV_SLOTS; ++slot) {
+    const auto index = targets[slot] != DXDescriptorHeap::InvalidIndex ? targets[slot] : fallbackUav;
+    device->CopyDescriptorsSimple(1, srvHeap.GetCPUHandle(block + CLOUD_SRV_SLOTS + slot), computeStagingHeap.GetCPUHandle(index), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  }
+  // One layout, two binding points. D3D12 keeps the graphics and compute root arguments apart even
+  // where the signature behind them is the same object, so the march and the three dispatches that
+  // share this signature still have to say which set they are filling.
+  if (graphics) {
+    commandList->SetGraphicsRootDescriptorTable(1, srvHeap.GetGPUHandle(block));
+    commandList->SetGraphicsRootDescriptorTable(2, srvHeap.GetGPUHandle(block + CLOUD_SRV_SLOTS));
+  } else {
+    commandList->SetComputeRootDescriptorTable(1, srvHeap.GetGPUHandle(block));
+    commandList->SetComputeRootDescriptorTable(2, srvHeap.GetGPUHandle(block + CLOUD_SRV_SLOTS));
+  }
+  RetireDescriptorRange(block, CLOUD_SRV_SLOTS + CLOUD_UAV_SLOTS);
+  return true;
+}
+auto DXRenderer::EnsureCloudNoise() -> bool {
+  if (cloudNoiseReady)
+    return true;
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  auto *device = context ? context->GetDevice() : nullptr;
+  if (!commandList || !device || !EnsureComputeFallbacks())
+    return false;
+  // Eight bits a channel, which is all either volume needs: both hold a density between nothing and
+  // everything, and the march remaps whatever comes back against a coverage threshold before using
+  // it. Sixteen would be four times the memory to describe the same cloud.
+  if (!CreateComputeVolume(cloudShapeNoise, DXGI_FORMAT_R8G8B8A8_UNORM, CLOUD_SHAPE_NOISE_SIZE, "CloudShapeNoise"))
+    return false;
+  if (!CreateComputeVolume(cloudDetailNoise, DXGI_FORMAT_R8G8B8A8_UNORM, CLOUD_DETAIL_NOISE_SIZE, "CloudDetailNoise"))
+    return false;
+  ID3D12DescriptorHeap *heaps[]{context->GetSRVHeap().Get()};
+  commandList->SetDescriptorHeaps(1, heaps);
+  constexpr auto INVALID = DXDescriptorHeap::InvalidIndex;
+  const auto Build = [&](const char *entryPoint, DXComputeTexture &volume, const uint32_t size) -> bool {
+    const auto pipeline = pipelines.GetCloudComputePipeline(device, entryPoint);
+    if (!pipeline || !*pipeline)
+      return false;
+    DXCloudConstants constants{};
+    constants.noiseSize = size;
+    commandList->SetComputeRootSignature(pipeline->rootSignature.Get());
+    commandList->SetPipelineState(pipeline->pipelineState.Get());
+    commandList->SetComputeRoot32BitConstants(0, sizeof(DXCloudConstants) / sizeof(uint32_t), &constants, 0);
+    if (!BindCloudResources({INVALID, INVALID, INVALID, INVALID, INVALID}, nullptr, {volume.mipUavIndices.front(), INVALID}, false))
+      return false;
+    // Four to a side rather than eight, because the group is three-dimensional: eight cubed is five
+    // hundred and twelve threads, which is past what a group may hold.
+    const auto groups = (size + 3) / 4;
+    commandList->Dispatch(groups, groups, groups);
+    return true;
+  };
+  if (!Build("CSShapeNoise", cloudShapeNoise, CLOUD_SHAPE_NOISE_SIZE))
+    return false;
+  if (!Build("CSDetailNoise", cloudDetailNoise, CLOUD_DETAIL_NOISE_SIZE))
+    return false;
+  // Readable from both stages for the rest of the process: the march samples them in a pixel shader
+  // and the sun transmittance texel samples them in a compute one, and a resource read outside the
+  // state it is in is a silent wrong answer rather than an error.
+  constexpr auto READ = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+  const D3D12_RESOURCE_BARRIER barriers[]{
+    CD3DX12_RESOURCE_BARRIER::Transition(cloudShapeNoise.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, READ),
+    CD3DX12_RESOURCE_BARRIER::Transition(cloudDetailNoise.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, READ)};
+  commandList->ResourceBarrier(_countof(barriers), barriers);
+  cloudShapeNoise.state = READ;
+  cloudDetailNoise.state = READ;
+  cloudNoiseReady = true;
+  spdlog::info("[DXRenderer] Built the cloud noise volumes");
+  return true;
+}
+auto DXRenderer::FillCloudConstants(const VolumetricClouds &clouds, const AtmosphereSky &sky, const glm::vec3 &sunDirection, DXCloudConstants &constants) const -> void {
+  // The same change of units `DispatchAtmosphere` makes and for the same reason: every length is
+  // divided through by the planet's radius so that the march works in single precision. See the
+  // long note there -- the short of it is that a squared radius of six thousand needs twenty-six
+  // bits of mantissa and a float carries twenty-four.
+  const auto scale = std::max(1.f, sky.bottomRadius);
+  constants.bottomRadius = 1.f;
+  constants.topRadius = 1.f + std::max(1.f, sky.atmosphereHeight) / scale;
+  constants.viewAltitude = std::clamp(sky.viewAltitude, .0f, std::max(1.f, sky.atmosphereHeight) - .001f) / scale;
+  constants.kilometres = scale;
+  const auto bottom = std::max(.0f, clouds.bottomAltitude);
+  // A layer with no thickness has no inside, and the shell intersection would return a span of zero
+  // for every ray. Fifty metres is below anything anyone would author and above zero.
+  const auto top = std::max(bottom + .05f, clouds.topAltitude);
+  constants.cloudBottom = bottom / scale;
+  constants.cloudTop = top / scale;
+  constants.coverage = std::clamp(clouds.coverage, .0f, 1.f);
+  // Per kilometre on the component, per scaled unit in the shader. Optical depth is a coefficient
+  // times a length, so shrinking every length by `scale` and growing the coefficient by the same
+  // `scale` leaves the product exactly where it was.
+  constants.density = std::max(.0f, clouds.density) * scale;
+  // Not scaled: these divide a coordinate that is already in kilometres, so they are read in the
+  // units they were written in.
+  constants.shapeScale = std::max(.01f, clouds.shapeScale);
+  constants.detailScale = std::max(.001f, clouds.detailScale);
+  constants.detailStrength = std::clamp(clouds.detailStrength, .0f, 1.f);
+  constants.anisotropy = std::clamp(clouds.anisotropy, -.95f, .95f);
+  constants.backscatter = std::clamp(clouds.backscatter, .0f, 1.f);
+  constants.powder = std::clamp(clouds.powder, .0f, 1.f);
+  constants.ambient = std::max(.0f, clouds.ambient);
+  constants.scatteringScale = std::max(.0f, clouds.scatteringScale);
+  constants.shadowStrength = std::clamp(clouds.shadowStrength, .0f, 1.f);
+  constants.steps = std::max(8u, clouds.steps);
+  constants.lightSteps = std::max(1u, clouds.lightSteps);
+  memcpy(constants.sunDirection, glm::value_ptr(sunDirection), sizeof(constants.sunDirection));
+  constants.sunIntensity = sky.sunIntensity;
+  const auto offset = glm::vec3(cloudWindOffset);
+  memcpy(constants.windOffset, glm::value_ptr(offset), sizeof(constants.windOffset));
+  // The transmittance table's extents, not the cloud buffer's. `TransmittanceUV` addresses that
+  // table with them, and a march carrying its own output size here would sample the table through
+  // the wrong half-texel inset and print a seam along the horizon -- the same trap `DispatchAtmosphere`
+  // documents at its last dispatch.
+  constants.width = TRANSMITTANCE_WIDTH;
+  constants.height = TRANSMITTANCE_HEIGHT;
+  constants.frame = volumetricFrame;
+}
+auto DXRenderer::DispatchCloudSunTransmittance(const DXCloudConstants &constants) -> bool {
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  auto *device = context ? context->GetDevice() : nullptr;
+  if (!commandList || !device)
+    return false;
+  if (!cloudSunTransmittanceLUT && !CreateComputeTable(cloudSunTransmittanceLUT, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 1, "CloudSunTransmittanceLUT"))
+    return false;
+  const auto pipeline = pipelines.GetCloudComputePipeline(device, "CSSunTransmittance");
+  if (!pipeline || !*pipeline)
+    return false;
+  // Back to a writable state. Every frame after the first finds this where the previous frame's
+  // barrier left it, which is the state the fog pass reads from.
+  if (cloudSunTransmittanceLUT.state != D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+    const auto toWrite = CD3DX12_RESOURCE_BARRIER::Transition(cloudSunTransmittanceLUT.resource.Get(), cloudSunTransmittanceLUT.state, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    commandList->ResourceBarrier(1, &toWrite);
+    cloudSunTransmittanceLUT.state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  }
+  commandList->SetComputeRootSignature(pipeline->rootSignature.Get());
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  commandList->SetComputeRoot32BitConstants(0, sizeof(DXCloudConstants) / sizeof(uint32_t), &constants, 0);
+  constexpr auto INVALID = DXDescriptorHeap::InvalidIndex;
+  if (!BindCloudResources({cloudShapeNoise.srvIndex, cloudDetailNoise.srvIndex, INVALID, INVALID, INVALID}, nullptr, {INVALID, cloudSunTransmittanceLUT.mipUavIndices.front()}, false))
+    return false;
+  commandList->Dispatch(1, 1, 1);
+  const auto toRead = CD3DX12_RESOURCE_BARRIER::Transition(cloudSunTransmittanceLUT.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  commandList->ResourceBarrier(1, &toRead);
+  cloudSunTransmittanceLUT.state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+  return true;
+}
+auto DXRenderer::MarchClouds(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  // Said first, so that every early return below leaves the fog pass compositing no cloud rather
+  // than compositing whatever this buffer happened to be holding from an earlier frame.
+  cloudsReady = false;
+  auto context = GetContext();
+  if (!context || outputs.empty())
+    return;
+  auto *commandList = context->GetCommandList();
+  auto *device = context->GetDevice();
+  auto destinationIt = nameToTarget.find(outputs[0]);
+  if (!commandList || !device || destinationIt == nameToTarget.end() || !destinationIt->second.resource)
+    return;
+  auto scene = app.GetScene();
+  if (!scene)
+    return;
+  const auto *clouds = scene->GetAnyComponent<VolumetricClouds>();
+  if (!clouds)
+    return;
+  // An atmosphere and a sky built from it. Both are required rather than worked around: the cloud
+  // reads its sunlight out of that atmosphere's transmittance table and its ambient out of that
+  // sky's cubemap, and inventing either would give a cloud that does not belong to the sky it is in.
+  const auto *sky = scene->GetAnyComponent<AtmosphereSky>();
+  if (!sky || !environmentReady || !environmentAtmosphere || !transmittanceLUT || !skyboxCubemap)
+    return;
+  auto camera = scene->GetCamera();
+  if (!camera)
+    return;
+  auto &destination = destinationIt->second;
+  if (destination.rtvIndex == DXDescriptorHeap::InvalidIndex)
+    return;
+  if (!EnsureCloudNoise())
+    return;
+  const auto pipeline = pipelines.GetCloudPipeline(device, TargetFormatToRTVDXGI(destination.desc.format));
+  if (!pipeline || !*pipeline)
+    return;
+  // Advanced here rather than from a clock, so that changing the wind changes where the layer goes
+  // next instead of teleporting it to where it would have been had the new wind always blown.
+  const auto direction = clouds->windDirection;
+  const auto lengthSquared = glm::dot(direction, direction);
+  const auto unit = lengthSquared > 1.0e-12f ? direction / std::sqrt(lengthSquared) : glm::vec2(1.f, .0f);
+  cloudWindOffset += glm::dvec3(unit.x, .0, unit.y) * (static_cast<double>(std::max(.0f, clouds->windSpeed)) * static_cast<double>(app.DeltaTime()));
+  DXCloudConstants constants{};
+  FillCloudConstants(*clouds, *sky, SunDirection(*scene), constants);
+  // The sun through the layer, before the layer is drawn. Ordered this way because the texel is
+  // read by the pass after this one and written by a dispatch that would otherwise be recorded
+  // after the draw that shares its root signature -- and a compute dispatch between two graphics
+  // states is a state change the driver pays for whichever side of the draw it lands on.
+  if (!DispatchCloudSunTransmittance(constants))
+    return;
+  // The one table the march samples that is left where a compute shader reads from. The sky cubemap
+  // and the sun texel were both put into a pixel-readable state by `BuildEnvironmentMaps`; this one
+  // was not, because until now nothing but compute read it.
+  if (transmittanceLUT.state != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
+    const auto toPixel = CD3DX12_RESOURCE_BARRIER::Transition(transmittanceLUT.resource.Get(), transmittanceLUT.state, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &toPixel);
+    transmittanceLUT.state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+  }
+  ID3D12Resource *depthResource{};
+  for (const auto &name : inputs)
+    if (auto it = nameToTarget.find(name); it != nameToTarget.end() && it->second.resource && IsDepthFormat(it->second.desc.format) && it->second.desc.type != TargetType::Texture2DArray) {
+      Transition(it->second, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+      depthResource = it->second.resource.Get();
+      break;
+    }
+  // The camera's rotation alone, exactly as the background pass takes it: the layer is part of the
+  // sky, so the ray through a pixel must not depend on where in the scene the camera is standing.
+  const auto rotation = glm::mat4(glm::mat3(camera->transform.view));
+  const auto inverseViewProjection = glm::inverse(camera->transform.projection * rotation);
+  memcpy(constants.inverseViewProjection, glm::value_ptr(inverseViewProjection), sizeof(constants.inverseViewProjection));
+  Transition(destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  ID3D12DescriptorHeap *heaps[]{context->GetSRVHeap().Get()};
+  commandList->SetDescriptorHeaps(1, heaps);
+  const auto rtv = context->GetRTVHeap().GetCPUHandle(destination.rtvIndex);
+  // Cleared rather than drawn over, because the march returns early for every ray that misses the
+  // shell and writes nothing at all for a pixel with geometry in front of it.
+  constexpr float CLEAR[4]{.0f, .0f, .0f, .0f};
+  commandList->ClearRenderTargetView(rtv, CLEAR, 0, nullptr);
+  commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+  const auto viewport = CD3DX12_VIEWPORT(.0f, .0f, static_cast<float>(destination.desc.width), static_cast<float>(destination.desc.height));
+  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination.desc.width), static_cast<LONG>(destination.desc.height));
+  commandList->RSSetViewports(1, &viewport);
+  commandList->RSSetScissorRects(1, &scissor);
+  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXCloudConstants) / sizeof(uint32_t), &constants, 0);
+  constexpr auto INVALID = DXDescriptorHeap::InvalidIndex;
+  if (!BindCloudResources({cloudShapeNoise.srvIndex, cloudDetailNoise.srvIndex, transmittanceLUT.srvIndex, skyboxCubemap.srvIndex, INVALID}, depthResource, {INVALID, INVALID}, true))
+    return;
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  commandList->IASetVertexBuffers(0, 0, nullptr);
+  commandList->DrawInstanced(3, 1, 0, 0);
+  cloudsReady = true;
+}
+auto DXRenderer::ApplyVolumetricFog(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  // Consumed as it is read. The upload ring is reused within a frame, so an address left over from
+  // the previous one may by now point at somebody else's constants -- taking it means a fog pass
+  // that runs without a scene pass ahead of it finds nothing rather than shading the air by last
+  // frame's lights.
+  const auto frameConstantAddress = std::exchange(sceneFrameConstantAddress, D3D12_GPU_VIRTUAL_ADDRESS{});
+  auto context = GetContext();
+  auto scene = app.GetScene();
+  const auto *fog = scene ? scene->GetAnyComponent<VolumetricFog>() : nullptr;
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  auto *device = context ? context->GetDevice() : nullptr;
+  // Every one of these is an ordinary outcome rather than a failure: a scene with no air in it, or
+  // a frame whose scene pass was stood down, wants the picture through unaltered.
+  if (!commandList || !device || !fog || !frameConstantAddress || outputs.empty() || !scene) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  auto camera = scene->GetCamera();
+  auto destinationIt = nameToTarget.find(outputs[0]);
+  if (!camera || destinationIt == nameToTarget.end() || !destinationIt->second.resource || destinationIt->second.rtvIndex == DXDescriptorHeap::InvalidIndex) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  auto &destination = destinationIt->second;
+  // Sorted out of the inputs by what each one is rather than by name, which is how every pass here
+  // reads its inputs. The two colour inputs are told apart by the order the graph declares them,
+  // the same convention `BypassCopy` already relies on: the picture first, the clouds after it.
+  DXRenderTarget *colorSource{};
+  DXRenderTarget *cloudSource{};
+  DXRenderTarget *depthSource{};
+  DXRenderTarget *shadowSource{};
+  DXRenderTarget *spotShadowSource{};
+  for (const auto &name : inputs) {
+    auto it = nameToTarget.find(name);
+    if (it == nameToTarget.end() || !it->second.resource)
+      continue;
+    auto &target = it->second;
+    if (!IsDepthFormat(target.desc.format)) {
+      if (target.desc.samples > 1)
+        continue;
+      if (!colorSource)
+        colorSource = &target;
+      else if (!cloudSource)
+        cloudSource = &target;
+      continue;
+    }
+    if (target.desc.type == TargetType::Texture2DArray) {
+      spotShadowSource = &target;
+      continue;
+    }
+    // The scene's own depth is the one that matches the picture it belongs to. The shadow map is a
+    // fixed size chosen for how much world one texel covers, so the two are only the same size by
+    // an accident nobody has arranged.
+    if (!depthSource && target.desc.width == destination.desc.width && target.desc.height == destination.desc.height)
+      depthSource = &target;
+    else if (!shadowSource)
+      shadowSource = &target;
+  }
+  auto fallbackTexture = EnsureDummyTexture();
+  if (!colorSource || !depthSource || !fallbackTexture) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  const auto pipeline = pipelines.GetVolumetricPipeline(device, TargetFormatToRTVDXGI(destination.desc.format));
+  if (!pipeline || !*pipeline) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  const auto *sky = scene->GetAnyComponent<AtmosphereSky>();
+  const auto hasAtmosphere = sky && environmentReady && environmentAtmosphere && sunTransmittanceLUT;
+  const auto hasClouds = cloudsReady && cloudSource;
+  DXVolumetricConstants constants{};
+  const auto inverseViewProjection = glm::inverse(camera->transform.projection * camera->transform.view);
+  memcpy(constants.inverseViewProjection, glm::value_ptr(inverseViewProjection), sizeof(constants.inverseViewProjection));
+  memcpy(constants.cameraPosition, glm::value_ptr(camera->position), sizeof(constants.cameraPosition));
+  constants.maxDistance = std::max(.01f, fog->maxDistance);
+  memcpy(constants.albedo, glm::value_ptr(fog->albedo), sizeof(constants.albedo));
+  constants.anisotropy = std::clamp(fog->anisotropy, -.95f, .95f);
+  memcpy(constants.ambient, glm::value_ptr(fog->ambient), sizeof(constants.ambient));
+  constants.lightScale = std::max(.0f, fog->lightScale);
+  constants.density = std::max(.0f, fog->density);
+  constants.baseHeight = fog->baseHeight;
+  constants.heightFalloff = std::max(.0f, fog->heightFalloff);
+  constants.aerialPerspective = hasAtmosphere ? std::max(.0f, fog->aerialPerspective) : .0f;
+  constants.steps = std::max(4u, fog->steps);
+  constants.frame = volumetricFrame;
+  constants.hasAtmosphere = hasAtmosphere ? 1u : 0u;
+  constants.hasClouds = hasClouds ? 1u : 0u;
+  constants.kilometresPerUnit = std::max(.0f, fog->kilometresPerUnit);
+  if (hasAtmosphere) {
+    // The atmosphere's medium evaluated once, at the altitude the scene sits at. A scene is tens of
+    // units across where the Rayleigh scale height is eight kilometres, so the profile does not
+    // measurably change across it -- which is what lets the haze be an expression rather than a
+    // march. The density profile is `atmosphere.hlsl`'s `SampleMedium`, read at one point.
+    const auto altitude = std::max(.0f, sky->viewAltitude);
+    const auto rayleighDensity = std::exp(-altitude / std::max(.001f, sky->rayleighScaleHeight));
+    const auto mieDensity = std::exp(-altitude / std::max(.001f, sky->mieScaleHeight));
+    const auto ozoneDensity = std::max(.0f, 1.f - std::abs(altitude - sky->ozoneCenter) / std::max(.001f, sky->ozoneWidth));
+    const auto rayleigh = sky->rayleighScattering * rayleighDensity;
+    const auto mie = sky->mieScattering * mieDensity;
+    // Extinction is everything the medium removes: what the air scatters, what the aerosols scatter
+    // and absorb, and what the ozone absorbs without scattering at all.
+    const auto extinction = rayleigh + (sky->mieScattering + std::max(.0f, sky->mieAbsorption)) * mieDensity + sky->ozoneAbsorption * ozoneDensity;
+    memcpy(constants.rayleighScattering, glm::value_ptr(rayleigh), sizeof(constants.rayleighScattering));
+    constants.mieScattering = mie;
+    memcpy(constants.extinction, glm::value_ptr(extinction), sizeof(constants.extinction));
+    constants.mieAnisotropy = std::clamp(sky->mieAnisotropy, -.95f, .95f);
+    constants.sunIntensity = sky->sunIntensity;
+  }
+  Transition(*colorSource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  Transition(*depthSource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  if (shadowSource)
+    Transition(*shadowSource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  if (spotShadowSource)
+    Transition(*spotShadowSource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  if (cloudSource)
+    Transition(*cloudSource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  Transition(destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  auto &srvHeap = context->GetSRVHeap();
+  const auto block = srvHeap.AllocateRange(VOLUMETRIC_SRV_SLOTS);
+  if (block == DXDescriptorHeap::InvalidIndex) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  // Built directly into the table rather than copied into it. Five of the seven are render targets,
+  // whose own descriptors already live in the shader-visible heap -- and a shader-visible heap
+  // cannot be a copy source, so there is nothing to copy from. See `DXTexture::format` for the same
+  // problem solved the same way for material tables.
+  const auto CreateView = [&](ID3D12Resource *resource, const DXGI_FORMAT format, const D3D12_SRV_DIMENSION dimension, const uint32_t layers, const uint32_t slot) {
+    if (!resource)
+      return;
+    D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
+    desc.Format = format;
+    desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    desc.ViewDimension = dimension;
+    if (dimension == D3D12_SRV_DIMENSION_TEXTURE2DARRAY) {
+      desc.Texture2DArray.MipLevels = 1;
+      desc.Texture2DArray.ArraySize = layers;
+    } else
+      desc.Texture2D.MipLevels = 1;
+    device->CreateShaderResourceView(resource, &desc, srvHeap.GetCPUHandle(block + slot));
+  };
+  CreateView(colorSource->resource.Get(), TargetFormatToSRVDXGI(colorSource->desc.format), D3D12_SRV_DIMENSION_TEXTURE2D, 1, 0);
+  CreateView(depthSource->resource.Get(), TargetFormatToSRVDXGI(depthSource->desc.format), D3D12_SRV_DIMENSION_TEXTURE2D, 1, 1);
+  // A slot the shader may never read still has to resolve to a resource of the right shape, so the
+  // stand-in texture fills whichever of these a scene did not produce. The constants are what
+  // actually decide: with no directional shadow map `u_counts.w` is zero and the tap never happens.
+  CreateView(shadowSource ? shadowSource->resource.Get() : fallbackTexture->resource.Get(), shadowSource ? TargetFormatToSRVDXGI(shadowSource->desc.format) : fallbackTexture->format, D3D12_SRV_DIMENSION_TEXTURE2D, 1, 2);
+  CreateView(spotShadowSource ? spotShadowSource->resource.Get() : fallbackTexture->resource.Get(), spotShadowSource ? TargetFormatToSRVDXGI(spotShadowSource->desc.format) : fallbackTexture->format, D3D12_SRV_DIMENSION_TEXTURE2DARRAY, spotShadowSource ? static_cast<uint32_t>(std::max(1, spotShadowSource->desc.layers)) : 1u, 3);
+  CreateView(cloudSource ? cloudSource->resource.Get() : fallbackTexture->resource.Get(), cloudSource ? TargetFormatToSRVDXGI(cloudSource->desc.format) : fallbackTexture->format, D3D12_SRV_DIMENSION_TEXTURE2D, 1, 4);
+  CreateView(hasAtmosphere ? sunTransmittanceLUT.resource.Get() : fallbackTexture->resource.Get(), hasAtmosphere ? DXGI_FORMAT_R16G16B16A16_FLOAT : fallbackTexture->format, D3D12_SRV_DIMENSION_TEXTURE2D, 1, 5);
+  CreateView(hasClouds ? cloudSunTransmittanceLUT.resource.Get() : fallbackTexture->resource.Get(), hasClouds ? DXGI_FORMAT_R16G16B16A16_FLOAT : fallbackTexture->format, D3D12_SRV_DIMENSION_TEXTURE2D, 1, 6);
+  ID3D12DescriptorHeap *heaps[]{srvHeap.Get()};
+  commandList->SetDescriptorHeaps(1, heaps);
+  const auto rtv = context->GetRTVHeap().GetCPUHandle(destination.rtvIndex);
+  commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+  const auto viewport = CD3DX12_VIEWPORT(.0f, .0f, static_cast<float>(destination.desc.width), static_cast<float>(destination.desc.height));
+  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination.desc.width), static_cast<LONG>(destination.desc.height));
+  commandList->RSSetViewports(1, &viewport);
+  commandList->RSSetScissorRects(1, &scissor);
+  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXVolumetricConstants) / sizeof(uint32_t), &constants, 0);
+  commandList->SetGraphicsRootConstantBufferView(1, frameConstantAddress);
+  commandList->SetGraphicsRootDescriptorTable(2, srvHeap.GetGPUHandle(block));
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  commandList->IASetVertexBuffers(0, 0, nullptr);
+  commandList->DrawInstanced(3, 1, 0, 0);
+  RetireDescriptorRange(block, VOLUMETRIC_SRV_SLOTS);
+}
+auto DXRenderer::BindAtmosphereResources(const std::array<uint32_t, ATMOSPHERE_SRV_SLOTS> &sources, const uint32_t table, const uint32_t cubemap) -> bool {
+  auto context = GetContext();
+  if (!context)
+    return false;
+  auto *commandList = context->GetCommandList();
+  auto *device = context->GetDevice();
+  if (!commandList || !device)
+    return false;
+  auto &srvHeap = context->GetSRVHeap();
+  const auto block = srvHeap.AllocateRange(ATMOSPHERE_SRV_SLOTS + ATMOSPHERE_UAV_SLOTS);
+  if (block == DXDescriptorHeap::InvalidIndex)
+    return false;
+  // The stand-in cube fills whatever this dispatch does not read or write. Every descriptor a bound
+  // table covers has to resolve to a resource even where the shader never touches it, which is the
+  // same reason `BindComputeResources` carries fallbacks.
+  const uint32_t fallbackSrv = dummyCubemap.srvIndex;
+  const uint32_t fallbackUav = dummyCubemap.mipUavIndices.front();
+  const uint32_t views[ATMOSPHERE_SRV_SLOTS + ATMOSPHERE_UAV_SLOTS]{
+    sources[0] != DXDescriptorHeap::InvalidIndex ? sources[0] : fallbackSrv,
+    sources[1] != DXDescriptorHeap::InvalidIndex ? sources[1] : fallbackSrv,
+    table != DXDescriptorHeap::InvalidIndex ? table : fallbackUav,
+    cubemap != DXDescriptorHeap::InvalidIndex ? cubemap : fallbackUav};
+  for (uint32_t slot = 0; slot < ATMOSPHERE_SRV_SLOTS + ATMOSPHERE_UAV_SLOTS; ++slot)
+    device->CopyDescriptorsSimple(1, srvHeap.GetCPUHandle(block + slot), computeStagingHeap.GetCPUHandle(views[slot]), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  commandList->SetComputeRootDescriptorTable(1, srvHeap.GetGPUHandle(block));
+  commandList->SetComputeRootDescriptorTable(2, srvHeap.GetGPUHandle(block + ATMOSPHERE_SRV_SLOTS));
+  RetireDescriptorRange(block, ATMOSPHERE_SRV_SLOTS + ATMOSPHERE_UAV_SLOTS);
+  return true;
+}
+auto DXRenderer::DispatchAtmosphere(const AtmosphereSky &sky, const glm::vec3 &sunDirection) -> bool {
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  auto *device = context ? context->GetDevice() : nullptr;
+  if (!commandList || !device)
+    return false;
+  if (!CreateComputeTable(transmittanceLUT, DXGI_FORMAT_R16G16B16A16_FLOAT, TRANSMITTANCE_WIDTH, TRANSMITTANCE_HEIGHT, "TransmittanceLUT"))
+    return false;
+  if (!CreateComputeTable(multiscatterLUT, DXGI_FORMAT_R16G16B16A16_FLOAT, MULTISCATTER_WIDTH, MULTISCATTER_HEIGHT, "MultiscatterLUT"))
+    return false;
+  if (!CreateComputeTable(sunTransmittanceLUT, DXGI_FORMAT_R16G16B16A16_FLOAT, 1, 1, "SunTransmittanceLUT"))
+    return false;
+  DXAtmosphereConstants constants{};
+  // Everything below is scaled into units of the planet's radius, and this is not cosmetic: it is
+  // what makes the march work in single precision at all.
+  //
+  // A float carries twenty-four bits of mantissa. A radius of 6360 squared is around 4e7, which
+  // needs twenty-six, so every squared length the march forms has already lost its low bits before
+  // anything is subtracted from it -- and the quantities that matter are small differences between
+  // exactly such squares. `DifferenceOfSquares` in the shader rescues the worst of them; it cannot
+  // rescue `(radius * cosZenith)^2`, which is a large square in its own right and whose error then
+  // lands directly in the distance to the top of the atmosphere. What that looked like was a lower
+  // sky made of concentric rings, each ring an iso-line of the zenith angle where the error
+  // happened to quantise the same way.
+  //
+  // Divided through by the bottom radius, every length becomes order one and every altitude a small
+  // fraction with the whole mantissa available to describe it. The physics is untouched: optical
+  // depth is the integral of a coefficient along a length, so shrinking lengths by `b` and growing
+  // the coefficients by the same `b` leaves every product exactly where it was. Phase functions,
+  // albedo and anisotropy are dimensionless and pass through as they are, and the sky comes out in
+  // the same radiance either way -- which is the test that this is a change of units and not of
+  // the model.
+  const auto scale = std::max(1.f, sky.bottomRadius);
+  constants.bottomRadius = 1.f;
+  constants.topRadius = 1.f + std::max(1.f, sky.atmosphereHeight) / scale;
+  constants.rayleighScaleHeight = std::max(.001f, sky.rayleighScaleHeight) / scale;
+  constants.mieScaleHeight = std::max(.001f, sky.mieScaleHeight) / scale;
+  const auto rayleigh = sky.rayleighScattering * scale;
+  memcpy(constants.rayleighScattering, glm::value_ptr(rayleigh), sizeof(constants.rayleighScattering));
+  constants.mieScattering = sky.mieScattering * scale;
+  // Extinction is what the medium removes, so it can never be below what the medium scatters.
+  // Clamped here rather than trusted: the panel offers absorption as a number of its own, and a
+  // scene that set it negative would get haze that brightens whatever is behind it.
+  constants.mieExtinction = (sky.mieScattering + std::max(.0f, sky.mieAbsorption)) * scale;
+  constants.mieAnisotropy = std::clamp(sky.mieAnisotropy, -.95f, .95f);
+  constants.groundAlbedo = std::max(.0f, sky.groundAlbedo);
+  constants.multiscatterStrength = std::max(.0f, sky.multiscatterStrength);
+  const auto ozone = sky.ozoneAbsorption * scale;
+  memcpy(constants.ozoneAbsorption, glm::value_ptr(ozone), sizeof(constants.ozoneAbsorption));
+  constants.ozoneCenter = sky.ozoneCenter / scale;
+  constants.ozoneWidth = std::max(.001f, sky.ozoneWidth) / scale;
+  memcpy(constants.sunDirection, glm::value_ptr(sunDirection), sizeof(constants.sunDirection));
+  constants.sunIntensity = sky.sunIntensity;
+  // Kept inside the atmosphere. Above it there is no air left to scatter and the march returns
+  // black, which is correct and indistinguishable from the sky having failed to build.
+  constants.viewAltitude = std::clamp(sky.viewAltitude, .0f, std::max(1.f, sky.atmosphereHeight) - .001f) / scale;
+  constants.marchSteps = std::max(8u, sky.marchSteps);
+  ID3D12DescriptorHeap *heaps[]{context->GetSRVHeap().Get()};
+  commandList->SetDescriptorHeaps(1, heaps);
+  constexpr auto INVALID = DXDescriptorHeap::InvalidIndex;
+  const auto Dispatch = [&](const char *entryPoint, const DXAtmosphereConstants &values, const std::array<uint32_t, ATMOSPHERE_SRV_SLOTS> &sources, const uint32_t table, const uint32_t cubemap, const UINT x, const UINT y, const UINT z) -> bool {
+    const auto pipeline = pipelines.GetAtmospherePipeline(device, entryPoint);
+    if (!pipeline || !*pipeline)
+      return false;
+    commandList->SetComputeRootSignature(pipeline->rootSignature.Get());
+    commandList->SetPipelineState(pipeline->pipelineState.Get());
+    commandList->SetComputeRoot32BitConstants(0, sizeof(DXAtmosphereConstants) / sizeof(uint32_t), &values, 0);
+    if (!BindAtmosphereResources(sources, table, cubemap))
+      return false;
+    commandList->Dispatch(x, y, z);
+    return true;
+  };
+  const auto ToRead = [&](DXComputeTexture &texture) {
+    const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &barrier);
+    texture.state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+  };
+  // Strictly in this order, each waiting on the last: the multiple-scattering estimate samples the
+  // transmittance table, and the sky samples both of them. The barriers are what say so.
+  auto transmittanceConstants = constants;
+  transmittanceConstants.width = TRANSMITTANCE_WIDTH;
+  transmittanceConstants.height = TRANSMITTANCE_HEIGHT;
+  transmittanceConstants.marchSteps = TRANSMITTANCE_STEPS;
+  if (!Dispatch("CSTransmittance", transmittanceConstants, {INVALID, INVALID}, transmittanceLUT.mipUavIndices.front(), INVALID, GroupCount(TRANSMITTANCE_WIDTH), GroupCount(TRANSMITTANCE_HEIGHT), 1))
+    return false;
+  ToRead(transmittanceLUT);
+  auto multiscatterConstants = constants;
+  multiscatterConstants.width = MULTISCATTER_WIDTH;
+  multiscatterConstants.height = MULTISCATTER_HEIGHT;
+  if (!Dispatch("CSMultiscatter", multiscatterConstants, {transmittanceLUT.srvIndex, INVALID}, multiscatterLUT.mipUavIndices.front(), INVALID, GroupCount(MULTISCATTER_WIDTH), GroupCount(MULTISCATTER_HEIGHT), 1))
+    return false;
+  ToRead(multiscatterLUT);
+  // Reads the transmittance table like the sky does, so it carries that table's extents too.
+  auto sunConstants = constants;
+  sunConstants.width = TRANSMITTANCE_WIDTH;
+  sunConstants.height = TRANSMITTANCE_HEIGHT;
+  if (!Dispatch("CSSunTransmittance", sunConstants, {transmittanceLUT.srvIndex, INVALID}, sunTransmittanceLUT.mipUavIndices.front(), INVALID, 1, 1, 1))
+    return false;
+  ToRead(sunTransmittanceLUT);
+  // The transmittance extents ride along with the sky dispatch too, and not as a leftover:
+  // `TransmittanceUV` addresses the table with them, so a sky dispatch carrying the cubemap extent
+  // in `width` would sample the table through the wrong half-texel inset and print a seam along the
+  // horizon. `size` is what tells this dispatch how big a cube face is.
+  auto skyConstants = constants;
+  skyConstants.width = TRANSMITTANCE_WIDTH;
+  skyConstants.height = TRANSMITTANCE_HEIGHT;
+  skyConstants.size = SKYBOX_CUBE_SIZE;
+  return Dispatch("CSSkyToCubemap", skyConstants, {transmittanceLUT.srvIndex, multiscatterLUT.srvIndex}, INVALID, skyboxCubemap.mipUavIndices[0], GroupCount(SKYBOX_CUBE_SIZE), GroupCount(SKYBOX_CUBE_SIZE), 6);
+}
+auto DXRenderer::BuildEnvironmentMaps(const AssetID assetId, const DXTexture *equirect, const AtmosphereSky *atmosphere, const glm::vec3 &sunDirection) -> bool {
+  auto context = GetContext();
+  // One source or the other, never both and never neither. Everything past the first dispatch is
+  // identical either way, which is the reason this is one function with a branch in it rather than
+  // two that would have to be kept in step through eleven downsamples and seven roughness levels.
+  if (!context || (!equirect == !atmosphere))
     return false;
   auto *commandList = context->GetCommandList();
   auto *device = context->GetDevice();
@@ -1032,17 +1746,20 @@ auto DXRenderer::BuildEnvironmentMaps(const AssetID assetId, const DXTexture &eq
     return false;
   if (!CreateComputeTexture(brdfLUT, DXGI_FORMAT_R16G16_FLOAT, BRDF_SIZE, 1, 1, "BRDF_LUT"))
     return false;
-  auto equirectSrv = computeStagingHeap.Allocate();
-  if (equirectSrv == DXDescriptorHeap::InvalidIndex)
-    return false;
-  D3D12_SHADER_RESOURCE_VIEW_DESC equirectDesc{};
-  equirectDesc.Format = equirect.format;
-  equirectDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-  equirectDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-  equirectDesc.Texture2D.MipLevels = 1;
-  device->CreateShaderResourceView(equirect.resource.Get(), &equirectDesc, computeStagingHeap.GetCPUHandle(equirectSrv));
-  const auto equirectToRead = CD3DX12_RESOURCE_BARRIER::Transition(equirect.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-  commandList->ResourceBarrier(1, &equirectToRead);
+  auto equirectSrv = DXDescriptorHeap::InvalidIndex;
+  if (equirect) {
+    equirectSrv = computeStagingHeap.Allocate();
+    if (equirectSrv == DXDescriptorHeap::InvalidIndex)
+      return false;
+    D3D12_SHADER_RESOURCE_VIEW_DESC equirectDesc{};
+    equirectDesc.Format = equirect->format;
+    equirectDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    equirectDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    equirectDesc.Texture2D.MipLevels = 1;
+    device->CreateShaderResourceView(equirect->resource.Get(), &equirectDesc, computeStagingHeap.GetCPUHandle(equirectSrv));
+    const auto equirectToRead = CD3DX12_RESOURCE_BARRIER::Transition(equirect->resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &equirectToRead);
+  }
   ID3D12DescriptorHeap *heaps[]{context->GetSRVHeap().Get()};
   commandList->SetDescriptorHeaps(1, heaps);
   const auto Dispatch = [&](const char *entryPoint, const DXIBLConstants &constants, const std::array<uint32_t, COMPUTE_SRV_SLOTS> &sources, const uint32_t destination, const UINT x, const UINT y, const UINT z) -> bool {
@@ -1062,9 +1779,16 @@ auto DXRenderer::BuildEnvironmentMaps(const AssetID assetId, const DXTexture &eq
     commandList->ResourceBarrier(1, &barrier);
   };
   constexpr auto INVALID = DXDescriptorHeap::InvalidIndex;
-  DXIBLConstants constants{};
-  constants.size = SKYBOX_CUBE_SIZE;
-  if (!Dispatch("CSEquirectToCubemap", constants, {equirectSrv, INVALID, INVALID, INVALID}, skyboxCubemap.mipUavIndices[0], GroupCount(SKYBOX_CUBE_SIZE), GroupCount(SKYBOX_CUBE_SIZE), 6))
+  // The whole of the difference between a photographed sky and a computed one. Both leave mip zero
+  // of the cubemap holding radiance in the same face and axis convention, and neither the mip chain
+  // below nor the harmonics, the irradiance, the reflections or the background draw can tell which
+  // of the two filled it.
+  if (equirect) {
+    DXIBLConstants constants{};
+    constants.size = SKYBOX_CUBE_SIZE;
+    if (!Dispatch("CSEquirectToCubemap", constants, {equirectSrv, INVALID, INVALID, INVALID}, skyboxCubemap.mipUavIndices[0], GroupCount(SKYBOX_CUBE_SIZE), GroupCount(SKYBOX_CUBE_SIZE), 6))
+      return false;
+  } else if (!DispatchAtmosphere(*atmosphere, sunDirection))
     return false;
   Barrier(skyboxCubemap.resource.Get());
   for (uint32_t mip = 1; mip < SKYBOX_CUBE_MIPS; ++mip) {
@@ -1105,19 +1829,34 @@ auto DXRenderer::BuildEnvironmentMaps(const AssetID assetId, const DXTexture &eq
   Barrier(irradianceMap.resource.Get());
   Barrier(prefilterMap.resource.Get());
   Barrier(brdfLUT.resource.Get());
-  D3D12_RESOURCE_BARRIER finalBarriers[]{
+  std::vector<D3D12_RESOURCE_BARRIER> finalBarriers{
     CD3DX12_RESOURCE_BARRIER::Transition(skyboxCubemap.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
     CD3DX12_RESOURCE_BARRIER::Transition(irradianceMap.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
     CD3DX12_RESOURCE_BARRIER::Transition(prefilterMap.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-    CD3DX12_RESOURCE_BARRIER::Transition(brdfLUT.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-    CD3DX12_RESOURCE_BARRIER::Transition(equirect.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)};
-  commandList->ResourceBarrier(_countof(finalBarriers), finalBarriers);
+    CD3DX12_RESOURCE_BARRIER::Transition(brdfLUT.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)};
+  // The sun's own colour is the one table a pixel shader reads: the background pass samples it to
+  // tint the disc. `DispatchAtmosphere` leaves it in the state a compute shader reads from, which
+  // is a different state, and a resource read outside the one it is in is a silent wrong answer
+  // rather than an error -- what it looked like was no disc at all.
+  //
+  // The other two stay where they were left. Nothing but compute ever reads them, and the next
+  // rebuild reallocates them outright rather than writing over what is there, since the sun having
+  // moved changes every texel of both.
+  if (atmosphere && sunTransmittanceLUT)
+    finalBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(sunTransmittanceLUT.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+  // Only a photograph has a source to hand back.
+  if (equirect)
+    finalBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(equirect->resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+  commandList->ResourceBarrier(static_cast<UINT>(finalBarriers.size()), finalBarriers.data());
   skyboxCubemap.state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+  if (atmosphere && sunTransmittanceLUT)
+    sunTransmittanceLUT.state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
   irradianceMap.state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
   prefilterMap.state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
   brdfLUT.state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
   context->FlushCommandList();
-  computeStagingHeap.Free(equirectSrv);
+  if (equirectSrv != DXDescriptorHeap::InvalidIndex)
+    computeStagingHeap.Free(equirectSrv);
   auto &srvHeap = context->GetSRVHeap();
   if (environmentTableIndex == DXDescriptorHeap::InvalidIndex) {
     environmentTableIndex = srvHeap.AllocateRange(3);
@@ -1129,15 +1868,23 @@ auto DXRenderer::BuildEnvironmentMaps(const AssetID assetId, const DXTexture &eq
   for (uint32_t slot = 0; slot < 3; ++slot)
     device->CopyDescriptorsSimple(1, srvHeap.GetCPUHandle(environmentTableIndex + slot), computeStagingHeap.GetCPUHandle(environmentViews[slot]), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
   if (skyboxTableIndex == DXDescriptorHeap::InvalidIndex) {
-    skyboxTableIndex = srvHeap.Allocate();
+    skyboxTableIndex = srvHeap.AllocateRange(SKYBOX_SRV_SLOTS);
     if (skyboxTableIndex == DXDescriptorHeap::InvalidIndex)
       return false;
     skyboxTable = srvHeap.GetGPUHandle(skyboxTableIndex);
   }
   device->CopyDescriptorsSimple(1, srvHeap.GetCPUHandle(skyboxTableIndex), computeStagingHeap.GetCPUHandle(skyboxCubemap.srvIndex), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  // The second slot has to resolve to a real two-dimensional texture whether or not a sun is drawn
+  // through it, so a photographed sky points it at the same stand-in the compute tables use. The
+  // constants are what actually decide, and they leave the disc off in that case.
+  device->CopyDescriptorsSimple(1, srvHeap.GetCPUHandle(skyboxTableIndex + 1), computeStagingHeap.GetCPUHandle(atmosphere && sunTransmittanceLUT ? sunTransmittanceLUT.srvIndex : dummyEquirectSrv), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
   environmentAsset = assetId;
+  environmentAtmosphere = atmosphere ? HashAtmosphere(*atmosphere, sunDirection) : 0;
   environmentReady = true;
-  spdlog::info("[DXRenderer] Precomputed image-based lighting for {}", app.GetAssetName(assetId));
+  if (atmosphere)
+    spdlog::info("[DXRenderer] Precomputed image-based lighting from the atmosphere");
+  else
+    spdlog::info("[DXRenderer] Precomputed image-based lighting for {}", app.GetAssetName(assetId));
   return true;
 }
 auto DXRenderer::EnsureInstanceCapacity(const uint64_t bytes) -> bool {
@@ -1607,9 +2354,37 @@ auto DXRenderer::DrawSkybox(const Camera &camera, const DXRenderTarget &target) 
   });
   memcpy(constants.background, glm::value_ptr(indirect.backgroundColor), sizeof(float) * 3);
   auto table = fallbackSkyboxTable;
-  if (skybox) {
+  // A computed sky has no asset to match against and no `SkyboxHandle` to require: the component
+  // that asked for it is the whole of the request. What is checked instead is that the cubemap
+  // currently holds the sky this scene is asking for, which `environmentAtmosphere` being non-zero
+  // and unchanged is exactly the statement of.
+  const auto *sky = scene->GetAnyComponent<AtmosphereSky>();
+  const auto built = environmentReady && skyboxTableIndex != DXDescriptorHeap::InvalidIndex;
+  if (sky) {
     constants.useGradient = 1u;
-    if (environmentReady && environmentAsset == skybox->assetId && skyboxTableIndex != DXDescriptorHeap::InvalidIndex) {
+    const auto sunDirection = SunDirection(*scene);
+    if (built && environmentAtmosphere && environmentAtmosphere == HashAtmosphere(*sky, sunDirection)) {
+      table = skyboxTable;
+      constants.useTexture = 1u;
+      if (sky->sunDiscIntensity > .0f && sky->sunAngularRadius > .0f) {
+        const auto radius = glm::radians(std::clamp(sky->sunAngularRadius, .01f, 45.f));
+        memcpy(constants.sunDirection, glm::value_ptr(sunDirection), sizeof(constants.sunDirection));
+        constants.sunCosRadius = std::cos(radius);
+        // Radiance, which is what a pixel wants, from the irradiance the sky march was integrated
+        // against. The march treats the sun as delivering one unit and scales the result by
+        // `sunIntensity`; spread that same unit over the solid angle the disc actually covers and
+        // the two are in the same currency, so the disc brightens and dims with the sky rather
+        // than drifting away from it whenever the intensity is touched.
+        const auto solidAngle = 2.f * glm::pi<float>() * (1.f - constants.sunCosRadius);
+        const auto radiance = sky->sunIntensity / std::max(1e-9f, solidAngle) * sky->sunDiscIntensity;
+        for (auto channel = 0; channel < 3; ++channel)
+          constants.sunRadiance[channel] = radiance;
+        constants.useSunDisc = 1u;
+      }
+    }
+  } else if (skybox) {
+    constants.useGradient = 1u;
+    if (built && !environmentAtmosphere && environmentAsset == skybox->assetId) {
       table = skyboxTable;
       constants.useTexture = 1u;
     }
@@ -1716,7 +2491,7 @@ auto DXRenderer::GetCapabilities() const -> RendererCapabilities {
   // The debug views are not conditional on the same thing. They are branches in `scene.hlsl`, which
   // compiles and runs whatever the hardware can trace, and a field that never filled is worth
   // looking at through them more than a full one is.
-  return {.probeVolume = traces, .lightingDebugViews = true};
+  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true};
 }
 auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> void {
   auto context = GetContext();
@@ -1813,6 +2588,12 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   const auto frameConstantAddress = UploadFrameConstants(frameConstants);
   if (!frameConstantAddress)
     return;
+  // Left behind for the fog pass, which shades the air by the same lights this shades the surfaces
+  // by and would otherwise have to gather the scene a second time. Also the frame counter's one
+  // tick: both volumetric marches dither against it, and the scene pass is the one thing in the
+  // graph that runs exactly once a frame.
+  sceneFrameConstantAddress = frameConstantAddress;
+  ++volumetricFrame;
   Transition(target, D3D12_RESOURCE_STATE_RENDER_TARGET);
   const auto dsv = context->GetDSVHeap().GetCPUHandle(target.depthDsvIndex);
   const auto hasIdBuffer = target.idResource && target.idRtvIndex != DXDescriptorHeap::InvalidIndex;
@@ -2199,8 +2980,12 @@ auto DXRenderer::ApplyOverlay(std::span<std::string> inputs, std::span<std::stri
 }
 auto DXRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   std::array<std::string, 1> colorInput{};
+  // The picking buffer is what distinguishes the scene target from the finished picture, here and
+  // in the search below. A sample count did while the scene was always multisampled; with
+  // antialiasing off it has one sample like its neighbour, and the scene would be taken for the
+  // picture with the bloom silently dropped.
   for (const auto &name : inputs)
-    if (auto it = nameToTarget.find(name); it != nameToTarget.end() && it->second.resource && it->second.desc.samples <= 1) {
+    if (auto it = nameToTarget.find(name); it != nameToTarget.end() && it->second.resource && !it->second.idResource && it->second.desc.samples <= 1) {
       colorInput[0] = name;
       break;
     }
@@ -2229,7 +3014,7 @@ auto DXRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::stri
       continue;
     if (!idSource && it->second.idResource && it->second.idSrvGPU.ptr)
       idSource = &it->second;
-    if (!colorSource && it->second.desc.samples <= 1 && it->second.srvIndex != DXDescriptorHeap::InvalidIndex)
+    if (!colorSource && !it->second.idResource && it->second.desc.samples <= 1 && it->second.srvIndex != DXDescriptorHeap::InvalidIndex)
       colorSource = &it->second;
   }
   auto &destination = destinationIt->second;
@@ -2439,6 +3224,9 @@ auto DXRenderer::Clear() -> void {
   materialTables.clear();
   assetToPreviewTarget.clear();
   ReleaseComputeTexture(skyboxCubemap);
+  ReleaseComputeTexture(transmittanceLUT);
+  ReleaseComputeTexture(multiscatterLUT);
+  ReleaseComputeTexture(sunTransmittanceLUT);
   ReleaseComputeTexture(irradianceMap);
   ReleaseComputeTexture(prefilterMap);
   ReleaseComputeTexture(brdfLUT);
@@ -2470,6 +3258,7 @@ auto DXRenderer::Clear() -> void {
   sceneColorHeight = 0;
   sceneColorFormat = DXGI_FORMAT_UNKNOWN;
   environmentAsset = {};
+  environmentAtmosphere = 0;
   environmentReady = false;
   instanceBuffer.Reset();
   instanceData = nullptr;
@@ -2530,16 +3319,30 @@ auto DXRenderer::EnsureSceneResources(Scene &scene) -> void {
     for (const auto textureIndex : handle->textureIndices)
       EnsureModelTexture(handle->modelAssetId, textureIndex);
   });
+  // An atmosphere wins over a photograph, and the scene is not asked to resolve the two: a scene
+  // holding both is saying it wants a computed sky, and the texture it also names is what it had
+  // before. Removing the component is what goes back to the photograph, which is why this is a
+  // precedence and not a warning.
+  if (const auto *sky = scene.GetAnyComponent<AtmosphereSky>()) {
+    const auto sunDirection = SunDirection(scene);
+    if (const auto key = HashAtmosphere(*sky, sunDirection); key != environmentAtmosphere)
+      if (!BuildEnvironmentMaps({}, nullptr, sky, sunDirection)) {
+        environmentReady = false;
+        environmentAtmosphere = 0;
+        spdlog::warn("[DXRenderer] Could not compute the atmosphere, falling back to the analytic sky");
+      }
+    return;
+  }
   scene.ForEachEntity<SkyboxHandle>([&](const EntityID, const SkyboxHandle *handle) {
     if (!handle->assetId || !app.IsAssetLoaded(handle->assetId))
       return;
     auto texture = EnsureTexture(handle->assetId);
-    if (!texture || (environmentReady && environmentAsset == handle->assetId))
+    if (!texture || (environmentReady && !environmentAtmosphere && environmentAsset == handle->assetId))
       return;
     auto textureAsset = app.GetAsset<TextureAsset>(handle->assetId);
     if (!textureAsset)
       return;
-    if (!BuildEnvironmentMaps(handle->assetId, *texture)) {
+    if (!BuildEnvironmentMaps(handle->assetId, texture, nullptr, {})) {
       environmentReady = false;
       spdlog::warn("[DXRenderer] Could not precompute image-based lighting, falling back to the analytic sky");
     }

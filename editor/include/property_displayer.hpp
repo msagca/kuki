@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>
 #include <animator.hpp>
+#include <anti_aliasing.hpp>
+#include <atmosphere_sky.hpp>
 #include <application.hpp>
 #include <array>
 #include <bone_data.hpp>
@@ -503,6 +505,219 @@ inline auto PropertyDisplayer::operator()<kuki::GLUnlitShader>(kuki::GLUnlitShad
   ImGui::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
   static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
   ImGui::LabelText("Draws", "%s", types[static_cast<size_t>(shader->type)]);
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::AntiAliasing>(kuki::AntiAliasing *antiAliasing) -> void {
+  if (!antiAliasing)
+    return;
+  static auto &modes = kuki::EnumTraits<kuki::AntiAliasingMode>::GetNames();
+  auto mode = static_cast<int>(antiAliasing->mode);
+  if (ImGui::Combo("Mode", &mode, modes.data(), modes.size()))
+    antiAliasing->mode = static_cast<kuki::AntiAliasingMode>(mode);
+  ImGui::SetItemTooltip("How many samples a pixel of the scene is rasterised at before it is\nresolved. Multisampling is the only method offered because it is the\nonly one the pipeline has: the antialiasing pass is a resolve, not a\nfilter with an opinion.");
+  // Said rather than left to be inferred from the mode's name, because the cost is the whole of
+  // what this choice is between and a sample count does not read as a memory figure. The scene
+  // target and the entity id buffer beside it are both allocated per sample, so eight samples
+  // costs eight times the scene's memory and bandwidth for a difference only edges show.
+  ImGui::TextDisabled("The scene target and its id buffer are allocated per sample.");
+  ImGui::SetItemTooltip("Changing this reallocates both, which stalls for a frame. Eight\nsamples is eight times the memory and bandwidth of one.");
+  if (antiAliasing->mode == kuki::AntiAliasingMode::None) {
+    ImGui::TextColored(ImVec4(1.f, .8f, .2f, 1.f), "Picking gets stricter at a silhouette.");
+    ImGui::SetItemTooltip("A click is answered from the id buffer, and with several samples under\na pixel it can land on a piece the pixel only partly covers. With one\nsample there is nothing to be generous with -- see pick.frag.");
+  }
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::AtmosphereSky>(kuki::AtmosphereSky *sky) -> void {
+  if (!sky)
+    return;
+  // Said once and nothing else offered, on a backend with no route to a computed sky. The
+  // add-component menu already hides this, but a scene file carries the component onto whatever
+  // backend opens it -- and thirty sliders that move nothing read as a broken renderer.
+  if (!context.capabilities.proceduralSky) {
+    ImGui::TextDisabled("This backend cannot compute a sky.");
+    ImGui::SetItemTooltip("The march is a compute pass writing the cubemap the image-based lighting\nchain already reads, and the OpenGL backend feeds that chain from a\ntexture asset instead. The scene falls back to its background colour.");
+    return;
+  }
+  ImGui::TextDisabled("Kilometres. The sun is the scene's directional light.");
+  ImGui::SetItemTooltip("None of these are in the scene's units, and they do not have to be: the sky is\na background at infinity. Altitude below is the one field that relates the\ntwo, and it says how high up the scene is meant to be.\n\nRotate the directional light to move the sun. There is deliberately no sun\ndirection here: a scene with a sun already has a light, and two places to\nset it is two things to get out of step.");
+  ImGui::Separator();
+  // Edited through a copy and written back in one go, as every other displayer here does: a widget
+  // writes on the frame it is dragged, and the renderer hashes this struct to decide whether to
+  // spend twenty-one dispatches rebuilding the sky. Handing a widget the live field would let it
+  // write while that hash is being taken.
+  auto edited = *sky;
+  if (ImGui::CollapsingHeader("Placement", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::SliderFloat("Altitude", &edited.viewAltitude, .0f, std::max(1.f, edited.atmosphereHeight), "%.2f km");
+    ImGui::SetItemTooltip("How high above the ground the scene sits. At zero this is the sky from a\nfield; at a few kilometres the horizon drops, the blue deepens overhead\nand the haze thins out. Past the top of the atmosphere there is no air\nleft to scatter and the sky goes black.");
+    ImGui::SliderFloat("Sun Intensity", &edited.sunIntensity, .0f, 100.f, "%.1f");
+    ImGui::SetItemTooltip("What the whole sky is multiplied by. Not a physical quantity and it cannot\nbe: this engine's lights carry bare multipliers rather than photometric\nunits, so there is no illuminance that would make the sky come out at a\ndefensible absolute brightness.");
+    ImGui::SliderFloat("Ground Albedo", &edited.groundAlbedo, .0f, 1.f);
+    ImGui::SetItemTooltip("How much light the ground bounces back up. Most of the lower half of the\nsky cubemap is ground, and that cubemap is where the diffuse irradiance\nand the reflections are gathered from -- so this is most of the fill\nlight arriving from below, not a detail of the background.");
+  }
+  if (ImGui::CollapsingHeader("Sun Disc", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::TextDisabled("Drawn over the sky, not baked into it.");
+    ImGui::SetItemTooltip("The disc is added by the background pass rather than written into the sky\ncubemap. That cubemap is projected to harmonics and prefiltered to light\nthe scene, and the scene already has a directional light standing for the\nsun -- a disc in there would be the same sun counted twice.");
+    ImGui::SliderFloat("Angular Radius", &edited.sunAngularRadius, .0f, 5.f, "%.2f deg");
+    ImGui::SetItemTooltip("A quarter of a degree is the real sun and looks it. Larger reads as a\nbigger, softer star, and costs nothing: the disc is a comparison against\na cosine rather than anything drawn.");
+    ImGui::SliderFloat("Disc Intensity", &edited.sunDiscIntensity, .0f, 4.f);
+    ImGui::SetItemTooltip("A multiplier on the physical figure, which is the sun's whole output\narriving from seven millionths of a steradian -- correct, and more than\nthe bloom chain can take without whiting out the frame. Zero removes the\ndisc and leaves the sky it sits in alone.");
+  }
+  if (ImGui::CollapsingHeader("Air")) {
+    ImGui::TextDisabled("Rayleigh: why the sky is blue.");
+    ImGui::DragFloat3("Rayleigh", &edited.rayleighScattering.x, 1.0e-4f, .0f, 1.f, "%.5f");
+    ImGui::SetItemTooltip("Scattering per kilometre, per channel. The three differ by about a factor\nof six across the visible range, which is what scatters short wavelengths\nout of a sunbeam and into every other direction. Scaling all three makes\nthicker or thinner air; changing the ratio gives a sky that is not Earth's.");
+    ImGui::DragFloat("Rayleigh Scale Height", &edited.rayleighScaleHeight, .1f, .1f, 50.f, "%.2f km");
+    ImGui::Separator();
+    ImGui::TextDisabled("Mie: haze, and the halo around the sun.");
+    ImGui::DragFloat("Mie Scattering", &edited.mieScattering, 1.0e-4f, .0f, 1.f, "%.5f");
+    ImGui::DragFloat("Mie Absorption", &edited.mieAbsorption, 1.0e-4f, .0f, 1.f, "%.5f");
+    ImGui::SetItemTooltip("Added to the scattering to give the extinction, so a medium can never\nremove less light than it scatters. A negative value is clamped away.");
+    ImGui::DragFloat("Mie Scale Height", &edited.mieScaleHeight, .05f, .05f, 20.f, "%.2f km");
+    ImGui::SliderFloat("Mie Anisotropy", &edited.mieAnisotropy, .0f, .95f);
+    ImGui::SetItemTooltip("How strongly the aerosols scatter forward. The knob to reach for when the\nsun looks like a sticker rather than a light: higher tightens the halo\nand brightens the sky right around the sun at the expense of the rest.");
+    ImGui::Separator();
+    ImGui::TextDisabled("Ozone: why a sunset is red and not just dim.");
+    ImGui::DragFloat3("Ozone", &edited.ozoneAbsorption.x, 1.0e-5f, .0f, 1.f, "%.5f");
+    ImGui::SetItemTooltip("Absorbs and does not scatter, and absorbs most in the middle of the\nvisible range -- which takes the green out of a low sun. Setting this to\nzero is the quickest way to see what it is doing.");
+    ImGui::DragFloat("Ozone Centre", &edited.ozoneCenter, .5f, .0f, 100.f, "%.1f km");
+    ImGui::DragFloat("Ozone Width", &edited.ozoneWidth, .5f, .1f, 100.f, "%.1f km");
+  }
+  if (ImGui::CollapsingHeader("Planet")) {
+    ImGui::DragFloat("Planet Radius", &edited.bottomRadius, 10.f, 100.f, 100000.f, "%.0f km");
+    ImGui::DragFloat("Atmosphere Height", &edited.atmosphereHeight, 1.f, 1.f, 1000.f, "%.0f km");
+  }
+  if (ImGui::CollapsingHeader("Quality")) {
+    ImGui::TextDisabled("Paid on a rebuild, not per frame.");
+    ImGui::SetItemTooltip("The sky is marched once into a cubemap and only when something here or the\nsun changes, so these buy smoothness rather than frame rate. What they\ncost is the length of the pause when you drag a slider.");
+    auto steps = static_cast<int>(edited.marchSteps);
+    if (ImGui::SliderInt("March Steps", &steps, 8, 128))
+      edited.marchSteps = static_cast<uint32_t>(std::max(8, steps));
+    ImGui::SetItemTooltip("Below about sixteen the banding shows near the horizon, where the medium\nchanges fastest along a ray.");
+    ImGui::SliderFloat("Multiple Scattering", &edited.multiscatterStrength, .0f, 2.f);
+    ImGui::SetItemTooltip("One is the answer; this exists because the difference is otherwise hard\nto see and easy to mistake for something else. At zero the sky is single\nscattering only: too dark towards the horizon, with no blue hour at all\nonce the sun is down.");
+  }
+  if (edited != *sky)
+    *sky = edited;
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::VolumetricClouds>(kuki::VolumetricClouds *clouds) -> void {
+  if (!clouds)
+    return;
+  if (!context.capabilities.volumetrics) {
+    ImGui::TextDisabled("This backend cannot march the air.");
+    ImGui::SetItemTooltip("The cloud layer is a raymarch through the same medium the sky is built from,\nand the OpenGL backend has no atmosphere to hang one in. The sky falls back\nto whatever it was showing before.");
+    return;
+  }
+  // Said plainly rather than left to be discovered. The layer needs an atmosphere for its sunlight
+  // and its ambient, and without one this pass does nothing at all -- which from the outside looks
+  // exactly like a cloud layer that is not working.
+  if (!app.GetScene() || !app.GetScene()->GetAnyComponent<kuki::AtmosphereSky>()) {
+    ImGui::TextDisabled("Add an Atmosphere Sky. Nothing is drawn without one.");
+    ImGui::SetItemTooltip("A cloud is lit by sunlight that has already come through the air above it and\nfilled in by the sky around it, and both of those are integrals through a\nmedium only the atmosphere describes. There is nothing to invent them from.");
+    ImGui::Separator();
+  }
+  ImGui::TextDisabled("Kilometres, like the atmosphere. Marched every frame.");
+  ImGui::SetItemTooltip("Unlike the sky, which is built once into a cubemap when the sun moves, this is\nmarched from the camera in every frame -- which is what lets it drift and show\nparallax, and what makes the two step counts at the bottom the cost of the\nfeature.");
+  ImGui::Separator();
+  auto edited = *clouds;
+  if (ImGui::CollapsingHeader("Layer", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::DragFloat("Base", &edited.bottomAltitude, .05f, .0f, 60.f, "%.2f km");
+    ImGui::SetItemTooltip("Altitude of the cloud base above the ground. Compare it with the scene's own\naltitude on the Atmosphere Sky: a scene below this looks up at the layer, one\nabove it looks down on it, and one between the two is in the clouds.");
+    ImGui::DragFloat("Top", &edited.topAltitude, .05f, .05f, 80.f, "%.2f km");
+    ImGui::SetItemTooltip("A thin layer reads as stratus however the shape is tuned, because there is no\nroom in it for the vertical development that makes a cumulus look like one.");
+    ImGui::SliderFloat("Coverage", &edited.coverage, .0f, 1.f);
+    ImGui::SetItemTooltip("How much of the sky has cloud in it. A threshold rather than a multiplier, so\nraising it grows clouds together rather than thickening each one -- which is\nwhat cloud cover actually does.");
+    ImGui::DragFloat("Density", &edited.density, .25f, .0f, 80.f, "%.1f /km");
+    ImGui::SetItemTooltip("Extinction of the cloud interior. This is what decides whether a cloud is a\nsolid white wall or something the sun comes through.");
+  }
+  if (ImGui::CollapsingHeader("Wind", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::DragFloat2("Direction", &edited.windDirection.x, .01f, -1.f, 1.f, "%.2f");
+    ImGui::DragFloat("Speed", &edited.windSpeed, .001f, .0f, .2f, "%.3f km/s");
+    ImGui::SetItemTooltip("Small numbers. A cloud field crossing a kilometre a minute is already brisk to\nlook at, and anything above about a tenth reads as weather on fast forward.");
+  }
+  if (ImGui::CollapsingHeader("Shape")) {
+    ImGui::DragFloat("Shape Scale", &edited.shapeScale, .1f, .1f, 60.f, "%.2f km");
+    ImGui::SetItemTooltip("How big one cloud is. Raising it makes fewer, larger clouds out of the same\nfield rather than spreading the ones already there.");
+    ImGui::DragFloat("Detail Scale", &edited.detailScale, .01f, .01f, 5.f, "%.2f km");
+    ImGui::SliderFloat("Detail Strength", &edited.detailStrength, .0f, 1.f);
+    ImGui::SetItemTooltip("How deeply the detail noise cuts into an edge, from smooth to shredded. It is\napplied to the boundary rather than the interior: the inside of a cloud is\nopaque, so detail spent there is detail thrown away.");
+  }
+  if (ImGui::CollapsingHeader("Light")) {
+    ImGui::SliderFloat("Anisotropy", &edited.anisotropy, .0f, .95f);
+    ImGui::SetItemTooltip("How strongly the droplets scatter forward. High, because a droplet is enormous\ncompared to a wavelength -- this is what puts the silver lining on a cloud with\nthe sun behind it.");
+    ImGui::SliderFloat("Backscatter", &edited.backscatter, .0f, 1.f);
+    ImGui::SetItemTooltip("How much of the backward lobe is mixed in. A cloud lit from behind has a bright\nrim and one lit from in front is bright all over, and a single lobe has to\nchoose between saying the first and saying the second.");
+    ImGui::SliderFloat("Powder", &edited.powder, .0f, 1.f);
+    ImGui::SetItemTooltip("How dark the approach to an edge goes before it brightens. Light entering a thin\nedge has to scatter several times before it leaves and most of it does not,\nwhich is why a cumulus base reads as bruised rather than grey. Zero removes it.");
+    ImGui::SliderFloat("Ambient", &edited.ambient, .0f, 2.f);
+    ImGui::SetItemTooltip("What the sky around a cloud fills its shaded side with, read from the same\ncubemap the scene's image-based lighting uses -- so a cloud at sunset is filled\nwith orange without that being said here.");
+    ImGui::SliderFloat("Scattering Scale", &edited.scatteringScale, .0f, 4.f);
+    ImGui::SliderFloat("Shadow Strength", &edited.shadowStrength, .0f, 1.f);
+    ImGui::SetItemTooltip("How much the layer darkens the light reaching the air below it. What this\nreaches is the shafts in Volumetric Fog: a cloud crossing the sun takes the\nbeams with it.\n\nIt does not reach surface shading. The scene is shaded before this pass runs,\nso the ground under an overcast sky is still lit as though it were clear.");
+  }
+  if (ImGui::CollapsingHeader("Quality")) {
+    ImGui::TextDisabled("Paid every frame, unlike the sky's.");
+    ImGui::SetItemTooltip("The sky is marched once per cubemap texel when the sun moves. This is marched\nper pixel per frame, at half the viewport on each axis, so these two are the\ncost of the feature.");
+    auto steps = static_cast<int>(edited.steps);
+    if (ImGui::SliderInt("View Steps", &steps, 8, 192))
+      edited.steps = static_cast<uint32_t>(std::max(8, steps));
+    ImGui::SetItemTooltip("Distributed over the layer's thickness rather than the whole ray, so too few\nshows first as banding in the thick parts of a cloud.");
+    auto lightSteps = static_cast<int>(edited.lightSteps);
+    if (ImGui::SliderInt("Light Steps", &lightSteps, 1, 16))
+      edited.lightSteps = static_cast<uint32_t>(std::max(1, lightSteps));
+    ImGui::SetItemTooltip("Taken from every view step, so this multiplies the count above. Six is enough\nbecause what it integrates is smooth and the several-orders term covers the\nrest.");
+  }
+  if (edited != *clouds)
+    *clouds = edited;
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::VolumetricFog>(kuki::VolumetricFog *fog) -> void {
+  if (!fog)
+    return;
+  if (!context.capabilities.volumetrics) {
+    ImGui::TextDisabled("This backend cannot march the air.");
+    ImGui::SetItemTooltip("The shafts want a depth buffer, both shadow maps and a medium to walk through.\nThe OpenGL backend has the first two, so what is missing is the pass rather\nthan the plumbing -- the picture passes through untouched.");
+    return;
+  }
+  ImGui::TextDisabled("The scene's units. Needs no atmosphere.");
+  ImGui::SetItemTooltip("This is the air the scene stands in rather than a planet's, so it is measured\nagainst the geometry around it. A sealed room has air in it, and a spot light in\na sealed room throws a cone that this is what draws.\n\nAerial Perspective below is the exception: that one is the atmosphere's air, in\nkilometres, and does nothing without an Atmosphere Sky.");
+  ImGui::Separator();
+  auto edited = *fog;
+  if (ImGui::CollapsingHeader("Medium", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::DragFloat("Density", &edited.density, .002f, .0f, 2.f, "%.3f");
+    ImGui::SetItemTooltip("Extinction at the base height, per scene unit. Zero switches the scene's own\nmedium off entirely and leaves only the aerial perspective below, which is what\nan outdoor scene usually wants -- two media over the same air is haze counted\ntwice.");
+    ImGui::DragFloat("Base Height", &edited.baseHeight, .05f, -100.f, 100.f, "%.2f");
+    ImGui::SliderFloat("Height Falloff", &edited.heightFalloff, .0f, 4.f);
+    ImGui::SetItemTooltip("How quickly the air thins going up. This is the reason a shaft is brightest near\nthe floor: an even medium gives a cone of uniform brightness, which reads as a\nsolid object rather than as light.");
+    ImGui::ColorEdit3("Albedo", &edited.albedo.x);
+    ImGui::SetItemTooltip("What fraction of what the medium removes it scatters back, per channel -- so it\ncannot brighten what is behind it. Slightly blue keeps a white shaft from\nreading as smoke.");
+    ImGui::SliderFloat("Anisotropy", &edited.anisotropy, -.9f, .9f);
+    ImGui::SetItemTooltip("Modest on purpose. High values make a shaft visible only when looking nearly\ninto its light, which is correct for genuine haze and disappointing in a room,\nwhere the beam is meant to be seen from the side.");
+  }
+  if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::ColorEdit3("Ambient", &edited.ambient.x);
+    ImGui::SetItemTooltip("Light arriving from everywhere rather than from a light. Without it the fog is\nblack wherever no light reaches it, so a room with one lamp gets a bright cone\nstanding in a void.");
+    ImGui::SliderFloat("Light Scale", &edited.lightScale, .0f, 4.f);
+    ImGui::SetItemTooltip("A viewing decision rather than a fact about the air: the physically right shaft\nis often a faint one, and a scene that wants the beam to be the subject needs to\nsay so without lying about the density.");
+  }
+  if (ImGui::CollapsingHeader("Distance", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::DragFloat("Max Distance", &edited.maxDistance, .5f, 1.f, 5000.f, "%.0f");
+    ImGui::SetItemTooltip("How far the march goes. Beyond it the medium is taken to continue unchanged, so\na distant surface still fogs -- what is lost past here is the shadowing, not the\nhaze. The step count is fixed, so doubling this halves every shaft's resolution.");
+    ImGui::SliderFloat("Aerial Perspective", &edited.aerialPerspective, .0f, 2.f);
+    ImGui::SetItemTooltip("The atmosphere's own haze, applied over the distance to each surface using the\nsame figures the sky was marched from -- which is what turns a far wall blue and\nis most of why distance reads as distance outdoors.\n\nDoes nothing without an Atmosphere Sky.");
+    ImGui::DragFloat("Kilometres / Unit", &edited.kilometresPerUnit, .0005f, .0f, 1.f, "%.4f");
+    ImGui::SetItemTooltip("The one place the scene's units and the atmosphere's have to agree, because how\nblue a far wall goes depends on how far away the wall really is. Raise it for a\nscene meant to read as a landscape.\n\nRead only by Aerial Perspective above.");
+  }
+  if (ImGui::CollapsingHeader("Quality")) {
+    ImGui::TextDisabled("Paid every frame, at the full viewport.");
+    ImGui::SetItemTooltip("Each step samples a shadow map, so this is the whole cost of the pass. The\nsamples are coherent between neighbouring pixels -- they walk the same map\nthrough nearly the same texels -- so they are cheaper than the count suggests.");
+    auto steps = static_cast<int>(edited.steps);
+    if (ImGui::SliderInt("Steps", &steps, 4, 128))
+      edited.steps = static_cast<uint32_t>(std::max(4, steps));
+    ImGui::SetItemTooltip("The march is dithered per pixel, so too few steps costs a fine grain rather than\nvisible bands.");
+  }
+  if (edited != *fog)
+    *fog = edited;
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::IndirectLighting *indirect) -> void {

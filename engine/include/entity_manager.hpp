@@ -23,6 +23,8 @@
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <transform.hpp>
+#include <volumetric_clouds.hpp>
+#include <volumetric_fog.hpp>
 #include <trie.hpp>
 #include <typeindex>
 #include <unordered_map>
@@ -225,6 +227,10 @@ auto EntityManager::GetComponent(this auto &self, const EntityID id, const Compo
   switch (type) {
   case ComponentType::Animator:
     return self.template GetComponent<Animator>(id);
+  case ComponentType::AntiAliasing:
+    return self.template GetComponent<AntiAliasing>(id);
+  case ComponentType::AtmosphereSky:
+    return self.template GetComponent<AtmosphereSky>(id);
   case ComponentType::BoneData:
     return self.template GetComponent<BoneData>(id);
   case ComponentType::BoundingBox:
@@ -276,6 +282,10 @@ auto EntityManager::GetComponent(this auto &self, const EntityID id, const Compo
     return self.template GetComponent<SkyboxHandle>(id);
   case ComponentType::TextureHandle:
     return self.template GetComponent<TextureHandle>(id);
+  case ComponentType::VolumetricClouds:
+    return self.template GetComponent<VolumetricClouds>(id);
+  case ComponentType::VolumetricFog:
+    return self.template GetComponent<VolumetricFog>(id);
   default:
     return self.template GetComponent<Transform>(id);
   }

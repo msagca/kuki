@@ -1,4 +1,5 @@
 #include <animator.hpp>
+#include <atmosphere_sky.hpp>
 #include <application.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
@@ -23,11 +24,18 @@
 #include <transform.hpp>
 #include <unordered_map>
 #include <unordered_set>
+#include <volumetric_clouds.hpp>
+#include <volumetric_fog.hpp>
 using json = nlohmann::json;
 namespace kuki {
 namespace {
   constexpr ComponentType SERIALIZED_TYPES[]{
     ComponentType::Animator,
+    // The one settings component that travels. `IndirectLighting` and `AntiAliasing` deliberately
+    // do not: they describe how somebody is looking at their work. An atmosphere describes the
+    // work -- what time of day it is and how high up the scene sits -- so it belongs in the file
+    // the way a light does.
+    ComponentType::AtmosphereSky,
     ComponentType::BoundingBox,
     ComponentType::Camera,
     ComponentType::Light,
@@ -38,6 +46,11 @@ namespace {
     ComponentType::SkyboxHandle,
     ComponentType::TextureHandle,
     ComponentType::Transform,
+    // Both travel, on the same terms as the atmosphere above and for the same reason. How thick a
+    // room's air is and how much cloud there is over the scene are facts about the work, not about
+    // the desk it is being looked at on.
+    ComponentType::VolumetricClouds,
+    ComponentType::VolumetricFog,
   };
   auto IsSerialized(const ComponentType type) -> bool {
     for (const auto t : SERIALIZED_TYPES)
@@ -64,6 +77,50 @@ namespace {
     path.replace_extension();
     path += ".assets.json";
     return path;
+  }
+  auto ToJson(const AtmosphereSky &a) -> json {
+    return {
+      {"bottomRadius", a.bottomRadius},
+      {"atmosphereHeight", a.atmosphereHeight},
+      {"rayleighScattering", a.rayleighScattering},
+      {"rayleighScaleHeight", a.rayleighScaleHeight},
+      {"mieScattering", a.mieScattering},
+      {"mieAbsorption", a.mieAbsorption},
+      {"mieScaleHeight", a.mieScaleHeight},
+      {"mieAnisotropy", a.mieAnisotropy},
+      {"ozoneAbsorption", a.ozoneAbsorption},
+      {"ozoneCenter", a.ozoneCenter},
+      {"ozoneWidth", a.ozoneWidth},
+      {"viewAltitude", a.viewAltitude},
+      {"sunIntensity", a.sunIntensity},
+      {"multiscatterStrength", a.multiscatterStrength},
+      {"groundAlbedo", a.groundAlbedo},
+      {"marchSteps", a.marchSteps}};
+  }
+  auto FromJson(const json &j, AtmosphereSky &a) -> void {
+    // Every field optional and defaulted from the struct, as the handlers above are. A scene saved
+    // before a field existed has to keep loading, and the default is what that field meant before
+    // anyone could write it down.
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("bottomRadius", a.bottomRadius);
+    Read("atmosphereHeight", a.atmosphereHeight);
+    Read("rayleighScattering", a.rayleighScattering);
+    Read("rayleighScaleHeight", a.rayleighScaleHeight);
+    Read("mieScattering", a.mieScattering);
+    Read("mieAbsorption", a.mieAbsorption);
+    Read("mieScaleHeight", a.mieScaleHeight);
+    Read("mieAnisotropy", a.mieAnisotropy);
+    Read("ozoneAbsorption", a.ozoneAbsorption);
+    Read("ozoneCenter", a.ozoneCenter);
+    Read("ozoneWidth", a.ozoneWidth);
+    Read("viewAltitude", a.viewAltitude);
+    Read("sunIntensity", a.sunIntensity);
+    Read("multiscatterStrength", a.multiscatterStrength);
+    Read("groundAlbedo", a.groundAlbedo);
+    Read("marchSteps", a.marchSteps);
   }
   auto ToJson(const Transform &t) -> json {
     return {{"position", t.position}, {"rotation", t.rotation}, {"scale", t.scale}};
@@ -248,10 +305,93 @@ namespace {
     if (j.contains("textureIndices"))
       j.at("textureIndices").get_to(h.textureIndices);
   }
+  auto ToJson(const VolumetricClouds &c) -> json {
+    return {
+      {"bottomAltitude", c.bottomAltitude},
+      {"topAltitude", c.topAltitude},
+      {"coverage", c.coverage},
+      {"density", c.density},
+      {"windDirection", c.windDirection},
+      {"windSpeed", c.windSpeed},
+      {"shapeScale", c.shapeScale},
+      {"detailScale", c.detailScale},
+      {"detailStrength", c.detailStrength},
+      {"anisotropy", c.anisotropy},
+      {"backscatter", c.backscatter},
+      {"powder", c.powder},
+      {"ambient", c.ambient},
+      {"scatteringScale", c.scatteringScale},
+      {"shadowStrength", c.shadowStrength},
+      {"steps", c.steps},
+      {"lightSteps", c.lightSteps}};
+  }
+  auto FromJson(const json &j, VolumetricClouds &c) -> void {
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("bottomAltitude", c.bottomAltitude);
+    Read("topAltitude", c.topAltitude);
+    Read("coverage", c.coverage);
+    Read("density", c.density);
+    Read("windDirection", c.windDirection);
+    Read("windSpeed", c.windSpeed);
+    Read("shapeScale", c.shapeScale);
+    Read("detailScale", c.detailScale);
+    Read("detailStrength", c.detailStrength);
+    Read("anisotropy", c.anisotropy);
+    Read("backscatter", c.backscatter);
+    Read("powder", c.powder);
+    Read("ambient", c.ambient);
+    Read("scatteringScale", c.scatteringScale);
+    Read("shadowStrength", c.shadowStrength);
+    Read("steps", c.steps);
+    Read("lightSteps", c.lightSteps);
+  }
+  auto ToJson(const VolumetricFog &f) -> json {
+    return {
+      {"density", f.density},
+      {"baseHeight", f.baseHeight},
+      {"heightFalloff", f.heightFalloff},
+      {"albedo", f.albedo},
+      {"anisotropy", f.anisotropy},
+      {"ambient", f.ambient},
+      {"lightScale", f.lightScale},
+      {"maxDistance", f.maxDistance},
+      {"aerialPerspective", f.aerialPerspective},
+      {"kilometresPerUnit", f.kilometresPerUnit},
+      {"steps", f.steps}};
+  }
+  auto FromJson(const json &j, VolumetricFog &f) -> void {
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("density", f.density);
+    Read("baseHeight", f.baseHeight);
+    Read("heightFalloff", f.heightFalloff);
+    Read("albedo", f.albedo);
+    Read("anisotropy", f.anisotropy);
+    Read("ambient", f.ambient);
+    Read("lightScale", f.lightScale);
+    Read("maxDistance", f.maxDistance);
+    Read("aerialPerspective", f.aerialPerspective);
+    Read("kilometresPerUnit", f.kilometresPerUnit);
+    Read("steps", f.steps);
+  }
   struct ToJsonVisitor {
     std::unordered_set<AssetID> &referenced;
     auto operator()(Transform *t) const -> json {
       return ToJson(*t);
+    }
+    auto operator()(AtmosphereSky *a) const -> json {
+      return ToJson(*a);
+    }
+    auto operator()(VolumetricClouds *c) const -> json {
+      return ToJson(*c);
+    }
+    auto operator()(VolumetricFog *f) const -> json {
+      return ToJson(*f);
     }
     auto operator()(BoundingBox *b) const -> json {
       return ToJson(*b);
@@ -354,6 +494,15 @@ namespace {
         switch (it->second) {
         case ComponentType::Transform:
           FromJson(componentJson, *app.AddEntityComponent<Transform>(id));
+          break;
+        case ComponentType::AtmosphereSky:
+          FromJson(componentJson, *app.AddEntityComponent<AtmosphereSky>(id));
+          break;
+        case ComponentType::VolumetricClouds:
+          FromJson(componentJson, *app.AddEntityComponent<VolumetricClouds>(id));
+          break;
+        case ComponentType::VolumetricFog:
+          FromJson(componentJson, *app.AddEntityComponent<VolumetricFog>(id));
           break;
         case ComponentType::BoundingBox:
           FromJson(componentJson, *app.AddEntityComponent<BoundingBox>(id));
