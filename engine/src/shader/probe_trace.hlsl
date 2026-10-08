@@ -36,7 +36,7 @@ static const uint PROBE_BEHIND_WORDS = PROBE_DEPTH_TEXELS / 4;
 // twice what its centre direction measures. Sited too close, the grazing rays clamp while the
 // central one does not, the mean lands under the true distance, and the probe invents an occluder in
 // a ring at whatever radius the clamp begins to bite.
-// Now `u_field.x`, and still seeded to the same value by `DXProbeVolume::Build`.
+// Now `u_field.x`, and still seeded to the same value by `CSAcquire` in probe_update.hlsl.
 // The step off a surface and the weight floor are `u_probeTuning.x` and `.y`, out of the frame
 // buffer rather than this one -- they are the shading pass's values, and this pass reading the field
 // for second-bounce light has to read it the same way the shading pass will or the two disagree
@@ -44,6 +44,8 @@ static const uint PROBE_BEHIND_WORDS = PROBE_DEPTH_TEXELS / 4;
 //
 // The four relocation values are `u_relocation`, in the order they are declared there.
 static const uint PROBE_NEIGHBOURS = 6;
+// What a ray that met nothing records as its hit distance, so the nearest hit is a plain minimum.
+static const float NO_HIT = 3.402823e38;
 static const uint VERTEX_STRIDE = 76;
 static const uint VERTEX_NORMAL_OFFSET = 12;
 static const uint VERTEX_TEXCOORD_OFFSET = 24;
@@ -88,7 +90,8 @@ struct OctreeNode {
   uint4 probes[2];
   uint depth;
   uint leaf;
-  uint2 padding;
+  float surface;
+  uint samples;
 };
 struct Probe {
   float4 position;
@@ -151,6 +154,11 @@ groupshared float gs_distance[RAYS_PER_PROBE];
 /// Kept per ray rather than reduced to the nearest of them, because relocation needs a direction and
 /// the nearest single ray is the worst estimate of one available. See the escape below.
 groupshared float gs_behind[RAYS_PER_PROBE];
+/// @brief How far each of `CSClassify`'s rays went before it hit something, or `NO_HIT` if it hit nothing.
+///
+/// Unclamped, unlike `gs_distance`: the nearest surface is what decides `exterior`, and it may be
+/// further off than visibility ever needs to look.
+groupshared float gs_hit[RAYS_PER_PROBE];
 /// @brief The finished backface share of each depth texel, on its way to being packed.
 ///
 /// Staged rather than written where it is worked out. The map is walked strided, four texels to a
@@ -331,7 +339,7 @@ bool FindLeaf(float3 position, out OctreeNode node) {
   if (leafIndex >= u_counts.y)
     return false;
   node = g_nodes[leafIndex];
-  return node.leaf != 0;
+  return node.leaf == 1;
 }
 float3 SampleVolume(float3 position, float3 normal) {
   OctreeNode node;
@@ -567,6 +575,11 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
   uint probe = group.x;
   if (probe >= u_counts.x)
     return;
+  // A slot the update has not given to any lattice point. The dispatch covers the whole pool rather
+  // than only the probes in use, because which slots are in use is decided on the GPU this frame and
+  // the count never comes back to the CPU in time to size the dispatch; an empty slot costs one read.
+  if (g_probes[probe].anchor.w <= 0.0)
+    return;
   if (thread == 0)
     gs_buried = 0;
   GroupMemoryBarrierWithGroupSync();
@@ -743,12 +756,13 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
     // everything else, so a probe near the line lands on one answer rather than crossing it back and
     // forth as the rotation changes which rays meet what.
     float sealed = float(gs_buried) / float(RAYS_PER_PROBE);
-    // A probe the build found standing behind the scene's surfaces is never trusted with its own
-    // estimate, however open its view. An open view of the void outside a wall is precisely the case
-    // its own rays cannot report, because there is nothing out there for them to come back off: the
+    // A probe standing behind the scene's surfaces is not trusted with its own estimate, however
+    // open its view. An open view of the void outside a wall is precisely the case the buried test
+    // cannot report, because there is nothing out there for its rays to come back off nearby: the
     // probe looks as healthy as one in the middle of the room and holds the sky instead of the room.
     // It takes its neighbours' estimate, which is what leaves the trilinear blend on that wall's
-    // inner face with nothing in it that repeats with the lattice.
+    // inner face with nothing in it that repeats with the lattice. `CSClassify` decides which probes
+    // those are.
     float own = saturate(1.0 - sealed / max(u_relocation.w, EPSILON)) * (1.0 - g_probes[probe].exterior);
     float trust = lerp(own, placement.w, u_params.x);
     gs_trust = trust;
@@ -822,4 +836,85 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
     }
   }
   g_probes[probe].irradiance[thread] = float4(settled, 0.0);
+}
+// Probes `CSClassify` looks at per frame, as one in this many; the rest wait for their turn.
+static const uint CLASSIFY_STRIDE = 16;
+// How much of a probe's `exterior` one classification replaces.
+static const float CLASSIFY_BLEND = 0.5;
+// Decides which side of the scene's surfaces each probe's corner stands on, from the nearest surface
+// sixty-four rays cast from that corner meet: a corner whose nearest surface faces away from it is
+// behind that surface.
+//
+// This was decided by the CPU build, which sorted every cell of the volume into the side of the
+// geometry it stood on and flood-filled the cells no surface reached from the nearest one that was
+// labelled. That fill was most of the build's 550 ms, and there is no build any more. The nearest
+// surface along a ray is the verdict the fill was reaching for -- it handed each free cell the side of
+// the nearest surface reachable through free space -- and the rays find it out to twice the volume's
+// side, which is what the fill's reasoning that "a probe with nothing in sight has no ray that could
+// tell it" missed: a probe outside a wall sees the back of that wall however far off it is.
+//
+// From the anchor rather than from where the probe has walked to, and that is the whole reason this
+// is a pass of its own instead of a few lines in `CSTrace`. Relocation moves a probe outside a
+// one-sided wall straight through it, since the backfaces are what it walks away from; judged from
+// where it ends up, every such probe is in the room and none is exterior. Measured on the Cornell box
+// that was 1 probe of 125 marked exterior where the CPU fill marked 93, and the volume's shell
+// disagreeing with the room by nearly twice as much -- the grid this exists to prevent. The anchor is
+// where shading interpolates the probe as standing, so the anchor is what the verdict is about.
+//
+// A sixteenth of the pool a frame, so each probe is re-asked about twice a second at sixty frames: a
+// change in the geometry is followed within a few classifications, which is all a property of the
+// geometry needs, at the cost of four thousand rays a frame on a scene of a thousand probes. Folded in
+// at half weight, so a corner whose nearest surface the rotation redraws between two that face
+// different ways settles on a mixture instead of flipping. A corner that met nothing keeps what it had,
+// since nothing is not evidence of either side.
+[numthreads(RAYS_PER_PROBE, 1, 1)]
+void CSClassify(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
+  uint probe = group.x * CLASSIFY_STRIDE + u_counts.z % CLASSIFY_STRIDE;
+  if (probe >= u_counts.x || g_probes[probe].anchor.w <= 0.0)
+    return;
+  float3 origin = g_probes[probe].anchor.xyz;
+  float3 direction = Rotate(SphericalFibonacci(thread, RAYS_PER_PROBE));
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = direction;
+  ray.TMin = 0.0;
+  ray.TMax = u_params.y;
+  RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
+  query.TraceRayInline(g_scene, RAY_FLAG_NONE, 0xFF, ray);
+  while (query.Proceed()) {
+    if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE)
+      continue;
+    GeometryInfo candidate = g_geometry[query.CandidateInstanceID()];
+    float3 through = SurfaceTransmittance(candidate, CandidateTexcoord(candidate, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics()));
+    if (Loudest(through) < u_field.y)
+      query.CommitNonOpaqueTriangleHit();
+  }
+  float hit = NO_HIT;
+  float behind = 0.0;
+  if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+    hit = query.CommittedRayT();
+    // The interpolated vertex normal rather than the winding, as the trace decides it, so this and
+    // the buried test never disagree about which face of the same wall a ray met.
+    GeometryInfo info = g_geometry[query.CommittedInstanceID()];
+    uint3 indices = FetchIndices(info, query.CommittedPrimitiveIndex());
+    float2 bary = query.CommittedTriangleBarycentrics();
+    float3 weights = float3(1.0 - bary.x - bary.y, bary.x, bary.y);
+    float3 objectNormal = FetchNormal(info, indices.x) * weights.x + FetchNormal(info, indices.y) * weights.y + FetchNormal(info, indices.z) * weights.z;
+    float3 normal = mul(objectNormal, (float3x3)query.CommittedWorldToObject3x4());
+    behind = dot(normal, direction) > 0.0 ? 1.0 : 0.0;
+  }
+  gs_hit[thread] = hit;
+  gs_behind[thread] = behind;
+  GroupMemoryBarrierWithGroupSync();
+  if (thread != 0)
+    return;
+  float nearest = NO_HIT;
+  float nearestBehind = 0.0;
+  for (uint other = 0; other < RAYS_PER_PROBE; ++other)
+    if (gs_hit[other] < nearest) {
+      nearest = gs_hit[other];
+      nearestBehind = gs_behind[other];
+    }
+  if (nearest < NO_HIT)
+    g_probes[probe].exterior = lerp(g_probes[probe].exterior, nearestBehind, CLASSIFY_BLEND);
 }

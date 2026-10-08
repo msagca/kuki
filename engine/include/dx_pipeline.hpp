@@ -391,13 +391,27 @@ struct DXProbeTraceConstants {
   /// agree before their mean is a direction, and the share of rays coming back off a far side that
   /// has it disbelieved and filled in from its neighbours.
   ///
-  /// The allowance those first two are fractions *of* is not here. It is baked into each probe's
-  /// anchor when the volume is built, so changing it means rebuilding rather than retracing, which
-  /// is a different tier of cost and belongs with the octree settings rather than with these.
+  /// The allowance those first two are fractions *of* is not here. It is written into each probe's
+  /// anchor by the octree update, from the leaves the probe corners, so it belongs with the octree
+  /// settings rather than with these -- see `DXProbeUpdateConstants`.
   float relocation[4]{};
   /// @brief How far a probe's visibility reaches as a fraction of the volume's side, and how much
   /// light must still be getting through an alpha-blended chain before a ray stops being followed.
   float field[4]{};
+};
+/// @brief Root constants for the passes that keep the probe octree up to date. See `probe_update.hlsl`.
+///
+/// `volume` is the minimum corner and cubic side. `counts` holds the probe slots in the pool, the
+/// uniform depth, how many changed boxes this frame uploaded, and a seed that differs every frame.
+/// `limits` holds the slot count before a growth, the most nodes measured in one frame, the lines a
+/// node must be measured with before it is judged, and how many lattice steps a neighbour search may
+/// take. `tuning` holds the surface threshold, the hysteresis either side of it, the relocation limit
+/// and the distance a fresh probe's visibility is seeded at.
+struct DXProbeUpdateConstants {
+  float volume[4]{};
+  uint32_t counts[4]{};
+  uint32_t limits[4]{};
+  float tuning[4]{};
 };
 /// @brief Root constants for the pass that draws the probe volume as a field of spheres.
 ///
@@ -525,7 +539,17 @@ public:
   ///
   /// Needs Shader Model 6.5 for `RayQuery` and resource binding tier 3 for the unbounded arrays it
   /// reaches geometry and materials through, so callers must check both on `DXCapabilities` first.
-  auto GetProbeTracePipeline(ID3D12Device *) -> const DXPipeline *;
+  ///
+  /// @param entryPoint `CSTrace`, or `CSClassify`, which shares the trace's bindings to cast rays from
+  /// the probes' anchors.
+  auto GetProbeTracePipeline(ID3D12Device *, const char * = "CSTrace") -> const DXPipeline *;
+  /// @brief Returns one of the passes that keep the probe octree up to date, building it once.
+  ///
+  /// Compiled at Shader Model 6.5 like the trace, because the measuring pass traces rays and all of
+  /// them come from one source; the volume is only ever built where the trace can run anyway.
+  ///
+  /// @param entryPoint Compute entry point in `probe_update.hlsl`.
+  auto GetProbeUpdatePipeline(ID3D12Device *, const char *) -> const DXPipeline *;
   /// @brief Returns the pipeline that draws the probes as spheres, building one per target format.
   ///
   /// Keyed on format and sample count like the scene pipeline, because it draws into the scene's
@@ -571,6 +595,7 @@ private:
   ComPtr<ID3D12RootSignature> rayProbeRootSignature;
   ComPtr<ID3D12RootSignature> probeAuditRootSignature;
   ComPtr<ID3D12RootSignature> probeTraceRootSignature;
+  ComPtr<ID3D12RootSignature> probeUpdateRootSignature;
   ComPtr<ID3D12RootSignature> probeDebugRootSignature;
   auto GetSceneRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature shared by every cloud pipeline, compute and graphics alike.
@@ -612,6 +637,13 @@ private:
   /// bound at the heap's first slot, which is what lets a record store one absolute index that
   /// reaches a buffer and a texture alike.
   auto GetProbeTraceRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  /// @brief Root signature shared by every pass that keeps the probe octree up to date.
+  ///
+  /// One signature for all of them, holding everything any of them touches, so the passes can be
+  /// recorded back to back with only the pipeline changing between them. Every binding is a root
+  /// descriptor: the scene and the changed boxes to read, and the tree, the probes, the lookup grid,
+  /// the lattice, the free list, the counters and the measuring queue to write.
+  auto GetProbeUpdateRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the probe visualisation: the camera transform and the probes.
   ///
   /// The probes are a root descriptor read by both stages, since the vertex shader takes a probe's

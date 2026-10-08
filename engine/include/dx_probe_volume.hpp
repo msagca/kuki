@@ -1,14 +1,18 @@
 #pragma once
 #ifdef KUKI_HAS_DIRECTX
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <dx_common.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <kuki_engine_export.h>
 #include <indirect_lighting.hpp>
 #include <primitive.hpp>
+#include <probe_limits.hpp>
 #include <random>
 #include <span>
 #include <unordered_map>
@@ -17,16 +21,6 @@ namespace kuki {
 class DXAccelerationStructure;
 class DXContext;
 class DXPipelineCache;
-/// @brief Deepest the octree may subdivide, which also fixes the lookup grid's resolution.
-///
-/// Every leaf corner lands on a lattice of `1 << PROBE_OCTREE_MAX_DEPTH` cells per axis, whatever
-/// depth the leaf sits at, because a regular octree only ever halves. That is what lets the lookup
-/// grid be exactly this fine and still map each of its cells to one leaf and no more.
-///
-/// Each step costs eight times the nodes in the regions that take it, so this is the knob that
-/// decides how much the volume costs. Five is 32 cells per axis and a lattice of at most 35937
-/// probe positions, of which a real scene uses a small fraction.
-inline constexpr uint32_t PROBE_OCTREE_MAX_DEPTH = 5;
 /// @brief Probe spacing the uniform part of the volume aims for, in world units.
 ///
 /// The floor on spacing is a distance, not a depth, and the difference is the whole point. A fixed
@@ -65,20 +59,46 @@ inline constexpr uint32_t PROBE_OCTREE_MIN_DEPTH_FLOOR = 2;
 ///
 /// Four is therefore just above the busiest arrangement that is still simple. It is a ratio, so it
 /// needs no retuning when a scene is built at a different size.
+///
+/// The area used to be summed on the CPU from the triangles themselves, grouped into boxes of a
+/// hundred and twenty-eight. It is now measured on the GPU by casting random lines through the cell
+/// and counting the surfaces each one crosses, which by Crofton's formula estimates the same area
+/// without reading a vertex -- see `CSMeasure` in `probe_update.hlsl`. The threshold carried over
+/// unchanged, which is the point of measuring the same thing.
 inline constexpr float PROBE_OCTREE_LEAF_SURFACE = 4.f;
-/// @brief Triangles per cluster, which is how much geometry one box in the subdivision stands for.
+/// @brief How far a measurement must pass the threshold, as a fraction of it, before it is acted on.
 ///
-/// Chosen by measurement rather than by reasoning, because the reasoning points the wrong way.
-/// Bigger clusters are looser boxes, so the obvious expectation is that they cost accuracy; on a
-/// 949k-triangle scene the tree instead lands closest to the per-triangle one right here, within a
-/// quarter of a percent on probe count, and drifts *away* from it in both directions. Smaller
-/// clusters under-count, since a box only partly inside a cell contributes only part of its
-/// triangles and nothing gives those back; larger ones over-count as the boxes swallow empty space.
+/// A split needs more than `PROBE_OCTREE_LEAF_SURFACE` by this much and a merge needs less by this
+/// much, so a cell measuring close to the line does not split on one estimate and merge on the next.
+/// The estimate is a mean over `PROBE_MEASURE_LINES` random lines and its spread on a cell holding a
+/// few walls is about a twentieth of the threshold, so a quarter keeps the two decisions five spreads
+/// apart -- far enough that re-measuring a cell after a nearby change does not undo what it decided
+/// before, which would be a probe appearing and vanishing in time with the clock.
+inline constexpr float PROBE_SURFACE_HYSTERESIS = .25f;
+/// @brief Lines a node must be measured with before it is split or merged.
 ///
-/// Subdivision cost falls monotonically as this grows, but flattens past here — 128 and 512 differ
-/// by under one percent in time while 512 inflates the volume by a tenth. So this is the point
-/// where the curve stops paying and the tree is still the one that was wanted.
-inline constexpr uint32_t PROBE_CLUSTER_TRIANGLES = 128;
+/// Five hundred and twelve is four frames at a hundred and twenty-eight lines a frame, and about two
+/// in three lines survive the test for meeting the cube, so a node is judged after six or seven frames.
+/// Fewer and the spread of the estimate starts to reach the hysteresis band; more and a region that a
+/// piece has just been put down in takes visibly longer to gain its probes.
+inline constexpr uint32_t PROBE_MEASURE_LINES = 512;
+/// @brief Most nodes measured in one frame.
+///
+/// The measuring pass costs a group of sixty-four threads per node and the lines are short, so this
+/// is a ceiling on a burst rather than a figure the frame normally pays: once a scene has settled
+/// nothing is queued at all, and a change queues only the nodes it reached. What it bounds is the
+/// load right after a scene opens, when every node in the uniform grid wants measuring at once; at a
+/// thousand a frame a sixteen-unit room's four thousand cells are measured in under a second, with
+/// the uniform grid serving as the volume in the meantime.
+inline constexpr uint32_t PROBE_MEASURE_BUDGET = 1024;
+/// @brief Most boxes of changed geometry uploaded in one frame.
+///
+/// Past this the boxes are merged into the one box around all of them, which only ever asks for more
+/// measuring than was needed, never less. A frame that moves sixty-four separate things is a frame
+/// where re-measuring a large region is not going to be the thing anyone notices.
+inline constexpr uint32_t PROBE_MAX_DIRTY_BOXES = 64;
+/// @brief Probe slots a volume starts with at least, before the uniform grid's own count is consulted.
+inline constexpr uint32_t PROBE_POOL_MINIMUM = 4096;
 /// @brief Depth every region subdivides to before the surface measure is consulted at all.
 ///
 /// The volume is a uniform grid at this depth with an adaptive tree on top: the grid puts probes in
@@ -99,21 +119,17 @@ inline auto ProbeUniformDepth(const float side) -> uint32_t {
   const auto clamped = std::clamp<long>(levels, PROBE_OCTREE_MIN_DEPTH_FLOOR, PROBE_OCTREE_MAX_DEPTH);
   return static_cast<uint32_t>(clamped);
 }
-/// @brief Frames the geometry must hold still before a changed scene is rebuilt.
-///
-/// The same debounce `RenderingSystem::SetResolution` uses, for the same reason: a continuous edit
-/// arrives as a burst of distinct values, and only the one it settles on is worth acting on.
-inline constexpr uint32_t PROBE_REBUILD_SETTLE_FRAMES = 5;
 /// @brief How far the scene may shrink inside the volume before the volume is resized to suit it.
 ///
-/// The volume is kept where it is while the scene fits inside it, so that probes keep their places
-/// and their accumulated light across a rebuild -- see `DXProbeVolume::CarryOverProbes`. Holding on
-/// forever would be wrong in the other direction: a scene that shrinks to a corner would be sampled
-/// by a lattice mostly covering space that is no longer there.
+/// The volume is kept where it is while the scene fits inside it, so that the lattice stays on the
+/// same world positions and every probe keeps its place and its accumulated light while the tree
+/// changes around it. Holding on forever would be wrong in the other direction: a scene that shrinks
+/// to a corner would be sampled by a lattice mostly covering space that is no longer there.
 ///
-/// A half is a wide band on purpose. Resizing is the expensive answer -- it renames every probe --
-/// so it is worth reserving for a scene that has genuinely become a different size, rather than one
-/// that merely put something down.
+/// A half is a wide band on purpose. Resizing is the expensive answer -- it moves the lattice, so no
+/// probe stands where it stood and the whole field starts again from the uniform grid -- so it is
+/// worth reserving for a scene that has genuinely become a different size, rather than one that
+/// merely put something down.
 inline constexpr float PROBE_VOLUME_KEEP_FRACTION = .5f;
 /// @brief Rays each probe casts per frame. Must match `RAYS_PER_PROBE` in `probe_trace.hlsl`.
 ///
@@ -293,15 +309,30 @@ inline constexpr D3D12_RESOURCE_STATES PROBE_READ_STATE = D3D12_RESOURCE_STATE_N
 /// A leaf's probes are listed in the corner order the low three bits of the index give: bit zero is
 /// the positive x corner, bit one positive y, bit two positive z. Children use the same order, so a
 /// descent and an interpolation index the two arrays the same way.
+///
+/// The buffer holds every node the complete tree could have, at the slot `PROBE_OCTREE_NODE_COUNT`
+/// describes, so `children` is fixed from the moment the volume is laid down and `leaf` is what says
+/// which of those slots are part of the tree right now. Only the GPU ever writes these.
 struct DXOctreeNode {
   float center[3]{};
   float extent{};
   uint32_t children[8]{};
   uint32_t probes[8]{};
   uint32_t depth{};
+  /// @brief Nought for a slot below a leaf and not in the tree, one for a leaf, two for an interior node.
+  ///
+  /// Shading only ever tests for one: the lookup grid only points at leaves, so the other two are
+  /// for the passes that change the tree.
   uint32_t leaf{};
-  uint32_t padding[2]{};
+  /// @brief Mean surfaces crossed per line cast through the node, since it was last disturbed.
+  ///
+  /// Three times this is the area the node holds against its own face, which is what
+  /// `PROBE_OCTREE_LEAF_SURFACE` is compared with.
+  float surface{};
+  /// @brief Lines that mean is over. Reset to nought by a change nearby, which re-queues the node.
+  uint32_t samples{};
 };
+static_assert(sizeof(DXOctreeNode) == 96, "probe_update.hlsl, probe_trace.hlsl, probe.hlsl and scene.hlsl declare this layout");
 /// @brief One probe: where it sits, and the irradiance arriving there as spherical harmonics.
 ///
 /// The coefficients are stored as four floats each rather than three. A structured buffer packs
@@ -353,20 +384,26 @@ struct DXOctreeNode {
 /// boundary across whatever surface it falls on, which is the artefact this exists to remove.
 ///
 /// `neighbours` is the probe one lattice step away along each face, or `0xFFFFFFFF` where the volume
-/// ends. Found at build time, because the octree knows where its corners are and the trace does not.
+/// ends. Found by the update rather than the trace, because the lattice knows where its corners are
+/// and the trace does not.
 ///
-/// `exterior` is one where the build found the probe standing behind the scene's surfaces rather
-/// than in front of them, and nought where it did not. It is the thing `trust` could not work out
-/// for itself. Relocation and the buried test both read the probe's own rays, so both see a probe
-/// sealed inside geometry and neither sees one that is merely somewhere irrelevant: outside a wall,
-/// past the edge of every surface, with a clear view of nothing but sky. Such a probe is granted an
-/// open view because it has one, and a point on the inner face of the wall beside it then takes its
-/// estimate at a trilinear share -- and a share that repeats with the lattice is the grid.
+/// `exterior` is how far the probe is standing behind the scene's surfaces rather than in front of
+/// them, from nought to one. It is the thing `trust` could not work out for itself. Relocation and the
+/// buried test both read the probe's own rays near it, so both see a probe sealed inside geometry and
+/// neither sees one that is merely somewhere irrelevant: outside a wall, past the edge of every
+/// surface, with a clear view of nothing but sky. Such a probe is granted an open view because it has
+/// one, and a point on the inner face of the wall beside it then takes its estimate at a trilinear
+/// share -- and a share that repeats with the lattice is the grid.
 ///
-/// Decided at build time rather than in the trace for two reasons. It is a property of the geometry
-/// and cannot change until the geometry does, so a rebuild is exactly when it is worth asking; and a
-/// probe with nothing in sight has no ray that could tell it, which is the whole of why its own rays
-/// were not enough.
+/// This was decided by the CPU build, by flood-filling the volume from the orientation of every
+/// triangle in it, on the reasoning that a probe with nothing in sight has no ray that could tell it.
+/// That holds for rays the length of the buried test and not for rays the length of the trace's, which
+/// reach twice across the volume: a probe outside a wall sees the back of that wall, however far off
+/// it is. So the trace now decides it, from which face of the nearest surface each probe's rays met,
+/// on the same schedule as everything else it learns. See the trace's own note on it.
+///
+/// An allowance of nought in `anchor[3]` marks a slot in the pool that no lattice point holds. The
+/// trace and the debug view skip those; nothing else ever reaches one, since no leaf names it.
 struct DXProbe {
   float position[4]{};
   float anchor[4]{};
@@ -379,53 +416,21 @@ struct DXProbe {
 static_assert(sizeof(DXProbe) == 36 + PROBE_SH_COEFFICIENTS * 16 + PROBE_DEPTH_TEXELS * 4 + PROBE_BEHIND_WORDS * 4 + PROBE_NEIGHBOURS * 4);
 static_assert(sizeof(DXProbe) == 1484);
 static_assert(sizeof(DXProbe) <= 2048, "a structured buffer element cannot be larger than this");
-/// @brief One placement of a mesh, as the volume build reads geometry.
+/// @brief One placement of a mesh, as the volume reads geometry.
 ///
-/// Spans rather than copies: the vertices are read only to derive the mesh's clusters, and only
-/// the first time it is seen, so the asset's own storage is enough and must simply outlive the
-/// call. The address of that storage is also the key the clusters are cached under.
+/// The volume no longer reads triangles at all -- the tree is measured on the GPU against the
+/// acceleration structure the trace already has -- so what it needs from a placement is only where
+/// it is and whether it moved. The vertices are a span into the asset's own storage, read once per
+/// mesh for its bounding box and cached under their address.
+///
+/// `entity` is what a placement is recognised by from one frame to the next. Not the mesh: a clock
+/// digit that swaps its mesh is the same placement showing something else, and what has to be
+/// re-measured is the space it stood in before and stands in now -- both of which are known only if
+/// the placement can be found again under a key the swap did not change.
 struct DXProbeGeometry {
+  uint64_t entity{};
   std::span<const Vertex> vertices;
-  std::span<const unsigned int> indices;
   glm::mat4 transform{1.f};
-};
-/// @brief Triangles a mesh emitted in one run, reduced to the box that contains them.
-///
-/// What the octree sorts, instead of the triangles themselves. Subdivision only ever asked one
-/// question of a triangle — which cells does it touch — and a box answers it for a whole run at
-/// once. The count travels with the box so density still means triangles rather than boxes.
-///
-/// Built in the mesh's own space and cached there, so moving the mesh transforms eight corners
-/// rather than re-reading its geometry.
-struct DXProbeCluster {
-  glm::vec3 low{};
-  glm::vec3 high{};
-  uint32_t triangles{};
-  /// @brief Surface area of the triangles in this cluster, which is what the subdivision steers on.
-  ///
-  /// Carried beside the count rather than instead of it: the count is still what the build reports,
-  /// and it is the honest figure for how much geometry a scene holds. It simply no longer decides
-  /// anything. See `PROBE_OCTREE_LEAF_SURFACE`.
-  float area{};
-};
-/// @brief Everything a rebuild produces, before any of it reaches the GPU.
-///
-/// Split out from `Build` so the expensive half can run, and be checked, without a device. What
-/// makes a probe volume good or bad is decided entirely here.
-struct DXProbeOctree {
-  std::vector<DXOctreeNode> nodes;
-  std::vector<DXProbe> probes;
-  std::vector<uint32_t> lookup;
-  glm::vec3 origin{};
-  float side{};
-  uint32_t leafCount{};
-  uint32_t deepestLeaf{};
-  uint32_t triangleCount{};
-  uint32_t clusterCount{};
-  /// @brief The uniform depth this build chose from the volume's size. See `ProbeUniformDepth`.
-  uint32_t uniformDepth{};
-  /// @brief Total surface area the clusters hold, reported so a build can be read against the ratio.
-  float surfaceArea{};
 };
 /// @brief Where irradiance is sampled from and how a shading point finds the samples near it.
 ///
@@ -433,7 +438,7 @@ struct DXProbeOctree {
 ///
 /// The octree decides *where* probes go. A uniform grid has to be fine enough for the most detailed
 /// corner of the scene and then pays that price throughout, most of it on empty air. Subdividing
-/// only where triangles are dense spends probes where the lighting actually changes quickly, which
+/// only where the geometry is dense spends probes where the lighting actually changes quickly, which
 /// is the same place the geometry does.
 ///
 /// The lookup grid decides how a shading point *finds* its leaf. Descending the octree per shaded
@@ -442,63 +447,54 @@ struct DXProbeOctree {
 /// index of the leaf covering each cell, so the same question is answered by one address
 /// computation and one load, whatever depth the answer happens to live at.
 ///
-/// The probe buffer holds the result. It is written by the trace and read by shading, and is the
-/// only one of the three that ever changes after a build.
+/// The probe buffer holds the result. It is written by the trace and read by shading.
 ///
-/// The whole volume is rebuilt when the scene's geometry changes and left alone otherwise, so the
-/// cost falls at load time rather than per frame. Skinned meshes are excluded for the reason
-/// `DXAccelerationStructure` excludes them: their vertices are still in the bind pose here.
+/// All three are kept up to date on the GPU, following Fjellstedt and Antoniev's probe placement
+/// thesis: rays measure each leaf, leaves split and merge in place, and a change in the geometry
+/// re-measures only the nodes it reached. The volume used to be rebuilt on the CPU whenever any
+/// placement changed, which cost 550 ms on the chess scene and was paid once a second for as long as
+/// its clock ran. See `probe_update.hlsl` for the passes and for where they depart from the thesis.
+///
+/// What remains on the CPU is deciding where the volume is, noticing which placements moved, and
+/// sizing the probe pool. None of it reads anything back synchronously: the counters the GPU keeps
+/// come back through a ring of readback buffers a couple of frames late, which is soon enough for
+/// everything they are used for.
+///
+/// Skinned meshes are excluded for the reason `DXAccelerationStructure` excludes them: their
+/// vertices are still in the bind pose here.
 class KUKI_ENGINE_API DXProbeVolume final {
 public:
-  /// @brief Rebuilds the volume over the geometry, or keeps what it has when nothing has changed.
+  /// @brief Notices what moved, records this frame's passes over the tree, and lays the volume down
+  /// first if it has none yet or the scene no longer fits the one it has.
   ///
-  /// Sameness is decided by hashing the geometry's identity and transforms, so a camera moving over
-  /// a static scene rebuilds nothing and a dragged entity rebuilds everything. Uploading stages
-  /// through an upload heap and flushes the command list, so this must run before any pass binds
-  /// pipeline state.
+  /// Records into the frame's command list and never stalls. Must run after the acceleration
+  /// structure is built for the frame, since the measuring pass traces against it, and before the
+  /// trace, which reads the tree this leaves behind. A volume laid down this frame is usable this
+  /// frame: it starts as the uniform grid, and the adaptive part grows in over the frames after.
   ///
-  /// A change does not rebuild straight away. Dragging an entity changes the geometry on every
-  /// frame of the drag, and rebuilding each time would pay for a volume that is thrown away one
-  /// frame later; the last one is the only one anybody sees. So a new hash starts a settle timer
-  /// and the rebuild happens once the geometry has held still for `PROBE_REBUILD_SETTLE_FRAMES`.
-  /// The existing volume keeps being sampled in the meantime, which is why the delay is invisible:
-  /// bounced light lagging a moving object by a few frames is not something the eye picks up.
-  ///
-  /// The first build is not delayed. There is nothing to sample until it has happened.
-  ///
-  /// @return False when the scene has no triangles to place probes around, or an upload failed.
-  auto Build(DXContext &, const std::vector<DXProbeGeometry> &) -> bool;
-  /// @brief Moves what the resident probes have learned into the ones a rebuild has just produced.
-  ///
-  /// Matched on the anchor, which is where a probe stands in the volume rather than where it sits
-  /// in the array: a rebuild renumbers everything, and subdividing one cell shifts every index
-  /// after it, so the index says nothing about identity and the position says everything.
-  ///
-  /// A probe with no predecessor keeps the zeroed estimate it was built with and converges from
-  /// there, which is correct -- it is somewhere no probe stood before. Those are the few, and they
-  /// converge under the blend `Trace` sets from the sample count, so how quickly they catch up is
-  /// the same question as how reactive the field is after any change.
-  ///
-  /// @return How many of the new probes were given a predecessor. Zero means a fresh field: either
-  /// the first build, or a volume whose lattice moved out from under every probe it had.
-  auto CarryOverProbes(DXContext &, std::vector<DXProbe> &) -> uint32_t;
+  /// @return False when there is no volume to sample: no geometry has ever been seen, or the device
+  /// could not create the buffers or the passes.
+  auto Update(DXContext &, DXPipelineCache &, const DXAccelerationStructure &, const std::vector<DXProbeGeometry> &) -> bool;
   /// @brief Samples the lookup grid across the volume once and logs whether it agrees with the tree.
   ///
-  /// The three structures are built by three separate passes over the same octree, and a mistake in
-  /// any of them produces something that still looks like a volume: a grid cell pointing at an
-  /// interior node, a leaf whose probe indices belong to its neighbour, a probe sitting a cell away
-  /// from the corner it was placed for. None of that is visible until it shows up as light in the
-  /// wrong place, so the agreement is checked directly instead.
+  /// The three structures are written by separate passes over the same octree, and a mistake in any
+  /// of them produces something that still looks like a volume: a grid cell pointing at an interior
+  /// node, a leaf whose probe indices belong to its neighbour, a probe sitting a cell away from the
+  /// corner it was placed for. None of that is visible until it shows up as light in the wrong place,
+  /// so the agreement is checked directly instead.
   ///
-  /// Runs at most once per volume, and stalls the pipeline to read its results back.
+  /// Waits until the tree has first settled after being laid down, since a tree still growing is
+  /// expected to be part way through a change. Runs once per volume after that, and stalls the
+  /// pipeline to read its results back.
   auto Validate(DXContext &, DXPipelineCache &) -> void;
   /// @brief Casts a fresh set of rays out of every probe and folds what they see into its coefficients.
   ///
-  /// One thread group per probe, one thread per ray. A ray that hits is shaded from the material at
-  /// the hit, the scene's punctual lights with an occlusion ray each, and the volume's own estimate
-  /// of the irradiance already arriving there. That last term is what makes the bounce count
-  /// unbounded: every trace feeds on the previous one, so light that has bounced twice by one frame
-  /// has bounced three times by the next, with no per-bounce cost.
+  /// One thread group per probe slot, one thread per ray; a slot holding no probe returns at once. A
+  /// ray that hits is shaded from the material at the hit, the scene's punctual lights with an
+  /// occlusion ray each, and the volume's own estimate of the irradiance already arriving there. That
+  /// last term is what makes the bounce count unbounded: every trace feeds on the previous one, so
+  /// light that has bounced twice by one frame has bounced three times by the next, with no
+  /// per-bounce cost.
   ///
   /// The dispatch leaves the probe buffer readable again rather than only barriered, because the
   /// scene pass that reads it this frame rasterises: a plain unordered access barrier orders the
@@ -513,7 +509,7 @@ public:
   /// converges on a still scene instead of shimmering around the answer forever. What decides when
   /// that mean starts over is the caller's hash: see `PROBE_REACTIVE_SAMPLES`.
   ///
-  /// Records into the frame's command list and never stalls, unlike the build. Runs every frame.
+  /// Records into the frame's command list and never stalls. Runs every frame.
   ///
   /// @param frameConstants Address of the lights the hit shading reads, in the scene pass's layout.
   /// @param sceneHash Everything the trace looks at that the camera does not move: the lights, and
@@ -541,59 +537,90 @@ public:
   auto GetLookupAddress() const -> D3D12_GPU_VIRTUAL_ADDRESS;
   /// @brief The volume's minimum corner and the length of its side, which is cubic.
   auto GetBounds(float *, float *) const -> void;
+  /// @brief Slots in the probe pool, which is what a probe index is bounds-checked against.
+  ///
+  /// Not how many probes are in use: that is decided on the GPU, and a sampler only needs to know
+  /// that an index it reads is inside the buffer. A slot holding no probe is never named by a leaf.
   auto GetProbeCount() const -> uint32_t;
+  /// @brief Node slots, which is every node the complete tree has. See `PROBE_OCTREE_NODE_COUNT`.
   auto GetNodeCount() const -> uint32_t;
   /// @brief Cells per axis in the lookup grid, which is `1 << PROBE_OCTREE_MAX_DEPTH`.
   auto GetLookupResolution() const -> uint32_t;
-  /// @brief Whether the last build left a volume that can be sampled.
+  /// @brief Whether there is a volume that can be sampled.
   auto IsReady() const -> bool;
   /// @brief Releases every buffer and forgets the geometry it was built from.
   auto Clear() -> void;
-  /// @brief Sorts the geometry into an octree and places probes, without touching the device.
-  ///
-  /// The whole of a rebuild except the upload. Public because it is the part worth measuring: it
-  /// decides the node count, the probe count and how the two follow the geometry, none of which a
-  /// device is needed to judge.
-  auto BuildOctree(const std::vector<DXProbeGeometry> &) -> DXProbeOctree;
 private:
+  /// @brief Where one placement stood the last time it was seen, so a change can be told apart.
+  struct Placement {
+    const void *mesh{};
+    glm::mat4 transform{1.f};
+    glm::vec3 low{};
+    glm::vec3 high{};
+    uint64_t seen{};
+  };
+  /// @brief A mesh's bounding box in its own space, with the vertex count it was taken from.
+  ///
+  /// Keyed on the address of the vertices, which carries the usual caveat: a freed mesh whose storage
+  /// is reused by another of exactly the same size would be mistaken for the original. The count is
+  /// held alongside so the common case of a differently shaped mesh is caught.
+  struct MeshBounds {
+    glm::vec3 low{};
+    glm::vec3 high{};
+    size_t vertexCount{};
+  };
   DXContext *owner{};
   ComPtr<ID3D12Resource> nodeBuffer;
   ComPtr<ID3D12Resource> probeBuffer;
   ComPtr<ID3D12Resource> lookupBuffer;
+  ComPtr<ID3D12Resource> cornerBuffer;
+  ComPtr<ID3D12Resource> freeBuffer;
+  ComPtr<ID3D12Resource> counterBuffer;
+  ComPtr<ID3D12Resource> queueBuffer;
+  /// @brief The changed boxes, one region per frame in flight, written through a persistent mapping.
+  ComPtr<ID3D12Resource> boxBuffer;
+  /// @brief The counters as they stood at the end of each frame in flight, one region per frame.
+  ComPtr<ID3D12Resource> counterReadback;
   ComPtr<ID3D12Resource> auditSeed;
   ComPtr<ID3D12Resource> auditResult;
   ComPtr<ID3D12Resource> auditReadback;
   ComPtr<ID3D12Resource> probeReadback;
-  /// @brief Staging buffers the command list still has to consume, released once it has been flushed.
-  std::vector<ComPtr<ID3D12Resource>> staging;
+  uint8_t *boxData{};
   uint8_t *auditSeedData{};
+  /// @brief Which generation of the volume each readback region was written under, or nought if none.
+  ///
+  /// A region is read when its frame slot comes round again, which is after the GPU has finished
+  /// with it. Counters written before a reset or a growth describe a pool that no longer exists, so
+  /// they are told apart by this and ignored.
+  std::array<uint64_t, DX_FRAME_COUNT> readbackGeneration{};
+  uint64_t generation{};
   /// @brief Source of the per-frame ray rotation. Seeded fixed, so a run reproduces the one before it.
   std::mt19937 random{1u};
-  D3D12_RESOURCE_STATES probeState{PROBE_READ_STATE};
+  D3D12_RESOURCE_STATES probeState{D3D12_RESOURCE_STATE_COMMON};
+  D3D12_RESOURCE_STATES nodeState{D3D12_RESOURCE_STATE_COMMON};
+  D3D12_RESOURCE_STATES lookupState{D3D12_RESOURCE_STATE_COMMON};
   glm::vec3 origin{};
   float side{};
-  size_t geometryHash{};
-  /// @brief Hash the geometry has most recently changed to, which may not have settled yet.
-  size_t pendingHash{};
-  /// @brief Frames `pendingHash` has been unchanged for.
-  uint32_t pendingFrames{};
-  /// @brief One mesh's clusters in its own space, kept so a moved mesh is not re-read.
-  struct MeshClusters {
-    std::vector<DXProbeCluster> clusters;
-    size_t vertexCount{};
-    size_t indexCount{};
-  };
-  /// @brief Cached clusters, keyed on the address of the mesh's vertices.
-  ///
-  /// The same identity the geometry hash uses, and it carries the same caveat: a freed mesh whose
-  /// storage is reused by another of exactly the same size would be mistaken for the original. The
-  /// sizes are held alongside so the common case of a differently shaped mesh is caught.
-  std::unordered_map<const void *, MeshClusters> meshClusters;
-  uint32_t nodeCount{};
-  uint32_t probeCount{};
+  uint32_t uniformDepth{};
+  /// @brief Slots in the probe pool, which grows when the GPU reports running out.
+  uint32_t capacity{};
+  /// @brief Slots the pool had before a growth recorded this frame, or nought when it did not grow.
+  uint32_t grownFrom{};
+  uint32_t frameSeed{};
+  /// @brief Whether the passes recorded this frame start by laying the tree down from scratch.
+  bool resetPending{};
+  std::unordered_map<uint64_t, Placement> placements;
+  std::unordered_map<const void *, MeshBounds> meshBounds;
+  uint64_t geometryFrame{};
+  /// @brief Boxes of space whose geometry changed this frame, as minimum and maximum corner pairs.
+  std::vector<glm::vec4> dirtyBoxes;
+  uint32_t liveProbes{};
   uint32_t leafCount{};
   uint32_t deepestLeaf{};
-  uint32_t loggedProbeCount{};
+  /// @brief Whether the last counters read back showed nothing queued, split or merged.
+  bool settled{};
+  uint32_t loggedProbes{};
+  uint32_t loggedLeaves{};
   uint32_t tracedFrames{};
   /// @brief Estimates folded into the probes since the last change, which sets the blend weight.
   ///
@@ -606,13 +633,22 @@ private:
   bool ready{};
   bool validated{};
   bool reported{};
-  /// @brief Copies one build's worth of bytes into a default-heap buffer through a staging upload.
-  ///
-  /// Read every frame by shading and written once here, which is the case a default heap exists
-  /// for; an upload heap would put the reads across the bus for the life of the scene.
-  ///
-  /// @param flags `ALLOW_UNORDERED_ACCESS` for the probe buffer, which the trace will write.
-  auto UploadBuffer(const void *, const uint64_t, const D3D12_RESOURCE_FLAGS, const char *) -> ComPtr<ID3D12Resource>;
+  /// @brief Creates a default-heap buffer the update passes write, already in the unordered access state.
+  auto CreateBuffer(const uint64_t, const char *) -> ComPtr<ID3D12Resource>;
+  /// @brief Creates every buffer whose size does not depend on the pool, if it does not exist yet.
+  auto EnsureFixedBuffers() -> bool;
+  /// @brief Replaces the probe pool and its free list with ones of the given size, empty.
+  auto CreatePool(const uint32_t) -> bool;
+  /// @brief Replaces the probe pool and its free list with larger ones, keeping what the old held.
+  auto GrowPool(const uint32_t) -> bool;
+  /// @brief Notes which placements changed since the last frame and returns the box around all of them.
+  auto TrackGeometry(const std::vector<DXProbeGeometry> &, glm::vec3 &, glm::vec3 &) -> bool;
+  /// @brief Reads the counters of the frame that last used this slot, and grows the pool if they ask.
+  auto ReadCounters(DXContext &) -> void;
+  /// @brief Records every update pass, in order, with a barrier between each two.
+  auto RecordPasses(DXContext &, DXPipelineCache &, const DXAccelerationStructure &) -> bool;
+  /// @brief Moves one of the tracked buffers to a state, if it is not already in it.
+  auto Transition(ID3D12Resource *, D3D12_RESOURCE_STATES &, const D3D12_RESOURCE_STATES) -> void;
   /// @brief Creates the seed, result and readback buffers the audit reports through.
   auto EnsureAuditBuffers() -> bool;
 };

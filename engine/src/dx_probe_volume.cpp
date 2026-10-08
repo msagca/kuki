@@ -10,9 +10,9 @@
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
-#include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/vector_relational.hpp>
 #include <hash_utils.hpp>
 #include <limits>
 #include <profiler.hpp>
@@ -25,12 +25,29 @@ namespace {
 constexpr uint32_t AUDIT_SLOTS = 8;
 constexpr uint32_t AUDIT_GRID = 32;
 constexpr uint32_t AUDIT_GROUP = 4;
-constexpr uint32_t INVALID_NODE = 0xFFFFFFFF;
 constexpr uint32_t REPORT_AFTER_FRAMES = 90;
 constexpr float SH_DC_TO_IRRADIANCE = .886227f;
 constexpr float CHROMA_SEPARATION = .02f;
-/// @brief The six cells sharing a face with one cell, which is how a fill and a vote both step.
-constexpr glm::ivec3 CELL_FACES[6]{{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
+/// @brief Probes `CSClassify` looks at per frame, as one in this many. Mirrors `CLASSIFY_STRIDE` in
+/// probe_trace.hlsl.
+constexpr uint32_t PROBE_CLASSIFY_STRIDE = 16;
+/// @brief Threads in each update pass's group. Mirrors `GROUP_SIZE` in probe_update.hlsl.
+constexpr uint32_t UPDATE_GROUP = 64;
+/// @brief Slots in the counter buffer the update passes keep. Mirrors `COUNTER_*` in probe_update.hlsl.
+enum ProbeCounter : uint32_t {
+  FreeTop,
+  Failed,
+  LiveProbes,
+  LiveLeaves,
+  Deepest,
+  Queued,
+  Splits,
+  Merges,
+  CounterCount
+};
+constexpr uint64_t COUNTER_BYTES = CounterCount * sizeof(int32_t);
+/// @brief Bytes one frame's region of the changed-box buffer takes: a minimum and a maximum per box.
+constexpr uint64_t BOX_REGION_BYTES = PROBE_MAX_DIRTY_BOXES * 2 * sizeof(glm::vec4);
 auto RandomRotation(std::mt19937 &engine) -> glm::mat3 {
   std::uniform_real_distribution<float> distribution(0.f, 1.f);
   const auto u1 = distribution(engine);
@@ -39,39 +56,6 @@ auto RandomRotation(std::mt19937 &engine) -> glm::mat3 {
   const auto a = std::sqrt(1.f - u1);
   const auto b = std::sqrt(u1);
   return glm::mat3_cast(glm::quat(b * std::cos(u3), a * std::sin(u2), a * std::cos(u2), b * std::sin(u3)));
-}
-struct BuildNode {
-  glm::vec3 center{};
-  float extent{};
-  uint32_t depth{};
-  uint32_t children[8]{};
-  bool leaf{};
-  /// @brief Clusters overlapping this cell, by index. Dropped once the node becomes a leaf.
-  std::vector<uint32_t> clusters;
-  /// @brief Surface area this cell holds, estimated from how much of each cluster falls inside it.
-  ///
-  /// Fractional because a cluster is a box: a cell covering half of one is credited with half its
-  /// area. Weighting this way is what keeps a subdivided node's children summing to roughly what the
-  /// parent held, so the threshold means the same thing at every depth.
-  ///
-  /// Area rather than a triangle count, which is what this was. See `PROBE_OCTREE_LEAF_SURFACE`.
-  float surface{};
-};
-/// @brief The half-precision bits of a finite, non-negative float, which is all a probe stores.
-///
-/// Only the cases a distance can take: no infinities, no negatives, no subnormals. Anything too
-/// small to be a half becomes nought, which is what a deviation of nothing means anyway, and
-/// anything too large saturates rather than turning into an infinity the shader would spread.
-constexpr auto PackHalf(const float value) -> uint32_t {
-  if (!(value > 0.f))
-    return 0;
-  const auto bits = std::bit_cast<uint32_t>(value);
-  const auto exponent = static_cast<int32_t>((bits >> 23) & 0xFFu) - 127 + 15;
-  if (exponent <= 0)
-    return 0;
-  if (exponent >= 31)
-    return 0x7BFFu;
-  return (static_cast<uint32_t>(exponent) << 10) | ((bits >> 13) & 0x3FFu);
 }
 constexpr auto UnpackHalf(const uint32_t half) -> float {
   const auto exponent = (half >> 10) & 0x1Fu;
@@ -97,798 +81,391 @@ auto HashTraceSettings(const IndirectLighting &settings) -> size_t {
     hash_combine(hash, std::bit_cast<uint32_t>(value));
   return hash;
 }
-auto Combine(size_t &hash, const size_t value) -> void {
-  hash ^= value + 0x9E3779B97F4A7C15ull + (hash << 6) + (hash >> 2);
-}
-/// @brief Key for finding a probe again after a rebuild: where it stands, to the bit.
+/// @brief Probe slots a volume of this uniform depth is given to start with.
 ///
-/// Exact rather than approximate on purpose. An anchor is computed from the volume's origin and
-/// side, so two builds that agree about those produce bit-identical anchors for every probe that
-/// survived, and two that disagree have moved the whole lattice -- in which case nothing should be
-/// carried over and nothing is.
-auto AnchorKey(const float (&anchor)[4]) -> size_t {
-  size_t key = 0;
-  for (auto i = 0; i < 3; ++i)
-    Combine(key, std::bit_cast<uint32_t>(anchor[i]));
-  return key;
+/// Twice the uniform grid's own probes, which is room for the adaptive part to put as many probes
+/// again on top before the pool has to grow. The chess board at depth four starts with 9826 slots
+/// against the 5492 probes the CPU build used to place over it.
+auto InitialPoolSize(const uint32_t uniformDepth) -> uint32_t {
+  const auto corners = (1u << uniformDepth) + 1;
+  return std::clamp(2 * corners * corners * corners, PROBE_POOL_MINIMUM, PROBE_LATTICE_POINTS);
 }
-auto SameAnchor(const float (&a)[4], const float (&b)[4]) -> bool {
-  return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
+auto GroupsFor(const uint32_t threads) -> uint32_t {
+  return (threads + UPDATE_GROUP - 1) / UPDATE_GROUP;
 }
-auto HashGeometry(const std::vector<DXProbeGeometry> &geometry) -> size_t {
-  size_t hash = geometry.size();
-  for (const auto &item : geometry) {
-    Combine(hash, reinterpret_cast<uintptr_t>(item.vertices.data()));
-    Combine(hash, item.vertices.size());
-    Combine(hash, item.indices.size());
-    const auto *values = glm::value_ptr(item.transform);
-    for (auto i = 0; i < 16; ++i)
-      Combine(hash, std::bit_cast<uint32_t>(values[i]));
-  }
-  return hash;
-}
-/// @brief Spreads the low ten bits of a value out into every third bit.
-auto ExpandBits(uint32_t value) -> uint32_t {
-  value = (value * 0x00010001u) & 0xFF0000FFu;
-  value = (value * 0x00000101u) & 0x0F00F00Fu;
-  value = (value * 0x00000011u) & 0xC30C30C3u;
-  value = (value * 0x00000005u) & 0x49249249u;
-  return value;
-}
-/// @brief Morton code of a point given in unit coordinates, ten bits an axis.
+/// @brief Every entry point in probe_update.hlsl, compiled together when a volume is first laid down.
 ///
-/// Interleaving the axes makes numeric order approximate spatial order, so sorting on this puts
-/// triangles that sit near each other next to each other in the array.
-auto Morton(const glm::vec3 &unit) -> uint32_t {
-  const auto x = static_cast<uint32_t>(std::clamp(unit.x * 1024.f, 0.f, 1023.f));
-  const auto y = static_cast<uint32_t>(std::clamp(unit.y * 1024.f, 0.f, 1023.f));
-  const auto z = static_cast<uint32_t>(std::clamp(unit.z * 1024.f, 0.f, 1023.f));
-  return (ExpandBits(x) << 2) | (ExpandBits(y) << 1) | ExpandBits(z);
-}
-/// @brief One triangle reduced to its box and its place along a space-filling curve.
-struct ClusterTriangle {
-  glm::vec3 low{};
-  glm::vec3 high{};
-  uint32_t code{};
-  /// @brief The triangle's own area, taken from its vertices while they are still to hand.
-  ///
-  /// Kept per triangle rather than recovered from the box later, because a box says nothing useful
-  /// about the area inside it: a diagonal sliver and a full quad can share one.
-  float area{};
-};
-/// @brief Groups a mesh's triangles into spatially compact runs and reduces each run to a box.
-///
-/// The grouping is by Morton order, not index order, and that is the whole of what makes this
-/// worth doing. Chunking triangles as the index buffer happens to list them produces boxes that
-/// span the mesh: measured on a real model, a run of 32 consecutive triangles had a box 31 times
-/// the diagonal of the triangles in it, some 30000 times the volume. Subdivision would then push
-/// every one of those boxes into nearly every cell it tested, and sorting 32 times fewer items
-/// against far more cells each is slower than sorting the triangles was.
-///
-/// Sorting first costs one pass per mesh and is cached with the clusters, so a rebuild never pays
-/// it. What a rebuild pays is eight corners through a matrix per cluster.
-///
-/// Local space, so the result survives the mesh being moved.
-auto BuildClusters(const DXProbeGeometry &geometry) -> std::vector<DXProbeCluster> {
-  std::vector<ClusterTriangle> triangles;
-  auto meshLow = glm::vec3(std::numeric_limits<float>::max());
-  auto meshHigh = glm::vec3(std::numeric_limits<float>::lowest());
-  const auto Add = [&](const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c) {
-    ClusterTriangle triangle;
-    triangle.low = glm::min(a, glm::min(b, c));
-    triangle.high = glm::max(a, glm::max(b, c));
-    triangle.area = .5f * glm::length(glm::cross(b - a, c - a));
-    meshLow = glm::min(meshLow, triangle.low);
-    meshHigh = glm::max(meshHigh, triangle.high);
-    triangles.push_back(triangle);
-  };
-  if (!geometry.indices.empty()) {
-    triangles.reserve(geometry.indices.size() / 3);
-    for (size_t i = 0; i + 2 < geometry.indices.size(); i += 3) {
-      const auto x = geometry.indices[i];
-      const auto y = geometry.indices[i + 1];
-      const auto z = geometry.indices[i + 2];
-      if (x < geometry.vertices.size() && y < geometry.vertices.size() && z < geometry.vertices.size())
-        Add(geometry.vertices[x].position, geometry.vertices[y].position, geometry.vertices[z].position);
-    }
-  } else {
-    triangles.reserve(geometry.vertices.size() / 3);
-    for (size_t i = 0; i + 2 < geometry.vertices.size(); i += 3)
-      Add(geometry.vertices[i].position, geometry.vertices[i + 1].position, geometry.vertices[i + 2].position);
-  }
-  if (triangles.empty())
-    return {};
-  const auto span = meshHigh - meshLow;
-  const glm::vec3 inverse{span.x > 1e-6f ? 1.f / span.x : 0.f, span.y > 1e-6f ? 1.f / span.y : 0.f, span.z > 1e-6f ? 1.f / span.z : 0.f};
-  for (auto &triangle : triangles)
-    triangle.code = Morton(((triangle.low + triangle.high) * .5f - meshLow) * inverse);
-  std::sort(triangles.begin(), triangles.end(), [](const ClusterTriangle &a, const ClusterTriangle &b) { return a.code < b.code; });
-  std::vector<DXProbeCluster> clusters;
-  clusters.reserve(triangles.size() / PROBE_CLUSTER_TRIANGLES + 1);
-  for (size_t first = 0; first < triangles.size(); first += PROBE_CLUSTER_TRIANGLES) {
-    const auto count = std::min<size_t>(PROBE_CLUSTER_TRIANGLES, triangles.size() - first);
-    DXProbeCluster cluster{.low = triangles[first].low, .high = triangles[first].high, .triangles = static_cast<uint32_t>(count), .area = triangles[first].area};
-    for (size_t offset = 1; offset < count; ++offset) {
-      cluster.low = glm::min(cluster.low, triangles[first + offset].low);
-      cluster.high = glm::max(cluster.high, triangles[first + offset].high);
-      cluster.area += triangles[first + offset].area;
-    }
-    clusters.push_back(cluster);
-  }
-  return clusters;
-}
-/// @brief Puts a local-space cluster where its mesh is, as a box that still contains it.
-///
-/// Eight corners through the matrix and a fresh box around the result. Conservative under rotation,
-/// which is the price of staying axis-aligned and is why this is cheap enough to redo per build.
-auto TransformCluster(const DXProbeCluster &cluster, const glm::mat4 &transform) -> DXProbeCluster {
-  auto low = glm::vec3(std::numeric_limits<float>::max());
-  auto high = glm::vec3(std::numeric_limits<float>::lowest());
-  for (uint32_t corner = 0; corner < 8; ++corner) {
-    const glm::vec3 local{(corner & 1) ? cluster.high.x : cluster.low.x, (corner & 2) ? cluster.high.y : cluster.low.y, (corner & 4) ? cluster.high.z : cluster.low.z};
-    const auto world = glm::vec3(transform * glm::vec4(local, 1.f));
-    low = glm::min(low, world);
-    high = glm::max(high, world);
-  }
-  // Area scales as the two-thirds power of the volume scale, which is exact for a uniform scale and
-  // the fair compromise for anything else: a matrix that stretches one axis changes a surface's area
-  // by an amount that depends on how that surface is turned, and a cluster no longer knows.
-  const auto volumeScale = glm::length(glm::vec3(transform[0])) * glm::length(glm::vec3(transform[1])) * glm::length(glm::vec3(transform[2]));
-  const auto areaScale = volumeScale > 1e-12f ? std::cbrt(volumeScale * volumeScale) : 1.f;
-  return {.low = low, .high = high, .triangles = cluster.triangles, .area = cluster.area * areaScale};
-}
-auto OverlapsCell(const DXProbeCluster &cluster, const glm::vec3 &center, const float extent) -> bool {
-  return glm::all(glm::lessThanEqual(cluster.low, center + extent)) && glm::all(glm::greaterThanEqual(cluster.high, center - extent));
-}
-/// @brief Share of one axis of a cluster that a cell covers. A flat cluster counts as fully covered.
-auto AxisFraction(const float overlap, const float span) -> float {
-  return span > 1e-6f ? std::min(overlap / span, 1.f) : 1.f;
-}
-/// @brief How much of a cluster lies inside a cell, as a fraction of the cluster.
-///
-/// Without this a cluster would contribute its whole area to all eight children it straddles, so
-/// what each node held would grow with every level and every node would look busy enough to split.
-/// Weighting by the shared volume keeps a subdivided node's children summing to roughly what the
-/// parent held, which is what lets one threshold apply at every depth.
-///
-/// The weight is a volume share against an area measure, which is not the identity it would be for a
-/// count -- a wall crossing half a cell has half its area inside, and the box around that wall has
-/// half its volume inside, so the two agree for the flat clusters most surfaces produce and part
-/// company only for a cluster whose box is thick. Conservative in the direction that matters: such a
-/// cluster is one holding folded geometry, and crediting it generously is what the threshold is
-/// looking for anyway.
-auto OverlapFraction(const DXProbeCluster &cluster, const glm::vec3 &center, const float extent) -> float {
-  const auto low = glm::max(cluster.low, center - extent);
-  const auto high = glm::min(cluster.high, center + extent);
-  const auto overlap = high - low;
-  if (overlap.x < 0.f || overlap.y < 0.f || overlap.z < 0.f)
-    return 0.f;
-  const auto span = cluster.high - cluster.low;
-  return AxisFraction(overlap.x, span.x) * AxisFraction(overlap.y, span.y) * AxisFraction(overlap.z, span.z);
-}
-auto CornerOffset(const uint32_t corner, const float extent) -> glm::vec3 {
-  return {(corner & 1) ? extent : -extent, (corner & 2) ? extent : -extent, (corner & 4) ? extent : -extent};
-}
-auto Subdivide(std::vector<BuildNode> &nodes, const uint32_t index, const std::vector<DXProbeCluster> &clusters, const uint32_t uniformDepth) -> void {
-  const auto depth = nodes[index].depth;
-  // Against the cell's own face rather than an absolute figure, which is what makes the test mean
-  // the same thing at every depth and in every scene: one flat surface crossing a cell reads as 1
-  // however large the cell is. See `PROBE_OCTREE_LEAF_SURFACE`.
-  const auto side = nodes[index].extent * 2.f;
-  const auto dense = nodes[index].surface > PROBE_OCTREE_LEAF_SURFACE * side * side;
-  if (depth >= PROBE_OCTREE_MAX_DEPTH || (depth >= uniformDepth && !dense)) {
-    nodes[index].leaf = true;
-    nodes[index].clusters.clear();
-    nodes[index].clusters.shrink_to_fit();
-    return;
-  }
-  const auto center = nodes[index].center;
-  const auto childExtent = nodes[index].extent * .5f;
-  const auto inherited = std::move(nodes[index].clusters);
-  nodes[index].clusters.clear();
-  nodes[index].clusters.shrink_to_fit();
-  for (uint32_t corner = 0; corner < 8; ++corner) {
-    BuildNode child;
-    child.center = center + CornerOffset(corner, childExtent);
-    child.extent = childExtent;
-    child.depth = depth + 1;
-    for (const auto cluster : inherited)
-      if (OverlapsCell(clusters[cluster], child.center, childExtent)) {
-        child.clusters.push_back(cluster);
-        child.surface += clusters[cluster].area * OverlapFraction(clusters[cluster], child.center, childExtent);
-      }
-    nodes[index].children[corner] = static_cast<uint32_t>(nodes.size());
-    nodes.push_back(std::move(child));
-  }
-  for (uint32_t corner = 0; corner < 8; ++corner)
-    Subdivide(nodes, nodes[index].children[corner], clusters, uniformDepth);
-}
-/// @brief Which side of the scene's surfaces one cell of the classification grid stands on.
-///
-/// `Solid` is a cell some triangle passes through. `Facing` and `Behind` are free cells the geometry
-/// faces towards and away from. `Unknown` is free space no surface has reached, which the fill
-/// resolves and which survives only in a volume holding no geometry at all.
-enum class CellSide : uint8_t {
-  Unknown,
-  Solid,
-  Facing,
-  Behind
-};
-/// @brief The geometry inside one solid cell, reduced to a single oriented plane.
-///
-/// Area weighted, so a cell that a wall passes through and a stray decal clips reads as the wall.
-/// The point is the mean centroid, which lies on the surface where the cell holds one flat piece of
-/// it and near it otherwise; with the normal it is what lets a cell beside this one ask which side
-/// of the surface it is on.
-struct CellSurface {
-  glm::vec3 normal{};
-  glm::vec3 point{};
-  float area{};
-};
-/// @brief What each cell of the volume holds, and which side of the geometry it stands on.
-struct CellField {
-  std::vector<CellSurface> surface;
-  std::vector<uint8_t> side;
-};
-/// @brief Sorts the volume's free space into the side of the geometry each part of it stands on.
-///
-/// Answers the one question `trust` had no way to ask. Relocation moves a probe out of geometry and
-/// the buried test disbelieves one sealed inside it, and both read the probe's own rays -- so both
-/// are blind to the probe that is merely somewhere irrelevant: outside a wall, past the edge of
-/// every surface, with a clear view of nothing but sky. That probe has an open view and is trusted
-/// with it, and a point on the inner face of the wall beside it takes its estimate at a trilinear
-/// share. A share that repeats with the lattice is the grid.
-///
-/// Connectivity alone cannot separate the two sides, and a Cornell box shows why: five walls and an
-/// open front, so the room and the void outside it are one connected region of free space and a
-/// fill seeded from where the volume ends swallows both. Orientation can separate them, and
-/// exactly: a surface faces one way, the space on that side is the space it lights, and the space
-/// behind it is not. So the fill is seeded from what the geometry says rather than from where the
-/// volume ends -- every free cell beside a solid one takes the side its surface faces -- and only
-/// then spreads through free space to the cells no surface reached. A cell out in a void inherits
-/// from the nearest cell that was labelled, which is the nearest surface's verdict about it.
-///
-/// The grid is the lookup grid's own resolution, so probe anchors land on cell corners rather than
-/// somewhere inside a cell, and a probe reads the cells that touch it instead of one it was rounded
-/// into.
-auto ClassifySpace(const std::vector<DXProbeGeometry> &geometry, const glm::vec3 &origin, const float side, const uint32_t lattice) -> CellField {
-  CellField field;
-  const auto width = static_cast<size_t>(lattice);
-  const auto cells = width * width * width;
-  field.surface.resize(cells);
-  field.side.assign(cells, static_cast<uint8_t>(CellSide::Unknown));
-  const auto cellSize = side / static_cast<float>(lattice);
-  const auto last = static_cast<int>(lattice) - 1;
-  const auto Index = [width](const int x, const int y, const int z) { return static_cast<size_t>(x) + width * (static_cast<size_t>(y) + width * static_cast<size_t>(z)); };
-  const auto Cell = [&](const glm::vec3 &point) {
-    const auto local = (point - origin) / cellSize;
-    return glm::ivec3{std::clamp(static_cast<int>(std::floor(local.x)), 0, last), std::clamp(static_cast<int>(std::floor(local.y)), 0, last), std::clamp(static_cast<int>(std::floor(local.z)), 0, last)};
-  };
-  const auto Center = [&](const glm::ivec3 &at) { return origin + (glm::vec3{static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z)} + .5f) * cellSize; };
-  const auto Beyond = [last](const glm::ivec3 &at) { return glm::any(glm::lessThan(at, glm::ivec3(0))) || glm::any(glm::greaterThan(at, glm::ivec3(last))); };
-  {
-    KUKI_PROFILE_SCOPE("ClassifySurfaces");
-    for (const auto &item : geometry) {
-      if (item.vertices.empty())
-        continue;
-      const auto rotation = glm::inverseTranspose(glm::mat3(item.transform));
-      const auto Add = [&](const size_t first, const size_t second, const size_t third) {
-        const auto a = glm::vec3(item.transform * glm::vec4(item.vertices[first].position, 1.f));
-        const auto b = glm::vec3(item.transform * glm::vec4(item.vertices[second].position, 1.f));
-        const auto c = glm::vec3(item.transform * glm::vec4(item.vertices[third].position, 1.f));
-        const auto cross = glm::cross(b - a, c - a);
-        const auto area = glm::length(cross);
-        if (area < 1e-12f)
-          return;
-        // The vertex normals rather than the winding, because the trace decides which face a ray met
-        // from the interpolated vertex normal, and the two disagreeing would put this and the buried
-        // test on opposite sides of the same wall. The winding is the fallback for geometry that
-        // arrived without normals, where it is the only orientation there is.
-        auto normal = rotation * (item.vertices[first].normal + item.vertices[second].normal + item.vertices[third].normal);
-        normal = glm::dot(normal, normal) > 1e-12f ? glm::normalize(normal) : cross / area;
-        const auto centroid = (a + b + c) / 3.f;
-        const auto low = Cell(glm::min(a, glm::min(b, c)));
-        const auto high = Cell(glm::max(a, glm::max(b, c)));
-        // The triangle's box rather than the triangle, so a diagonal one claims cells it only passes
-        // near. Claiming too much leaves free space labelled from a surface slightly further off and
-        // never from the wrong side of a wall, so the error this makes is the safe one.
-        for (auto z = low.z; z <= high.z; ++z)
-          for (auto y = low.y; y <= high.y; ++y)
-            for (auto x = low.x; x <= high.x; ++x) {
-              const auto at = Index(x, y, z);
-              field.side[at] = static_cast<uint8_t>(CellSide::Solid);
-              field.surface[at].normal += normal * area;
-              field.surface[at].point += centroid * area;
-              field.surface[at].area += area;
-            }
-      };
-      if (!item.indices.empty()) {
-        for (size_t i = 0; i + 2 < item.indices.size(); i += 3) {
-          const auto x = item.indices[i];
-          const auto y = item.indices[i + 1];
-          const auto z = item.indices[i + 2];
-          if (x < item.vertices.size() && y < item.vertices.size() && z < item.vertices.size())
-            Add(x, y, z);
-        }
-        continue;
-      }
-      for (size_t i = 0; i + 2 < item.vertices.size(); i += 3)
-        Add(i, i + 1, i + 2);
-    }
-  }
-  std::vector<float> vote(cells, 0.f);
-  {
-    KUKI_PROFILE_SCOPE("ClassifySeed");
-    for (auto z = 0; z <= last; ++z)
-      for (auto y = 0; y <= last; ++y)
-        for (auto x = 0; x <= last; ++x) {
-          const auto at = Index(x, y, z);
-          if (field.side[at] != static_cast<uint8_t>(CellSide::Solid))
-            continue;
-          const auto &held = field.surface[at];
-          if (held.area <= 0.f || glm::dot(held.normal, held.normal) <= 0.f)
-            continue;
-          const auto normal = glm::normalize(held.normal);
-          const auto point = held.point / held.area;
-          for (const auto &face : CELL_FACES) {
-            const auto to = glm::ivec3{x, y, z} + face;
-            if (Beyond(to))
-              continue;
-            const auto neighbour = Index(to.x, to.y, to.z);
-            if (field.side[neighbour] == static_cast<uint8_t>(CellSide::Solid))
-              continue;
-            // The sign of the side, weighted by how much surface is voting, so a wall outvotes a
-            // speck sharing its cell. How far the cell is carries nothing the sign does not, since
-            // by construction it is one cell either way.
-            vote[neighbour] += glm::dot(normal, Center(to) - point) < 0.f ? -held.area : held.area;
-          }
-        }
-  }
-  std::vector<size_t> queue;
-  queue.reserve(cells);
-  for (size_t at = 0; at < cells; ++at) {
-    if (vote[at] == 0.f)
-      continue;
-    field.side[at] = static_cast<uint8_t>(vote[at] < 0.f ? CellSide::Behind : CellSide::Facing);
-    queue.push_back(at);
-  }
-  {
-    // Breadth first from every labelled cell at once, so a cell no surface reached takes the verdict
-    // of the nearest one that did rather than of whichever the sweep happened to visit first. Solid
-    // cells are never entered, which is what keeps a verdict from crossing the wall that made it.
-    KUKI_PROFILE_SCOPE("ClassifyFill");
-    for (size_t head = 0; head < queue.size(); ++head) {
-      const auto label = field.side[queue[head]];
-      const glm::ivec3 home{static_cast<int>(queue[head] % width), static_cast<int>(queue[head] / width % width), static_cast<int>(queue[head] / (width * width))};
-      for (const auto &face : CELL_FACES) {
-        const auto to = home + face;
-        if (Beyond(to))
-          continue;
-        const auto neighbour = Index(to.x, to.y, to.z);
-        if (field.side[neighbour] != static_cast<uint8_t>(CellSide::Unknown))
-          continue;
-        field.side[neighbour] = label;
-        queue.push_back(neighbour);
-      }
-    }
-  }
-  return field;
-}
-auto DescendToLeaf(const std::vector<BuildNode> &nodes, const glm::vec3 &point) -> uint32_t {
-  uint32_t index = 0;
-  while (!nodes[index].leaf) {
-    uint32_t corner = 0;
-    if (point.x >= nodes[index].center.x)
-      corner |= 1;
-    if (point.y >= nodes[index].center.y)
-      corner |= 2;
-    if (point.z >= nodes[index].center.z)
-      corner |= 4;
-    index = nodes[index].children[corner];
-  }
-  return index;
-}
+/// Not left to compile on first use, which is what pipelines here usually do. Some of these passes
+/// first run long after the scene opens -- the one that forgets measurements runs on the first frame
+/// anything moves, and the one that extends the free list on the first growth -- and compiling one
+/// then is a hitch of fifty milliseconds at exactly the moment this volume was written to remove one.
+constexpr const char *UPDATE_ENTRY_POINTS[]{"CSReset", "CSBeginFrame", "CSDirty", "CSQueue", "CSMeasure", "CSDecideMerge", "CSDecideSplit", "CSLookup", "CSRelease", "CSAcquire", "CSSeed", "CSRefresh", "CSLeafProbes", "CSExtendFree"};
 } // namespace
-auto DXProbeVolume::UploadBuffer(const void *data, const uint64_t bytes, const D3D12_RESOURCE_FLAGS flags, const char *context) -> ComPtr<ID3D12Resource> {
+auto DXProbeVolume::Transition(ID3D12Resource *resource, D3D12_RESOURCE_STATES &state, const D3D12_RESOURCE_STATES target) -> void {
+  auto *commandList = owner ? owner->GetCommandList() : nullptr;
+  if (!resource || !commandList || state == target)
+    return;
+  const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(resource, state, target);
+  commandList->ResourceBarrier(1, &barrier);
+  state = target;
+}
+auto DXProbeVolume::CreateBuffer(const uint64_t bytes, const char *name) -> ComPtr<ID3D12Resource> {
   auto *device = owner ? owner->GetDevice() : nullptr;
   auto *commandList = owner ? owner->GetCommandList() : nullptr;
-  if (!device || !commandList || !data || bytes == 0)
+  if (!device || !commandList || bytes == 0)
     return {};
-  ComPtr<ID3D12Resource> source;
-  ComPtr<ID3D12Resource> destination;
-  const auto uploadProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-  const auto defaultProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-  auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
-  auto defaultDesc = CD3DX12_RESOURCE_DESC::Buffer(bytes, flags);
-  if (DXFailed(device->CreateCommittedResource(&uploadProperties, D3D12_HEAP_FLAG_NONE, &uploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&source)), context))
+  // Created in the common state, which is the only one a buffer is really created in whatever is
+  // asked for, and moved out of it explicitly so the state every caller tracks is the true one.
+  const auto properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+  const auto desc = CD3DX12_RESOURCE_DESC::Buffer(bytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+  ComPtr<ID3D12Resource> buffer;
+  if (DXFailed(device->CreateCommittedResource(&properties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&buffer)), name))
     return {};
-  if (DXFailed(device->CreateCommittedResource(&defaultProperties, D3D12_HEAP_FLAG_NONE, &defaultDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&destination)), context))
-    return {};
-  void *mapped{};
-  const CD3DX12_RANGE readRange(0, 0);
-  if (DXFailed(source->Map(0, &readRange, &mapped), context))
-    return {};
-  memcpy(mapped, data, bytes);
-  source->Unmap(0, nullptr);
-  commandList->CopyBufferRegion(destination.Get(), 0, source.Get(), 0, bytes);
-  const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(destination.Get(), D3D12_RESOURCE_STATE_COPY_DEST, PROBE_READ_STATE);
+  const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(buffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
   commandList->ResourceBarrier(1, &barrier);
-  staging.push_back(std::move(source));
-  return destination;
+  return buffer;
 }
-auto DXProbeVolume::BuildOctree(const std::vector<DXProbeGeometry> &geometry) -> DXProbeOctree {
-  DXProbeOctree built;
-  std::vector<DXProbeCluster> clusters;
-  {
-    KUKI_PROFILE_SCOPE("CollectClusters");
-    for (const auto &item : geometry) {
-      if (item.vertices.empty())
-        continue;
-      const auto *key = static_cast<const void *>(item.vertices.data());
-      auto it = meshClusters.find(key);
-      if (it == meshClusters.end() || it->second.vertexCount != item.vertices.size() || it->second.indexCount != item.indices.size())
-        it = meshClusters.insert_or_assign(key, MeshClusters{.clusters = BuildClusters(item), .vertexCount = item.vertices.size(), .indexCount = item.indices.size()}).first;
-      clusters.reserve(clusters.size() + it->second.clusters.size());
-      for (const auto &cluster : it->second.clusters)
-        clusters.push_back(TransformCluster(cluster, item.transform));
-    }
+auto DXProbeVolume::EnsureFixedBuffers() -> bool {
+  if (nodeBuffer && lookupBuffer && cornerBuffer && counterBuffer && queueBuffer && boxData && counterReadback)
+    return true;
+  auto *device = owner ? owner->GetDevice() : nullptr;
+  if (!device)
+    return false;
+  nodeBuffer = CreateBuffer(static_cast<uint64_t>(PROBE_OCTREE_NODE_COUNT) * sizeof(DXOctreeNode), "CreateCommittedResource for the probe octree");
+  lookupBuffer = CreateBuffer(static_cast<uint64_t>(PROBE_LATTICE_CELLS) * PROBE_LATTICE_CELLS * PROBE_LATTICE_CELLS * sizeof(uint32_t), "CreateCommittedResource for the probe lookup grid");
+  cornerBuffer = CreateBuffer(static_cast<uint64_t>(PROBE_LATTICE_POINTS) * sizeof(uint32_t), "CreateCommittedResource for the probe lattice");
+  counterBuffer = CreateBuffer(COUNTER_BYTES, "CreateCommittedResource for the probe counters");
+  queueBuffer = CreateBuffer(static_cast<uint64_t>(PROBE_MEASURE_BUDGET) * sizeof(uint32_t), "CreateCommittedResource for the probe measuring queue");
+  nodeState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  lookupState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  if (!nodeBuffer || !lookupBuffer || !cornerBuffer || !counterBuffer || !queueBuffer)
+    return false;
+  // An upload heap read straight by the GPU rather than staged into a default one. It is a few
+  // kilobytes read once a frame by one small dispatch, which is what an upload heap is good for, and
+  // a region per frame in flight means nothing written here is ever still being read.
+  const auto uploadProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+  const auto boxDesc = CD3DX12_RESOURCE_DESC::Buffer(BOX_REGION_BYTES * DX_FRAME_COUNT);
+  if (DXFailed(device->CreateCommittedResource(&uploadProperties, D3D12_HEAP_FLAG_NONE, &boxDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&boxBuffer)), "CreateCommittedResource for the probe change boxes"))
+    return false;
+  void *mapped{};
+  const CD3DX12_RANGE noRead(0, 0);
+  if (DXFailed(boxBuffer->Map(0, &noRead, &mapped), "Map the probe change boxes"))
+    return false;
+  boxData = static_cast<uint8_t *>(mapped);
+  const auto readbackProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+  const auto readbackDesc = CD3DX12_RESOURCE_DESC::Buffer(COUNTER_BYTES * DX_FRAME_COUNT);
+  if (DXFailed(device->CreateCommittedResource(&readbackProperties, D3D12_HEAP_FLAG_NONE, &readbackDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&counterReadback)), "CreateCommittedResource for the probe counter readback"))
+    return false;
+  readbackGeneration.fill(0);
+  return true;
+}
+auto DXProbeVolume::CreatePool(const uint32_t slots) -> bool {
+  if (owner) {
+    owner->RetireResource(std::move(probeBuffer));
+    owner->RetireResource(std::move(freeBuffer));
   }
-  if (clusters.empty())
-    return built;
-  auto low = clusters.front().low;
-  auto high = clusters.front().high;
-  auto triangles = uint64_t{};
-  auto area = 0.f;
-  for (const auto &cluster : clusters) {
-    low = glm::min(low, cluster.low);
-    high = glm::max(high, cluster.high);
-    triangles += cluster.triangles;
-    area += cluster.area;
+  probeBuffer = CreateBuffer(static_cast<uint64_t>(slots) * sizeof(DXProbe), "CreateCommittedResource for the probes");
+  freeBuffer = CreateBuffer(static_cast<uint64_t>(slots) * sizeof(uint32_t), "CreateCommittedResource for the probe free list");
+  probeState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  capacity = probeBuffer && freeBuffer ? slots : 0;
+  return capacity > 0;
+}
+auto DXProbeVolume::GrowPool(const uint32_t slots) -> bool {
+  auto *commandList = owner ? owner->GetCommandList() : nullptr;
+  if (!commandList || slots <= capacity)
+    return false;
+  auto probes = CreateBuffer(static_cast<uint64_t>(slots) * sizeof(DXProbe), "CreateCommittedResource for the grown probes");
+  auto free = CreateBuffer(static_cast<uint64_t>(slots) * sizeof(uint32_t), "CreateCommittedResource for the grown probe free list");
+  if (!probes || !free)
+    return false;
+  // Copied on the GPU, in the frame's own command list, rather than read back and uploaded: the
+  // probes in use are exactly where the passes left them and the copy lands before the passes run.
+  auto freeState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  auto newState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  Transition(probeBuffer.Get(), probeState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  Transition(freeBuffer.Get(), freeState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  Transition(probes.Get(), newState, D3D12_RESOURCE_STATE_COPY_DEST);
+  newState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  Transition(free.Get(), newState, D3D12_RESOURCE_STATE_COPY_DEST);
+  commandList->CopyBufferRegion(probes.Get(), 0, probeBuffer.Get(), 0, static_cast<uint64_t>(capacity) * sizeof(DXProbe));
+  commandList->CopyBufferRegion(free.Get(), 0, freeBuffer.Get(), 0, static_cast<uint64_t>(capacity) * sizeof(uint32_t));
+  auto copiedState = D3D12_RESOURCE_STATE_COPY_DEST;
+  Transition(probes.Get(), copiedState, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+  copiedState = D3D12_RESOURCE_STATE_COPY_DEST;
+  Transition(free.Get(), copiedState, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+  owner->RetireResource(std::move(probeBuffer));
+  owner->RetireResource(std::move(freeBuffer));
+  probeBuffer = std::move(probes);
+  freeBuffer = std::move(free);
+  probeState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  spdlog::info("[DX12] Probe volume: grew the probe pool from {} to {} slots", capacity, slots);
+  grownFrom = capacity;
+  capacity = slots;
+  // Counters already on their way back describe the pool before this, and the shortage they report
+  // is the one being answered here.
+  ++generation;
+  return true;
+}
+auto DXProbeVolume::TrackGeometry(const std::vector<DXProbeGeometry> &geometry, glm::vec3 &low, glm::vec3 &high) -> bool {
+  ++geometryFrame;
+  low = glm::vec3(std::numeric_limits<float>::max());
+  high = glm::vec3(std::numeric_limits<float>::lowest());
+  auto any = false;
+  const auto Dirty = [this](const glm::vec3 &from, const glm::vec3 &to) {
+    dirtyBoxes.emplace_back(from, 0.f);
+    dirtyBoxes.emplace_back(to, 0.f);
+  };
+  for (const auto &item : geometry) {
+    if (item.vertices.empty())
+      continue;
+    const auto *mesh = static_cast<const void *>(item.vertices.data());
+    auto bounds = meshBounds.find(mesh);
+    if (bounds == meshBounds.end() || bounds->second.vertexCount != item.vertices.size()) {
+      MeshBounds local{.low = item.vertices.front().position, .high = item.vertices.front().position, .vertexCount = item.vertices.size()};
+      for (const auto &vertex : item.vertices) {
+        local.low = glm::min(local.low, vertex.position);
+        local.high = glm::max(local.high, vertex.position);
+      }
+      bounds = meshBounds.insert_or_assign(mesh, local).first;
+    }
+    // Eight corners through the matrix and a fresh box around them: conservative under rotation,
+    // which only ever asks for a little more re-measuring than was needed.
+    auto worldLow = glm::vec3(std::numeric_limits<float>::max());
+    auto worldHigh = glm::vec3(std::numeric_limits<float>::lowest());
+    for (uint32_t corner = 0; corner < 8; ++corner) {
+      const glm::vec3 local{(corner & 1) ? bounds->second.high.x : bounds->second.low.x, (corner & 2) ? bounds->second.high.y : bounds->second.low.y, (corner & 4) ? bounds->second.high.z : bounds->second.low.z};
+      const auto world = glm::vec3(item.transform * glm::vec4(local, 1.f));
+      worldLow = glm::min(worldLow, world);
+      worldHigh = glm::max(worldHigh, world);
+    }
+    low = glm::min(low, worldLow);
+    high = glm::max(high, worldHigh);
+    any = true;
+    auto [placement, added] = placements.try_emplace(item.entity);
+    auto &placed = placement->second;
+    if (added)
+      Dirty(worldLow, worldHigh);
+    else if (placed.mesh != mesh || placed.transform != item.transform) {
+      // Where it was and where it is, as two boxes rather than one around both: a piece moved across
+      // the board would otherwise re-measure every square it passed over.
+      Dirty(placed.low, placed.high);
+      Dirty(worldLow, worldHigh);
+    }
+    placed = Placement{.mesh = mesh, .transform = item.transform, .low = worldLow, .high = worldHigh, .seen = geometryFrame};
+  }
+  for (auto it = placements.begin(); it != placements.end();) {
+    if (it->second.seen == geometryFrame) {
+      ++it;
+      continue;
+    }
+    Dirty(it->second.low, it->second.high);
+    it = placements.erase(it);
+  }
+  return any;
+}
+auto DXProbeVolume::ReadCounters(DXContext &context) -> void {
+  // The frame that last recorded into this slot has finished: `BeginFrame` waited on its fence
+  // before the slot was handed out again. So this read costs nothing, and is never the stall a
+  // synchronous readback would be -- it is simply a few frames old, which nothing here minds.
+  const auto slot = context.GetFrameIndex() % DX_FRAME_COUNT;
+  if (!counterReadback || readbackGeneration[slot] != generation)
+    return;
+  readbackGeneration[slot] = 0;
+  const CD3DX12_RANGE range(slot * COUNTER_BYTES, (slot + 1) * COUNTER_BYTES);
+  void *mapped{};
+  if (DXFailed(counterReadback->Map(0, &range, &mapped), "Map the probe counter readback"))
+    return;
+  int32_t counters[CounterCount]{};
+  memcpy(counters, static_cast<const uint8_t *>(mapped) + slot * COUNTER_BYTES, COUNTER_BYTES);
+  const CD3DX12_RANGE noWrite(0, 0);
+  counterReadback->Unmap(0, &noWrite);
+  liveProbes = static_cast<uint32_t>(std::max(counters[LiveProbes], 0));
+  leafCount = static_cast<uint32_t>(std::max(counters[LiveLeaves], 0));
+  deepestLeaf = static_cast<uint32_t>(std::max(counters[Deepest], 0));
+  settled = counters[Queued] == 0 && counters[Splits] == 0 && counters[Merges] == 0 && counters[Failed] == 0;
+  if (counters[Splits] > 0 || counters[Merges] > 0)
+    spdlog::debug("[DX12] Probe volume: {} leaves split and {} merged, {} nodes measured", counters[Splits], counters[Merges], counters[Queued]);
+  if (settled && (liveProbes != loggedProbes || leafCount != loggedLeaves)) {
+    loggedProbes = liveProbes;
+    loggedLeaves = leafCount;
+    const auto bytes = static_cast<uint64_t>(capacity) * sizeof(DXProbe) + static_cast<uint64_t>(PROBE_OCTREE_NODE_COUNT) * sizeof(DXOctreeNode);
+    spdlog::info("[DX12] Probe volume: settled at {} probes in {} leaves, deepest {} of {}, over {:.2f} units; {} probe slots, {:.2f} MB resident", liveProbes, leafCount, deepestLeaf, PROBE_OCTREE_MAX_DEPTH, side, capacity, static_cast<double>(bytes) / (1024. * 1024.));
+  }
+  // Grown on a failure, or when the free list is nearly spent, so the next burst of splits finds
+  // room rather than failing first. Doubling keeps the number of growths over a scene's life to a
+  // handful; the lattice is the ceiling, since there is nowhere for a probe past it to stand.
+  const auto spare = std::max(counters[FreeTop], 0);
+  if ((counters[Failed] > 0 || static_cast<uint32_t>(spare) < capacity / 16) && capacity < PROBE_LATTICE_POINTS)
+    GrowPool(std::min(capacity * 2, PROBE_LATTICE_POINTS));
+}
+auto DXProbeVolume::RecordPasses(DXContext &context, DXPipelineCache &pipelines, const DXAccelerationStructure &scene) -> bool {
+  KUKI_PROFILE_SCOPE("ProbeVolume::RecordPasses");
+  auto *commandList = context.GetCommandList();
+  auto *device = context.GetDevice();
+  const auto *layout = pipelines.GetProbeUpdatePipeline(device, "CSBeginFrame");
+  if (!commandList || !layout || !*layout)
+    return false;
+  Transition(nodeBuffer.Get(), nodeState, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+  Transition(lookupBuffer.Get(), lookupState, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+  Transition(probeBuffer.Get(), probeState, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+  const auto slot = context.GetFrameIndex() % DX_FRAME_COUNT;
+  auto boxCount = static_cast<uint32_t>(dirtyBoxes.size() / 2);
+  if (boxCount > PROBE_MAX_DIRTY_BOXES) {
+    auto low = glm::vec4(std::numeric_limits<float>::max());
+    auto high = glm::vec4(std::numeric_limits<float>::lowest());
+    for (size_t box = 0; box < dirtyBoxes.size(); box += 2) {
+      low = glm::min(low, dirtyBoxes[box]);
+      high = glm::max(high, dirtyBoxes[box + 1]);
+    }
+    dirtyBoxes = {low, high};
+    boxCount = 1;
+  }
+  if (boxCount > 0)
+    memcpy(boxData + slot * BOX_REGION_BYTES, dirtyBoxes.data(), boxCount * 2 * sizeof(glm::vec4));
+  dirtyBoxes.clear();
+  DXProbeUpdateConstants constants{};
+  constants.volume[0] = origin.x;
+  constants.volume[1] = origin.y;
+  constants.volume[2] = origin.z;
+  constants.volume[3] = side;
+  constants.counts[0] = capacity;
+  constants.counts[1] = uniformDepth;
+  constants.counts[2] = boxCount;
+  constants.counts[3] = ++frameSeed;
+  constants.limits[0] = grownFrom;
+  constants.limits[1] = PROBE_MEASURE_BUDGET;
+  constants.limits[2] = PROBE_MEASURE_LINES;
+  constants.limits[3] = PROBE_LATTICE_CELLS >> uniformDepth;
+  constants.tuning[0] = PROBE_OCTREE_LEAF_SURFACE;
+  constants.tuning[1] = PROBE_SURFACE_HYSTERESIS;
+  constants.tuning[2] = PROBE_RELOCATION_LIMIT;
+  constants.tuning[3] = PROBE_DEPTH_RANGE * side;
+  const auto boxAddress = boxBuffer->GetGPUVirtualAddress() + slot * BOX_REGION_BYTES;
+  commandList->SetComputeRootSignature(layout->rootSignature.Get());
+  commandList->SetComputeRoot32BitConstants(0, sizeof(DXProbeUpdateConstants) / sizeof(uint32_t), &constants, 0);
+  // A root descriptor has to point somewhere valid whether or not the pass reads it. Only the
+  // measuring pass reads the scene, and it is not recorded without one.
+  commandList->SetComputeRootShaderResourceView(1, scene.IsReady() ? scene.GetTopLevelAddress() : boxAddress);
+  commandList->SetComputeRootShaderResourceView(2, boxAddress);
+  commandList->SetComputeRootUnorderedAccessView(3, nodeBuffer->GetGPUVirtualAddress());
+  commandList->SetComputeRootUnorderedAccessView(4, probeBuffer->GetGPUVirtualAddress());
+  commandList->SetComputeRootUnorderedAccessView(5, lookupBuffer->GetGPUVirtualAddress());
+  commandList->SetComputeRootUnorderedAccessView(6, cornerBuffer->GetGPUVirtualAddress());
+  commandList->SetComputeRootUnorderedAccessView(7, freeBuffer->GetGPUVirtualAddress());
+  commandList->SetComputeRootUnorderedAccessView(8, counterBuffer->GetGPUVirtualAddress());
+  commandList->SetComputeRootUnorderedAccessView(9, queueBuffer->GetGPUVirtualAddress());
+  // Every pass reads what the one before it wrote, so each is followed by a barrier over all of
+  // them. The root arguments outlive a pipeline change under the same root signature, so they are
+  // bound once above and only the pipeline changes from here.
+  const auto Run = [&](const char *entryPoint, const uint32_t groups) {
+    const auto *pipeline = pipelines.GetProbeUpdatePipeline(device, entryPoint);
+    if (!pipeline || !*pipeline)
+      return false;
+    commandList->SetPipelineState(pipeline->pipelineState.Get());
+    commandList->Dispatch(groups, 1, 1);
+    const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+    commandList->ResourceBarrier(1, &barrier);
+    return true;
+  };
+  auto recorded = true;
+  if (resetPending) {
+    recorded &= Run("CSReset", GroupsFor(std::max({PROBE_OCTREE_NODE_COUNT, PROBE_LATTICE_POINTS, capacity})));
+    resetPending = false;
+  }
+  if (grownFrom > 0) {
+    recorded &= Run("CSExtendFree", GroupsFor(capacity - grownFrom));
+    grownFrom = 0;
+  }
+  recorded &= Run("CSBeginFrame", 1);
+  if (boxCount > 0)
+    recorded &= Run("CSDirty", GroupsFor(PROBE_OCTREE_NODE_COUNT));
+  recorded &= Run("CSQueue", GroupsFor(PROBE_OCTREE_NODE_COUNT));
+  // Without an acceleration structure there is nothing to measure against, so nothing settles and
+  // nothing splits; the tree stays as it is until there is.
+  if (scene.IsReady())
+    recorded &= Run("CSMeasure", PROBE_MEASURE_BUDGET);
+  recorded &= Run("CSDecideMerge", GroupsFor(PROBE_OCTREE_NODE_COUNT));
+  recorded &= Run("CSDecideSplit", GroupsFor(PROBE_OCTREE_NODE_COUNT));
+  recorded &= Run("CSLookup", GroupsFor(PROBE_LATTICE_CELLS * PROBE_LATTICE_CELLS * PROBE_LATTICE_CELLS));
+  recorded &= Run("CSRelease", GroupsFor(PROBE_LATTICE_POINTS));
+  recorded &= Run("CSAcquire", GroupsFor(PROBE_LATTICE_POINTS));
+  recorded &= Run("CSSeed", GroupsFor(PROBE_LATTICE_POINTS));
+  recorded &= Run("CSRefresh", GroupsFor(PROBE_LATTICE_POINTS));
+  recorded &= Run("CSLeafProbes", GroupsFor(PROBE_OCTREE_NODE_COUNT));
+  Transition(nodeBuffer.Get(), nodeState, PROBE_READ_STATE);
+  Transition(lookupBuffer.Get(), lookupState, PROBE_READ_STATE);
+  Transition(probeBuffer.Get(), probeState, PROBE_READ_STATE);
+  auto counterState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  Transition(counterBuffer.Get(), counterState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  commandList->CopyBufferRegion(counterReadback.Get(), slot * COUNTER_BYTES, counterBuffer.Get(), 0, COUNTER_BYTES);
+  Transition(counterBuffer.Get(), counterState, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+  readbackGeneration[slot] = generation;
+  return recorded;
+}
+auto DXProbeVolume::Update(DXContext &context, DXPipelineCache &pipelines, const DXAccelerationStructure &scene, const std::vector<DXProbeGeometry> &geometry) -> bool {
+  KUKI_PROFILE_SCOPE("ProbeVolume::Update");
+  owner = &context;
+  if (!context.GetCommandList())
+    return ready;
+  glm::vec3 low;
+  glm::vec3 high;
+  if (!TrackGeometry(geometry, low, high)) {
+    // Nothing to place probes around. A volume already laid down is left as it stands rather than
+    // torn down, since an empty frame is far more often a scene between loads than a scene that
+    // has become empty for good.
+    dirtyBoxes.clear();
+    return ready;
   }
   const auto span = high - low;
   const auto required = std::max({span.x, span.y, span.z, .01f}) * .5f * 1.02f;
-  auto center = (low + high) * .5f;
-  auto half = required;
   // The volume keeps the frame of reference it already had, for as long as the scene still fits
   // inside it and has not shrunk so far that the resolution is being spent on empty space.
   //
   // Sized to the exact bounding box, it moved whenever anything did. A probe's anchor is measured
-  // from the origin, so an origin that shifts by any amount at all renames every probe in the
-  // volume: none of them can be matched to what stood there before, the whole field is rebuilt
-  // black, and the flicker that follows is everywhere rather than near whatever moved. A piece
-  // lifting a quarter of a unit was enough to do it, by raising the top of the scene's box.
+  // from the origin, so an origin that shifts by any amount at all moves every probe in the volume,
+  // and the whole field starts over -- everywhere rather than near whatever moved. A piece lifting a
+  // quarter of a unit was enough to do it, by raising the top of the scene's box.
   //
-  // Holding the cube still instead means the lattice lands on the same world positions build after
-  // build, which is what lets `CarryOverProbes` recognise a probe as the same probe. It is also the
-  // honest reading of what the volume is: a region of space being sampled, not a fit to whatever
+  // Holding the cube still instead means the lattice lands on the same world positions frame after
+  // frame, which is what lets the tree change around a probe without the probe changing. It is also
+  // the honest reading of what the volume is: a region of space being sampled, not a fit to whatever
   // happens to be standing in it this frame.
   const auto Inside = [&](const glm::vec3 &point) {
-    return point.x >= origin.x && point.y >= origin.y && point.z >= origin.z && point.x <= origin.x + side && point.y <= origin.y + side && point.z <= origin.z + side;
+    return glm::all(glm::greaterThanEqual(point, origin)) && glm::all(glm::lessThanEqual(point, origin + glm::vec3(side)));
   };
-  if (side > .0f && Inside(low) && Inside(high) && required * 2.f >= side * PROBE_VOLUME_KEEP_FRACTION) {
-    // Copied rather than recomputed, so the anchors come out bit-identical to the resident ones.
-    // A round trip through the centre and back would be arithmetically the same and need not be
-    // exactly equal, and anything less than exact equality is a probe that cannot be matched.
-    built.origin = origin;
-    built.side = side;
-    half = side * .5f;
-    center = origin + glm::vec3(half);
-  } else {
-    built.origin = center - glm::vec3(half);
-    built.side = half * 2.f;
-  }
-  built.triangleCount = static_cast<uint32_t>(triangles);
-  built.clusterCount = static_cast<uint32_t>(clusters.size());
-  built.surfaceArea = area;
-  // Taken from the volume that was settled on just above rather than from the scene's own extent,
-  // because the volume is what the lattice is laid over -- and it is deliberately not the scene's
-  // box, since it is held still across rebuilds for `CarryOverProbes` to match against.
-  built.uniformDepth = ProbeUniformDepth(built.side);
-  std::vector<BuildNode> nodes;
-  nodes.reserve(1024);
-  BuildNode root;
-  root.center = center;
-  root.extent = half;
-  root.surface = area;
-  root.clusters.resize(clusters.size());
-  for (uint32_t cluster = 0; cluster < root.clusters.size(); ++cluster)
-    root.clusters[cluster] = cluster;
-  nodes.push_back(std::move(root));
-  {
-    KUKI_PROFILE_SCOPE("Subdivide");
-    Subdivide(nodes, 0, clusters, built.uniformDepth);
-  }
-  const auto lattice = 1u << PROBE_OCTREE_MAX_DEPTH;
-  const auto cellSize = built.side / static_cast<float>(lattice);
-  // one slot per lattice corner rather than a hash map: every corner a leaf can have is one of
-  // these, the whole table is 33 cubed entries, and a direct index beats hashing a key that is
-  // already a dense coordinate
-  const auto corners = static_cast<size_t>(lattice) + 1;
-  std::vector<uint32_t> placed(corners * corners * corners, INVALID_NODE);
-  const auto Lattice = [corners](const float value) {
-    return static_cast<size_t>(std::clamp<long>(std::lround(value), 0, static_cast<long>(corners) - 1));
-  };
-  const auto CornerProbe = [&](const glm::vec3 &corner) -> uint32_t {
-    const auto local = (corner - built.origin) / cellSize;
-    const auto x = Lattice(local.x);
-    const auto y = Lattice(local.y);
-    const auto z = Lattice(local.z);
-    const auto key = x + corners * (y + corners * z);
-    if (placed[key] != INVALID_NODE)
-      return placed[key];
-    const auto index = static_cast<uint32_t>(built.probes.size());
-    DXProbe probe{};
-    probe.position[0] = built.origin.x + static_cast<float>(x) * cellSize;
-    probe.position[1] = built.origin.y + static_cast<float>(y) * cellSize;
-    probe.position[2] = built.origin.z + static_cast<float>(z) * cellSize;
-    probe.anchor[0] = probe.position[0];
-    probe.anchor[1] = probe.position[1];
-    probe.anchor[2] = probe.position[2];
-    // Seeded as though the scene were as far away as the clamp allows, and with no spread, so a
-    // fresh probe is visible from everywhere until its own rays say otherwise. Zero would read as a
-    // surface at no distance at all, which is total occlusion, and would leave the frames between a
-    // build and the first trace with every probe hidden from every point and no bounce anywhere.
-    const auto seed = PackHalf(PROBE_DEPTH_RANGE * built.side);
-    for (auto &texel : probe.depth)
-      texel = seed;
-    built.probes.push_back(probe);
-    placed[key] = index;
-    return index;
-  };
-  {
-    KUKI_PROFILE_SCOPE("PlaceProbes");
-    built.nodes.resize(nodes.size());
-    for (size_t index = 0; index < nodes.size(); ++index) {
-      const auto &node = nodes[index];
-      auto &target = built.nodes[index];
-      target.center[0] = node.center.x;
-      target.center[1] = node.center.y;
-      target.center[2] = node.center.z;
-      target.extent = node.extent;
-      target.depth = node.depth;
-      target.leaf = node.leaf ? 1u : 0u;
-      for (uint32_t corner = 0; corner < 8; ++corner) {
-        target.children[corner] = node.leaf ? INVALID_NODE : node.children[corner];
-        if (!node.leaf) {
-          target.probes[corner] = INVALID_NODE;
-          continue;
-        }
-        const auto placedProbe = CornerProbe(node.center + CornerOffset(corner, node.extent));
-        target.probes[corner] = placedProbe;
-        // The same probe corners up to eight leaves, which need not be the same size. It may stray
-        // only as far as the smallest of them would tolerate.
-        auto &allowance = built.probes[placedProbe].anchor[3];
-        const auto granted = PROBE_RELOCATION_LIMIT * node.extent;
-        allowance = allowance > 0.f ? std::min(allowance, granted) : granted;
-      }
-      if (!node.leaf)
-        continue;
-      ++built.leafCount;
-      built.deepestLeaf = std::max(built.deepestLeaf, node.depth);
-    }
-  }
-  {
-    // Which side of the geometry each probe stands on, and so whether its own estimate is about the
-    // room it is interpolated into or about the void behind a wall.
-    KUKI_PROFILE_SCOPE("ProbeSides");
-    const auto field = ClassifySpace(geometry, built.origin, built.side, lattice);
-    const auto edge = static_cast<int>(lattice);
-    for (size_t key = 0; key < placed.size(); ++key) {
-      const auto index = placed[key];
-      if (index == INVALID_NODE)
-        continue;
-      const int home[3]{static_cast<int>(key % corners), static_cast<int>(key / corners % corners), static_cast<int>(key / (corners * corners))};
-      const glm::vec3 anchor{built.probes[index].anchor[0], built.probes[index].anchor[1], built.probes[index].anchor[2]};
-      // A probe sits on a cell corner, so up to eight cells touch it and each has something to say.
-      // Direct evidence first: a cell holding surface answers for itself, by which side of that
-      // surface the probe is on, which is the wall beside the probe rather than whichever wall was
-      // nearest to some cell's centre. Only where nothing touching the probe holds any geometry at
-      // all does the fill's verdict stand in, and that is the case the fill exists for.
-      auto direct = 0.f;
-      auto spread = 0;
-      for (auto z = home[2] - 1; z <= home[2]; ++z)
-        for (auto y = home[1] - 1; y <= home[1]; ++y)
-          for (auto x = home[0] - 1; x <= home[0]; ++x) {
-            if (x < 0 || y < 0 || z < 0 || x >= edge || y >= edge || z >= edge)
-              continue;
-            const auto at = static_cast<size_t>(x) + lattice * (static_cast<size_t>(y) + static_cast<size_t>(lattice) * static_cast<size_t>(z));
-            const auto &held = field.surface[at];
-            if (field.side[at] == static_cast<uint8_t>(CellSide::Solid)) {
-              if (held.area > 0.f && glm::dot(held.normal, held.normal) > 0.f)
-                direct += glm::dot(glm::normalize(held.normal), anchor - held.point / held.area) < 0.f ? -held.area : held.area;
-              continue;
-            }
-            if (field.side[at] == static_cast<uint8_t>(CellSide::Behind))
-              --spread;
-            else if (field.side[at] == static_cast<uint8_t>(CellSide::Facing))
-              ++spread;
-          }
-      built.probes[index].exterior = (direct != 0.f ? direct < 0.f : spread < 0) ? 1.f : 0.f;
-    }
-  }
-  {
-    // Each probe's neighbour along each face. Probes sit on lattice corners at whatever stride their
-    // leaf's depth implies, so the neighbour is not at a fixed offset: the search steps outward until
-    // it finds an occupied corner, and gives up past the stride of the coarsest leaf allowed, which
-    // is the furthest a genuine neighbour can be.
-    KUKI_PROFILE_SCOPE("ProbeNeighbours");
-    const auto reach = static_cast<long>(lattice >> built.uniformDepth);
-    const auto span = static_cast<long>(corners);
-    for (size_t key = 0; key < placed.size(); ++key) {
-      const auto index = placed[key];
-      if (index == INVALID_NODE)
-        continue;
-      const long home[3]{static_cast<long>(key % corners), static_cast<long>((key / corners) % corners), static_cast<long>(key / (corners * corners))};
-      auto &probe = built.probes[index];
-      for (uint32_t face = 0; face < PROBE_NEIGHBOURS; ++face) {
-        probe.neighbours[face] = INVALID_NODE;
-        const auto axis = face >> 1;
-        const long step = (face & 1) ? 1 : -1;
-        for (long distance = 1; distance <= reach; ++distance) {
-          long at[3]{home[0], home[1], home[2]};
-          at[axis] += step * distance;
-          if (at[axis] < 0 || at[axis] >= span)
-            break;
-          const auto neighbour = placed[static_cast<size_t>(at[0]) + corners * (static_cast<size_t>(at[1]) + corners * static_cast<size_t>(at[2]))];
-          if (neighbour == INVALID_NODE)
-            continue;
-          probe.neighbours[face] = neighbour;
-          break;
-        }
-      }
-    }
-  }
-  KUKI_PROFILE_SCOPE("LookupGrid");
-  built.lookup.resize(static_cast<size_t>(lattice) * lattice * lattice);
-  for (uint32_t z = 0; z < lattice; ++z)
-    for (uint32_t y = 0; y < lattice; ++y)
-      for (uint32_t x = 0; x < lattice; ++x) {
-        const glm::vec3 point{built.origin.x + (static_cast<float>(x) + .5f) * cellSize, built.origin.y + (static_cast<float>(y) + .5f) * cellSize, built.origin.z + (static_cast<float>(z) + .5f) * cellSize};
-        built.lookup[x + lattice * (y + static_cast<size_t>(lattice) * z)] = DescendToLeaf(nodes, point);
-      }
-  return built;
-}
-auto DXProbeVolume::Build(DXContext &context, const std::vector<DXProbeGeometry> &geometry) -> bool {
-  owner = &context;
-  const auto hash = HashGeometry(geometry);
-  if (ready && hash == geometryHash) {
-    pendingFrames = 0;
-    return true;
-  }
-  // an established volume waits for the geometry to stop moving; the first one cannot wait
-  if (ready) {
-    if (hash != pendingHash) {
-      pendingHash = hash;
-      pendingFrames = 0;
-      return true;
-    }
-    if (++pendingFrames < PROBE_REBUILD_SETTLE_FRAMES)
-      return true;
-  }
-  KUKI_PROFILE_SCOPE("ProbeVolume::Build");
-  ready = false;
-  pendingFrames = 0;
-  pendingHash = hash;
-  geometryHash = hash;
-  auto built = BuildOctree(geometry);
-  if (built.nodes.empty() || built.probes.empty())
-    return false;
-  // What the resident probes have already learned is moved into the ones just built, before either
-  // reaches the GPU. Without this a rebuild is a blackout: the new probes carry no irradiance, the
-  // running mean is thrown away with the old ones, and every probe in the scene falls back to a
-  // single sixty-four ray estimate and reconverges in full view. That is the flicker, and it fires
-  // whenever anything in the scene moves far enough to change the tree.
-  const auto carried = CarryOverProbes(context, built.probes);
-  origin = built.origin;
-  side = built.side;
-  leafCount = built.leafCount;
-  deepestLeaf = built.deepestLeaf;
-  KUKI_PROFILE_MARK("probe volume rebuilt");
-  KUKI_PROFILE_SCOPE("Upload");
-  // Handed over rather than dropped. These three are read by the scene pass of every frame, and a
-  // rebuild happens in the middle of one -- so at this point the two frames behind it are still in
-  // flight and still reading whatever is being replaced. Assigning over a `ComPtr` releases what it
-  // held there and then, which hands the memory back to the driver while the GPU is inside it: the
-  // rebuild survives, and the frame after it faults on an address that no longer belongs to anyone.
-  //
-  // Retiring instead keeps each one alive until the fence says every frame that could name it has
-  // finished. See `DXContext::RetireResource`, and `DXRenderer::EnsureInstanceCapacity`, which grows
-  // the instance arena mid-frame for the same reason and takes the same way out.
-  context.RetireResource(std::move(nodeBuffer));
-  context.RetireResource(std::move(probeBuffer));
-  context.RetireResource(std::move(lookupBuffer));
-  nodeBuffer = UploadBuffer(built.nodes.data(), built.nodes.size() * sizeof(DXOctreeNode), D3D12_RESOURCE_FLAG_NONE, "CreateCommittedResource for the probe octree");
-  probeBuffer = UploadBuffer(built.probes.data(), built.probes.size() * sizeof(DXProbe), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, "CreateCommittedResource for the probes");
-  lookupBuffer = UploadBuffer(built.lookup.data(), built.lookup.size() * sizeof(uint32_t), D3D12_RESOURCE_FLAG_NONE, "CreateCommittedResource for the probe lookup grid");
-  context.FlushCommandList();
-  staging.clear();
-  if (!nodeBuffer || !probeBuffer || !lookupBuffer)
-    return false;
-  nodeCount = static_cast<uint32_t>(built.nodes.size());
-  probeCount = static_cast<uint32_t>(built.probes.size());
-  probeState = PROBE_READ_STATE;
-  tracedFrames = 0;
-  // Nothing came across, so there is no mean left to keep and no reason to wind one back. This is
-  // the first build of a volume, or one whose lattice moved far enough that no probe kept its
-  // place -- either way the field starts from nothing, which is what a zeroed count says.
-  //
-  // Otherwise the mean is left alone. It is not thrown away because it is not wrong: the probes it
-  // belongs to are still standing where they were, still looking at a scene that has mostly not
-  // changed. `Trace` sees the scene hash move and winds the count back to `ReactiveSamples` for
-  // it, which is the same treatment a light being moved gets and the right amount of forgetting --
-  // enough to follow what changed, not so much as to start over.
-  if (carried == 0) {
+  const auto keep = ready && side > .0f && Inside(low) && Inside(high) && required * 2.f >= side * PROBE_VOLUME_KEEP_FRACTION;
+  if (!keep) {
+    KUKI_PROFILE_SCOPE("ProbeVolume::LayDown");
+    const auto center = (low + high) * .5f;
+    origin = center - glm::vec3(required);
+    side = required * 2.f;
+    uniformDepth = ProbeUniformDepth(side);
+    if (!EnsureFixedBuffers())
+      return ready = false;
+    for (const auto *entryPoint : UPDATE_ENTRY_POINTS)
+      if (const auto *pipeline = pipelines.GetProbeUpdatePipeline(context.GetDevice(), entryPoint); !pipeline || !*pipeline)
+        return ready = false;
+    if (const auto wanted = InitialPoolSize(uniformDepth); capacity < wanted && !CreatePool(wanted))
+      return ready = false;
+    resetPending = true;
+    grownFrom = 0;
+    ++generation;
+    // The reset re-measures everything, so a box naming part of it is redundant.
+    dirtyBoxes.clear();
+    settled = false;
+    loggedProbes = 0;
+    loggedLeaves = 0;
+    validated = false;
+    reported = false;
+    tracedFrames = 0;
     tracedSamples = 0;
     traceHash = 0;
-  }
-  ready = true;
-  if (probeCount != loggedProbeCount) {
-    loggedProbeCount = probeCount;
-    const auto bytes = built.nodes.size() * sizeof(DXOctreeNode) + built.probes.size() * sizeof(DXProbe) + built.lookup.size() * sizeof(uint32_t);
-    spdlog::info("[DX12] Probe volume: {} probes in {} leaves of {} nodes, deepest {} of {}, over {:.2f} units", probeCount, leafCount, nodeCount, deepestLeaf, PROBE_OCTREE_MAX_DEPTH, side);
-    spdlog::info("[DX12] Probe volume: {} triangles of {:.1f} square units in {} clusters, {} cell lookup grid, {:.2f} MB resident", built.triangleCount, built.surfaceArea, built.clusterCount, GetLookupResolution(), static_cast<double>(bytes) / (1024. * 1024.));
-    spdlog::info("[DX12] Probe volume: uniform to depth {} for {:.2f} units between probes, against a target of {:.2f}", built.uniformDepth, side / static_cast<float>(1u << built.uniformDepth), PROBE_TARGET_SPACING);
-  }
-  return true;
-}
-auto DXProbeVolume::CarryOverProbes(DXContext &context, std::vector<DXProbe> &probes) -> uint32_t {
-  // Deliberately not a `ready` test: the caller clears that flag before it starts building, and
-  // what matters here is only whether there is a resident field to read, which is what these two
-  // say. On the first build there is not, and nothing is carried.
-  if (!probeBuffer || probeCount == 0)
-    return 0;
-  auto *device = context.GetDevice();
-  auto *commandList = context.GetCommandList();
-  if (!device || !commandList)
-    return 0;
-  KUKI_PROFILE_SCOPE("ProbeVolume::CarryOver");
-  const auto bytes = static_cast<uint64_t>(probeCount) * sizeof(DXProbe);
-  const auto readbackProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
-  auto desc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
-  ComPtr<ID3D12Resource> readback;
-  if (DXFailed(device->CreateCommittedResource(&readbackProperties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readback)), "CreateCommittedResource for the probe carry-over"))
-    return 0;
-  const auto toSource = CD3DX12_RESOURCE_BARRIER::Transition(probeBuffer.Get(), probeState, D3D12_RESOURCE_STATE_COPY_SOURCE);
-  commandList->ResourceBarrier(1, &toSource);
-  commandList->CopyBufferRegion(readback.Get(), 0, probeBuffer.Get(), 0, bytes);
-  const auto toPrevious = CD3DX12_RESOURCE_BARRIER::Transition(probeBuffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, probeState);
-  commandList->ResourceBarrier(1, &toPrevious);
-  // The field has to be in hand before the new one is uploaded, and a rebuild is rare enough --
-  // debounced by `PROBE_REBUILD_SETTLE_FRAMES`, and only when the tree actually changes -- to be
-  // worth a stall. The alternative is not a faster rebuild, it is a visible one.
-  context.FlushCommandList();
-  const DXProbe *resident{};
-  const CD3DX12_RANGE readRange(0, static_cast<SIZE_T>(bytes));
-  if (DXFailed(readback->Map(0, &readRange, reinterpret_cast<void **>(const_cast<DXProbe **>(&resident))), "Map the probe carry-over"))
-    return 0;
-  std::unordered_map<size_t, const DXProbe *> byAnchor;
-  byAnchor.reserve(probeCount);
-  for (uint32_t i = 0; i < probeCount; ++i)
-    byAnchor.emplace(AnchorKey(resident[i].anchor), &resident[i]);
-  auto carried = 0u;
-  for (auto &probe : probes) {
-    const auto it = byAnchor.find(AnchorKey(probe.anchor));
-    if (it == byAnchor.end() || !SameAnchor(it->second->anchor, probe.anchor))
-      continue;
-    const auto &previous = *it->second;
-    // Everything the trace accumulated, and nothing the build decided. The irradiance and the depth
-    // moments are the estimate itself; `behind` is what the probe learned about being walled in;
-    // and `position` is where relocation had nudged it, which is worth keeping for the same reason
-    // the irradiance is -- it was arrived at over many frames and the answer has not changed.
-    //
-    // The anchor, the neighbours and `exterior` come from the build and stay as built: those
-    // describe the tree, which is the thing that just changed.
-    memcpy(probe.irradiance, previous.irradiance, sizeof(probe.irradiance));
-    memcpy(probe.depth, previous.depth, sizeof(probe.depth));
-    memcpy(probe.behind, previous.behind, sizeof(probe.behind));
-    memcpy(probe.position, previous.position, sizeof(probe.position));
-    ++carried;
-  }
-  const CD3DX12_RANGE writeRange(0, 0);
-  readback->Unmap(0, &writeRange);
-  if (carried < probes.size())
-    spdlog::debug("[DX12] Probe volume: {} of {} probes kept what they had learned, {} are new", carried, probes.size(), probes.size() - carried);
-  return carried;
+    spdlog::info("[DX12] Probe volume: laid down over {:.2f} units, uniform to depth {} for {:.2f} units between probes against a target of {:.2f}, {} probe slots", side, uniformDepth, side / static_cast<float>(1u << uniformDepth), PROBE_TARGET_SPACING, capacity);
+  } else
+    ReadCounters(context);
+  if (!RecordPasses(context, pipelines, scene))
+    return ready = false;
+  return ready = true;
 }
 auto DXProbeVolume::EnsureAuditBuffers() -> bool {
   if (auditSeedData && auditResult && auditReadback)
@@ -916,7 +493,9 @@ auto DXProbeVolume::EnsureAuditBuffers() -> bool {
   return true;
 }
 auto DXProbeVolume::Validate(DXContext &context, DXPipelineCache &pipelines) -> void {
-  if (validated || !ready)
+  // Not until the tree has settled after being laid down: a tree still growing has leaves whose
+  // corners are being allocated this frame, and would be reported as broken for being unfinished.
+  if (validated || !ready || !settled)
     return;
   validated = true;
   auto *commandList = context.GetCommandList();
@@ -936,8 +515,9 @@ auto DXProbeVolume::Validate(DXContext &context, DXPipelineCache &pipelines) -> 
   constants.origin[3] = side;
   constants.grid[0] = GetLookupResolution();
   constants.grid[1] = AUDIT_GRID;
-  constants.grid[2] = probeCount;
-  constants.grid[3] = nodeCount;
+  constants.grid[2] = capacity;
+  constants.grid[3] = PROBE_OCTREE_NODE_COUNT;
+  Transition(probeBuffer.Get(), probeState, PROBE_READ_STATE);
   commandList->SetComputeRootSignature(pipeline->rootSignature.Get());
   commandList->SetPipelineState(pipeline->pipelineState.Get());
   commandList->SetComputeRoot32BitConstants(0, sizeof(DXProbeVolumeConstants) / sizeof(uint32_t), &constants, 0);
@@ -972,6 +552,7 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   KUKI_PROFILE_SCOPE("ProbeVolume::Trace");
   if (!ready || !scene.IsReady() || !frameConstants)
     return;
+  owner = &context;
   auto *commandList = context.GetCommandList();
   auto &heap = context.GetSRVHeap();
   const auto pipeline = pipelines.GetProbeTracePipeline(context.GetDevice());
@@ -1002,10 +583,11 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   constants.volume[1] = origin.y;
   constants.volume[2] = origin.z;
   constants.volume[3] = side;
-  constants.counts[0] = probeCount;
-  constants.counts[1] = nodeCount;
-  // carried only so a capture shows how converged the field taken in that frame was
-  constants.counts[2] = tracedSamples;
+  constants.counts[0] = capacity;
+  constants.counts[1] = PROBE_OCTREE_NODE_COUNT;
+  // Which sixteenth of the pool `CSClassify` looks at this frame. A frame count rather than the sample
+  // count, which is wound back on every change and would ask the same probes twice running.
+  constants.counts[2] = tracedFrames;
   constants.counts[3] = GetLookupResolution();
   // how much of the mean survives: nothing accumulated yet means the estimate is taken whole
   const auto step = std::max(settings.meanStep, 1u);
@@ -1035,7 +617,16 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   // this only when the frame says a skybox has been prepared, which is exactly when the real buffer
   // is there.
   commandList->SetComputeRootShaderResourceView(9, skyHarmonics ? skyHarmonics : probeBuffer->GetGPUVirtualAddress());
-  commandList->Dispatch(probeCount, 1, 1);
+  // The whole pool, since which slots hold a probe is decided on the GPU this frame. See the trace.
+  commandList->Dispatch(capacity, 1, 1);
+  // Under the same root signature and arguments, so only the pipeline changes. After the trace rather
+  // than before it so the two never write the same probe's record in one dispatch.
+  if (const auto classify = pipelines.GetProbeTracePipeline(context.GetDevice(), "CSClassify"); classify && *classify) {
+    const auto ordered = CD3DX12_RESOURCE_BARRIER::UAV(probeBuffer.Get());
+    commandList->ResourceBarrier(1, &ordered);
+    commandList->SetPipelineState(classify->pipelineState.Get());
+    commandList->Dispatch((capacity + PROBE_CLASSIFY_STRIDE - 1) / PROBE_CLASSIFY_STRIDE, 1, 1);
+  }
   const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(probeBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, PROBE_READ_STATE);
   commandList->ResourceBarrier(1, &barrier);
   probeState = PROBE_READ_STATE;
@@ -1043,14 +634,14 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   ++tracedSamples;
 }
 auto DXProbeVolume::Report(DXContext &context) -> void {
-  if (reported || !ready || tracedFrames < REPORT_AFTER_FRAMES)
+  if (reported || !ready || !settled || tracedFrames < REPORT_AFTER_FRAMES)
     return;
   reported = true;
   auto *device = context.GetDevice();
   auto *commandList = context.GetCommandList();
   if (!device || !commandList)
     return;
-  const auto bytes = static_cast<uint64_t>(probeCount) * sizeof(DXProbe);
+  const auto bytes = static_cast<uint64_t>(capacity) * sizeof(DXProbe);
   const auto readbackProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
   auto desc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
   if (DXFailed(device->CreateCommittedResource(&readbackProperties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&probeReadback)), "CreateCommittedResource for the probe readback"))
@@ -1089,7 +680,12 @@ auto DXProbeVolume::Report(DXContext &context) -> void {
   auto brightest = 0.f;
   const auto middle = origin.x + side * .5f;
   const auto range = PROBE_DEPTH_RANGE * side;
-  for (uint32_t index = 0; index < probeCount; ++index) {
+  auto probeCount = 0u;
+  for (uint32_t index = 0; index < capacity; ++index) {
+    // A slot no lattice point holds.
+    if (probes[index].anchor[3] <= 0.f)
+      continue;
+    ++probeCount;
     const glm::vec3 ambient{probes[index].irradiance[0][0] * SH_DC_TO_IRRADIANCE, probes[index].irradiance[0][1] * SH_DC_TO_IRRADIANCE, probes[index].irradiance[0][2] * SH_DC_TO_IRRADIANCE};
     const auto magnitude = ambient.x + ambient.y + ambient.z;
     if (magnitude > 0.f)
@@ -1149,6 +745,8 @@ auto DXProbeVolume::Report(DXContext &context) -> void {
   const CD3DX12_RANGE writeRange(0, 0);
   probeReadback->Unmap(0, &writeRange);
   probeReadback.Reset();
+  if (probeCount == 0)
+    return;
   total /= static_cast<float>(probeCount);
   if (lowerCount > 0)
     lower /= static_cast<float>(lowerCount);
@@ -1192,13 +790,13 @@ auto DXProbeVolume::Report(DXContext &context) -> void {
   }
   if (backfacing > 0)
     spdlog::info("[DX12] Probe trace: {} of {} probes stand behind a surface for a tenth or more of their map, which distance alone would have believed through it", backfacing, probeCount);
-  // What the build's own classification found, against what the probes' rays could work out for
-  // themselves. The gap between this and the sealed count is the population the trace is blind to:
-  // probes outside the scene with nothing in sight, which no ray of theirs can report on.
+  // How many probes the nearest surface they can see faces away from, against how many are sealed
+  // in. The gap between the two is the population the buried test is blind to: probes outside the
+  // scene with nothing near them, which only the reach of the trace's own rays can report on.
   if (outside > 0)
-    spdlog::info("[DX12] Probe trace: the build placed {} of {} probes behind the scene's surfaces, and those take their neighbours' estimate whatever their own view", outside, probeCount);
+    spdlog::info("[DX12] Probe trace: {} of {} probes stand behind the scene's surfaces, and those take their neighbours' estimate whatever their own view", outside, probeCount);
   else
-    spdlog::info("[DX12] Probe trace: the build found every probe in front of the geometry, so each is judged on its own rays alone");
+    spdlog::info("[DX12] Probe trace: every probe stands in front of the geometry, so each is judged on its own rays alone");
   if (lit == 0) {
     spdlog::error("[DX12] Probe trace: all {} probes are still black after {} frames", probeCount, tracedFrames);
     return;
@@ -1232,13 +830,13 @@ auto DXProbeVolume::GetBounds(float *outOrigin, float *outSide) const -> void {
     *outSide = side;
 }
 auto DXProbeVolume::GetProbeCount() const -> uint32_t {
-  return probeCount;
+  return capacity;
 }
 auto DXProbeVolume::GetNodeCount() const -> uint32_t {
-  return nodeCount;
+  return PROBE_OCTREE_NODE_COUNT;
 }
 auto DXProbeVolume::GetLookupResolution() const -> uint32_t {
-  return 1u << PROBE_OCTREE_MAX_DEPTH;
+  return PROBE_LATTICE_CELLS;
 }
 auto DXProbeVolume::IsReady() const -> bool {
   return ready;
@@ -1246,27 +844,40 @@ auto DXProbeVolume::IsReady() const -> bool {
 auto DXProbeVolume::Clear() -> void {
   if (owner)
     owner->WaitForGPU();
-  staging.clear();
   nodeBuffer.Reset();
   probeBuffer.Reset();
   lookupBuffer.Reset();
+  cornerBuffer.Reset();
+  freeBuffer.Reset();
+  counterBuffer.Reset();
+  queueBuffer.Reset();
+  boxBuffer.Reset();
+  counterReadback.Reset();
   auditSeed.Reset();
   auditResult.Reset();
   auditReadback.Reset();
   probeReadback.Reset();
+  boxData = nullptr;
   auditSeedData = nullptr;
-  probeState = PROBE_READ_STATE;
+  readbackGeneration.fill(0);
+  probeState = D3D12_RESOURCE_STATE_COMMON;
+  nodeState = D3D12_RESOURCE_STATE_COMMON;
+  lookupState = D3D12_RESOURCE_STATE_COMMON;
   origin = {};
   side = 0.f;
-  geometryHash = 0;
-  pendingHash = 0;
-  pendingFrames = 0;
-  meshClusters.clear();
-  nodeCount = 0;
-  probeCount = 0;
+  uniformDepth = 0;
+  capacity = 0;
+  grownFrom = 0;
+  resetPending = false;
+  placements.clear();
+  meshBounds.clear();
+  dirtyBoxes.clear();
+  liveProbes = 0;
   leafCount = 0;
   deepestLeaf = 0;
-  loggedProbeCount = 0;
+  settled = false;
+  loggedProbes = 0;
+  loggedLeaves = 0;
   tracedFrames = 0;
   tracedSamples = 0;
   traceHash = 0;

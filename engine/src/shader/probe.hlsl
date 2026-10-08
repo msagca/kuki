@@ -9,7 +9,8 @@ struct OctreeNode {
   uint4 probes[2];
   uint depth;
   uint leaf;
-  uint2 padding;
+  float surface;
+  uint samples;
 };
 struct Probe {
   float4 position;
@@ -44,7 +45,7 @@ void CSAudit(uint3 id : SV_DispatchThreadID) {
     return;
   }
   OctreeNode node = g_nodes[leafIndex];
-  if (node.leaf == 0) {
+  if (node.leaf != 1) {
     InterlockedAdd(g_result[1], 1);
     return;
   }

@@ -87,7 +87,8 @@ struct OctreeNode {
   uint4 probes[2];
   uint depth;
   uint leaf;
-  uint2 padding;
+  float surface;
+  uint samples;
 };
 struct Probe {
   float4 position;
@@ -388,7 +389,7 @@ bool FindProbeLeaf(float3 position, out OctreeNode node) {
   if (leafIndex >= u_probeCounts.y)
     return false;
   node = g_probeNodes[leafIndex];
-  return node.leaf != 0;
+  return node.leaf == 1;
 }
 // A colour standing for a leaf, which is all the cell view needs one to be.
 //

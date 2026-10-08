@@ -673,17 +673,18 @@ private:
   /// Must run before the pass binds any state. Building may wait on the GPU to grow a buffer, and
   /// the first build of a scene traces a validation grid that flushes the command list.
   auto BuildRayScene(const Camera &, std::span<const DXDrawBatch>) -> void;
-  /// @brief Gathers the processor-side geometry the probe volume sorts triangles from.
+  /// @brief Gathers every placement the probe volume watches for changes, by entity.
   ///
   /// Separate from `CollectBatches` because it wants a different thing from the same entities: the
-  /// batches carry uploaded buffers, and placing probes needs the vertices themselves. Yields spans
-  /// into the assets rather than copies, so the result must not outlive the assets it points into.
+  /// batches carry uploaded buffers grouped by material, and the volume wants each placement on its
+  /// own under a key that survives a mesh being swapped. Yields spans into the assets rather than
+  /// copies, so the result must not outlive the assets it points into.
   auto CollectProbeGeometry(Scene &) -> std::vector<DXProbeGeometry>;
-  /// @brief Rebuilds the probe volume when the scene's geometry has changed, and audits it once.
+  /// @brief Records this frame's update of the probe octree, after the acceleration structure is built.
   ///
-  /// Must run before the pass binds any state: the build stages its buffers through the command
-  /// list and flushes it, as does the audit.
-  auto BuildProbeVolume(Scene &) -> void;
+  /// Must run before the pass binds any state, since the update binds its own root signature, and
+  /// after `BuildRayScene`, since the update measures the tree against the structure it built.
+  auto UpdateProbeVolume(Scene &) -> void;
   /// @brief Points the scene pass at the probe volume, or at somewhere harmless when there is none.
   ///
   /// The three views are root descriptors rather than a table, so they have no fallback descriptor

@@ -857,10 +857,10 @@ auto DXPipelineCache::GetProbeTraceRootSignature(ID3D12Device *device) -> ID3D12
     return nullptr;
   return probeTraceRootSignature.Get();
 }
-auto DXPipelineCache::GetProbeTracePipeline(ID3D12Device *device) -> const DXPipeline * {
-  if (!device)
+auto DXPipelineCache::GetProbeTracePipeline(ID3D12Device *device, const char *entryPoint) -> const DXPipeline * {
+  if (!device || !entryPoint)
     return nullptr;
-  const auto key = std::hash<std::string>{}("probe_trace:CSTrace");
+  const auto key = std::hash<std::string>{}(std::string("probe_trace:") + entryPoint);
   if (auto it = pipelines.find(key); it != pipelines.end())
     return it->second ? &it->second : nullptr;
   auto &pipeline = pipelines[key];
@@ -868,7 +868,7 @@ auto DXPipelineCache::GetProbeTracePipeline(ID3D12Device *device) -> const DXPip
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = probeTraceRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::probe_trace_hlsl, "CSTrace", "cs_6_5", "probe_trace");
+  const auto computeShader = shaderCompiler.Compile(embedded_shader::probe_trace_hlsl, entryPoint, "cs_6_5", "probe_trace");
   if (!computeShader)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
@@ -876,7 +876,51 @@ auto DXPipelineCache::GetProbeTracePipeline(ID3D12Device *device) -> const DXPip
   desc.CS = ToBytecode(computeShader);
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
-  spdlog::info("[DX12] Created probe trace pipeline (shader model 6.5, inline raytracing, bindless)");
+  spdlog::info("[DX12] Created probe trace pipeline {} (shader model 6.5, inline raytracing, bindless)", entryPoint);
+  return &pipeline;
+}
+auto DXPipelineCache::GetProbeUpdateRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (probeUpdateRootSignature)
+    return probeUpdateRootSignature.Get();
+  CD3DX12_ROOT_PARAMETER parameters[10]{};
+  parameters[0].InitAsConstants(sizeof(DXProbeUpdateConstants) / sizeof(uint32_t), 0);
+  parameters[1].InitAsShaderResourceView(0);
+  parameters[2].InitAsShaderResourceView(1);
+  for (uint32_t slot = 0; slot < 7; ++slot)
+    parameters[3 + slot].InitAsUnorderedAccessView(slot);
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(10, parameters);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the probe update root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&probeUpdateRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return probeUpdateRootSignature.Get();
+}
+auto DXPipelineCache::GetProbeUpdatePipeline(ID3D12Device *device, const char *entryPoint) -> const DXPipeline * {
+  if (!device || !entryPoint)
+    return nullptr;
+  const auto key = std::hash<std::string>{}(std::string("probe_update:") + entryPoint);
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetProbeUpdateRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = probeUpdateRootSignature;
+  const auto computeShader = shaderCompiler.Compile(embedded_shader::probe_update_hlsl, entryPoint, "cs_6_5", "probe_update");
+  if (!computeShader)
+    return nullptr;
+  D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.CS = ToBytecode(computeShader);
+  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
+    return nullptr;
+  spdlog::debug("[DX12] Created probe update pipeline {}", entryPoint);
   return &pipeline;
 }
 auto DXPipelineCache::GetProbeDebugRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {

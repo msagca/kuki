@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <light_limits.hpp>
+#include <probe_limits.hpp>
 namespace kuki {
 /// @brief One preprocessor definition handed to a shader at compile time.
 struct ShaderDefinition {
@@ -35,5 +36,7 @@ inline constexpr ShaderDefinition SHADER_DEFINITIONS[]{
   {"KUKI_MAX_POINT_LIGHTS", MAX_POINT_LIGHTS},
   {"KUKI_MAX_SPOT_LIGHTS", MAX_SPOT_LIGHTS},
   {"KUKI_MAX_SPOT_SHADOW_LIGHTS", MAX_SPOT_SHADOW_LIGHTS},
+  {"KUKI_PROBE_OCTREE_MAX_DEPTH", PROBE_OCTREE_MAX_DEPTH},
+  {"KUKI_PROBE_MEASURE_LINES_PER_THREAD", PROBE_MEASURE_LINES_PER_THREAD},
 };
 } // namespace kuki

@@ -2133,36 +2133,38 @@ auto DXRenderer::BuildRayScene(const Camera &camera, std::span<const DXDrawBatch
 auto DXRenderer::CollectProbeGeometry(Scene &scene) -> std::vector<DXProbeGeometry> {
   KUKI_PROFILE_SCOPE("CollectProbeGeometry");
   std::vector<DXProbeGeometry> geometry;
-  const auto Add = [&](const Mesh &mesh, const Transform *transform) {
+  // Keyed by entity, with the low bit saying which kind of handle placed it, so an entity carrying
+  // both a mesh and a model mesh is two placements rather than one that flickers between them.
+  const auto Add = [&](const EntityID entity, const uint64_t kind, const Mesh &mesh, const Transform *transform) {
     if (mesh.vertices.empty())
       return;
-    geometry.push_back({mesh.vertices, mesh.indices, transform->world});
+    geometry.push_back({.entity = static_cast<uint64_t>(static_cast<long long>(entity)) << 1 | kind, .vertices = mesh.vertices, .transform = transform->world});
   };
-  scene.ForEachEntity<MeshHandle, Transform>([&](const EntityID, const MeshHandle *handle, const Transform *transform) {
+  scene.ForEachEntity<MeshHandle, Transform>([&](const EntityID entity, const MeshHandle *handle, const Transform *transform) {
     auto resolvedId = handle->assetId;
     if (!app.GetAsset<MeshAsset>(resolvedId))
       if (auto fallback = app.GetAsset("Cube"); fallback)
         resolvedId = fallback->id;
     if (auto meshAsset = app.GetAsset<MeshAsset>(resolvedId); meshAsset)
-      Add(meshAsset->mesh, transform);
+      Add(entity, 0, meshAsset->mesh, transform);
   });
-  scene.ForEachEntity<ModelMeshHandle, Transform>([&](const EntityID, const ModelMeshHandle *handle, const Transform *transform) {
+  scene.ForEachEntity<ModelMeshHandle, Transform>([&](const EntityID entity, const ModelMeshHandle *handle, const Transform *transform) {
     auto modelAsset = app.GetAsset<ModelAsset>(handle->modelAssetId);
     if (!modelAsset || handle->meshIndex >= modelAsset->meshes.size())
       return;
     if (modelAsset->meshes[handle->meshIndex].bones.empty())
-      Add(modelAsset->meshes[handle->meshIndex].mesh, transform);
+      Add(entity, 1, modelAsset->meshes[handle->meshIndex].mesh, transform);
   });
   return geometry;
 }
-auto DXRenderer::BuildProbeVolume(Scene &scene) -> void {
-  KUKI_PROFILE_SCOPE("BuildProbeVolume");
+auto DXRenderer::UpdateProbeVolume(Scene &scene) -> void {
+  KUKI_PROFILE_SCOPE("UpdateProbeVolume");
   auto context = GetContext();
-  if (!context)
+  // The update measures by tracing rays and only the trace ever fills the probes, so a device that
+  // cannot run the trace is given no volume at all rather than one that stays black.
+  if (!context || !GetCapabilities().probeVolume)
     return;
-  if (!probeVolume.Build(*context, CollectProbeGeometry(scene)))
-    return;
-  probeVolume.Validate(*context, pipelines);
+  probeVolume.Update(*context, pipelines, rayScene, CollectProbeGeometry(scene));
 }
 auto DXRenderer::BindProbeVolume(const D3D12_GPU_VIRTUAL_ADDRESS fallback) -> void {
   auto context = GetContext();
@@ -2513,7 +2515,7 @@ auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> 
   // is what a probe standing behind the camera needs the acceleration structure to contain.
   const auto batches = CollectBatches(*scene, false, camera);
   BuildRayScene(*camera, batches);
-  BuildProbeVolume(*scene);
+  UpdateProbeVolume(*scene);
   DXFrameConstants frameConstants{};
   // No shadow map, and nothing lost by it. The trace asks the acceleration structure whether a light
   // is reachable rather than sampling a map, so it has no such input to declare and nothing to wait
@@ -2530,6 +2532,9 @@ auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> 
   // The trace's own settings are hashed by the volume rather than here, since it is the one that
   // knows which of them it actually put into the dispatch.
   probeVolume.Trace(*context, pipelines, rayScene, frameConstantAddress, shBuffer ? shBuffer->GetGPUVirtualAddress() : 0, traceHash, indirect);
+  // After the trace rather than before it, so the probes are in the state the audit reads them in.
+  // Both wait for the tree to settle and run once, and both stall when they do.
+  probeVolume.Validate(*context, pipelines);
   probeVolume.Report(*context);
 }
 auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::string> outputs) -> void {

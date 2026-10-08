@@ -64,6 +64,10 @@ PSInput VSMain(VSInput input, uint instance : SV_InstanceID) {
   PSInput output;
   float3 center = g_probes[instance].position.xyz;
   output.position = mul(u_viewProjection, float4(center + input.position * u_scale, 1.0));
+  // An empty slot in the pool, drawn as every vertex at one point so it covers no pixel at all. The
+  // instance count is the whole pool because which slots hold a probe is decided on the GPU.
+  if (g_probes[instance].anchor.w <= 0.0)
+    output.position = float4(0.0, 0.0, 0.0, 1.0);
   output.normal = input.normal;
   output.probe = instance;
   return output;
