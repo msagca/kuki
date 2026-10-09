@@ -5,7 +5,6 @@ enum class ComponentType : uint8_t {
   Animator,
   AntiAliasing,
   AtmosphereSky,
-  BoneData,
   BoundingBox,
   Camera,
   DXMaterial,

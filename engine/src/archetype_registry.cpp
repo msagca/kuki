@@ -2,7 +2,6 @@
 #include <anti_aliasing.hpp>
 #include <atmosphere_sky.hpp>
 #include <archetype_registry.hpp>
-#include <bone_data.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <gl_buffer.hpp>
@@ -98,8 +97,6 @@ auto ArchetypeRegistry::CreateColumn(const ComponentType type) -> std::unique_pt
     return std::make_unique<ArchetypeColumn<AntiAliasing>>();
   case ComponentType::AtmosphereSky:
     return std::make_unique<ArchetypeColumn<AtmosphereSky>>();
-  case ComponentType::BoneData:
-    return std::make_unique<ArchetypeColumn<BoneData>>();
   case ComponentType::BoundingBox:
     return std::make_unique<ArchetypeColumn<BoundingBox>>();
   case ComponentType::Camera:

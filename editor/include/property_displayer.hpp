@@ -5,7 +5,6 @@
 #include <atmosphere_sky.hpp>
 #include <application.hpp>
 #include <array>
-#include <bone_data.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <cmath>
@@ -150,13 +149,6 @@ inline auto PropertyDisplayer::operator()<kuki::Animator>(kuki::Animator *animat
   if (clip.ticksPerSecond > .0f)
     ImGui::TextDisabled("%.2f s of %.2f s, at %.0f ticks per second", animator->time / clip.ticksPerSecond, clip.duration / clip.ticksPerSecond, clip.ticksPerSecond);
   ImGui::TextDisabled("%zu channels", clip.channels.size());
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::BoneData>(kuki::BoneData *boneData) -> void {
-  if (!boneData)
-    return;
-  auto count = boneData->boneCount;
-  ImGui::InputInt("Bone Count", &count, 1, 100, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::BoundingBox>(kuki::BoundingBox *bounds) -> void {

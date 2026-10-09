@@ -1,7 +1,6 @@
 #include <animator.hpp>
 #include <anti_aliasing.hpp>
 #include <atmosphere_sky.hpp>
-#include <bone_data.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <component_reflection.hpp>
@@ -36,8 +35,6 @@ auto AddComponentByType(Application &app, const EntityID id, const ComponentType
   case ComponentType::AtmosphereSky:
     app.AddEntityComponent<AtmosphereSky>(id);
     break;
-  case ComponentType::BoneData:
-    app.AddEntityComponent<BoneData>(id);
     break;
   case ComponentType::BoundingBox:
     app.AddEntityComponent<BoundingBox>(id);
@@ -119,8 +116,6 @@ auto RemoveComponentByType(Application &app, const EntityID id, const ComponentT
   switch (type) {
   case ComponentType::Animator:
     return app.RemoveEntityComponent<Animator>(id);
-  case ComponentType::BoneData:
-    return app.RemoveEntityComponent<BoneData>(id);
   case ComponentType::BoundingBox:
     return app.RemoveEntityComponent<BoundingBox>(id);
   case ComponentType::Camera:

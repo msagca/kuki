@@ -1,7 +1,6 @@
 #pragma once
 #include <animator.hpp>
 #include <archetype_registry.hpp>
-#include <bone_data.hpp>
 #include <camera.hpp>
 #include <component.hpp>
 #include <component_type.hpp>
@@ -231,8 +230,6 @@ auto EntityManager::GetComponent(this auto &self, const EntityID id, const Compo
     return self.template GetComponent<AntiAliasing>(id);
   case ComponentType::AtmosphereSky:
     return self.template GetComponent<AtmosphereSky>(id);
-  case ComponentType::BoneData:
-    return self.template GetComponent<BoneData>(id);
   case ComponentType::BoundingBox:
     return self.template GetComponent<BoundingBox>(id);
   case ComponentType::Camera:

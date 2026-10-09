@@ -8,13 +8,11 @@
 #include <gl_buffer_pool.hpp>
 #include <gl_compute_shader.hpp>
 #include <gl_format.hpp>
-#include <gl_framebuffer.hpp>
 #include <gl_framebuffer_pool.hpp>
 #include <gl_lit_shader.hpp>
 #include <gl_mesh.hpp>
 #include <gl_mesh_material.hpp>
 #include <gl_render_target.hpp>
-#include <gl_renderbuffer.hpp>
 #include <gl_renderbuffer_pool.hpp>
 #include <gl_resource_registry.hpp>
 #include <gl_shader.hpp>

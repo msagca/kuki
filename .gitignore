@@ -1,4 +1,6 @@
 *.a
+# Visual Studio caches the compiled kuki.rc here on every edit; it is regenerated, never source
+*.aps
 *.cap
 *.dir/
 *.dll

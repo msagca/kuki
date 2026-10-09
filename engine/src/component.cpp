@@ -1,7 +1,6 @@
 #include <animator.hpp>
 #include <anti_aliasing.hpp>
 #include <atmosphere_sky.hpp>
-#include <bone_data.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <component.hpp>
@@ -33,7 +32,6 @@ const std::unordered_map<std::type_index, ComponentType> Component::indexToType 
   {typeid(Animator), ComponentType::Animator},
   {typeid(AntiAliasing), ComponentType::AntiAliasing},
   {typeid(AtmosphereSky), ComponentType::AtmosphereSky},
-  {typeid(BoneData), ComponentType::BoneData},
   {typeid(BoundingBox), ComponentType::BoundingBox},
   {typeid(Camera), ComponentType::Camera},
   {typeid(GLBuffer), ComponentType::GLBuffer},
@@ -63,7 +61,6 @@ const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex 
   {ComponentType::Animator, typeid(Animator)},
   {ComponentType::AntiAliasing, typeid(AntiAliasing)},
   {ComponentType::AtmosphereSky, typeid(AtmosphereSky)},
-  {ComponentType::BoneData, typeid(BoneData)},
   {ComponentType::BoundingBox, typeid(BoundingBox)},
   {ComponentType::Camera, typeid(Camera)},
   {ComponentType::GLBuffer, typeid(GLBuffer)},
@@ -93,7 +90,6 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::Animator, "Animator"},
   {ComponentType::AntiAliasing, "Anti Aliasing"},
   {ComponentType::AtmosphereSky, "Atmosphere Sky"},
-  {ComponentType::BoneData, "BoneData"},
   {ComponentType::BoundingBox, "BoundingBox"},
   {ComponentType::Camera, "Camera"},
   {ComponentType::GLBuffer, "GLBuffer"},
