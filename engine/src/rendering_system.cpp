@@ -115,6 +115,27 @@ auto RenderingSystem::Start() -> void {
                   .AddInput("SceneDepth")
                   .AddOutput("Clouds", {.width = bloomWidth, .height = bloomHeight, .samples = 1}, TargetSizing::ViewportHalf)
                   .EndPass()
+                  // The resolved picture and the depth it is tested against, in that order: the pass
+                  // copies the first colour input through and blends its quads on top, so a scene
+                  // with no emitter in it costs one blit and nothing else.
+                  //
+                  // Ahead of the fog rather than after it, so that a spark is dimmed by the air in
+                  // front of it and reaches the bright pass along with everything else that glows.
+                  // The fog knows the depth of the surface behind a particle and not of the
+                  // particle, so it hazes a spark as though it were on the wall behind it -- too
+                  // much, by the distance between the two, and never enough to see at the scale of
+                  // a room.
+                  //
+                  // The depth is the prepass's, which is the one single-sampled depth buffer there
+                  // is: the scene pass tests against the buffer its own multisampled target
+                  // carries, and a view of that cannot be bound beside a single-sampled colour
+                  // target. The prepass draws what casts a shadow, so a particle is hidden by
+                  // exactly that -- a skinned mesh does not occlude one yet.
+                  .BeginPass(RenderPass::Particles)
+                  .AddInput("Scene")
+                  .AddInput("SceneDepth")
+                  .AddOutput("SceneParticles", {.width = screenWidth, .height = screenHeight, .samples = 1})
+                  .EndPass()
                   // Everything the air needs at once: the picture to put haze in front of, the depth
                   // that says how far away each pixel is, both shadow maps to decide what the lights
                   // reach, and the clouds so that a shaft is broken by the one standing in front of
@@ -124,7 +145,7 @@ auto RenderingSystem::Start() -> void {
                   // A god ray is a bright thing in a dark frame and is exactly what the bloom chain
                   // is for; running this afterwards would leave every beam with a hard edge.
                   .BeginPass(RenderPass::VolumetricFog)
-                  .AddInput("Scene")
+                  .AddInput("SceneParticles")
                   .AddInput("SceneDepth")
                   .AddInput("ShadowMap")
                   .AddInput("SpotShadowMap")

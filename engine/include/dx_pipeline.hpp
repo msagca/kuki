@@ -321,6 +321,75 @@ struct DXVolumetricConstants {
   float padding[2]{};
 };
 static_assert(sizeof(DXVolumetricConstants) == 192, "DXVolumetricConstants must stay twelve float4 rows to match the HLSL cbuffer");
+/// @brief Root constants for the compute pass that steps one particle emitter.
+///
+/// A mirror of `UpdateConstants` in `particles.hlsl`, laid out on the terms `DXAtmosphereConstants`
+/// sets out: every `float3` opens a sixteen byte row, so HLSL has no padding to insert that this
+/// does not already have. Thirteen rows, fifty-two dwords -- which with the two root descriptors
+/// beside it leaves eight of the sixty-four a root signature may hold.
+///
+/// Everything here describes the emitter and nothing describes a particle, because that is all the
+/// processor knows. The three unsigned fields in the sixth row are the whole of how a spawn is
+/// asked for: the pool is a ring, and this frame's new particles are `spawnCount` slots starting at
+/// `spawnStart`. No counter is shared between threads and nothing is read back to learn how many
+/// were alive.
+struct DXParticleUpdateConstants {
+  float emitterPosition[3]{};
+  float deltaTime{};
+  float previousPosition[3]{};
+  float radius{};
+  float axis[3]{};
+  float spreadCosine{};
+  float gravity[3]{};
+  float drag{};
+  float lifetime{};
+  float lifetimeVariance{};
+  float speed{};
+  float speedVariance{};
+  uint32_t capacity{};
+  uint32_t spawnStart{};
+  uint32_t spawnCount{};
+  uint32_t seed{};
+  /// @brief Set for a pool's first dispatch, which empties every slot before anything is spawned.
+  ///
+  /// A buffer straight from the allocator holds whatever the allocator left in it, and a slot is
+  /// alive whenever its age is below its lifetime -- which garbage satisfies about half the time.
+  uint32_t reset{};
+  /// @brief A `ParticleShape`, as the number the shader compares against.
+  uint32_t shape{};
+  float hold{};
+  float holdVariance{};
+  /// @brief The emitter's world matrix as its first three rows, each a `float4` the shader dots a
+  /// point with. Rows, where glm keeps columns, so this is filled by hand rather than by a copy.
+  float world[3][4]{};
+  float sunDirection[3]{};
+  float padding0{};
+  float sunRadiance[3]{};
+  float padding1{};
+  float ambient[3]{};
+  float padding2{};
+};
+static_assert(sizeof(DXParticleUpdateConstants) == 208, "DXParticleUpdateConstants must stay thirteen float4 rows to match the HLSL cbuffer");
+/// @brief Root constants for the draw that turns one emitter's particles into quads.
+///
+/// A mirror of `DrawConstants` in `particles.hlsl`. Eight rows, thirty-two dwords.
+///
+/// The camera's right and up vectors are sent rather than derived from the matrix in the shader,
+/// because the matrix here is the view and the projection already multiplied together and its rows
+/// are no longer the camera's axes.
+struct DXParticleDrawConstants {
+  float viewProjection[16]{};
+  float cameraRight[3]{};
+  float startSize{};
+  float cameraUp[3]{};
+  float endSize{};
+  float startColor[3]{};
+  float intensity{};
+  float endColor[3]{};
+  /// @brief One for an additive emitter and nought for an opaque one. See `u_fade`.
+  float fade{};
+};
+static_assert(sizeof(DXParticleDrawConstants) == 128, "DXParticleDrawConstants must stay eight float4 rows to match the HLSL cbuffer");
 /// @brief Root constants for the skybox pass.
 ///
 /// The inverse view-projection turns a screen-space position back into a world-space view ray.
@@ -577,6 +646,23 @@ public:
   auto GetCloudPipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
   /// @brief Returns the pipeline that scatters the lights out of the air, one per output format.
   auto GetVolumetricPipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
+  /// @brief Returns the compute pipeline that steps a particle pool, building it once.
+  ///
+  /// Plain Shader Model 6.0: it reads and writes one structured buffer, reads a second for the
+  /// particles born on a mesh, and samples nothing.
+  auto GetParticleUpdatePipeline(ID3D12Device *) -> const DXPipeline *;
+  /// @brief Returns a pipeline that draws a particle pool as quads, one per output format and per
+  /// `ParticleBlend`.
+  ///
+  /// The additive one is the second raster pipeline here that blends, after the overlay's, and the
+  /// only one that adds: source and destination both at one, so the order the quads arrive in does
+  /// not matter and they need no sorting. It tests depth and does not write it, for the same reason
+  /// -- a particle that wrote depth would hide the ones behind it according to which was drawn
+  /// first.
+  ///
+  /// The opaque one is the same draw with the blend off and the depth write on, and needs no sort
+  /// for the opposite reason: the depth buffer decides.
+  auto GetParticleDrawPipeline(ID3D12Device *, const DXGI_FORMAT, const bool opaque = false) -> const DXPipeline *;
   auto Clear() -> void;
 private:
   std::unordered_map<uint64_t, DXPipeline> pipelines;
@@ -591,6 +677,8 @@ private:
   ComPtr<ID3D12RootSignature> atmosphereRootSignature;
   ComPtr<ID3D12RootSignature> cloudRootSignature;
   ComPtr<ID3D12RootSignature> volumetricRootSignature;
+  ComPtr<ID3D12RootSignature> particleUpdateRootSignature;
+  ComPtr<ID3D12RootSignature> particleDrawRootSignature;
   ComPtr<ID3D12RootSignature> pickRootSignature;
   ComPtr<ID3D12RootSignature> rayProbeRootSignature;
   ComPtr<ID3D12RootSignature> probeAuditRootSignature;
@@ -602,6 +690,13 @@ private:
   auto GetCloudRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the fog pass: its own constants, the shading pass's, and seven views.
   auto GetVolumetricRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  /// @brief Root signature for the particle step: the emitter's constants and the pool to write.
+  ///
+  /// The pool is a root descriptor, as the probe passes' buffers are. A structured buffer can be
+  /// bound by address alone, so neither particle pass allocates a descriptor or binds a heap.
+  auto GetParticleUpdateRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  /// @brief Root signature for the particle draw: the camera and the look, and the pool to read.
+  auto GetParticleDrawRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature shared by every post pass: one source texture plus a scalar parameter.
   auto GetPostRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the outline pass: source colour, entity ids, and the selected set.

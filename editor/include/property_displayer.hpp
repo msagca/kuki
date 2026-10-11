@@ -30,6 +30,7 @@
 #include <material_type.hpp>
 #include <mesh_handle.hpp>
 #include <model_asset.hpp>
+#include <particle_presets.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <texture_handle.hpp>
@@ -710,6 +711,108 @@ inline auto PropertyDisplayer::operator()<kuki::VolumetricFog>(kuki::VolumetricF
   }
   if (edited != *fog)
     *fog = edited;
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleEmitter *emitter) -> void {
+  if (!emitter)
+    return;
+  if (!context.capabilities.particles) {
+    ImGui::TextDisabled("This backend does not run particles.");
+    ImGui::SetItemTooltip("The particles are stepped by a compute shader and drawn straight out of the\nbuffer it writes, and only the Direct3D 12 backend has that pass. The picture\npasses through untouched.");
+    return;
+  }
+  ImGui::TextDisabled("Simulated on the GPU. Emits along the local +Y.");
+  ImGui::SetItemTooltip("Nothing about a particle ever comes back to the processor, so everything here\ndescribes the emitter. Rotate the entity to aim it; move it and the particles\nalready in flight stay where they were, which is what leaves a trail.");
+  ImGui::Separator();
+  auto edited = *emitter;
+  // Written over the whole component, since that is what a preset is -- except the two fields that
+  // are not a description of an effect: which mesh, and how many bursts have gone off.
+  if (ImGui::BeginCombo("Preset", "Choose...")) {
+    for (const auto &preset : kuki::PARTICLE_PRESETS)
+      if (ImGui::Selectable(preset.name)) {
+        const auto mesh = edited.mesh;
+        const auto fired = edited.fired;
+        edited = preset.make();
+        edited.mesh = mesh;
+        edited.fired = fired;
+      }
+    ImGui::EndCombo();
+  }
+  ImGui::SetItemTooltip("Replaces every setting below with a starting point for one kind of effect.");
+  if (ImGui::CollapsingHeader("Emission", ImGuiTreeNodeFlags_DefaultOpen)) {
+    static auto &shapes = kuki::EnumTraits<kuki::ParticleShape>::GetNames();
+    auto shape = static_cast<int>(edited.shape);
+    if (ImGui::Combo("Shape", &shape, shapes.data(), static_cast<int>(shapes.size())))
+      edited.shape = static_cast<kuki::ParticleShape>(shape);
+    ImGui::SetItemTooltip("Where particles are born: inside a sphere around the emitter, or on the\nsurface of a mesh, thrown along its normals.");
+    if (edited.shape == kuki::ParticleShape::Mesh) {
+      auto mesh = edited.mesh;
+      ImGui::InputScalar("Mesh", ImGuiDataType_U64, &mesh, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+      if (ImGui::BeginDragDropTarget()) {
+        if (const auto *payload = ImGui::AcceptDragDropPayload("##SpawnPayload"); payload && payload->DataSize == sizeof(kuki::AssetID))
+          edited.mesh = *static_cast<const kuki::AssetID *>(payload->Data);
+        ImGui::EndDragDropTarget();
+      }
+      ImGui::SetItemTooltip("Drop a mesh here from the asset browser. It is read and never altered, and it\nis not drawn: add a mesh to the entity as well to see it.\n\nAnything that is not a mesh leaves the emitter on the sphere.");
+    }
+    ImGui::Checkbox("Emitting", &edited.emitting);
+    ImGui::SetItemTooltip("Stops new particles. The ones in flight live out their time.");
+    ImGui::DragFloat("Rate", &edited.rate, 5.f, .0f, 1.0e6f, "%.0f /s");
+    auto burst = static_cast<int>(edited.burst);
+    if (ImGui::DragInt("Burst", &burst, 16.f, 0, 1 << 20))
+      edited.burst = static_cast<uint32_t>(std::clamp(burst, 0, 1 << 20));
+    ImGui::SetItemTooltip("Particles spawned at once each time the emitter is fired, whatever the rate\nis doing. No more than the capacity.");
+    ImGui::SameLine();
+    if (ImGui::Button("Fire"))
+      ++edited.fired;
+    auto capacity = static_cast<int>(edited.capacity);
+    if (ImGui::DragInt("Capacity", &capacity, 64.f, 1, 1 << 20))
+      edited.capacity = static_cast<uint32_t>(std::clamp(capacity, 1, 1 << 20));
+    ImGui::SetItemTooltip("Slots in the pool. Every one is simulated and submitted each frame whether or\nnot anything is alive in it, so this is what the emitter costs.\n\nChanging it discards the particles in flight.");
+    // The one sum worth doing for whoever is looking at this panel. The pool is a ring refilled in
+    // order, so a rate and a lifetime it cannot hold do not fail -- they quietly cut the oldest
+    // particles short, which from the outside looks like a lifetime slider that stopped working.
+    if (const auto needed = edited.rate * (edited.lifetime + edited.hold); edited.emitting && needed > static_cast<float>(edited.capacity)) {
+      ImGui::TextDisabled("Pool is short: %.0f needed.", needed);
+      ImGui::SetItemTooltip("Rate times lifetime is how many particles are alive at once. With fewer slots\nthan that the ring comes back round to a slot before its particle has\nfinished, and the oldest ones vanish early.");
+    }
+    if (edited.shape == kuki::ParticleShape::Sphere) {
+      ImGui::DragFloat("Radius", &edited.radius, .005f, .0f, 100.f, "%.3f");
+      ImGui::SetItemTooltip("Particles appear somewhere inside a sphere this size around the emitter.");
+    }
+  }
+  if (ImGui::CollapsingHeader("Motion", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::DragFloat("Lifetime", &edited.lifetime, .01f, .01f, 600.f, "%.2f s");
+    ImGui::SliderFloat("Lifetime Variance", &edited.lifetimeVariance, .0f, 1.f);
+    ImGui::SetItemTooltip("How much of its lifetime a particle may fall short by. Only ever shortens, so\nthe figure above stays the longest any of them lasts.");
+    ImGui::DragFloat("Hold", &edited.hold, .01f, .0f, 600.f, "%.2f s");
+    ImGui::SetItemTooltip("How long a particle waits where it was born before it starts to move. Held, it\nis drawn at its starting size and colour and does not age.");
+    ImGui::SliderFloat("Hold Variance", &edited.holdVariance, .0f, 1.f);
+    ImGui::SetItemTooltip("How much of the hold a particle may fall short by, which is what lets a burst\ngo a piece at a time.");
+    ImGui::DragFloat("Speed", &edited.speed, .02f, .0f, 1000.f, "%.2f");
+    ImGui::SliderFloat("Speed Variance", &edited.speedVariance, .0f, 1.f);
+    ImGui::SliderFloat("Spread", &edited.spread, .0f, 180.f, "%.0f deg");
+    ImGui::SetItemTooltip("Half-angle of the cone particles are thrown into, around the local +Y or the\nmesh's normal. Nought is a jet, ninety a hemisphere and a hundred and eighty\nevery direction at once.");
+    ImGui::DragFloat3("Gravity", &edited.gravity.x, .05f, -100.f, 100.f, "%.2f");
+    ImGui::SetItemTooltip("Any constant acceleration. Point it upwards and a little weaker for embers\ncarried by their own heat.");
+    ImGui::SliderFloat("Drag", &edited.drag, .0f, 10.f);
+    ImGui::SetItemTooltip("How quickly the air takes a particle's speed away. Without it every particle\nfollows a clean parabola, and a spray of clean parabolas is water.");
+  }
+  if (ImGui::CollapsingHeader("Appearance", ImGuiTreeNodeFlags_DefaultOpen)) {
+    static auto &blends = kuki::EnumTraits<kuki::ParticleBlend>::GetNames();
+    auto blend = static_cast<int>(edited.blend);
+    if (ImGui::Combo("Blend", &blend, blends.data(), static_cast<int>(blends.size())))
+      edited.blend = static_cast<kuki::ParticleBlend>(blend);
+    ImGui::SetItemTooltip("Additive particles brighten what is behind them and can do nothing else.\nOpaque ones are solid discs, which is the one way to draw a dark particle;\nborn on a mesh they are shaded once by the sun and keep that shade.");
+    ImGui::DragFloat("Start Size", &edited.startSize, .002f, .0f, 100.f, "%.3f");
+    ImGui::DragFloat("End Size", &edited.endSize, .002f, .0f, 100.f, "%.3f");
+    ImGui::ColorEdit3("Start Colour", &edited.startColor.x);
+    ImGui::ColorEdit3("End Colour", &edited.endColor.x);
+    ImGui::DragFloat("Intensity", &edited.intensity, .05f, .0f, 1000.f, "%.2f");
+    ImGui::SetItemTooltip("What the colours are multiplied by. Drawn ahead of the bloom chain, so an\nadditive particle only glows if this takes it past white -- which is a statement\nabout how much light there is rather than what colour it is.");
+  }
+  if (edited != *emitter)
+    *emitter = edited;
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::IndirectLighting *indirect) -> void {

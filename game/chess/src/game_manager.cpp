@@ -23,6 +23,8 @@
 #include <material_type.hpp>
 #include <memory>
 #include <overlay.hpp>
+#include <particle_emitter.hpp>
+#include <particle_presets.hpp>
 #include <preferences.hpp>
 #include <mesh.hpp>
 #include <mesh_asset.hpp>
@@ -330,6 +332,14 @@ auto GameManager::CloneTo(EntityManager &entityManager, const EntityID id) const
   script->clockScreen = {};
   script->rocker = {};
   script->rockerAngle = .0f;
+  script->slashSparks = {};
+  script->dissolveGrains = {};
+  script->captureSparks = {};
+  script->slashing = false;
+  script->arriveFrom = -1;
+  script->arriveTo = -1;
+  script->arriveLeft = .0f;
+  script->victorySparks = {};
   script->clocks = {StartSeconds(), StartSeconds()};
   script->timeOption = timeOption;
   script->incrementOption = incrementOption;
@@ -368,6 +378,8 @@ auto GameManager::Start(Application &application) -> void {
   CreateFrame();
   CreateLabels();
   CreateClock();
+  // Before the standing is worked out, which is what starts and stops one of them.
+  CreateSparks();
   // Before `Refresh`, which draws the pieces and reads the king's colour off `state`.
   UpdateStanding();
   UpdateTitle();
@@ -388,6 +400,7 @@ auto GameManager::Update(Application &application) -> void {
     Orbit(application);
   UpdateClocks(application);
   UpdateClock(application);
+  UpdateSparks(application);
   DrawOptions(application);
   DrawThemes(application);
   // Which pieces are in the way depends on where the camera is and not only on what is selected, so
@@ -845,7 +858,17 @@ auto GameManager::RefreshPieces() -> void {
     return;
   auto builder = app->Game().Scene("Main");
   for (auto square = 0; square < Board::SquareCount; ++square) {
-    const auto piece = board.Get(square);
+    auto piece = board.Get(square);
+    auto lift = selected == square ? SELECT_LIFT : .0f;
+    // A capturing piece that has not landed yet is drawn where it came from, still lifted as it was
+    // when it was picked up, and the square it is going to is drawn empty. The board says otherwise
+    // and is right; this is the picture catching up with it.
+    if (arriveTo >= 0 && square == arriveTo)
+      piece = {};
+    else if (arriveTo >= 0 && square == arriveFrom) {
+      piece = board.Get(arriveTo);
+      lift = SELECT_LIFT;
+    }
     if (!piece.Occupied()) {
       if (pieces[square])
         app->DeleteEntity(pieces[square]);
@@ -854,7 +877,6 @@ auto GameManager::RefreshPieces() -> void {
     }
     const auto shape = ShapeOf(piece.type);
     const auto center = SquareCenter(square);
-    const auto lift = selected == square ? SELECT_LIFT : .0f;
     const auto white = piece.color == PieceColor::White;
     // The kings are the only pieces that say anything about themselves, and the only ones with
     // anything left to say: everything about a move is on the squares now.
@@ -995,7 +1017,23 @@ auto GameManager::OnPress() -> void {
         // Written before the move is made, which is when the position can still say what else was
         // legal. See `Notation`.
         auto text = Notation(board, *move);
+        // Likewise: once the move is made the piece it took is no longer there to be asked how
+        // tall it was. It is cut where it stood -- which for en passant is not the square the move
+        // ends on.
+        const auto taken = move->captured;
+        const auto takenPiece = taken >= 0 ? board.Get(taken) : Piece{};
         board.Apply(*move);
+        if (taken >= 0) {
+          Dissolve(taken, takenPiece);
+          Slash(SquareCenter(taken), ShapeOf(takenPiece.type).height);
+          // Kept off the square until the grains have left it -- unless the piece taken was not on
+          // it, which is en passant, and then there is nothing there to wait for.
+          if (taken == move->to) {
+            arriveFrom = move->from;
+            arriveTo = move->to;
+            arriveLeft = ARRIVE_DELAY;
+          }
+        }
         clocks[mover] += IncrementSeconds();
         // First, because everything below reads what it works out: the check mark on the notation,
         // the king's colour when `Select` redraws, and whether the game is still playable.
@@ -1042,6 +1080,9 @@ auto GameManager::BeginOrbit() -> void {
 }
 auto GameManager::Restart() -> void {
   board.Reset();
+  arriveFrom = -1;
+  arriveTo = -1;
+  arriveLeft = .0f;
   clocks = {StartSeconds(), StartSeconds()};
   flagged = -1;
   moves = {};
@@ -1055,6 +1096,191 @@ auto GameManager::Restart() -> void {
 auto GameManager::UpdateStanding() -> void {
   state = board.State();
   playable = flagged < 0 && state != GameState::Checkmate && state != GameState::Stalemate;
+  // Here because this is the one place the result changes, in either direction: a mate or a fallen
+  // flag starts the sparks and a restart stops them, and all three come through this function.
+  UpdateVictory();
+}
+auto GameManager::CreateSparks() -> void {
+  auto *app = GetApp();
+  if (!app || captureSparks)
+    return;
+  // Sparks that barely move: the stroke is drawn by where they are put, not by where they go, so
+  // they are given just enough speed in every direction to fray its edge as it fades. No gravity,
+  // because a line of light that sagged would read as something falling rather than as a cut. Pale
+  // and hot, where the burst after it is embers -- steel first and then what the steel struck.
+  slashSparks = app->Game()
+                  .Scene("Main")
+                  .Entity("SlashSparks")
+                  .At({.0f, .0f, .0f})
+                  .With<ParticleEmitter>([](ParticleEmitter &emitter) {
+                    emitter.capacity = 2048;
+                    emitter.rate = .0f;
+                    emitter.emitting = false;
+                    emitter.lifetime = .4f;
+                    emitter.lifetimeVariance = .5f;
+                    emitter.speed = .35f;
+                    emitter.speedVariance = .8f;
+                    emitter.spread = 180.f;
+                    emitter.radius = .015f;
+                    emitter.gravity = {.0f, .0f, .0f};
+                    emitter.drag = 3.f;
+                    emitter.startSize = .05f;
+                    emitter.startColor = {.9f, .95f, 1.f};
+                    emitter.endColor = {.5f, .7f, 1.f};
+                    emitter.intensity = 1.5f;
+                  })
+                  .Id();
+  // The engine's own but for how long they take: one grain a slot, each with its own point on the
+  // mesh, all born at once. The mesh and the colour are filled in by `Dissolve`, a capture at a time.
+  dissolveGrains = app->Game()
+                     .Scene("Main")
+                     .Entity("DissolveGrains")
+                     .At({.0f, .0f, .0f})
+                     .With<ParticleEmitter>([](ParticleEmitter &emitter) {
+                       emitter = ParticlePresets::Dissolve();
+                       emitter.hold = DISSOLVE_HOLD;
+                       emitter.lifetime = DISSOLVE_LIFETIME;
+                     })
+                     .Id();
+  // The engine's burst as it comes too: thrown wide and slowed hard, so it opens quickly and then
+  // hangs and falls rather than travelling. At the emitter's default drag these cleared the board's
+  // edge from a centre square.
+  captureSparks = app->Game()
+                    .Scene("Main")
+                    .Entity("CaptureSparks")
+                    .At({.0f, .0f, .0f})
+                    .With<ParticleEmitter>([](ParticleEmitter &emitter) {
+                      emitter = ParticlePresets::Burst();
+                      // Fired when the cut lands, a little way into the second the capture is given.
+                      emitter.lifetime = DISSOLVE_HOLD + DISSOLVE_LIFETIME - SLASH_SWEEP - .1f;
+                    })
+                    .Id();
+  // A narrow fountain in gold, steady rather than sudden. Its rate times its lifetime is under the
+  // pool, so no spark is cut short by the ring coming back round to it.
+  victorySparks = app->Game()
+                    .Scene("Main")
+                    .Entity("VictorySparks")
+                    .At({.0f, .0f, .0f})
+                    .With<ParticleEmitter>([](ParticleEmitter &emitter) {
+                      emitter.capacity = 1024;
+                      emitter.rate = 420.f;
+                      emitter.emitting = false;
+                      emitter.lifetime = 1.8f;
+                      emitter.speed = 3.6f;
+                      emitter.spread = 28.f;
+                      emitter.drag = .5f;
+                      emitter.startSize = .05f;
+                      emitter.startColor = {1.f, .8f, .35f};
+                      emitter.endColor = {1.f, .35f, .05f};
+                    })
+                    .Id();
+}
+auto GameManager::Burst(const glm::vec3 &position) -> void {
+  auto *app = GetApp();
+  auto *emitter = app && captureSparks ? app->GetEntityComponent<ParticleEmitter>(captureSparks) : nullptr;
+  if (!emitter)
+    return;
+  app->Game().Scene("Main").Entity(captureSparks).At(position);
+  ++emitter->fired;
+}
+auto GameManager::Dissolve(const int square, const Piece &piece) -> void {
+  auto *app = GetApp();
+  auto *emitter = app && dissolveGrains ? app->GetEntityComponent<ParticleEmitter>(dissolveGrains) : nullptr;
+  const auto mesh = emitter ? app->GetAsset(ShapeOf(piece.type).mesh) : nullptr;
+  if (!mesh)
+    return;
+  const auto white = piece.color == PieceColor::White;
+  // Exactly as `RefreshPieces` stands the piece, turn and all, since the grains have to be born
+  // where its surface was.
+  const auto center = SquareCenter(square);
+  app->Game().Scene("Main").Entity(dissolveGrains).At({center.x, .0f, center.z}).RotateEuler({.0f, white ? .0f : 180.f, .0f}).Scale(1.f);
+  // The albedo of `piece_white.mat` and `piece_black.mat`, which are data and cannot be read from
+  // here; a colour changed there has to be changed here too.
+  const auto color = white ? glm::vec3(.92f, .9f, .86f) : glm::vec3(.11f, .11f, .13f);
+  emitter->mesh = mesh->id;
+  emitter->startColor = color;
+  emitter->endColor = color;
+  ++emitter->fired;
+}
+auto GameManager::Slash(const glm::vec3 &base, const float height) -> void {
+  auto *app = GetApp();
+  const auto *camera = app ? app->GetCamera() : nullptr;
+  auto *emitter = app && slashSparks ? app->GetEntityComponent<ParticleEmitter>(slashSparks) : nullptr;
+  const glm::vec3 middle{base.x, height * .5f, base.z};
+  // Without the emitter there is no cut to wait for, and the burst is still worth having.
+  if (!emitter || !camera) {
+    Burst(middle);
+    return;
+  }
+  // Sideways as the camera sees the piece, flattened onto the board so the stroke stays upright
+  // however steeply the camera looks down. A camera directly overhead has no sideways to speak of,
+  // and the board's own x will do.
+  const glm::vec3 toCamera{camera->position.x - base.x, .0f, camera->position.z - base.z};
+  const auto distance = glm::length(toCamera);
+  const auto side = distance > 1e-4f ? glm::vec3(toCamera.z, .0f, -toCamera.x) / distance : glm::vec3(1.f, .0f, .0f);
+  slashFrom = base + side * .5f + glm::vec3(.0f, height + .2f, .0f);
+  slashTo = base - side * .5f + glm::vec3(.0f, .05f, .0f);
+  slashBurst = middle;
+  // Started, at the top of the line, with a rate of nought. The renderer takes a stopped emitter to
+  // have travelled nowhere, so the frame it is started in spawns everything at one point; started
+  // a frame early and silent, the sweep's first frame is spread along the line like the rest.
+  app->Game().Scene("Main").Entity(slashSparks).At(slashFrom);
+  emitter->rate = .0f;
+  emitter->emitting = true;
+  slashing = true;
+  slashTime = -1.f;
+}
+auto GameManager::UpdateSparks(Application &application) -> void {
+  if (slashing) {
+    auto *emitter = application.GetEntityComponent<ParticleEmitter>(slashSparks);
+    if (!emitter || slashTime >= SLASH_SWEEP) {
+      // The far end was reached last frame and has been drawn there, so the cut is made.
+      if (emitter)
+        emitter->emitting = false;
+      slashing = false;
+      Burst(slashBurst);
+    } else if (slashTime < .0f)
+      // A click is answered between frames, and whether this update is the one before the frame
+      // that click is first drawn in is not something a script can tell. Waiting one out is what
+      // guarantees the renderer has seen the emitter standing at the top of the line.
+      slashTime = .0f;
+    else {
+      slashTime = std::min(slashTime + application.DeltaTime(), SLASH_SWEEP);
+      emitter->rate = SLASH_RATE;
+      application.Game().Scene("Main").Entity(slashSparks).At(glm::mix(slashFrom, slashTo, slashTime / SLASH_SWEEP));
+    }
+  }
+  if (arriveTo < 0)
+    return;
+  arriveLeft -= application.DeltaTime();
+  if (arriveLeft > .0f)
+    return;
+  arriveFrom = -1;
+  arriveTo = -1;
+  RefreshPieces();
+}
+auto GameManager::UpdateVictory() -> void {
+  auto *app = GetApp();
+  auto *emitter = app && victorySparks ? app->GetEntityComponent<ParticleEmitter>(victorySparks) : nullptr;
+  if (!emitter)
+    return;
+  // Whoever is not the side that ran out of time, or not the side that has been mated -- which is
+  // the side to move, since that is whose position `state` describes. A draw has no winner.
+  const auto won = flagged >= 0 || state == GameState::Checkmate;
+  const auto winner = flagged >= 0 ? (flagged == 0 ? PieceColor::Black : PieceColor::White) : Board::Opponent(board.ToMove());
+  emitter->emitting = false;
+  if (!won)
+    return;
+  for (auto square = 0; square < Board::SquareCount; ++square) {
+    const auto piece = board.Get(square);
+    if (piece.type != PieceType::King || piece.color != winner)
+      continue;
+    // From the top of the king, so the sparks leave the cross rather than the base.
+    const auto center = SquareCenter(square);
+    app->Game().Scene("Main").Entity(victorySparks).At({center.x, ShapeOf(PieceType::King).height, center.z});
+    emitter->emitting = true;
+    return;
+  }
 }
 auto GameManager::UpdateTitle() -> void {
   auto *app = GetApp();

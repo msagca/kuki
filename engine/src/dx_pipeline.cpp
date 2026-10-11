@@ -672,6 +672,131 @@ auto DXPipelineCache::GetVolumetricPipeline(ID3D12Device *device, const DXGI_FOR
   spdlog::info("[DX12] Created volumetric pipeline");
   return &pipeline;
 }
+auto DXPipelineCache::GetParticleUpdateRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (particleUpdateRootSignature)
+    return particleUpdateRootSignature.Get();
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
+  parameters[0].InitAsConstants(sizeof(DXParticleUpdateConstants) / sizeof(uint32_t), 0);
+  parameters[1].InitAsUnorderedAccessView(0);
+  // The surface samples, at register one. A root descriptor like the pool, so that neither costs a
+  // slot in the descriptor heap -- and so one always has to be bound, mesh or no mesh. See
+  // `particleNoSamples` in the renderer.
+  parameters[2].InitAsShaderResourceView(1);
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(3, parameters);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the particle update root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&particleUpdateRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return particleUpdateRootSignature.Get();
+}
+auto DXPipelineCache::GetParticleUpdatePipeline(ID3D12Device *device) -> const DXPipeline * {
+  if (!device)
+    return nullptr;
+  const auto key = std::hash<std::string>{}("particles:CSSimulate");
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetParticleUpdateRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = particleUpdateRootSignature;
+  const auto computeShader = shaderCompiler.Compile(embedded_shader::particles_hlsl, "CSSimulate", "cs_6_0", "particles");
+  if (!computeShader)
+    return nullptr;
+  D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.CS = ToBytecode(computeShader);
+  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created particle update pipeline");
+  return &pipeline;
+}
+auto DXPipelineCache::GetParticleDrawRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (particleDrawRootSignature)
+    return particleDrawRootSignature.Get();
+  CD3DX12_ROOT_PARAMETER parameters[2]{};
+  // Register one, where `particles.hlsl` puts the draw's block to keep it clear of the step's.
+  parameters[0].InitAsConstants(sizeof(DXParticleDrawConstants) / sizeof(uint32_t), 1, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+  parameters[1].InitAsShaderResourceView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(2, parameters);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the particle draw root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&particleDrawRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return particleDrawRootSignature.Get();
+}
+auto DXPipelineCache::GetParticleDrawPipeline(ID3D12Device *device, const DXGI_FORMAT format, const bool opaque) -> const DXPipeline * {
+  if (!device)
+    return nullptr;
+  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(opaque ? "particleDrawOpaque" : "particleDraw");
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetParticleDrawRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = particleDrawRootSignature;
+  const auto vertexShader = shaderCompiler.Compile(embedded_shader::particles_hlsl, "VSMain", "vs_6_0", "particles");
+  const auto pixelShader = shaderCompiler.Compile(embedded_shader::particles_hlsl, opaque ? "PSOpaque" : "PSMain", "ps_6_0", "particles");
+  if (!vertexShader || !pixelShader)
+    return nullptr;
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.VS = ToBytecode(vertexShader);
+  desc.PS = ToBytecode(pixelShader);
+  desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+  // A quad built from the camera's own axes has no back to cull, and winding it to suit a culling
+  // mode would be an order to keep right for nothing.
+  desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+  // One plus one: what is there, and the particle on top of it. Addition does not care what order
+  // its terms arrive in, which is the property the whole pass leans on in place of a sort.
+  //
+  // The alpha channel is left out of the write altogether rather than blended to no effect. It
+  // belongs to the picture underneath, and nothing a particle could put there would mean anything.
+  desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+  auto &blend = desc.BlendState.RenderTarget[0];
+  blend.BlendEnable = TRUE;
+  blend.SrcBlend = D3D12_BLEND_ONE;
+  blend.DestBlend = D3D12_BLEND_ONE;
+  blend.BlendOp = D3D12_BLEND_OP_ADD;
+  blend.SrcBlendAlpha = D3D12_BLEND_ZERO;
+  blend.DestBlendAlpha = D3D12_BLEND_ONE;
+  blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+  blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_RED | D3D12_COLOR_WRITE_ENABLE_GREEN | D3D12_COLOR_WRITE_ENABLE_BLUE;
+  // The solid kind replaces what is there, and keeps the same write mask for the same reason.
+  if (opaque)
+    blend.BlendEnable = FALSE;
+  // Tested and not written, for the additive kind. A spark is hidden by the scene in front of it
+  // and hides nothing itself -- writing depth would make which of two overlapping sparks survives
+  // depend on which instance came first, and bring the ordering problem back through the depth
+  // buffer. For the solid kind that is not a problem but the answer: the nearer disc should win,
+  // whichever came first, and writing depth is what makes it.
+  desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState.DepthWriteMask = opaque ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+  desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+  desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+  desc.SampleMask = UINT_MAX;
+  desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+  desc.NumRenderTargets = 1;
+  desc.RTVFormats[0] = format;
+  desc.SampleDesc.Count = 1;
+  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created {} particle draw pipeline", opaque ? "opaque" : "additive");
+  return &pipeline;
+}
 auto DXPipelineCache::GetComputePipeline(ID3D12Device *device, const char *entryPoint) -> const DXPipeline * {
   if (!device || !entryPoint)
     return nullptr;
@@ -997,6 +1122,8 @@ auto DXPipelineCache::Clear() -> void {
   atmosphereRootSignature.Reset();
   cloudRootSignature.Reset();
   volumetricRootSignature.Reset();
+  particleUpdateRootSignature.Reset();
+  particleDrawRootSignature.Reset();
   pickRootSignature.Reset();
   rayProbeRootSignature.Reset();
   probeAuditRootSignature.Reset();

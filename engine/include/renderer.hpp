@@ -72,6 +72,16 @@ public:
   /// the finished scene colour and returns it with the haze and the shafts already in it. The
   /// alternative would be a fourth full-screen target to hold a term that has exactly one consumer.
   virtual auto ApplyVolumetricFog(std::span<std::string>, std::span<std::string>) -> void = 0;
+  /// @brief Steps every particle emitter in the scene and draws the result over the picture.
+  ///
+  /// Simulation and drawing in one pass rather than two, because nothing else reads the particles:
+  /// a pass of its own for the simulation would be an edge in the graph with one consumer, ordering
+  /// two things that are already written one after the other.
+  ///
+  /// Handed the finished scene colour and returns it with the particles in it, on the same terms as
+  /// the fog pass above. A scene with no emitters therefore costs a copy, as does a backend with no
+  /// particles at all -- `RendererCapabilities::particles` is what says which.
+  virtual auto DrawParticles(std::span<std::string>, std::span<std::string>) -> void = 0;
   /// @brief Draws a finished target onto the window's own surface, scaled to fill it.
   ///
   /// The render graph ends in an offscreen target, which is the right shape for an editor: the

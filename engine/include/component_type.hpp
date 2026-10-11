@@ -23,6 +23,7 @@ enum class ComponentType : uint8_t {
   MeshHandle,
   ModelMaterialHandle,
   ModelMeshHandle,
+  ParticleEmitter,
   Script,
   Skeleton,
   SkyboxHandle,

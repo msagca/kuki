@@ -57,5 +57,16 @@ struct RendererCapabilities {
   /// half needs no atmosphere and works in a sealed room off a spot light's shadow map, so this is
   /// not implied by that flag and is asked separately.
   bool volumetrics{};
+  /// @brief Whether the backend simulates and draws particle emitters.
+  ///
+  /// Gates the `ParticleEmitter` panel and its entry in the add-component menu, for the reason the
+  /// sky's flag does: an emitter the backend cannot run would sit in the hierarchy looking like the
+  /// scene had sparks in it while the picture showed none.
+  ///
+  /// Not a statement about the hardware. The simulation is one Shader Model 6.0 compute dispatch
+  /// over a structured buffer and the draw is an instanced quad, and OpenGL 4.6 has every piece of
+  /// that -- compute shaders, storage buffers, instancing. What the OpenGL backend lacks is the
+  /// pass, so this is false there until somebody writes it rather than because it cannot be written.
+  bool particles{};
 };
 } // namespace kuki

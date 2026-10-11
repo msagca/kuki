@@ -17,6 +17,7 @@
 #include <light.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
+#include <particle_emitter.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <texture_handle.hpp>
@@ -133,6 +134,8 @@ auto ArchetypeRegistry::CreateColumn(const ComponentType type) -> std::unique_pt
     return std::make_unique<ArchetypeColumn<ModelMaterialHandle>>();
   case ComponentType::ModelMeshHandle:
     return std::make_unique<ArchetypeColumn<ModelMeshHandle>>();
+  case ComponentType::ParticleEmitter:
+    return std::make_unique<ArchetypeColumn<ParticleEmitter>>();
   case ComponentType::Script:
     return nullptr;
   case ComponentType::Skeleton:

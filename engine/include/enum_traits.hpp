@@ -5,6 +5,7 @@
 #include <exposure.hpp>
 #include <light_type.hpp>
 #include <material_type.hpp>
+#include <particle_emitter.hpp>
 #include <render_pass.hpp>
 #include <tone_mapper.hpp>
 #include <vector>
@@ -71,9 +72,23 @@ struct EnumTraits<AntiAliasingMode> {
   }
 };
 template <>
+struct EnumTraits<ParticleShape> {
+  static const std::vector<const char *> &GetNames() {
+    static const std::vector<const char *> names = {"Sphere", "Mesh"};
+    return names;
+  }
+};
+template <>
+struct EnumTraits<ParticleBlend> {
+  static const std::vector<const char *> &GetNames() {
+    static const std::vector<const char *> names = {"Additive", "Opaque"};
+    return names;
+  }
+};
+template <>
 struct EnumTraits<RenderPass> {
   static const std::vector<const char *> &GetNames() {
-    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Outline", "Overlay", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "ToneMapping", "Volumetric Clouds", "Volumetric Fog"};
+    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Outline", "Overlay", "Particles", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "ToneMapping", "Volumetric Clouds", "Volumetric Fog"};
     return names;
   }
 };

@@ -12,6 +12,7 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <material_asset.hpp>
 #include <overlay.hpp>
+#include <particle_emitter.hpp>
 #include <dx_context.hpp>
 #include <dx_mesh.hpp>
 #include <dx_pipeline.hpp>
@@ -105,6 +106,59 @@ struct DXSkinnedDraw {
   const DXMaterial *material{};
   DXInstanceData instance{};
   std::vector<glm::mat4> bones;
+};
+/// @brief One emitter's particles on the GPU, and the little the processor keeps about them.
+///
+/// The buffer is the particles. Everything else here is what has to be remembered between frames to
+/// ask for the next spawn, and none of it is a fact about any particle: where the ring has got to,
+/// the fraction of a particle the rate has earned and not yet paid out, and where the emitter was.
+struct DXParticlePool {
+  ComPtr<ID3D12Resource> buffer;
+  D3D12_RESOURCE_STATES state{D3D12_RESOURCE_STATE_COMMON};
+  uint32_t capacity{};
+  /// @brief The next slot to refill. Advances by each frame's spawn count and wraps at `capacity`.
+  uint32_t cursor{};
+  /// @brief Particles owed but not yet spawned, always less than one once a frame has been paid.
+  ///
+  /// A rate is rarely a whole number of particles a frame -- six hundred a second at a hundred and
+  /// forty-four frames is a little over four -- and rounding each frame on its own either loses the
+  /// remainder for good or spawns in a beat pattern. Carrying it is what makes the rate the rate.
+  float owed{};
+  glm::vec3 previousPosition{};
+  /// @brief Whether the emitter was spawning when this pool was last stepped.
+  bool emitting{};
+  /// @brief The emitter's `fired` as this pool last saw it. A different figure is a burst to spawn.
+  uint32_t fired{};
+  /// @brief Seconds until nothing in the pool can still be alive, counted down in simulated time.
+  ///
+  /// Put back up to the longest a particle can last whenever anything is spawned. Once it runs out
+  /// the pool is neither stepped nor drawn until the next spawn: every slot is known to be dead, and
+  /// that is the one fact about the particles the processor can work out without being told. It is
+  /// what makes an emitter that only ever bursts cost nothing between bursts.
+  float remaining{};
+  /// @brief Points scattered over the emitter's mesh, one a slot, for `ParticleShape::Mesh`.
+  ///
+  /// In an upload heap, written once and only ever read: a slot's point does not change for as long
+  /// as the mesh and the capacity do not. Null for an emitter that has never asked for a mesh.
+  ComPtr<ID3D12Resource> samples;
+  /// @brief The mesh those points were scattered over, so a change of mesh is noticed.
+  AssetID sampledMesh{};
+  /// @brief The frame this pool was last stepped in, which is how one whose emitter is gone is found.
+  uint64_t frame{};
+  /// @brief Whether the buffer has yet to be emptied by its first dispatch.
+  bool fresh{true};
+};
+/// @brief What one emitter's draw needs, gathered while its step is recorded and issued afterwards.
+///
+/// Held aside rather than drawn on the spot, because the steps are compute and the draws are
+/// graphics: recording them interleaved would switch the command list between the two once per
+/// emitter, where gathering them switches once per frame.
+struct DXParticleDraw {
+  D3D12_GPU_VIRTUAL_ADDRESS address{};
+  uint32_t capacity{};
+  /// @brief Whether this is drawn solid, and so ahead of every additive pool. See `ParticleBlend`.
+  bool opaque{};
+  DXParticleDrawConstants constants{};
 };
 /// @brief Direct3D 12 implementation of the engine renderer.
 ///
@@ -211,6 +265,7 @@ public:
   auto TraceProbes(std::span<std::string>, std::span<std::string>) -> void override;
   auto MarchClouds(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyVolumetricFog(std::span<std::string>, std::span<std::string>) -> void override;
+  auto DrawParticles(std::span<std::string>, std::span<std::string>) -> void override;
   auto UpdateTarget(const std::string &, const TargetDescription &) -> void override;
 private:
   DXPipelineCache pipelines;
@@ -337,6 +392,27 @@ private:
   /// pattern laid over the picture rather than as noise. Wrapped into the low bits in the shader, so
   /// the width here only has to outlast a session.
   uint32_t volumetricFrame{};
+  /// @brief Every emitter's pool, by the entity that carries the emitter.
+  ///
+  /// Keyed on the entity rather than held on the component, because the component is plain data a
+  /// scene file round-trips and a script copies, and a GPU buffer is neither. A pool whose entity
+  /// stops turning up -- deleted, or its emitter removed -- is retired by the pass that notices.
+  std::unordered_map<EntityID, DXParticlePool> particlePools;
+  /// @brief The frame's particle draws, kept so that its capacity survives. See `DXParticleDraw`.
+  std::vector<DXParticleDraw> particleDraws;
+  /// @brief The scene the pools above belong to, which is all it is ever compared against.
+  ///
+  /// Entity ids start again from nought in every scene, so the emitter that is entity twelve in one
+  /// would otherwise inherit the sparks of whatever was entity twelve in the last.
+  const Scene *particleScene{};
+  /// @brief Counts the particle pass's runs, to date the pools and to turn the spawn seed over.
+  uint64_t particleFrame{};
+  /// @brief What is bound where the surface samples go for an emitter that has none.
+  ///
+  /// The step's shader names the samples whether or not a given emitter reads them, and a root
+  /// descriptor the shader names has to point at something. One sample's worth of zeroes, made the
+  /// first time the pass runs and never read.
+  ComPtr<ID3D12Resource> particleNoSamples;
   /// @brief The address the scene pass uploaded this frame's `DXFrameConstants` to, or zero.
   ///
   /// Cached rather than rebuilt, because the fog pass wants exactly what the shading pass used: the

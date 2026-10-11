@@ -17,6 +17,7 @@
 #include <material_handle.hpp>
 #include <memory>
 #include <mesh_handle.hpp>
+#include <particle_emitter.hpp>
 #include <script.hpp>
 #include <script_store.hpp>
 #include <skeleton.hpp>
@@ -266,6 +267,8 @@ auto EntityManager::GetComponent(this auto &self, const EntityID id, const Compo
     return self.template GetComponent<ModelMaterialHandle>(id);
   case ComponentType::ModelMeshHandle:
     return self.template GetComponent<ModelMeshHandle>(id);
+  case ComponentType::ParticleEmitter:
+    return self.template GetComponent<ParticleEmitter>(id);
   case ComponentType::Script: {
     auto scripts = self.template GetComponent<Script>(id);
     if (scripts.empty())

@@ -17,6 +17,7 @@
 #include <light.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
+#include <particle_emitter.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <texture_handle.hpp>
@@ -90,6 +91,9 @@ auto AddComponentByType(Application &app, const EntityID id, const ComponentType
   case ComponentType::ModelMeshHandle:
     app.AddEntityComponent<ModelMeshHandle>(id);
     break;
+  case ComponentType::ParticleEmitter:
+    app.AddEntityComponent<ParticleEmitter>(id);
+    break;
   case ComponentType::Script:
     break;
   case ComponentType::Skeleton:
@@ -146,6 +150,8 @@ auto RemoveComponentByType(Application &app, const EntityID id, const ComponentT
     return app.RemoveEntityComponent<ModelMaterialHandle>(id);
   case ComponentType::ModelMeshHandle:
     return app.RemoveEntityComponent<ModelMeshHandle>(id);
+  case ComponentType::ParticleEmitter:
+    return app.RemoveEntityComponent<ParticleEmitter>(id);
   case ComponentType::Skeleton:
     return app.RemoveEntityComponent<Skeleton>(id);
   case ComponentType::SkyboxHandle:

@@ -10,17 +10,20 @@
 #include <hash_utils.hpp>
 #include <post_process.hpp>
 #include <profiler.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <material_asset.hpp>
 #include <mesh_asset.hpp>
 #include <light.hpp>
 #include <material_handle.hpp>
+#include <particle_emitter.hpp>
 #include <mesh_handle.hpp>
 #include <texture.hpp>
 #include <texture_asset.hpp>
 #include <variant>
 #include <primitive.hpp>
+#include <random>
 #include <scene.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
@@ -64,6 +67,98 @@ constexpr uint32_t MULTISCATTER_HEIGHT = 32;
 /// error: the table is built once and read many times, so it is worth over-integrating, and it has
 /// no phase function to resolve. Forty is past the point where the result stops moving.
 constexpr uint32_t TRANSMITTANCE_STEPS = 40;
+/// @brief Threads in one group of the particle step. Mirrors `PARTICLE_GROUP_SIZE` in `particles.hlsl`.
+constexpr uint32_t PARTICLE_GROUP_SIZE = 64;
+/// @brief Bytes one particle occupies. Mirrors `Particle` in `particles.hlsl`: two `float4` rows
+/// and the tint.
+constexpr uint64_t PARTICLE_STRIDE = 44;
+/// @brief One point on a mesh's surface, in the mesh's own space. Mirrors `SurfaceSample` in
+/// `particles.hlsl`.
+struct DXParticleSample {
+  glm::vec3 position{};
+  glm::vec3 normal{};
+};
+static_assert(sizeof(DXParticleSample) == 24, "DXParticleSample must match SurfaceSample in particles.hlsl");
+/// @brief The most slots one emitter may ask for, whatever its component says.
+///
+/// A million particles is thirty-two megabytes and a little under sixteen thousand groups a frame,
+/// which a GPU does not notice. The limit is here because the figure comes out of a scene file and
+/// a drag field, and one stray digit in either should cost a clamp rather than an allocation of
+/// several gigabytes that takes the device with it when it fails.
+constexpr uint32_t PARTICLE_MAX_CAPACITY = 1u << 20;
+/// @brief The longest step the particles are ever advanced by, in seconds.
+///
+/// A frame can be arbitrarily long -- a breakpoint, a window being dragged, a scene loading -- and
+/// stepping through it at once would spawn the whole of that time's particles in one frame and fling
+/// everything already in flight a great distance in a straight line. A tenth of a second is longer
+/// than any frame worth watching and short enough that what follows a stall is a hiccup.
+constexpr float PARTICLE_MAX_STEP = .1f;
+/// @brief Scatters points over a mesh's surface, evenly by area, for particles to be born on.
+///
+/// On the processor, once, from the copy of the mesh the asset keeps -- rather than in the shader
+/// from the vertex buffer, every spawn. Doing it there means picking a triangle in proportion to its
+/// area, which is a search through a table of running totals for every particle, and reading two
+/// buffers whose layout and resource state belong to the scene pass. Doing it here is a loop that
+/// runs when an emitter is given a mesh and never again, and what the shader is left with is one
+/// read from a buffer made for it.
+///
+/// Stratified along the running total, so that a triangle's share of the points is its share of the
+/// area to within one point, and then shuffled. The shuffle matters to an emitter that spawns at a
+/// rate: the ring hands out slots in order, and unshuffled that order is the order the triangles
+/// were written to the file in, so the emission would crawl over the mesh instead of coming from all
+/// of it.
+///
+/// The same points every time for a given mesh and count. Nothing depends on that, and it is one
+/// less thing that could differ between two runs of a scene.
+auto ScatterSamples(const Mesh &mesh, const uint32_t count) -> std::vector<DXParticleSample> {
+  std::vector<DXParticleSample> samples;
+  const auto triangles = mesh.indices.size() / 3;
+  std::vector<double> cumulative;
+  cumulative.reserve(triangles);
+  auto total = .0;
+  for (size_t triangle = 0; triangle < triangles; ++triangle) {
+    const auto a = mesh.indices[triangle * 3];
+    const auto b = mesh.indices[triangle * 3 + 1];
+    const auto c = mesh.indices[triangle * 3 + 2];
+    // An index past the end is a triangle given no area, and so no points, rather than a reason to
+    // give up on the mesh.
+    if (a < mesh.vertices.size() && b < mesh.vertices.size() && c < mesh.vertices.size())
+      total += .5 * glm::length(glm::cross(mesh.vertices[b].position - mesh.vertices[a].position, mesh.vertices[c].position - mesh.vertices[a].position));
+    cumulative.push_back(total);
+  }
+  if (count == 0 || total <= .0)
+    return samples;
+  std::minstd_rand generator(count);
+  std::uniform_real_distribution<float> uniform(.0f, 1.f);
+  samples.resize(count);
+  size_t triangle = 0;
+  for (uint32_t i = 0; i < count; ++i) {
+    const auto target = (static_cast<double>(i) + uniform(generator)) / count * total;
+    // Onwards only. The targets rise with `i`, so the triangle for this one is never behind the
+    // triangle for the last, and the whole scatter is one pass over the table.
+    while (triangle + 1 < triangles && cumulative[triangle] < target)
+      ++triangle;
+    const auto &a = mesh.vertices[mesh.indices[triangle * 3]];
+    const auto &b = mesh.vertices[mesh.indices[triangle * 3 + 1]];
+    const auto &c = mesh.vertices[mesh.indices[triangle * 3 + 2]];
+    // The square root is what makes the point uniform over the triangle; without it the points
+    // gather at the first corner.
+    const auto root = std::sqrt(uniform(generator));
+    const auto along = uniform(generator);
+    const auto wa = 1.f - root;
+    const auto wb = root * (1.f - along);
+    const auto wc = root * along;
+    samples[i].position = a.position * wa + b.position * wb + c.position * wc;
+    const auto normal = a.normal * wa + b.normal * wb + c.normal * wc;
+    const auto face = glm::cross(b.position - a.position, c.position - a.position);
+    // The vertices' own normals where they have them, so a smooth surface throws its particles the
+    // way it is shaded, and the face's where they cancel out or were never written.
+    samples[i].normal = glm::dot(normal, normal) > 1.0e-12f ? glm::normalize(normal) : glm::dot(face, face) > 1.0e-24f ? glm::normalize(face)
+                                                                                                                          : glm::vec3(.0f, 1.f, .0f);
+  }
+  std::shuffle(samples.begin(), samples.end(), generator);
+  return samples;
+}
 auto GroupCount(const uint32_t extent) -> UINT {
   return static_cast<UINT>((extent + COMPUTE_GROUP_SIZE - 1) / COMPUTE_GROUP_SIZE);
 }
@@ -1586,6 +1681,284 @@ auto DXRenderer::ApplyVolumetricFog(std::span<std::string> inputs, std::span<std
   commandList->DrawInstanced(3, 1, 0, 0);
   RetireDescriptorRange(block, VOLUMETRIC_SRV_SLOTS);
 }
+auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  // The picture through first, whatever follows. The graph gives this pass an output of its own,
+  // so everything below is drawn onto a copy -- and every early return below leaves that copy
+  // standing, which is exactly what a scene with no emitters in it should hand on.
+  BypassCopy(inputs, outputs);
+  auto context = GetContext();
+  auto scene = app.GetScene();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  auto *device = context ? context->GetDevice() : nullptr;
+  if (!commandList || !device || !scene || outputs.empty())
+    return;
+  auto camera = scene->GetCamera();
+  auto destinationIt = nameToTarget.find(outputs[0]);
+  if (!camera || destinationIt == nameToTarget.end() || !destinationIt->second.resource || destinationIt->second.rtvIndex == DXDescriptorHeap::InvalidIndex)
+    return;
+  auto &destination = destinationIt->second;
+  // Picked out by what it is rather than by name, as every pass here reads its inputs: the depth
+  // buffer that is the same size as the picture, which rules out both shadow maps.
+  DXRenderTarget *depthSource{};
+  for (const auto &name : inputs)
+    if (auto it = nameToTarget.find(name); it != nameToTarget.end() && it->second.resource && IsDepthFormat(it->second.desc.format) && it->second.desc.type != TargetType::Texture2DArray && it->second.dsvIndex != DXDescriptorHeap::InvalidIndex && it->second.desc.width == destination.desc.width && it->second.desc.height == destination.desc.height) {
+      depthSource = &it->second;
+      break;
+    }
+  // Not drawn at all without one. The alternative is particles showing through every wall in the
+  // scene, which is worse than their absence and harder to recognise as a missing input.
+  if (!depthSource)
+    return;
+  const auto updatePipeline = pipelines.GetParticleUpdatePipeline(device);
+  const auto drawPipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format));
+  const auto opaquePipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format), true);
+  if (!updatePipeline || !*updatePipeline || !drawPipeline || !*drawPipeline || !opaquePipeline || !*opaquePipeline)
+    return;
+  if (!particleNoSamples) {
+    const auto properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    const auto desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(DXParticleSample));
+    if (DXFailed(device->CreateCommittedResource(&properties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&particleNoSamples)), "CreateCommittedResource for the empty particle samples"))
+      return;
+  }
+  // A different scene is a different set of entities under the same ids, so nothing held for the
+  // last one means anything now.
+  if (particleScene != scene) {
+    for (auto &[id, pool] : particlePools) {
+      RetireUploadBuffer(std::move(pool.buffer));
+      RetireUploadBuffer(std::move(pool.samples));
+    }
+    particlePools.clear();
+    particleScene = scene;
+  }
+  ++particleFrame;
+  particleDraws.clear();
+  const auto deltaTime = std::clamp(app.DeltaTime(), .0f, PARTICLE_MAX_STEP);
+  const auto viewProjection = camera->transform.projection * camera->transform.view;
+  // The camera's axes in world space, which for a rotation are the rows of its view matrix. Read
+  // from the matrix rather than from the camera's own `right` and `up`, so that the quads face
+  // whatever the vertices are about to be projected through and cannot disagree with it.
+  const auto &view = camera->transform.view;
+  const glm::vec3 cameraRight{view[0][0], view[1][0], view[2][0]};
+  const glm::vec3 cameraUp{view[0][1], view[1][1], view[2][1]};
+  // The sun, for the particles that are born on a mesh and shaded as they are. The first
+  // directional light, which is the one the scene pass takes for its own. What it sends is divided
+  // by pi as that pass divides it, so a surface and the particles it turns into start from the same
+  // diffuse term -- and that term is all they share: see `ParticleEmitter::blend`.
+  //
+  // With no sun there is nothing to shade by, and the particles are left the colour they were given.
+  const Light *sun{};
+  scene->ForEachEntity<Light>([&](const EntityID, const Light *light) {
+    if (!sun && light && light->type == LightType::Directional)
+      sun = light;
+  });
+  const auto sunDirection = SunDirection(*scene);
+  const auto sunRadiance = sun ? sun->diffuse * sun->intensity * glm::one_over_pi<float>() : glm::vec3(.0f);
+  const auto ambient = sun ? sun->ambient : glm::vec3(1.f);
+  auto computeBound = false;
+  scene->ForEachEntity<ParticleEmitter, Transform>([&](const EntityID id, const ParticleEmitter *emitter, const Transform *transform) {
+    const auto capacity = std::clamp(emitter->capacity, 1u, PARTICLE_MAX_CAPACITY);
+    auto &pool = particlePools[id];
+    if (!pool.buffer || pool.capacity != capacity) {
+      // Retired rather than released: last frame's draw may still be reading the old buffer, and
+      // the particles in it are not worth carrying across -- a pool of a different size has a
+      // different ring, and where each of them sat in the old one says nothing about the new.
+      RetireUploadBuffer(std::move(pool.buffer));
+      // The samples go with it. There is one a slot, so a pool of a different size wants a different
+      // number of them.
+      RetireUploadBuffer(std::move(pool.samples));
+      pool = {};
+      const auto properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+      const auto desc = CD3DX12_RESOURCE_DESC::Buffer(static_cast<uint64_t>(capacity) * PARTICLE_STRIDE, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+      if (DXFailed(device->CreateCommittedResource(&properties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&pool.buffer)), "CreateCommittedResource for a particle pool"))
+        return;
+      pool.state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+      pool.capacity = capacity;
+    }
+    pool.frame = particleFrame;
+    // Scattered when the emitter first names a mesh and again only when it names another. A mesh
+    // that yields no samples -- no triangles, or none with any area -- is remembered as tried, and
+    // the emitter falls back to the sphere rather than asking again every frame.
+    const auto surface = emitter->shape == ParticleShape::Mesh && emitter->mesh ? app.GetAsset<MeshAsset>(emitter->mesh) : nullptr;
+    if (surface && pool.sampledMesh != emitter->mesh) {
+      RetireUploadBuffer(std::move(pool.samples));
+      pool.sampledMesh = emitter->mesh;
+      if (const auto samples = ScatterSamples(surface->mesh, capacity); !samples.empty()) {
+        const auto bytes = samples.size() * sizeof(DXParticleSample);
+        const auto properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        const auto desc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
+        void *mapped{};
+        const CD3DX12_RANGE readRange(0, 0);
+        if (!DXFailed(device->CreateCommittedResource(&properties, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&pool.samples)), "CreateCommittedResource for particle samples") && !DXFailed(pool.samples->Map(0, &readRange, &mapped), "Map particle samples")) {
+          memcpy(mapped, samples.data(), bytes);
+          pool.samples->Unmap(0, nullptr);
+        } else
+          pool.samples.Reset();
+      }
+    }
+    const auto onMesh = surface && pool.samples && pool.sampledMesh == emitter->mesh;
+    const auto position = glm::vec3(transform->world[3]);
+    // The entity's local +Y as the world sees it. Normalised because the column carries the scale
+    // with it, and a scaled emitter should throw its particles in the same direction, not faster.
+    const auto up = glm::vec3(transform->world[1]);
+    const auto upLength = glm::length(up);
+    const auto axis = upLength > 1.0e-6f ? up / upLength : glm::vec3(.0f, 1.f, .0f);
+    // An emitter seen for the first time has no last frame to have been anywhere in, and the origin
+    // it would otherwise be taken to have come from draws a streak across the scene to wherever it
+    // actually is.
+    //
+    // Nor has one that was stopped. Spawns are spread along the path the emitter travelled while it
+    // was emitting, and a stopped one that is moved and then started -- which is how a script fires
+    // a burst somewhere new -- travelled that distance with nothing coming out of it. Without this
+    // the first frame of the burst is smeared along the line from wherever the last one went off.
+    if (pool.fresh || !pool.emitting)
+      pool.previousPosition = position;
+    pool.emitting = emitter->emitting;
+    // What the rate has earned this frame, on top of what it was still owed. A stopped emitter is
+    // owed nothing: the debt is cleared rather than kept, so starting one again does not open with
+    // the fraction left over from whenever it was last running.
+    pool.owed = emitter->emitting ? pool.owed + std::max(.0f, emitter->rate) * deltaTime : .0f;
+    auto whole = std::floor(pool.owed);
+    pool.owed -= whole;
+    // A burst, when the emitter's count of them has moved on from the one this pool last saw. The
+    // ring makes nothing special of it: it is this frame's spawns being more than the rate earned.
+    // A pool in its first frame takes the count as it stands, so nothing fires for being new.
+    if (pool.fresh)
+      pool.fired = emitter->fired;
+    if (pool.fired != emitter->fired) {
+      pool.fired = emitter->fired;
+      whole += static_cast<float>(emitter->burst);
+    }
+    // No more than the pool holds. Past that the ring would lap itself inside one frame and the
+    // same slot would be asked for twice, which the shader has no way to express and no use for.
+    const auto spawnCount = static_cast<uint32_t>(std::min(whole, static_cast<float>(capacity)));
+    const auto hold = std::max(.0f, emitter->hold);
+    // Nothing alive and nothing being born, so nothing to step and nothing to draw. Worked out
+    // before this frame's time is taken off, so the step that carries the last particle past its
+    // end is still run. The longest step is added as slack: this is a sum of clamped frame times
+    // kept beside the shader's own, and being late to stop costs a frame where being early would
+    // freeze a particle on screen.
+    const auto dormant = !pool.fresh && spawnCount == 0 && pool.remaining <= .0f;
+    if (spawnCount > 0)
+      pool.remaining = std::max(pool.remaining, std::max(.0f, emitter->lifetime) + hold + PARTICLE_MAX_STEP);
+    pool.remaining = std::max(pool.remaining - deltaTime, .0f);
+    DXParticleUpdateConstants constants{};
+    memcpy(constants.emitterPosition, glm::value_ptr(position), sizeof(constants.emitterPosition));
+    constants.deltaTime = deltaTime;
+    memcpy(constants.previousPosition, glm::value_ptr(pool.previousPosition), sizeof(constants.previousPosition));
+    constants.radius = std::max(.0f, emitter->radius);
+    memcpy(constants.axis, glm::value_ptr(axis), sizeof(constants.axis));
+    constants.spreadCosine = std::cos(glm::radians(std::clamp(emitter->spread, .0f, 180.f)));
+    memcpy(constants.gravity, glm::value_ptr(emitter->gravity), sizeof(constants.gravity));
+    constants.drag = std::max(.0f, emitter->drag);
+    constants.lifetime = std::max(.0f, emitter->lifetime);
+    constants.lifetimeVariance = std::clamp(emitter->lifetimeVariance, .0f, 1.f);
+    constants.speed = std::max(.0f, emitter->speed);
+    constants.speedVariance = std::clamp(emitter->speedVariance, .0f, 1.f);
+    constants.capacity = capacity;
+    constants.spawnStart = pool.cursor;
+    constants.spawnCount = spawnCount;
+    // Different for every emitter in every frame. The shader hashes this with the slot's index, so
+    // the same seed twice would give a slot the particle it had the last time round the ring, and
+    // two emitters sharing one would throw identical sprays.
+    constants.seed = static_cast<uint32_t>(particleFrame) * 0x9e3779b9u ^ static_cast<uint32_t>(static_cast<long long>(id)) * 0x85ebca6bu;
+    constants.reset = pool.fresh ? 1u : 0u;
+    constants.shape = static_cast<uint32_t>(onMesh ? ParticleShape::Mesh : ParticleShape::Sphere);
+    constants.hold = hold;
+    constants.holdVariance = std::clamp(emitter->holdVariance, .0f, 1.f);
+    for (auto row = 0; row < 3; ++row)
+      for (auto column = 0; column < 4; ++column)
+        constants.world[row][column] = transform->world[column][row];
+    memcpy(constants.sunDirection, glm::value_ptr(sunDirection), sizeof(constants.sunDirection));
+    memcpy(constants.sunRadiance, glm::value_ptr(sunRadiance), sizeof(constants.sunRadiance));
+    memcpy(constants.ambient, glm::value_ptr(ambient), sizeof(constants.ambient));
+    pool.cursor = (pool.cursor + spawnCount) % capacity;
+    pool.previousPosition = position;
+    pool.fresh = false;
+    if (dormant)
+      return;
+    // Bound once, by the first emitter to get this far, so that a scene with none never switches
+    // the command list over to compute at all.
+    if (!computeBound) {
+      commandList->SetComputeRootSignature(updatePipeline->rootSignature.Get());
+      commandList->SetPipelineState(updatePipeline->pipelineState.Get());
+      computeBound = true;
+    }
+    if (pool.state != D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+      const auto toWrite = CD3DX12_RESOURCE_BARRIER::Transition(pool.buffer.Get(), pool.state, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      commandList->ResourceBarrier(1, &toWrite);
+    }
+    commandList->SetComputeRoot32BitConstants(0, sizeof(DXParticleUpdateConstants) / sizeof(uint32_t), &constants, 0);
+    commandList->SetComputeRootUnorderedAccessView(1, pool.buffer->GetGPUVirtualAddress());
+    commandList->SetComputeRootShaderResourceView(2, (onMesh ? pool.samples : particleNoSamples)->GetGPUVirtualAddress());
+    commandList->Dispatch((capacity + PARTICLE_GROUP_SIZE - 1) / PARTICLE_GROUP_SIZE, 1, 1);
+    // Straight to where the vertex shader reads it from, and left there until the next step. The
+    // transition is also the barrier between the write and the read, so no separate one is needed.
+    const auto toRead = CD3DX12_RESOURCE_BARRIER::Transition(pool.buffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &toRead);
+    pool.state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    auto &draw = particleDraws.emplace_back();
+    draw.address = pool.buffer->GetGPUVirtualAddress();
+    draw.capacity = capacity;
+    draw.opaque = emitter->blend == ParticleBlend::Opaque;
+    draw.constants.fade = draw.opaque ? .0f : 1.f;
+    memcpy(draw.constants.viewProjection, glm::value_ptr(viewProjection), sizeof(draw.constants.viewProjection));
+    memcpy(draw.constants.cameraRight, glm::value_ptr(cameraRight), sizeof(draw.constants.cameraRight));
+    draw.constants.startSize = std::max(.0f, emitter->startSize);
+    memcpy(draw.constants.cameraUp, glm::value_ptr(cameraUp), sizeof(draw.constants.cameraUp));
+    draw.constants.endSize = std::max(.0f, emitter->endSize);
+    memcpy(draw.constants.startColor, glm::value_ptr(emitter->startColor), sizeof(draw.constants.startColor));
+    draw.constants.intensity = std::max(.0f, emitter->intensity);
+    memcpy(draw.constants.endColor, glm::value_ptr(emitter->endColor), sizeof(draw.constants.endColor));
+  });
+  // Whatever was not stepped just now has lost its emitter: the entity was deleted, or the component
+  // taken off it. Found by its date rather than by an event, because nothing announces either and a
+  // walk of a map this size is cheaper than the listener that would.
+  std::erase_if(particlePools, [&](auto &entry) {
+    if (entry.second.frame == particleFrame)
+      return false;
+    RetireUploadBuffer(std::move(entry.second.buffer));
+    RetireUploadBuffer(std::move(entry.second.samples));
+    return true;
+  });
+  if (particleDraws.empty())
+    return;
+  Transition(destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  // Writable, and written by the opaque particles: what is behind one of those is hidden by it,
+  // from the additive particles drawn after it here and from the fog that reads this depth next.
+  Transition(*depthSource, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+  const auto rtv = context->GetRTVHeap().GetCPUHandle(destination.rtvIndex);
+  const auto dsv = context->GetDSVHeap().GetCPUHandle(depthSource->dsvIndex);
+  commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+  const auto viewport = CD3DX12_VIEWPORT(.0f, .0f, static_cast<float>(destination.desc.width), static_cast<float>(destination.desc.height));
+  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination.desc.width), static_cast<LONG>(destination.desc.height));
+  commandList->RSSetViewports(1, &viewport);
+  commandList->RSSetScissorRects(1, &scissor);
+  commandList->SetGraphicsRootSignature(drawPipeline->rootSignature.Get());
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+  commandList->IASetVertexBuffers(0, 0, nullptr);
+  // The solid ones first, so that their depth is there for the additive ones to be tested against:
+  // a spark behind a cloud of dust is hidden by it, and one in front is not. Two passes over a list
+  // this short rather than a sort of it.
+  for (const auto opaque : {true, false}) {
+    auto bound = false;
+    for (const auto &draw : particleDraws) {
+      if (draw.opaque != opaque)
+        continue;
+      if (!bound) {
+        commandList->SetPipelineState((opaque ? opaquePipeline : drawPipeline)->pipelineState.Get());
+        bound = true;
+      }
+      commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXParticleDrawConstants) / sizeof(uint32_t), &draw.constants, 0);
+      commandList->SetGraphicsRootShaderResourceView(1, draw.address);
+      // The whole pool. How many of these are alive is known only to the buffer, and the vertex
+      // shader folds the rest away to nothing.
+      commandList->DrawInstanced(4, draw.capacity, 0, 0);
+    }
+  }
+  // Put back, because this is the one pass that draws strips and every other one assumes a list --
+  // most of them say so themselves, and this is for the one that some day does not.
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
 auto DXRenderer::BindAtmosphereResources(const std::array<uint32_t, ATMOSPHERE_SRV_SLOTS> &sources, const uint32_t table, const uint32_t cubemap) -> bool {
   auto context = GetContext();
   if (!context)
@@ -2493,7 +2866,7 @@ auto DXRenderer::GetCapabilities() const -> RendererCapabilities {
   // The debug views are not conditional on the same thing. They are branches in `scene.hlsl`, which
   // compiles and runs whatever the hardware can trace, and a field that never filled is worth
   // looking at through them more than a full one is.
-  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true};
+  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true, .particles = true};
 }
 auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> void {
   auto context = GetContext();
@@ -3273,6 +3646,12 @@ auto DXRenderer::Clear() -> void {
   frameConstantData = nullptr;
   frameConstantSlots = 0;
   frameConstantCursor = 0;
+  // Dropped outright rather than retired, since the GPU is idle by now and retirement is a queue
+  // that the next line empties anyway.
+  particlePools.clear();
+  particleDraws.clear();
+  particleScene = nullptr;
+  particleNoSamples.Reset();
   retiredUploadBuffers.clear();
   // Drained rather than dropped. The material tables above went through `ReleaseMaterialTable`,
   // which retires a range instead of freeing it, and the drain that normally collects those is in

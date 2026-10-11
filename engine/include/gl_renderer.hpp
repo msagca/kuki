@@ -185,6 +185,7 @@ public:
   auto TraceProbes(std::span<std::string>, std::span<std::string>) -> void override;
   auto MarchClouds(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyVolumetricFog(std::span<std::string>, std::span<std::string>) -> void override;
+  auto DrawParticles(std::span<std::string>, std::span<std::string>) -> void override;
   auto UpdateTarget(const std::string &, const TargetDescription &) -> void override;
   template <typename T>
   auto GetComponent(this auto &, const EntityID) -> decltype(auto);

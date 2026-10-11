@@ -17,6 +17,7 @@
 #include <light.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
+#include <particle_emitter.hpp>
 #include <script.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
@@ -50,6 +51,7 @@ const std::unordered_map<std::type_index, ComponentType> Component::indexToType 
   {typeid(MeshHandle), ComponentType::MeshHandle},
   {typeid(ModelMaterialHandle), ComponentType::ModelMaterialHandle},
   {typeid(ModelMeshHandle), ComponentType::ModelMeshHandle},
+  {typeid(ParticleEmitter), ComponentType::ParticleEmitter},
   {typeid(Script), ComponentType::Script},
   {typeid(Skeleton), ComponentType::Skeleton},
   {typeid(SkyboxHandle), ComponentType::SkyboxHandle},
@@ -79,6 +81,7 @@ const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex 
   {ComponentType::MeshHandle, typeid(MeshHandle)},
   {ComponentType::ModelMaterialHandle, typeid(ModelMaterialHandle)},
   {ComponentType::ModelMeshHandle, typeid(ModelMeshHandle)},
+  {ComponentType::ParticleEmitter, typeid(ParticleEmitter)},
   {ComponentType::Script, typeid(Script)},
   {ComponentType::Skeleton, typeid(Skeleton)},
   {ComponentType::SkyboxHandle, typeid(SkyboxHandle)},
@@ -108,6 +111,7 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::MeshHandle, "MeshHandle"},
   {ComponentType::ModelMaterialHandle, "ModelMaterialHandle"},
   {ComponentType::ModelMeshHandle, "ModelMeshHandle"},
+  {ComponentType::ParticleEmitter, "Particle Emitter"},
   {ComponentType::Script, "Script"},
   {ComponentType::Skeleton, "Skeleton"},
   {ComponentType::SkyboxHandle, "SkyboxHandle"},

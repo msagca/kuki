@@ -15,6 +15,14 @@ enum class RenderPass : uint8_t {
   /// not lit, not exposed, and not tone mapped, so it reads the same whatever the scene is doing --
   /// which is what a clock has to do, and what putting it in the scene could not give it.
   Overlay,
+  /// @brief Every particle emitter in the scene, moved a step and drawn over the shaded picture.
+  ///
+  /// After the scene is resolved and before the air is marched, and both halves of that are
+  /// deliberate. After, because the quads are blended onto a finished picture and tested against a
+  /// depth buffer that has to exist first. Before, because everything downstream of the fog pass is
+  /// what makes a spark look like one: the haze dims it with distance and the bloom chain gives it
+  /// the glow that says it is bright rather than merely orange.
+  Particles,
   ProbeTrace,
   Scene,
   ShadowMap,

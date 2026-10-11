@@ -11,6 +11,7 @@
 #include <material_asset.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
+#include <particle_emitter.hpp>
 #include <model_asset.hpp>
 #include <scene_serializer.hpp>
 #include <script.hpp>
@@ -43,6 +44,10 @@ namespace {
     ComponentType::MeshHandle,
     ComponentType::ModelMaterialHandle,
     ComponentType::ModelMeshHandle,
+    // Travels, like a light does: where the sparks come from and what they look like is part of
+    // the scene. What does not travel is the particles themselves, which live in a buffer on the
+    // GPU that nothing reads back -- a loaded scene starts its emitters from empty.
+    ComponentType::ParticleEmitter,
     ComponentType::SkyboxHandle,
     ComponentType::TextureHandle,
     ComponentType::Transform,
@@ -379,6 +384,63 @@ namespace {
     Read("kilometresPerUnit", f.kilometresPerUnit);
     Read("steps", f.steps);
   }
+  auto ToJson(const ParticleEmitter &p) -> json {
+    return {
+      {"capacity", p.capacity},
+      {"rate", p.rate},
+      {"emitting", p.emitting},
+      {"burst", p.burst},
+      {"shape", static_cast<int>(p.shape)},
+      {"mesh", p.mesh},
+      {"lifetime", p.lifetime},
+      {"lifetimeVariance", p.lifetimeVariance},
+      {"hold", p.hold},
+      {"holdVariance", p.holdVariance},
+      {"speed", p.speed},
+      {"speedVariance", p.speedVariance},
+      {"spread", p.spread},
+      {"radius", p.radius},
+      {"gravity", p.gravity},
+      {"drag", p.drag},
+      {"startSize", p.startSize},
+      {"endSize", p.endSize},
+      {"startColor", p.startColor},
+      {"endColor", p.endColor},
+      {"blend", static_cast<int>(p.blend)},
+      {"intensity", p.intensity}};
+  }
+  auto FromJson(const json &j, ParticleEmitter &p) -> void {
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("capacity", p.capacity);
+    Read("rate", p.rate);
+    Read("emitting", p.emitting);
+    // `fired` is left out on both sides. It counts the bursts asked for in a run, and a scene that
+    // saved it would be saving how many times somebody pressed a button.
+    Read("burst", p.burst);
+    if (j.contains("shape"))
+      p.shape = static_cast<ParticleShape>(j.at("shape").get<int>());
+    Read("mesh", p.mesh);
+    Read("lifetime", p.lifetime);
+    Read("lifetimeVariance", p.lifetimeVariance);
+    Read("hold", p.hold);
+    Read("holdVariance", p.holdVariance);
+    Read("speed", p.speed);
+    Read("speedVariance", p.speedVariance);
+    Read("spread", p.spread);
+    Read("radius", p.radius);
+    Read("gravity", p.gravity);
+    Read("drag", p.drag);
+    Read("startSize", p.startSize);
+    Read("endSize", p.endSize);
+    Read("startColor", p.startColor);
+    Read("endColor", p.endColor);
+    if (j.contains("blend"))
+      p.blend = static_cast<ParticleBlend>(j.at("blend").get<int>());
+    Read("intensity", p.intensity);
+  }
   struct ToJsonVisitor {
     std::unordered_set<AssetID> &referenced;
     auto operator()(Transform *t) const -> json {
@@ -392,6 +454,11 @@ namespace {
     }
     auto operator()(VolumetricFog *f) const -> json {
       return ToJson(*f);
+    }
+    auto operator()(ParticleEmitter *p) const -> json {
+      if (p->mesh)
+        referenced.insert(p->mesh);
+      return ToJson(*p);
     }
     auto operator()(BoundingBox *b) const -> json {
       return ToJson(*b);
@@ -504,6 +571,12 @@ namespace {
         case ComponentType::VolumetricFog:
           FromJson(componentJson, *app.AddEntityComponent<VolumetricFog>(id));
           break;
+        case ComponentType::ParticleEmitter: {
+          auto p = app.AddEntityComponent<ParticleEmitter>(id);
+          FromJson(componentJson, *p);
+          p->mesh = Remap(remap, p->mesh);
+          break;
+        }
         case ComponentType::BoundingBox:
           FromJson(componentJson, *app.AddEntityComponent<BoundingBox>(id));
           break;

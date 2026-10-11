@@ -1318,6 +1318,8 @@ auto Editor::DisplayProperties() -> void {
         continue;
       if ((compType == ComponentType::VolumetricClouds || compType == ComponentType::VolumetricFog) && !context.capabilities.volumetrics)
         continue;
+      if (compType == ComponentType::ParticleEmitter && !context.capabilities.particles)
+        continue;
       if (!IsHandleComponent(compType) && !Component::IsGL(compType) && compType != ComponentType::Script && !HasSceneSingleton(compType) && ImGui::MenuItem(Component::GetTypeName(compType).c_str()))
         AddComponentByType(*this, context.selectedEntityId, compType);
     }

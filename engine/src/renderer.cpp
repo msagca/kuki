@@ -33,6 +33,8 @@ auto Renderer::ExecutePass(const RenderPass pass, std::span<std::string> inputs,
     return MarchClouds(inputs, outputs);
   case RenderPass::VolumetricFog:
     return ApplyVolumetricFog(inputs, outputs);
+  case RenderPass::Particles:
+    return DrawParticles(inputs, outputs);
   default:
     return RenderScene(inputs, outputs);
   }
@@ -68,6 +70,10 @@ auto Renderer::BypassPass(const RenderPass pass, std::span<std::string> inputs, 
   // that picture through unaltered is what not running amounts to. It is also the whole of what a
   // few of them do when they have nothing to say -- the outline pass already blits its input
   // through when nothing is selected, and this is that path reached from the other direction.
+  //
+  // The particle pass is one of these, and standing it down freezes the simulation as well as
+  // hiding it: the particles are stepped by the pass that draws them, so they are found exactly
+  // where they were left when it is switched back on.
   default:
     return BypassCopy(inputs, outputs);
   }

@@ -151,6 +151,30 @@ private:
   static constexpr float ROCKER_SPEED = 22.f;
   /// @brief Seconds remaining below which a clock turns red.
   static constexpr float CLOCK_LOW = 30.f;
+  /// @brief How long a capturing piece waits, lifted over the square it left, before it lands.
+  ///
+  /// The taken piece comes apart where it stands, and for the first part of that it is still
+  /// standing there: its grains are held in place and let go a few at a time. A piece set down on
+  /// the square in the same frame would be set down inside it. This is a little longer than the
+  /// last grain is held for, so the square has begun to clear by the time anything arrives on it.
+  static constexpr float ARRIVE_DELAY = .4f;
+  /// @brief The longest a grain of a taken piece is held, and the longest it then lasts, in seconds.
+  ///
+  /// Under a second between them, which is the whole of a capture from the cut to the last grain:
+  /// a move is one beat of the game, and an effect that outlasts it is still playing when the reply
+  /// is being thought about. The sparks are held to the same second.
+  static constexpr float DISSOLVE_HOLD = .3f;
+  static constexpr float DISSOLVE_LIFETIME = .65f;
+  /// @brief How long the slash takes to cross a taken piece, in seconds, and the rate its emitter
+  /// runs at while it does.
+  ///
+  /// The slash is an emitter swept along a line. The renderer spreads a frame's spawns along the
+  /// path the emitter travelled in that frame, so what the sweep leaves behind is a line of sparks
+  /// whose density is this rate over the speed of the sweep -- seven hundred along a line a little
+  /// longer than a piece is tall, which is close enough together to read as one stroke. Quick
+  /// enough to be a cut, and still several frames, so the stroke is seen being drawn.
+  static constexpr float SLASH_SWEEP = .07f;
+  static constexpr float SLASH_RATE = 10000.f;
   Board board;
   /// @brief The slab drawn for each square. Created once, and after that only ever moved.
   std::array<kuki::EntityID, Board::SquareCount> squares{};
@@ -185,6 +209,35 @@ private:
   /// @brief The rocker's current lean in degrees about the model's z, travelling toward
   /// `ROCKER_TILT` one way or the other. Positive lifts White's end.
   float rockerAngle{};
+  /// @brief The four particle emitters the game has: one swept across a piece as it is taken, one
+  /// the piece is turned into, one fired where it stood, and one left running on the winner's king.
+  /// Created once; after that only ever moved, switched and fired.
+  ///
+  /// One emitter for every capture rather than one a capture. Its particles are in world space and
+  /// stop following it the moment they leave, so moving it to the next capture takes nothing away
+  /// from the last one's sparks still in the air -- and an emitter made per capture would be a
+  /// buffer allocated per capture, for a pool that is empty again within a second.
+  kuki::EntityID slashSparks{};
+  kuki::EntityID dissolveGrains{};
+  kuki::EntityID captureSparks{};
+  kuki::EntityID victorySparks{};
+  /// @brief The square a capturing piece left and the one it is on its way to, while it waits to
+  /// land, and how much longer it waits. Both -1 when nothing is in the air.
+  ///
+  /// The board has already made the move. This is only where the piece is drawn in the meantime:
+  /// `RefreshPieces` reads it and shows the piece over its old square and nothing on its new one.
+  int arriveFrom{-1};
+  int arriveTo{-1};
+  float arriveLeft{};
+  /// @brief Whether a slash is under way, how far through its sweep it is, and the line it follows.
+  ///
+  /// The time is negative for a slash that has been asked for and not yet begun; see `UpdateSparks`
+  /// for why there is such a state. `slashBurst` is where the burst goes off once the cut is made.
+  bool slashing{};
+  float slashTime{};
+  glm::vec3 slashFrom{};
+  glm::vec3 slashTo{};
+  glm::vec3 slashBurst{};
   /// @brief Each slot's centre along the screen, and the glyphs' em, in clock units. Worked out
   /// with the glyphs, from the font's advances.
   std::array<float, CLOCK_SLOTS> slotOffsets{};
@@ -369,6 +422,29 @@ private:
   /// a player presses their own end to stop their clock and start the other, so the end that is
   /// down belongs to whoever is waiting. The clock presses itself: making the move is the press.
   auto UpdateClock(kuki::Application &) -> void;
+  /// @brief Makes the four emitters, all stopped.
+  ///
+  /// They do nothing on a backend with no particle pass -- the component is there and nothing reads
+  /// it -- so nothing here asks which backend is running.
+  auto CreateSparks() -> void;
+  /// @brief Throws a burst of sparks from a point, which is where a taken piece was standing.
+  auto Burst(const glm::vec3 &) -> void;
+  /// @brief Turns a piece standing on a square into grains the shape of it, which then drift apart.
+  ///
+  /// The piece's own entity is not involved and its mesh is not touched. The grains are an emitter
+  /// that is given the piece's mesh and placed exactly where the piece stood, in the frame the
+  /// piece itself stops being drawn.
+  auto Dissolve(const int, const Piece &) -> void;
+  /// @brief Cuts across a piece standing at a point and of a given height, then bursts from its
+  /// middle.
+  ///
+  /// The line runs from above one shoulder to the foot on the other side, across the camera's view
+  /// rather than along any axis of the board, so it is a diagonal from wherever it is watched.
+  auto Slash(const glm::vec3 &, const float) -> void;
+  /// @brief Carries the slash along its line, and lands a capturing piece once its wait is over.
+  auto UpdateSparks(kuki::Application &) -> void;
+  /// @brief Starts the victory emitter on the winner's king, or stops it when nobody has won.
+  auto UpdateVictory() -> void;
   /// @brief Works out where the game stands, which is `state` and `playable`.
   ///
   /// Split from the title because the two are wanted at different moments. This is the expensive

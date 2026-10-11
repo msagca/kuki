@@ -1376,6 +1376,13 @@ auto GLRenderer::MarchClouds(std::span<std::string>, std::span<std::string>) -> 
 auto GLRenderer::ApplyVolumetricFog(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   BypassCopy(inputs, outputs);
 }
+/// The picture through, unaltered, and unlike the two above not for want of anything. A compute
+/// shader over a storage buffer and an instanced quad are all a particle pass is, and this backend
+/// has all three; it is the pass itself that has not been written here yet. `RendererCapabilities`
+/// says so, which keeps the editor from offering an emitter that would emit nothing.
+auto GLRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  BypassCopy(inputs, outputs);
+}
 auto GLRenderer::UpdateTarget(const std::string &name, const TargetDescription &desc) -> void {
   const auto id = resourceRegistry.GetID(name);
   if (!id)
