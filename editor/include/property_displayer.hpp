@@ -938,6 +938,18 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
   ImGui::TextDisabled("(?)");
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Brightness multiplier applied on top of the diffuse/specular colors above.\nRaise this instead of pushing color channels past 1.0 to make a light brighter.");
+  if (light->type == kuki::LightType::Directional) {
+    auto angularDiameter = light->angularDiameter;
+    if (ImGui::DragFloat("Angular Diameter", &angularDiameter, .01f, .0f, 30.f, "%.2f deg"))
+      light->angularDiameter = std::clamp(angularDiameter, .0f, 30.f);
+    ImGui::SetItemTooltip("How wide the light is in the sky, which is what makes its shadows soften the\nfurther they fall. The sun is a little over half a degree.\n\nNought is a light with no size: every shadow the same fixed width.");
+  }
+  if (light->type == kuki::LightType::Spot) {
+    auto sourceRadius = light->sourceRadius;
+    if (ImGui::DragFloat("Source Radius", &sourceRadius, .005f, .0f, MAX_FLOAT, "%.3f"))
+      light->sourceRadius = std::max(sourceRadius, .0f);
+    ImGui::SetItemTooltip("The size of the bulb, in scene units. A larger one gives shadows that are\nsharp at the foot of what casts them and soft further away.\n\nNought is a point: every shadow the same fixed width.");
+  }
   if (light->type == kuki::LightType::Point || light->type == kuki::LightType::Spot) {
     constexpr auto MIN_RANGE = 1.f;
     const auto currentLinear = std::max(light->linear, 1.0e-4f);

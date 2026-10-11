@@ -2649,6 +2649,8 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
         target.attenuation[3] = light->intensity;
         target.cutoff[0] = light->innerCutoff;
         target.cutoff[1] = light->outerCutoff;
+        // In the row's spare third, where the shader's soft shadow reads the light's size from.
+        target.cutoff[2] = std::max(.0f, light->sourceRadius);
       }
       break;
     }
@@ -2659,6 +2661,10 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
     memcpy(constants.directionalDiffuse, glm::value_ptr(directional->diffuse), sizeof(float) * 3);
     memcpy(constants.directionalSpecular, glm::value_ptr(directional->specular), sizeof(float) * 3);
     constants.directionalIntensity[0] = directional->intensity;
+    // Sent as the tangent of the half angle, which is the only form the shader uses it in: how far
+    // a penumbra's edge moves sideways for each unit its shadow falls. Held short of a hemisphere,
+    // where the tangent stops being a number.
+    constants.directionalIntensity[1] = std::tan(glm::radians(std::clamp(directional->angularDiameter, .0f, 170.f) * .5f));
   }
   for (auto i = 0u; i < spotShadowCount && i < MAX_SPOT_LIGHTS; ++i)
     memcpy(constants.spotLightViewProjection[i], glm::value_ptr(spotShadowViewProjection[i]), sizeof(float) * 16);

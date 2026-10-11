@@ -211,6 +211,8 @@ namespace {
       {"nearPlane", l.nearPlane},
       {"farPlane", l.farPlane},
       {"orthoSize", l.orthoSize},
+      {"angularDiameter", l.angularDiameter},
+      {"sourceRadius", l.sourceRadius},
     };
   }
   auto FromJson(const json &j, Light &l) -> void {
@@ -240,6 +242,10 @@ namespace {
       j.at("farPlane").get_to(l.farPlane);
     if (j.contains("orthoSize"))
       j.at("orthoSize").get_to(l.orthoSize);
+    if (j.contains("angularDiameter"))
+      j.at("angularDiameter").get_to(l.angularDiameter);
+    if (j.contains("sourceRadius"))
+      j.at("sourceRadius").get_to(l.sourceRadius);
     Transform transform;
     if (j.contains("position"))
       j.at("position").get_to(transform.position);

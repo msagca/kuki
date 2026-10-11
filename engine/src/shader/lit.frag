@@ -11,6 +11,26 @@ const uint MAX_SPOT_LIGHTS = KUKI_MAX_SPOT_LIGHTS;
 // the eye picks out the steps of a three by three as banding, and stops being able to at five.
 const int SHADOW_FILTER_EXTENT = 2;
 const float SHADOW_FILTER_TAPS = float((2 * SHADOW_FILTER_EXTENT + 1) * (2 * SHADOW_FILTER_EXTENT + 1));
+// The soft shadows: how many taps look for what is casting the shadow, and how many then measure how
+// much of the light it hides. Both are spread over a disc whose size is not known until the first
+// lot have reported, and which may be a dozen times wider than the fixed kernel above -- so they are
+// a spiral turned by a different angle in every pixel rather than a grid, which trades the bands a
+// grid stretched that far would draw for a grain fine enough to pass for the penumbra's own texture.
+//
+// Sixteen is enough to find an occluder that covers any real part of the disc; missing one that
+// covers a sixteenth of it loses a sixteenth of the shadow, at an edge that is being blurred anyway.
+// Thirty-two is where the grain stops being visible at the widest radius allowed below.
+const int SHADOW_BLOCKER_TAPS = 16;
+const int SHADOW_PENUMBRA_TAPS = 32;
+// The narrowest and widest a penumbra is filtered at, as a radius in shadow map texels.
+//
+// The floor is the fixed kernel's own reach, so a shadow is never harder than it was before any of
+// this -- at the foot of what casts it, where the true penumbra is thinner than a texel, the map's
+// grid is still what has to be hidden. The ceiling is what the tap count above can cover without
+// the grain opening into dots, and what bounds the cost of the search: both loops read the same
+// number of texels whatever the radius, so wider is not slower, only sparser.
+const float SHADOW_MIN_RADIUS = 2.5;
+const float SHADOW_MAX_RADIUS = 32.0;
 // What is left for the slope bias to not have to cover: depth quantisation in the map itself. It can
 // be this small only because the gradient carries the part that scales with the angle to the light.
 const float SHADOW_DEPTH_BIAS = 0.0002;
@@ -59,6 +79,8 @@ struct DirLight {
   vec3 diffuse;
   vec3 specular;
   float intensity;
+  // The tangent of half the angle the light subtends, or nought for a light with no size.
+  float penumbraSlope;
   mat4 view;
   mat4 projection;
 };
@@ -84,6 +106,8 @@ struct SpotLight {
   float quadratic;
   float innerCutoff;
   float outerCutoff;
+  // The radius of the light itself in scene units, or nought for a light with no size.
+  float sourceRadius;
 };
 layout(std140, binding = 0) uniform u_cameraTransform {
   mat4 view;
@@ -121,10 +145,15 @@ bool OutsideShadowMap(vec3);
 float DistributionGGX(vec3, vec3, float);
 float GeometrySchlickGGX(float, float);
 float GeometrySmith(vec3, vec3, vec3, float);
-float ShadowAmount(sampler2D, mat4, vec3, vec3, vec3);
+float FixedShadowAmount(int, vec3, vec2, vec2);
+float PenumbraShadowAmount(int, vec3, vec2, vec2, float, float, vec2, bool);
+float ShadowAmount(mat4, vec3, vec3, vec3, float);
+float ShadowMapDepth(int, vec2);
+float ShadowRotation();
 float ShadowTexelWorldSize(mat4, vec3, vec2);
-float SpotShadowAmount(sampler2DArray, float, mat4, vec3, vec3, vec3);
+float SpotShadowAmount(int, mat4, vec3, vec3, vec3, float);
 vec2 ShadowDepthGradient(vec3, vec2);
+vec2 ShadowDisc(int, int, float);
 vec2 FallbackBRDF(float, float);
 vec3 DirLightContribution(DirLight, vec3, vec3, vec3, float, float, vec3, float);
 vec3 FallbackIrradiance(vec3);
@@ -186,13 +215,13 @@ void main() {
     ambient = vec3(u_ambientFallback) * diffuseScale * A.rgb * O;
   if (u_hasDirLight) {
     mat4 lightViewProj = u_dirLight.projection * u_dirLight.view;
-    float dirShadow = ShadowAmount(u_shadowMap, lightViewProj, v_position, GN, normalize(-u_dirLight.direction));
+    float dirShadow = ShadowAmount(lightViewProj, v_position, GN, normalize(-u_dirLight.direction), u_dirLight.penumbraSlope);
     Lo += (1.0 - dirShadow) * DirLightContribution(u_dirLight, F0, A.rgb, N, M, R, V, diffuseScale);
   }
   for (uint i = 0u; i < min(u_pointCount, MAX_POINT_LIGHTS); ++i)
     Lo += PointLightContribution(u_pointLights[i], F0, A.rgb, N, M, R, V, v_position, diffuseScale);
   for (uint i = 0u; i < min(u_spotCount, MAX_SPOT_LIGHTS); ++i) {
-    float spotShadow = SpotShadowAmount(u_spotShadowMap, float(i), u_spotLightViewProj[i], v_position, GN, normalize(u_spotLights[i].position - v_position));
+    float spotShadow = SpotShadowAmount(int(i), u_spotLightViewProj[i], v_position, GN, normalize(u_spotLights[i].position - v_position), u_spotLights[i].sourceRadius);
     Lo += (1.0 - spotShadow) * SpotLightContribution(u_spotLights[i], F0, A.rgb, N, M, R, V, v_position, diffuseScale);
   }
   color = vec4(ambient + Lo + transmitted + E.rgb, alpha);
@@ -322,10 +351,74 @@ vec3 ShadowSamplePosition(mat4 viewProj, vec3 worldPos, vec3 N, vec3 L, vec2 siz
 bool OutsideShadowMap(vec3 posScreen) {
   return posScreen.z < 0.0 || posScreen.z > 1.0 || any(lessThan(posScreen.xy, vec2(0.0))) || any(greaterThan(posScreen.xy, vec2(1.0)));
 }
-float ShadowAmount(sampler2D shadowMap, mat4 viewProj, vec3 worldPos, vec3 N, vec3 L) {
-  vec2 size = vec2(textureSize(shadowMap, 0));
+// One depth out of either map: the directional light's for a layer below nought, and that layer of
+// the spot lights' array otherwise. Everything below is the same arithmetic for both, and this is
+// what lets it be written once.
+float ShadowMapDepth(int layer, vec2 uv) {
+  if (layer < 0)
+    return textureLod(u_shadowMap, uv, 0.0).r;
+  return textureLod(u_spotShadowMap, vec3(uv, float(layer)), 0.0).r;
+}
+// The shadow of a light with no size: the fixed kernel, the same width everywhere. What every
+// shadow was before lights had a size, and still what one gets when its light is given none.
+float FixedShadowAmount(int layer, vec3 posScreen, vec2 gradient, vec2 texel) {
+  float shadow = 0.0;
+  for (int y = -SHADOW_FILTER_EXTENT; y <= SHADOW_FILTER_EXTENT; ++y)
+    for (int x = -SHADOW_FILTER_EXTENT; x <= SHADOW_FILTER_EXTENT; ++x) {
+      vec2 offset = vec2(x, y) * texel;
+      float slope = dot(offset, gradient);
+      shadow += posScreen.z + slope - SHADOW_DEPTH_BIAS > ShadowMapDepth(layer, posScreen.xy + offset) ? 1.0 : 0.0;
+    }
+  return shadow / SHADOW_FILTER_TAPS;
+}
+// A point of a disc of unit radius, the `index`th of `count` spread evenly over it along a spiral.
+// The square root is what makes them even by area, and the golden angle between one and the next is
+// what keeps any two from lining up, whatever the count.
+vec2 ShadowDisc(int index, int count, float rotation) {
+  float angle = float(index) * 2.39996323 + rotation;
+  return sqrt((float(index) + 0.5) / float(count)) * vec2(cos(angle), sin(angle));
+}
+// An angle for the spiral that differs from each pixel to its neighbours and averages out over any
+// few of them: interleaved gradient noise, which is built to have that property along both axes.
+float ShadowRotation() {
+  return 2.0 * PI * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+}
+// The shadow of a light that has a size: percentage-closer soft shadows. The same function as
+// `PenumbraShadowAmount` in scene.hlsl, which is where the reasoning is written out; what differs
+// here is only what `depthLine` has to hold, since this map's depth has been through the halving
+// that takes OpenGL's device range to nought and one.
+float PenumbraShadowAmount(int layer, vec3 posScreen, vec2 gradient, vec2 texel, float search, float spread, vec2 depthLine, bool perspective) {
+  float rotation = ShadowRotation();
+  float blockers = 0.0;
+  float blockerDepth = 0.0;
+  for (int b = 0; b < SHADOW_BLOCKER_TAPS; ++b) {
+    vec2 offset = ShadowDisc(b, SHADOW_BLOCKER_TAPS, rotation) * (search * texel);
+    float mapDepth = ShadowMapDepth(layer, posScreen.xy + offset);
+    // The same test the filter makes, plane and bias and all. A looser one here would find the
+    // receiver's own surface as its occluder at a distance of nothing, and report no penumbra.
+    if (posScreen.z + dot(offset, gradient) - SHADOW_DEPTH_BIAS > mapDepth) {
+      blockerDepth += perspective ? depthLine.y / (mapDepth - depthLine.x) : mapDepth;
+      blockers += 1.0;
+    }
+  }
+  if (blockers == 0.0)
+    return 0.0;
+  blockerDepth /= blockers;
+  float receiverDepth = perspective ? depthLine.y / (posScreen.z - depthLine.x) : posScreen.z;
+  float gap = perspective ? (receiverDepth - blockerDepth) / max(blockerDepth, EPSILON) : receiverDepth - blockerDepth;
+  float radius = clamp(spread * max(gap, 0.0), SHADOW_MIN_RADIUS, SHADOW_MAX_RADIUS);
+  float shadow = 0.0;
+  for (int p = 0; p < SHADOW_PENUMBRA_TAPS; ++p) {
+    vec2 offset = ShadowDisc(p, SHADOW_PENUMBRA_TAPS, rotation) * (radius * texel);
+    shadow += posScreen.z + dot(offset, gradient) - SHADOW_DEPTH_BIAS > ShadowMapDepth(layer, posScreen.xy + offset) ? 1.0 : 0.0;
+  }
+  return shadow / float(SHADOW_PENUMBRA_TAPS);
+}
+float ShadowAmount(mat4 viewProj, vec3 worldPos, vec3 N, vec3 L, float penumbraSlope) {
+  vec2 size = vec2(textureSize(u_shadowMap, 0));
   vec2 texel = 1.0 / size;
-  vec4 posClip = viewProj * vec4(ShadowSamplePosition(viewProj, worldPos, N, L, size), 1.0);
+  vec3 sampled = ShadowSamplePosition(viewProj, worldPos, N, L, size);
+  vec4 posClip = viewProj * vec4(sampled, 1.0);
   vec3 posScreen = posClip.xyz / posClip.w;
   posScreen = posScreen * 0.5 + 0.5;
   // taken before anything returns, since a derivative is only meaningful where the whole quad
@@ -333,20 +426,23 @@ float ShadowAmount(sampler2D shadowMap, mat4 viewProj, vec3 worldPos, vec3 N, ve
   vec2 gradient = ShadowDepthGradient(posScreen, texel);
   if (posClip.w <= 0.0 || OutsideShadowMap(posScreen))
     return 0.0;
-  float shadow = 0.0;
-  for (int y = -SHADOW_FILTER_EXTENT; y <= SHADOW_FILTER_EXTENT; ++y)
-    for (int x = -SHADOW_FILTER_EXTENT; x <= SHADOW_FILTER_EXTENT; ++x) {
-      vec2 offset = vec2(x, y) * texel;
-      float slope = dot(offset, gradient);
-      float mapDepth = textureLod(shadowMap, posScreen.xy + offset, 0.0).r;
-      shadow += posScreen.z + slope - SHADOW_DEPTH_BIAS > mapDepth ? 1.0 : 0.0;
-    }
-  return shadow / SHADOW_FILTER_TAPS;
+  if (penumbraSlope <= 0.0)
+    return FixedShadowAmount(-1, posScreen, gradient, texel);
+  // Texels of penumbra radius for each unit of the map's depth between occluder and receiver. The
+  // matrix's third row is how much device depth a world step along the light is worth, and the map
+  // holds half of that.
+  float worldPerDepth = 2.0 / max(length(vec3(viewProj[0].z, viewProj[1].z, viewProj[2].z)), EPSILON);
+  float spread = penumbraSlope * worldPerDepth / ShadowTexelWorldSize(viewProj, sampled, size);
+  // Nothing can be casting on this point from further back than the map's near plane, which is
+  // where depth is nought, so the receiver's own depth is the largest gap there is to look across.
+  float search = clamp(spread * posScreen.z, SHADOW_MIN_RADIUS, SHADOW_MAX_RADIUS);
+  return PenumbraShadowAmount(-1, posScreen, gradient, texel, search, spread, vec2(0.0), false);
 }
-float SpotShadowAmount(sampler2DArray shadowMap, float layer, mat4 viewProj, vec3 worldPos, vec3 N, vec3 L) {
-  vec2 size = vec2(textureSize(shadowMap, 0).xy);
+float SpotShadowAmount(int layer, mat4 viewProj, vec3 worldPos, vec3 N, vec3 L, float sourceRadius) {
+  vec2 size = vec2(textureSize(u_spotShadowMap, 0).xy);
   vec2 texel = 1.0 / size;
-  vec4 posClip = viewProj * vec4(ShadowSamplePosition(viewProj, worldPos, N, L, size), 1.0);
+  vec3 sampled = ShadowSamplePosition(viewProj, worldPos, N, L, size);
+  vec4 posClip = viewProj * vec4(sampled, 1.0);
   vec3 posScreen = posClip.xyz / posClip.w;
   posScreen = posScreen * 0.5 + 0.5;
   vec2 gradient = ShadowDepthGradient(posScreen, texel);
@@ -355,15 +451,23 @@ float SpotShadowAmount(sampler2DArray shadowMap, float layer, mat4 viewProj, vec
   // orthographic projection cannot do this, but it costs nothing to guard both the same way.
   if (posClip.w <= 0.0 || OutsideShadowMap(posScreen))
     return 0.0;
-  float shadow = 0.0;
-  for (int y = -SHADOW_FILTER_EXTENT; y <= SHADOW_FILTER_EXTENT; ++y)
-    for (int x = -SHADOW_FILTER_EXTENT; x <= SHADOW_FILTER_EXTENT; ++x) {
-      vec2 offset = vec2(x, y) * texel;
-      float slope = dot(offset, gradient);
-      float mapDepth = textureLod(shadowMap, vec3(posScreen.xy + offset, layer), 0.0).r;
-      shadow += posScreen.z + slope - SHADOW_DEPTH_BIAS > mapDepth ? 1.0 : 0.0;
-    }
-  return shadow / SHADOW_FILTER_TAPS;
+  if (sourceRadius <= 0.0)
+    return FixedShadowAmount(layer, posScreen, gradient, texel);
+  // Device depth as a function of distance from the light is `a + b / w`, with both numbers in the
+  // matrix: clip depth is a straight line in clip w, whose slope is the third row's share of the
+  // fourth and whose intercept is whatever is left over at this point. The map holds half of that
+  // plus a half, which is still a line in `1 / w` and is the one kept here.
+  vec3 depthRow = vec3(viewProj[0].z, viewProj[1].z, viewProj[2].z);
+  vec3 wRow = vec3(viewProj[0].w, viewProj[1].w, viewProj[2].w);
+  float a = dot(depthRow, wRow) / max(dot(wRow, wRow), EPSILON);
+  vec2 depthLine = vec2(0.5 * a + 0.5, 0.5 * (posClip.z - a * posClip.w));
+  // Texels of penumbra radius when the receiver is twice as far from the light as the occluder:
+  // the light's own radius, measured in this point's texels.
+  float spread = sourceRadius / ShadowTexelWorldSize(viewProj, sampled, size);
+  // The nearest an occluder can be is the map's near plane, where depth is nought.
+  float nearest = depthLine.y / -depthLine.x;
+  float search = clamp(spread * (posClip.w - nearest) / max(nearest, EPSILON), SHADOW_MIN_RADIUS, SHADOW_MAX_RADIUS);
+  return PenumbraShadowAmount(layer, posScreen, gradient, texel, search, spread, depthLine, true);
 }
 vec3 VolumeAttenuation(float distance) {
   if (u_attenuationDistance <= 0.0 || distance <= 0.0)

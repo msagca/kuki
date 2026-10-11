@@ -37,6 +37,9 @@ struct DirLight {
   vec3 diffuse;
   vec3 specular;
   float intensity;
+  // Unread here. Declared because the fragment stage does read it, and a uniform two stages name has
+  // to be one type in both or the program does not link.
+  float penumbraSlope;
   mat4 view;
   mat4 projection;
 };

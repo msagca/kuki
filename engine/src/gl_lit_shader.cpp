@@ -35,6 +35,9 @@ auto GLLitShader::SetLighting(std::span<const Light> lights) -> void {
       SetUniform("u_dirLight.diffuse", light.diffuse);
       SetUniform("u_dirLight.specular", light.specular);
       SetUniform("u_dirLight.intensity", light.intensity);
+      // As the tangent of the half angle, which is the form the shader uses it in. See the same line
+      // in `DXRenderer`.
+      SetUniform("u_dirLight.penumbraSlope", std::tan(glm::radians(std::clamp(light.angularDiameter, .0f, 170.f) * .5f)));
       dirExists = true;
     } else if (light.type == LightType::Point) {
       const auto member = [index = pointIndex](const char *name) {
@@ -73,6 +76,7 @@ auto GLLitShader::SetLighting(std::span<const Light> lights) -> void {
       SetUniform(member("quadratic"), light.quadratic);
       SetUniform(member("innerCutoff"), light.innerCutoff);
       SetUniform(member("outerCutoff"), light.outerCutoff);
+      SetUniform(member("sourceRadius"), std::max(.0f, light.sourceRadius));
       ++spotIndex;
     }
   SetUniform("u_pointCount", pointIndex);
