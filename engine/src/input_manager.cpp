@@ -1,4 +1,5 @@
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <cctype>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_int2.hpp>
@@ -73,6 +74,34 @@ auto InputManager::GetBindingDescription(const std::string &name) const -> std::
 }
 auto InputManager::GetBindingNames() const -> const std::vector<std::string> & {
   return bindingOrder;
+}
+auto InputManager::GetButtons() const -> uint32_t {
+  return tickButtons;
+}
+auto InputManager::GetButtonNames() const -> const std::vector<std::string> & {
+  return buttonOrder;
+}
+auto InputManager::LatchTick() -> void {
+  const auto mods = CurrentMods();
+  tickButtons = 0;
+  for (size_t bit = 0; bit < buttonOrder.size(); ++bit) {
+    const auto trigger = GetBinding(buttonOrder[bit]);
+    const auto index = GLFWInputToIndex(trigger.key);
+    if (index != 255 && (inputState[index] || tickLatch[index]) && (mods & trigger.mods) == trigger.mods)
+      tickButtons |= uint32_t{1} << bit;
+  }
+  tickLatch.reset();
+}
+auto InputManager::RegisterButton(const std::string &name, const Trigger &trigger, std::string description) -> int {
+  if (const auto it = std::ranges::find(buttonOrder, name); it != buttonOrder.end())
+    return static_cast<int>(it - buttonOrder.begin());
+  if (buttonOrder.size() >= 32) {
+    spdlog::warn("[InputManager] Failed to register button {}: all 32 are taken", name);
+    return -1;
+  }
+  RegisterBinding(name, trigger, std::move(description));
+  buttonOrder.push_back(name);
+  return static_cast<int>(buttonOrder.size() - 1);
 }
 auto InputManager::GetKeyAxis(const KeyAxis axis) const -> glm::ivec2 {
   const auto arrows = axis == KeyAxis::Arrows;
@@ -172,6 +201,7 @@ auto InputManager::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
   inputState[index] = action == GLFW_PRESS || action == GLFW_REPEAT;
   pressState[index] = pressState[index] || action == GLFW_PRESS;
   releaseState[index] = releaseState[index] || action == GLFW_RELEASE;
+  tickLatch[index] = tickLatch[index] || action == GLFW_PRESS;
   if (action != GLFW_REPEAT)
     FireAction(index, action == GLFW_PRESS);
 }

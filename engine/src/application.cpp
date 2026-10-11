@@ -135,6 +135,17 @@ auto Application::PreUpdate() -> void {
     graphicsContext->BeginFrame();
   }
   {
+    // Before the frame's own update, so that what is drawn is the state the newest tick left. Input
+    // is latched afresh for each one: the first tick of a frame takes everything that arrived since
+    // the last, and any further ticks the frame owes see the keyboard as it now stands.
+    KUKI_PROFILE_SCOPE("Ticks");
+    for (auto due = tickClock.Advance(deltaTime); due > 0; --due) {
+      inputManager.LatchTick();
+      TickSystems();
+      tickClock.Complete();
+    }
+  }
+  {
     KUKI_PROFILE_SCOPE("Systems");
     UpdateSystems(deltaTime);
   }
@@ -276,6 +287,30 @@ auto Application::DeleteEntity(const EntityID id) -> void {
 }
 auto Application::DeltaTime() const -> float {
   return deltaTime;
+}
+auto Application::TickAlpha() const -> float {
+  return tickClock.Alpha();
+}
+auto Application::TickIndex() const -> uint64_t {
+  return tickClock.Index();
+}
+auto Application::TickRate() const -> int {
+  return tickClock.Rate();
+}
+auto Application::TickTime() const -> float {
+  return static_cast<float>(tickClock.Step());
+}
+auto Application::SetTickRate(const int rate) -> void {
+  tickClock.SetRate(rate);
+}
+auto Application::GetButtons() const -> uint32_t {
+  return inputManager.GetButtons();
+}
+auto Application::GetButtonNames() const -> const std::vector<std::string> & {
+  return inputManager.GetButtonNames();
+}
+auto Application::RegisterButton(const std::string &name, const InputManager::Trigger &trigger, std::string description) -> int {
+  return inputManager.RegisterButton(name, trigger, std::move(description));
 }
 auto Application::EntityHasChildren(const EntityID id) const -> bool {
   if (auto scene = GetScene(); scene)

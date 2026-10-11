@@ -71,5 +71,6 @@ auto Script::GetTypeIndex() const -> std::type_index {
 }
 auto Script::Start(Application &) -> void {}
 auto Script::Update(Application &) -> void {}
+auto Script::Tick(Application &) -> void {}
 auto Script::Shutdown(Application &) -> void {}
 } // namespace kuki

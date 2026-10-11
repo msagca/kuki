@@ -11,6 +11,7 @@ public:
   ScriptingSystem(Application &);
   auto Start() -> void override;
   auto Update(const float) -> void override;
+  auto Tick() -> void override;
   auto Shutdown() -> void override;
 private:
   auto StartIfIdle(Script *) -> void;

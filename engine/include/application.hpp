@@ -17,6 +17,7 @@
 #include <shader_asset.hpp>
 #include <string_view>
 #include <system.hpp>
+#include <tick_clock.hpp>
 #include <vector>
 namespace kuki {
 class GameBuilder;
@@ -76,11 +77,29 @@ public:
   auto DeleteEntities() -> void;
   auto DeleteEntity(const EntityID) -> void;
   auto DeltaTime() const -> float;
+  /// @brief The fixed step: how far through the next tick drawing is, which tick is running, how many
+  /// make a second and how long one lasts.
+  ///
+  /// `System::Tick` and `Script::Tick` are called a whole number of times each frame, for as many
+  /// steps of `TickTime` seconds as the frame's time has made due. See `TickClock` for why, and for
+  /// what `TickAlpha` is for.
+  ///
+  /// The rate is sixty until something sets it, and is meant to be set once, before the game is
+  /// under way: everything counted in ticks -- a gesture's window, a move's length -- changes
+  /// duration when it changes.
+  auto TickAlpha() const -> float;
+  auto TickIndex() const -> uint64_t;
+  auto TickRate() const -> int;
+  auto TickTime() const -> float;
+  auto SetTickRate(const int) -> void;
   auto EntityHasChildren(const EntityID) const -> bool;
   auto ForEachAsset(this auto &, const AssetType, auto &&) -> void;
   auto ForEachAssetType(this auto &, auto &&) -> void;
   auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;
   auto ForEachRootEntity(this auto &, auto &&) -> void;
+  /// @brief Which registered buttons are down for the tick being run. See `InputManager::GetButtons`.
+  auto GetButtons() const -> uint32_t;
+  auto GetButtonNames() const -> const std::vector<std::string> &;
   /// @brief The direction a key quad is currently pointing, as -1, 0 or 1 per axis.
   auto GetKeyAxis(const InputManager::KeyAxis) const -> glm::ivec2;
   auto GetAsset(this auto &self, const AssetID) -> ConstCorrectPointer<decltype(self), Asset>;
@@ -196,6 +215,8 @@ public:
   /// shutdown runs exactly as it does when someone closes the window.
   auto Quit() -> void;
   auto RegisterBinding(const std::string &, const InputManager::Trigger &, std::string = "") -> void;
+  /// @brief Registers a binding that is also one of the game's buttons. See `InputManager::RegisterButton`.
+  auto RegisterButton(const std::string &, const InputManager::Trigger &, std::string = "") -> int;
   auto RegisterInputAction(const std::string &, InputAction, std::string = "") -> InputManager::ActionID;
   auto RegisterInputAction(int, InputAction, bool = true) -> InputManager::ActionID;
   auto RenameAsset(const AssetID, std::string = "") -> bool;
@@ -263,6 +284,7 @@ protected:
   virtual auto StartSystems() -> void {}
   virtual auto PostStartSystems() -> void {}
   virtual auto UpdateSystems(const float) -> void {}
+  virtual auto TickSystems() -> void {}
   virtual auto ShutdownSystems() -> void {}
 private:
   ApplicationDescription desc;
@@ -272,6 +294,7 @@ private:
   InputManager inputManager;
   SceneManager sceneManager;
   float deltaTime{};
+  TickClock tickClock;
   bool viewportHovered{};
   auto CreateWindow() -> bool;
   auto GetExePath() -> std::filesystem::path;

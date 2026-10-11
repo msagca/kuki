@@ -6,16 +6,10 @@
 #include <utility>
 namespace kuki {
 PhysicsSystem::PhysicsSystem(Application &app)
-  : System(std::in_place_type<PhysicsSystem>, app), simulationTimestep(1.f / 100) {}
-auto PhysicsSystem::Start() -> void {
-  timeAccumulated = 0.f;
-}
-auto PhysicsSystem::Update(const float deltaTime) -> void {
-  timeAccumulated += deltaTime;
-  while (timeAccumulated > simulationTimestep) {
-    timeAccumulated -= simulationTimestep;
-  }
-  const auto alpha = timeAccumulated / simulationTimestep;
+  : System(std::in_place_type<PhysicsSystem>, app) {}
+auto PhysicsSystem::Start() -> void {}
+auto PhysicsSystem::Tick() -> void {}
+auto PhysicsSystem::Update(const float) -> void {
   KUKI_PROFILE_SCOPE("Physics");
   auto scene = app.GetScene();
   if (!scene)

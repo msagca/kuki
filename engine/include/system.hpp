@@ -8,6 +8,11 @@ public:
   virtual ~System() = default;
   virtual auto Start() -> void {};
   virtual auto Update(const float) -> void {};
+  /// @brief One fixed step of the game's rules. See `Application::TickTime` and `Script::Tick`.
+  ///
+  /// Called for every system in order, once for each tick a frame owes and before that frame's
+  /// `Update`. Unlike `Update` it is told no duration, because there is only one it could be.
+  virtual auto Tick() -> void {};
   virtual auto Shutdown() -> void {};
 protected:
   template <typename T>

@@ -6,13 +6,14 @@ class KUKI_ENGINE_API PhysicsSystem final : public System {
 public:
   PhysicsSystem(Application &);
   auto Start() -> void override;
-  /// @brief Advances the simulation in fixed timesteps and flushes transform changes to the active scene.
-  ///
-  /// TODO: use the leftover accumulator fraction to interpolate state and remove the visual stutter
+  /// @brief Flushes transform changes to the active scene.
   auto Update(const float) -> void override;
+  /// @brief Where the simulation will be stepped. There is none yet.
+  ///
+  /// This system used to keep an accumulator of its own, at a hundred steps a second, with nothing
+  /// inside the loop. The application's tick replaces it: one fixed step for everything that has
+  /// rules, so that a script and the simulation it pushes on cannot be stepping at different rates.
+  auto Tick() -> void override;
   auto Shutdown() -> void override;
-private:
-  const float simulationTimestep;
-  float timeAccumulated{};
 };
 } // namespace kuki

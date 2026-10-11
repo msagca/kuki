@@ -37,6 +37,19 @@ public:
   virtual auto GetTypeName() const -> std::string;
   virtual auto Start(Application &) -> void;
   virtual auto Update(Application &) -> void;
+  /// @brief One fixed step of the game's rules, as against `Update`, which is one frame of whatever length.
+  ///
+  /// Called a whole number of times a frame -- none, one or several -- always before that frame's
+  /// `Update`, and always standing for `Application::TickTime` seconds. What decides how a match
+  /// goes belongs here: movement, timing, scoring, and reading the player, through
+  /// `Application::GetButtons` rather than the key queries, which answer for the frame and not the
+  /// tick. What only decides how it looks belongs in `Update`, which can use
+  /// `Application::TickAlpha` to draw between two ticks.
+  ///
+  /// The reason to keep the two apart is that a tick given the same state and the same buttons has
+  /// to leave the same state, on any machine at any frame rate. Reading `DeltaTime`, the clock, the
+  /// mouse or an unseeded random number in here is how that stops being true.
+  virtual auto Tick(Application &) -> void;
   virtual auto Shutdown(Application &) -> void;
   template <typename T>
   auto As(this auto &self) -> ConstCorrectPointer<decltype(self), T>;

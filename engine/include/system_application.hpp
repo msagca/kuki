@@ -34,6 +34,10 @@ protected:
     for (auto *system : systems)
       system->Update(deltaTime);
   }
+  auto TickSystems() -> void override {
+    for (auto *system : systems)
+      system->Tick();
+  }
   auto ShutdownSystems() -> void override {
     for (auto *system : systems)
       system->Shutdown();

@@ -1,5 +1,6 @@
 #pragma once
 #include <bitset>
+#include <cstdint>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_int2.hpp>
 #include <kuki_engine_export.h>
@@ -51,6 +52,13 @@ public:
   auto GetBinding(const std::string &) const -> Trigger;
   auto GetBindingDescription(const std::string &) const -> std::string;
   auto GetBindingNames() const -> const std::vector<std::string> &;
+  /// @brief Which registered buttons are down for the tick being run, a bit each in the order they were registered.
+  ///
+  /// As of the last `LatchTick`, and unchanged until the next: every reader inside one tick gets the
+  /// same answer however the keyboard moves meanwhile. See `ButtonMask` in `gesture.hpp` for why the
+  /// whole of a tick's input is this one number.
+  auto GetButtons() const -> uint32_t;
+  auto GetButtonNames() const -> const std::vector<std::string> &;
   auto GetInactivityTime() const -> double;
   /// @brief The direction a key quad is currently pointing, as -1, 0 or 1 per axis.
   ///
@@ -69,11 +77,35 @@ public:
   auto IsReleased(int) const -> bool;
   auto IsSequenceInProgress() const -> bool;
   auto KeyCallback(GLFWwindow *, int, int, int, int) -> void;
+  /// @brief Fixes what the keyboard is taken to be doing for the tick about to run.
+  ///
+  /// A key counts as down for a tick if it is down now or went down at any point since the last
+  /// tick. The second half is what keeps a tap: a key struck and let go between two ticks -- inside
+  /// one frame, or across several on a display faster than the tick rate -- is down at neither
+  /// moment a tick looks, and sampling the state alone would never see it. Latched, it is down for
+  /// exactly one tick and up for the next, which is a press and a release to anything reading the
+  /// masks.
+  ///
+  /// It does cost a little truth about when. GLFW reports a key when it is polled, not when it was
+  /// struck, so everything that arrived during a frame lands on the first tick of the next and the
+  /// order of two keys inside one frame is lost. Timing finer than a frame would take reading the
+  /// keyboard on its own thread.
+  auto LatchTick() -> void;
   auto MouseButtonCallback(GLFWwindow *, int, int, int) -> void;
   auto PollKeyCapture() -> CaptureOutcome;
   auto RegisterAction(int, InputAction, bool = true) -> ActionID;
   auto RegisterAction(const std::string &, InputAction, std::string = "") -> ActionID;
   auto RegisterBinding(const std::string &, const Trigger &, std::string = "") -> void;
+  /// @brief Registers a binding that is also one of the game's buttons, and answers its bit.
+  ///
+  /// A button is a binding and nothing less: it has a name, it is rebound the same way, and it loses
+  /// its key to whoever claims it next. What it has in addition is a place in the mask `GetButtons`
+  /// returns, which is the form the fixed tick reads input in. Bits are given out in the order of
+  /// registration and that order is part of the game's protocol -- two peers have to register the
+  /// same buttons in the same order for their masks to mean the same thing.
+  ///
+  /// Registering a name again answers the bit it already has. Past thirty-two the answer is -1.
+  auto RegisterButton(const std::string &, const Trigger &, std::string = "") -> int;
   auto SetBinding(const std::string &, const Trigger &) -> void;
   /// @brief Turns one half of the input space on or off, or both.
   ///
@@ -111,6 +143,9 @@ private:
   std::bitset<256> inputState{0};
   std::bitset<256> pressState{0};
   std::bitset<256> releaseState{0};
+  std::bitset<256> tickLatch{0};
+  uint32_t tickButtons{};
+  std::vector<std::string> buttonOrder;
   std::unordered_map<ActionID, Registration> idToRegistration;
   std::unordered_map<std::string, Trigger> nameToBinding;
   std::unordered_map<std::string, std::string> nameToDescription;
