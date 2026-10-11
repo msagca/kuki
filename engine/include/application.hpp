@@ -22,6 +22,17 @@
 namespace kuki {
 class GameBuilder;
 class RenderingSystem;
+/// @brief Whether the game in an application is running, as opposed to the application.
+///
+/// A game on its own is `Playing` from start to finish and never thinks about this. An editor is
+/// the application that does: it starts `Stopped`, with the scene standing still to be worked on,
+/// and plays, pauses and stops the game inside it.
+///
+/// Stopped and paused both mean no tick is run and no game script is updated. What tells them
+/// apart is what the host does about it: stopping puts the scene back as it was before play.
+enum class PlayState : uint8_t { Stopped,
+  Playing,
+  Paused };
 class KUKI_ENGINE_API Application {
 public:
   Application(ApplicationDescription = {});
@@ -77,6 +88,22 @@ public:
   auto DeleteEntities() -> void;
   auto DeleteEntity(const EntityID) -> void;
   auto DeltaTime() const -> float;
+  auto GetPlayState() const -> PlayState;
+  /// @brief Changes whether the game is running.
+  ///
+  /// Leaving `Stopped` begins an input session and starts the tick count again from nought;
+  /// arriving at it ends the session, which undoes whatever the game bound and registered. See
+  /// `InputManager::BeginSession`. The scene is the caller's to save and put back.
+  auto SetPlayState(const PlayState) -> void;
+  /// @brief Asks for exactly one tick to be run on the next frame, for stepping while paused.
+  auto StepTick() -> void;
+  /// @brief Makes this application a host: a game asking to quit stops the game instead of the application.
+  ///
+  /// A game ends itself with `Quit` -- on Escape, usually. Hosted, that would close the editor
+  /// around it, so while a game is playing the request is kept for the host to collect with
+  /// `TakeStopRequest` and act on. Stopped, `Quit` still means quit.
+  auto SetHosting(const bool) -> void;
+  auto TakeStopRequest() -> bool;
   /// @brief The fixed step: how far through the next tick drawing is, which tick is running, how many
   /// make a second and how long one lasts.
   ///
@@ -295,6 +322,10 @@ private:
   SceneManager sceneManager;
   float deltaTime{};
   TickClock tickClock;
+  PlayState playState{PlayState::Playing};
+  bool hosting{};
+  bool stopRequested{};
+  bool stepRequested{};
   bool viewportHovered{};
   auto CreateWindow() -> bool;
   auto GetExePath() -> std::filesystem::path;

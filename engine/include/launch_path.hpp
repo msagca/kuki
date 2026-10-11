@@ -18,4 +18,11 @@ auto KUKI_ENGINE_API GetLaunchPath() -> const std::filesystem::path &;
 /// Absolute paths are returned untouched: those come from a file dialog or a user, who has already
 /// said where they mean.
 auto KUKI_ENGINE_API ResolvePath(const std::filesystem::path &) -> std::filesystem::path;
+/// @brief Adds a directory that relative paths are looked for in when the executable's has no such file.
+///
+/// For a game hosted by another application. The game says `model/fighter.glb` and means the file
+/// beside itself, and when it is the editor that is running, beside itself is not beside the
+/// executable. The executable's directory is still asked first, so nothing the host resolves
+/// changes; a path found in neither is answered as it always was, against the executable.
+auto KUKI_ENGINE_API AddAssetRoot(const std::filesystem::path &) -> void;
 } // namespace kuki

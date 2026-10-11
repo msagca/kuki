@@ -13,7 +13,15 @@ public:
   auto Update(const float) -> void override;
   auto Tick() -> void override;
   auto Shutdown() -> void override;
+  /// @brief Shuts down every script that playing started, and marks it as not started.
+  ///
+  /// For a host that is about to put the scene back as it was before play. The scripts are about
+  /// to be destroyed with the scene they are in, and one that registered something on the way up
+  /// has to be given the chance to take it down again.
+  auto ShutdownPlayed() -> void;
 private:
+  /// @brief Whether a script is to be run at this moment, given its mode and whether the game is playing.
+  auto Runs(const Script &) const -> bool;
   auto StartIfIdle(Script *) -> void;
   /// @brief The scripts to run this frame, gathered before any of them runs.
   ///

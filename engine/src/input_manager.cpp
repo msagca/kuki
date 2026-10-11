@@ -43,6 +43,27 @@ auto InputManager::BeginKeyCapture() -> void {
   capturing = true;
   captureResolved = false;
 }
+auto InputManager::BeginSession() -> void {
+  session = {true, nextActionId, nameToBinding, nameToDescription, bindingOrder, buttonOrder};
+}
+auto InputManager::EndSession() -> void {
+  if (!session.active)
+    return;
+  std::vector<ActionID> registered;
+  for (const auto &[id, registration] : idToRegistration)
+    if (id >= session.firstAction)
+      registered.push_back(id);
+  for (const auto id : registered)
+    UnregisterAction(id);
+  nameToBinding = std::move(session.nameToBinding);
+  nameToDescription = std::move(session.nameToDescription);
+  bindingOrder = std::move(session.bindingOrder);
+  buttonOrder = std::move(session.buttonOrder);
+  tickButtons = 0;
+  tickLatch.reset();
+  keyseq.clear();
+  session = {};
+}
 auto InputManager::CancelKeyCapture() -> void {
   capturing = false;
   captureResolved = false;

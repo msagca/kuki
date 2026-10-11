@@ -9,6 +9,12 @@
 /// and registers the atlas, and `GameManager` reads that same atlas back rather than baking its
 /// own -- a second bake of the same file would be a second four-megabyte texture saying exactly
 /// what the first one says.
+namespace kuki {
+class Application;
+} // namespace kuki
+/// @brief Loads the game's assets and builds its scene into whichever application is hosting it:
+/// the game's own, below, or the editor.
+auto SetupChess(kuki::Application &) -> void;
 inline constexpr const char *CHESS_FONT = "font/Inter-VariableFont_opsz,wght.ttf";
 /// @brief The chess application: a window, a renderer, scripts, and nothing else.
 ///

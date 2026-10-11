@@ -139,7 +139,12 @@ auto Application::PreUpdate() -> void {
     // is latched afresh for each one: the first tick of a frame takes everything that arrived since
     // the last, and any further ticks the frame owes see the keyboard as it now stands.
     KUKI_PROFILE_SCOPE("Ticks");
-    for (auto due = tickClock.Advance(deltaTime); due > 0; --due) {
+    // Time owed is only counted while playing, so a pause is not a debt to be run off afterwards.
+    auto due = playState == PlayState::Playing ? tickClock.Advance(deltaTime) : 0;
+    if (stepRequested && playState == PlayState::Paused)
+      due = 1;
+    stepRequested = false;
+    for (; due > 0; --due) {
       inputManager.LatchTick();
       TickSystems();
       tickClock.Complete();
@@ -167,7 +172,34 @@ auto Application::PreShutdown() -> void {
   glfwDestroyWindow(window);
   glfwTerminate();
 };
+auto Application::GetPlayState() const -> PlayState {
+  return playState;
+}
+auto Application::SetPlayState(const PlayState state) -> void {
+  if (state == playState)
+    return;
+  if (playState == PlayState::Stopped) {
+    inputManager.BeginSession();
+    tickClock.Reset();
+  }
+  if (state == PlayState::Stopped)
+    inputManager.EndSession();
+  playState = state;
+}
+auto Application::StepTick() -> void {
+  stepRequested = true;
+}
+auto Application::SetHosting(const bool value) -> void {
+  hosting = value;
+}
+auto Application::TakeStopRequest() -> bool {
+  return std::exchange(stopRequested, false);
+}
 auto Application::Quit() -> void {
+  if (hosting && playState != PlayState::Stopped) {
+    stopRequested = true;
+    return;
+  }
   if (window)
     glfwSetWindowShouldClose(window, GLFW_TRUE);
 }

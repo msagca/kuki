@@ -7,24 +7,26 @@ file(
 # The board's rank and file labels are baked from this at startup. Shared with the editor rather
 # than copied here, because it is most of a megabyte and neither target has a claim on it.
 set(FONT_SOURCE_DIR "${CMAKE_SOURCE_DIR}/asset/font")
-file(GLOB_RECURSE FONT_SOURCES CONFIGURE_DEPENDS "${FONT_SOURCE_DIR}/*.ttf")
+# The one file and not the directory: the editor keeps its icon font there too, which is most of a
+# megabyte that a game would carry and never open.
+set(FONT_SOURCES "${FONT_SOURCE_DIR}/Inter-VariableFont_opsz,wght.ttf")
 set(MATERIAL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/material")
 file(
   GLOB_RECURSE MATERIAL_SOURCES
   CONFIGURE_DEPENDS
   "${MATERIAL_SOURCE_DIR}/*.mat"
 )
-add_executable(${PROJECT_NAME} ${CPP_SOURCES})
+# A library the editor can load and an executable that starts it. See `kuki_add_game`.
+kuki_add_game(${PROJECT_NAME} ${CPP_SOURCES})
 if(KUKI_ENABLE_LINTING AND CLANG_TIDY_EXE)
-  enable_clang_tidy(${PROJECT_NAME})
+  enable_clang_tidy(${KUKI_GAME_CODE})
 endif()
 target_include_directories(
-  ${PROJECT_NAME}
+  ${KUKI_GAME_CODE}
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 # The engine and nothing else. No imgui, no imguizmo, no file browser: those are the editor's
 # dependencies, and a game linking them would be carrying an editor it never opens.
-target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngine)
 if(UNIX AND NOT APPLE)
   find_package(X11 REQUIRED)
   target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
@@ -45,8 +47,8 @@ kuki_add_blender_models(
 # Its own component, named after the target, so the installer can offer this game on its own. Every
 # game does the same, and `game/CMakeLists.txt` collects the names for the installer to list.
 install(
-  DIRECTORY "${FONT_SOURCE_DIR}"
-  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  FILES ${FONT_SOURCES}
+  DESTINATION "${CMAKE_INSTALL_BINDIR}/font"
   COMPONENT ${PROJECT_NAME}
 )
 install(
@@ -67,7 +69,10 @@ add_custom_command(
   TARGET ${PROJECT_NAME}
   POST_BUILD
   COMMAND
-    ${CMAKE_COMMAND} -E copy_directory "${FONT_SOURCE_DIR}"
+    ${CMAKE_COMMAND} -E make_directory
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/font
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different ${FONT_SOURCES}
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/font
   COMMAND
     ${CMAKE_COMMAND} -E copy_directory "${MATERIAL_SOURCE_DIR}"

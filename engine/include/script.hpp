@@ -1,6 +1,7 @@
 #pragma once
 #include <component_type.hpp>
 #include <concepts.hpp>
+#include <cstdint>
 #include <id.hpp>
 #include <kuki_engine_export.h>
 #include <script_state.hpp>
@@ -13,6 +14,18 @@ namespace kuki {
 class Application;
 class EntityManager;
 class ScriptingSystem;
+/// @brief When a script is run, in an application that tells playing from not playing.
+///
+/// Only an editor does. A game on its own is playing from its first frame to its last, and every
+/// script in it is `Play` without having to say so.
+enum class ScriptRun : uint8_t {
+  /// While the game is playing, and not while it is stopped or paused. What a game's script is.
+  Play,
+  /// While it is not. What an editor's own tool is: a camera to fly around a scene that is standing
+  /// still, which has to let go when the game takes the keyboard.
+  Edit,
+  Always
+};
 class KUKI_ENGINE_API Script {
 public:
   virtual ~Script() = default;
@@ -35,6 +48,7 @@ public:
   /// name of something rather than of a type, and left no clear name for the entity's own -- see
   /// `GetEntityName`.
   virtual auto GetTypeName() const -> std::string;
+  virtual auto GetRunMode() const -> ScriptRun;
   virtual auto Start(Application &) -> void;
   virtual auto Update(Application &) -> void;
   /// @brief One fixed step of the game's rules, as against `Update`, which is one frame of whatever length.

@@ -1,4 +1,6 @@
 #pragma once
+#include <field.hpp>
+#include <icons_lucide.hpp>
 #include <algorithm>
 #include <animator.hpp>
 #include <anti_aliasing.hpp>
@@ -48,51 +50,51 @@ struct PropertyDisplayer {
 inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallback &fallback) -> void {
   static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
   auto typeIndex = static_cast<int>(type);
-  if (ImGui::Combo("Type", &typeIndex, types.data(), types.size()))
+  if (field::Combo("Type", &typeIndex, types.data(), types.size()))
     type = static_cast<kuki::MaterialType>(typeIndex);
   auto albedoColor = fallback.albedo;
-  if (ImGui::ColorEdit4("Albedo Color", glm::value_ptr(albedoColor)))
+  if (field::ColorEdit4(ICON_LC_PALETTE " Albedo Color", glm::value_ptr(albedoColor)))
     fallback.albedo = albedoColor;
   auto specularColor = fallback.specular;
-  if (ImGui::ColorEdit4("Specular Color", glm::value_ptr(specularColor)))
+  if (field::ColorEdit4(ICON_LC_PALETTE " Specular Color", glm::value_ptr(specularColor)))
     fallback.specular = specularColor;
   auto emissiveColor = fallback.emissive;
-  if (ImGui::ColorEdit4("Emissive Color", glm::value_ptr(emissiveColor)))
+  if (field::ColorEdit4(ICON_LC_PALETTE " Emissive Color", glm::value_ptr(emissiveColor)))
     fallback.emissive = emissiveColor;
   auto metalnessFactor = fallback.metalness;
-  if (ImGui::SliderFloat("Metalness Factor", &metalnessFactor, .0f, 1.f))
+  if (field::SliderFloat("Metalness Factor", &metalnessFactor, .0f, 1.f))
     fallback.metalness = metalnessFactor;
   auto occlusionFactor = fallback.occlusion;
-  if (ImGui::SliderFloat("Occlusion Factor", &occlusionFactor, .0f, 1.f))
+  if (field::SliderFloat("Occlusion Factor", &occlusionFactor, .0f, 1.f))
     fallback.occlusion = occlusionFactor;
   auto roughnessFactor = fallback.roughness;
-  if (ImGui::SliderFloat("Roughness Factor", &roughnessFactor, .0f, 1.f))
+  if (field::SliderFloat("Roughness Factor", &roughnessFactor, .0f, 1.f))
     fallback.roughness = roughnessFactor;
   static auto &alphaModes = kuki::EnumTraits<kuki::AlphaMode>::GetNames();
   auto alphaMode = static_cast<int>(fallback.alphaMode);
-  if (ImGui::Combo("Alpha Mode", &alphaMode, alphaModes.data(), alphaModes.size()))
+  if (field::Combo("Alpha Mode", &alphaMode, alphaModes.data(), alphaModes.size()))
     fallback.alphaMode = static_cast<kuki::AlphaMode>(alphaMode);
   if (fallback.alphaMode == kuki::AlphaMode::Mask) {
     auto alphaCutoff = fallback.alphaCutoff;
-    if (ImGui::SliderFloat("Alpha Cutoff", &alphaCutoff, .0f, 1.f))
+    if (field::SliderFloat("Alpha Cutoff", &alphaCutoff, .0f, 1.f))
       fallback.alphaCutoff = alphaCutoff;
   }
   auto ior = fallback.ior;
-  if (ImGui::SliderFloat("Index of Refraction", &ior, 1.f, 3.f))
+  if (field::SliderFloat("Index of Refraction", &ior, 1.f, 3.f))
     fallback.ior = ior;
   ImGui::SetItemTooltip("Also fixes how reflective the surface is head on, so it matters to every\nmaterial rather than only the transmissive ones. 1.5 is the usual 0.04.");
   auto transmission = fallback.transmission;
-  if (ImGui::SliderFloat("Transmission", &transmission, .0f, 1.f))
+  if (field::SliderFloat("Transmission", &transmission, .0f, 1.f))
     fallback.transmission = transmission;
   if (fallback.transmission > .0f) {
     auto thickness = fallback.thickness;
-    if (ImGui::SliderFloat("Thickness", &thickness, .0f, 10.f))
+    if (field::SliderFloat("Thickness", &thickness, .0f, 10.f))
       fallback.thickness = thickness;
     auto attenuationColor = glm::vec3(fallback.attenuation);
-    if (ImGui::ColorEdit3("Attenuation Color", glm::value_ptr(attenuationColor)))
+    if (field::ColorEdit3(ICON_LC_PALETTE " Attenuation Color", glm::value_ptr(attenuationColor)))
       fallback.attenuation = glm::vec4(attenuationColor, fallback.attenuation.w);
     auto attenuationDistance = fallback.attenuation.w;
-    if (ImGui::SliderFloat("Attenuation Distance", &attenuationDistance, .0f, 10.f))
+    if (field::SliderFloat("Attenuation Distance", &attenuationDistance, .0f, 10.f))
       fallback.attenuation.w = attenuationDistance;
   }
 }
@@ -103,14 +105,14 @@ inline auto PropertyDisplayer::operator()<kuki::Animator>(kuki::Animator *animat
   if (!animator)
     return;
   const auto modelName = app.GetAssetName(animator->modelAssetId);
-  ImGui::LabelText("Model", "%s", modelName.empty() ? "(none)" : modelName.c_str());
+  field::LabelText(ICON_LC_BOX " Model", "%s", modelName.empty() ? "(none)" : modelName.c_str());
   // The clip list comes from the model, so everything below it depends on that model being loaded.
   // Without it there is nothing to name the clips with and nothing to bound the scrub by, so the
   // raw index is offered on its own rather than a set of controls that cannot describe themselves.
   const auto *model = app.GetAsset<kuki::ModelAsset>(animator->modelAssetId);
   if (!model || model->animations.empty()) {
     auto clipIndex = animator->clipIndex;
-    if (ImGui::InputInt("Clip", &clipIndex))
+    if (field::InputInt(ICON_LC_FILM " Clip", &clipIndex))
       animator->clipIndex = clipIndex;
     ImGui::TextDisabled(model ? "This model has no animation clips." : "Model asset is not loaded.");
     return;
@@ -118,7 +120,7 @@ inline auto PropertyDisplayer::operator()<kuki::Animator>(kuki::Animator *animat
   const auto clipCount = static_cast<int>(model->animations.size());
   const auto valid = animator->clipIndex >= 0 && animator->clipIndex < clipCount;
   const auto *preview = valid ? model->animations[animator->clipIndex].name.c_str() : "(none)";
-  if (ImGui::BeginCombo("Clip", preview)) {
+  if (field::BeginCombo(ICON_LC_FILM " Clip", preview)) {
     if (ImGui::Selectable("(none)", !valid))
       animator->clipIndex = -1;
     for (auto i = 0; i < clipCount; ++i) {
@@ -135,17 +137,17 @@ inline auto PropertyDisplayer::operator()<kuki::Animator>(kuki::Animator *animat
     return;
   const auto &clip = model->animations[animator->clipIndex];
   auto playing = animator->playing;
-  if (ImGui::Checkbox("Playing", &playing))
+  if (field::Toggle(ICON_LC_PLAY, "Playing", &playing))
     animator->playing = playing;
   ImGui::SameLine();
   auto loop = animator->loop;
-  if (ImGui::Checkbox("Loop", &loop))
+  if (field::Toggle(ICON_LC_REPEAT, "Loop", &loop))
     animator->loop = loop;
   // Scrubbed in ticks because that is what the animation system advances and what the clip's
   // duration is measured in; the seconds underneath are the part a person can judge, and are only
   // meaningful while the clip declares a rate to convert by.
   auto time = animator->time;
-  if (ImGui::SliderFloat("Time", &time, .0f, clip.duration, "%.1f ticks", ImGuiSliderFlags_AlwaysClamp))
+  if (field::SliderFloat(ICON_LC_CLOCK " Time", &time, .0f, clip.duration, "%.1f ticks", ImGuiSliderFlags_AlwaysClamp))
     animator->time = time;
   if (clip.ticksPerSecond > .0f)
     ImGui::TextDisabled("%.2f s of %.2f s, at %.0f ticks per second", animator->time / clip.ticksPerSecond, clip.duration / clip.ticksPerSecond, clip.ticksPerSecond);
@@ -156,9 +158,9 @@ inline auto PropertyDisplayer::operator()<kuki::BoundingBox>(kuki::BoundingBox *
   if (!bounds)
     return;
   auto boundsMin = bounds->min;
-  ImGui::InputFloat3("Min Bounds", glm::value_ptr(boundsMin), nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputFloat3("Min Bounds", glm::value_ptr(boundsMin), nullptr, ImGuiInputTextFlags_ReadOnly);
   auto boundsMax = bounds->max;
-  ImGui::InputFloat3("Max Bounds", glm::value_ptr(boundsMax), nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputFloat3("Max Bounds", glm::value_ptr(boundsMax), nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) -> void {
@@ -173,14 +175,14 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   const auto active = app.GetCamera() == camera;
   ImGui::BeginDisabled(active);
   auto makeActive = active;
-  if (ImGui::Checkbox("Active", &makeActive) && makeActive)
+  if (field::Toggle(ICON_LC_VIDEO, "Active", &makeActive) && makeActive)
     app.SetActiveCamera(entity);
   ImGui::EndDisabled();
   ImGui::SetItemTooltip("Whether this is the camera the scene is drawn through.\nDisabled when it already is: a scene always has one, so the way to\nchange it is to activate another rather than to deactivate this.");
   ImGui::Separator();
   static auto &types = kuki::EnumTraits<kuki::CameraType>::GetNames();
   auto type = static_cast<int>(camera->type);
-  if (ImGui::Combo("Type", &type, types.data(), types.size())) {
+  if (field::Combo("Type", &type, types.data(), types.size())) {
     const auto newType = static_cast<kuki::CameraType>(type);
     if (newType == kuki::CameraType::Orthographic && camera->type != kuki::CameraType::Orthographic) {
       const auto distance = glm::length(camera->position);
@@ -191,18 +193,18 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
     dirty = true;
   }
   auto position = camera->position;
-  if (ImGui::DragFloat3("Position", glm::value_ptr(position), .1f)) {
+  if (field::DragFloat3(ICON_LC_MOVE_3D " Position", glm::value_ptr(position), .1f)) {
     camera->position = position;
     dirty = true;
   }
   auto rotationDegrees = glm::degrees(glm::eulerAngles(camera->rotation));
-  if (ImGui::DragFloat3("Rotation", glm::value_ptr(rotationDegrees), .1f)) {
+  if (field::DragFloat3(ICON_LC_ROTATE_3D " Rotation", glm::value_ptr(rotationDegrees), .1f)) {
     camera->rotation = glm::quat(glm::radians(rotationDegrees));
     dirty = true;
   }
   if (camera->type == kuki::CameraType::Perspective) {
     auto fov = camera->fov;
-    if (ImGui::SliderFloat("FOV", &fov, .0f, 180.f)) {
+    if (field::SliderFloat("FOV", &fov, .0f, 180.f)) {
       camera->fov = fov;
       dirty = true;
     }
@@ -210,30 +212,30 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
     // took a drag and silently reverted on the next frame because nothing read the result back.
     ImGui::BeginDisabled();
     auto aspectRatio = camera->aspectRatio;
-    ImGui::DragFloat("Aspect Ratio", &aspectRatio);
+    field::DragFloat("Aspect Ratio", &aspectRatio);
     ImGui::EndDisabled();
     ImGui::SetItemTooltip("Follows the size of the viewport this camera renders into.");
   }
   auto nearPlane = camera->nearPlane;
-  if (ImGui::DragFloat("Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT)) {
+  if (field::DragFloat("Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT)) {
     camera->nearPlane = nearPlane;
     dirty = true;
   }
   auto farPlane = camera->farPlane;
-  if (ImGui::DragFloat("Far Plane", &farPlane, .1f, .0f, MAX_FLOAT)) {
+  if (field::DragFloat("Far Plane", &farPlane, .1f, .0f, MAX_FLOAT)) {
     camera->farPlane = farPlane;
     dirty = true;
   }
   if (camera->type == kuki::CameraType::Orthographic) {
     auto orthoSize = camera->orthoSize;
-    if (ImGui::DragFloat("Size", &orthoSize, .1f, .0f, MAX_FLOAT)) {
+    if (field::DragFloat("Size", &orthoSize, .1f, .0f, MAX_FLOAT)) {
       camera->orthoSize = orthoSize;
       dirty = true;
     }
   }
   static auto &modes = kuki::EnumTraits<kuki::ExposureMode>::GetNames();
   auto mode = static_cast<int>(camera->exposureMode);
-  if (ImGui::Combo("Exposure Mode", &mode, modes.data(), modes.size()))
+  if (field::Combo("Exposure Mode", &mode, modes.data(), modes.size()))
     camera->exposureMode = static_cast<kuki::ExposureMode>(mode);
   ImGui::SetItemTooltip("Manual sets the scale directly, in stops.\nPhysical derives it from an aperture, shutter and sensitivity, the way a camera does.");
   if (camera->exposureMode == kuki::ExposureMode::Physical) {
@@ -241,21 +243,21 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
     // them. Aperture is an f-number, so a step towards the wide end halves it and doubles the
     // light; shutter is a reciprocal, since nobody reads 0.008 as a hundred and twenty fifth.
     auto aperture = camera->aperture;
-    if (ImGui::DragFloat("Aperture", &aperture, .05f, kuki::MIN_APERTURE, kuki::MAX_APERTURE, "f/%.1f", ImGuiSliderFlags_AlwaysClamp))
+    if (field::DragFloat("Aperture", &aperture, .05f, kuki::MIN_APERTURE, kuki::MAX_APERTURE, "f/%.1f", ImGuiSliderFlags_AlwaysClamp))
       camera->aperture = aperture;
     ImGui::SetItemTooltip("Lower opens the lens and lets in more light.");
     auto denominator = 1.f / std::clamp(camera->shutterSpeed, kuki::MIN_SHUTTER_SPEED, kuki::MAX_SHUTTER_SPEED);
-    if (ImGui::DragFloat("Shutter", &denominator, 1.f, 1.f / kuki::MAX_SHUTTER_SPEED, 1.f / kuki::MIN_SHUTTER_SPEED, "1/%.0f s", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
+    if (field::DragFloat("Shutter", &denominator, 1.f, 1.f / kuki::MAX_SHUTTER_SPEED, 1.f / kuki::MIN_SHUTTER_SPEED, "1/%.0f s", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
       camera->shutterSpeed = 1.f / std::max(denominator, 1.f / kuki::MAX_SHUTTER_SPEED);
     ImGui::SetItemTooltip("Lower holds the shutter open longer and lets in more light.");
     auto sensitivity = camera->sensitivity;
-    if (ImGui::DragFloat("ISO", &sensitivity, 10.f, kuki::MIN_SENSITIVITY, kuki::MAX_SENSITIVITY, "%.0f", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
+    if (field::DragFloat("ISO", &sensitivity, 10.f, kuki::MIN_SENSITIVITY, kuki::MAX_SENSITIVITY, "%.0f", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
       camera->sensitivity = sensitivity;
     ImGui::SetItemTooltip("Higher amplifies what the sensor gathered.");
   }
   auto exposure = camera->exposure;
   const auto compensating = camera->exposureMode == kuki::ExposureMode::Physical;
-  if (ImGui::SliderFloat(compensating ? "Compensation" : "Exposure", &exposure, -kuki::EXPOSURE_RANGE, kuki::EXPOSURE_RANGE, "%+.2f EV", ImGuiSliderFlags_AlwaysClamp))
+  if (field::SliderFloat(compensating ? "Compensation" : "Exposure", &exposure, -kuki::EXPOSURE_RANGE, kuki::EXPOSURE_RANGE, "%+.2f EV", ImGuiSliderFlags_AlwaysClamp))
     camera->exposure = exposure;
   ImGui::SetItemTooltip("Stops applied on top of whatever the mode produced. One stop doubles the light.");
   // The number both backends actually read, shown because neither mode makes it obvious: in
@@ -274,20 +276,20 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   // The whole fold goes when the backend answers neither, which on the OpenGL one is both of them:
   // its scene shader writes finished pixels and nothing else, and there is no probe field for the
   // spheres to stand for. An empty fold would still read as a feature that had stopped working.
-  if ((context.capabilities.lightingDebugViews || context.capabilities.probeVolume) && ImGui::CollapsingHeader("Debug Views")) {
+  if ((context.capabilities.lightingDebugViews || context.capabilities.probeVolume) && field::Fold("Debug Views")) {
     ImGui::TextDisabled("Not saved with the scene.");
     ImGui::SetItemTooltip("A view is a thing you are in the middle of looking at rather than part of\nthe shot, so it is left out of the scene file deliberately -- reopening a\nscene onto a picture of a weight buffer would look broken, not restored.");
     if (context.capabilities.lightingDebugViews) {
       static auto &lightingNames = kuki::EnumTraits<kuki::LightingDebugView>::GetNames();
       auto lighting = static_cast<int>(camera->lightingDebugView);
-      if (ImGui::Combo("Shading", &lighting, lightingNames.data(), lightingNames.size()))
+      if (field::Combo("Shading", &lighting, lightingNames.data(), lightingNames.size()))
         camera->lightingDebugView = static_cast<kuki::LightingDebugView>(lighting);
       ImGui::SetItemTooltip("One step of the shading, drawn instead of the finished pixel.\nThe bounce, the sky, the direct light and the occlusion are terms;\nthe probe entries are how the field was reconstructed at each point.\nShown without exposure or a tone curve, so a value can be read off the screen.");
     }
     if (context.capabilities.probeVolume) {
       static auto &probeNames = kuki::EnumTraits<kuki::ProbeDebugView>::GetNames();
       auto probe = static_cast<int>(camera->probeDebugView);
-      if (ImGui::Combo("Probes", &probe, probeNames.data(), probeNames.size()))
+      if (field::Combo("Probes", &probe, probeNames.data(), probeNames.size()))
         camera->probeDebugView = static_cast<kuki::ProbeDebugView>(probe);
       ImGui::SetItemTooltip("What the probes are drawn as, over the scene.\nIrradiance is what the field holds; distance and variance are what the\nvisibility test runs on; trust, relocation and classification are\nwhether the mechanisms that maintain the field are working.");
     }
@@ -304,11 +306,11 @@ inline auto PropertyDisplayer::operator()<kuki::DXMaterial>(kuki::DXMaterial *ma
   // table rather than a handle per slot, so there is no per-texture id to hand Dear ImGui and
   // nothing to draw a thumbnail from. What the table holds is described instead of shown.
   auto tableIndex = static_cast<int>(material->textureTableIndex);
-  ImGui::InputInt("Texture Table", &tableIndex, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Texture Table", &tableIndex, 0, 0, ImGuiInputTextFlags_ReadOnly);
   ImGui::SetItemTooltip("Index of this material's descriptor table in the bindless heap.");
   ImGui::BeginDisabled();
   auto bound = material->textureTableGPU != 0;
-  ImGui::Checkbox("Table Resident", &bound);
+  field::Toggle(ICON_LC_DATABASE, "Table Resident", &bound);
   ImGui::EndDisabled();
   ImGui::SetItemTooltip("Whether the table has been built and uploaded yet.");
   DisplayMaterialSurface(material->type, material->fallback);
@@ -318,23 +320,23 @@ inline auto PropertyDisplayer::operator()<kuki::GLBuffer>(kuki::GLBuffer *buffer
   if (!buffer)
     return;
   auto id = static_cast<int>(buffer->id);
-  ImGui::InputInt("Buffer Object", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Buffer Object", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLComputeShader>(kuki::GLComputeShader *shader) -> void {
   if (!shader)
     return;
   auto id = static_cast<int>(shader->id);
-  ImGui::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLLitShader>(kuki::GLLitShader *shader) -> void {
   if (!shader)
     return;
   auto id = static_cast<int>(shader->id);
-  ImGui::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
   static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
-  ImGui::LabelText("Draws", "%s", types[static_cast<size_t>(shader->type)]);
+  field::LabelText("Draws", "%s", types[static_cast<size_t>(shader->type)]);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLMaterial>(kuki::GLMaterial *material) -> void {
@@ -417,29 +419,29 @@ inline auto PropertyDisplayer::operator()<kuki::GLMesh>(kuki::GLMesh *mesh) -> v
   if (!mesh)
     return;
   auto vao = static_cast<int>(mesh->vao);
-  ImGui::InputInt("Vertex Array Object", &vao, 1, 100, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Vertex Array Object", &vao, 1, 100, ImGuiInputTextFlags_ReadOnly);
   auto ebo = static_cast<int>(mesh->ebo);
-  ImGui::InputInt("Element Buffer Object", &ebo, 1, 100, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Element Buffer Object", &ebo, 1, 100, ImGuiInputTextFlags_ReadOnly);
   auto vertexCount = mesh->vertexCount;
-  ImGui::InputInt("Vertex Count", &vertexCount, 1, 100, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Vertex Count", &vertexCount, 1, 100, ImGuiInputTextFlags_ReadOnly);
   auto indexCount = mesh->indexCount;
-  ImGui::InputInt("Index Count", &indexCount, 1, 100, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Index Count", &indexCount, 1, 100, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLRenderTarget>(kuki::GLRenderTarget *target) -> void {
   if (!target)
     return;
-  ImGui::LabelText("Size", "%d x %d", target->desc.width, target->desc.height);
+  field::LabelText("Size", "%d x %d", target->desc.width, target->desc.height);
   auto samples = target->desc.samples;
-  ImGui::InputInt("Samples", &samples, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Samples", &samples, 0, 0, ImGuiInputTextFlags_ReadOnly);
   auto framebuffer = static_cast<int>(target->framebuffer);
-  ImGui::InputInt("Framebuffer", &framebuffer, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Framebuffer", &framebuffer, 0, 0, ImGuiInputTextFlags_ReadOnly);
   auto renderbuffer = static_cast<int>(target->renderbuffer);
-  ImGui::InputInt("Renderbuffer", &renderbuffer, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Renderbuffer", &renderbuffer, 0, 0, ImGuiInputTextFlags_ReadOnly);
   auto texture = static_cast<int>(target->texture);
-  ImGui::InputInt("Colour Texture", &texture, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Colour Texture", &texture, 0, 0, ImGuiInputTextFlags_ReadOnly);
   auto idTexture = static_cast<int>(target->idTexture);
-  ImGui::InputInt("Picking Texture", &idTexture, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Picking Texture", &idTexture, 0, 0, ImGuiInputTextFlags_ReadOnly);
   ImGui::SetItemTooltip("Entity ids written alongside the colour, for clicking things in the viewport.\nZero when this target was not asked for one.");
 }
 template <>
@@ -495,9 +497,9 @@ inline auto PropertyDisplayer::operator()<kuki::GLUnlitShader>(kuki::GLUnlitShad
   if (!shader)
     return;
   auto id = static_cast<int>(shader->id);
-  ImGui::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
   static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
-  ImGui::LabelText("Draws", "%s", types[static_cast<size_t>(shader->type)]);
+  field::LabelText("Draws", "%s", types[static_cast<size_t>(shader->type)]);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::AntiAliasing>(kuki::AntiAliasing *antiAliasing) -> void {
@@ -505,7 +507,7 @@ inline auto PropertyDisplayer::operator()<kuki::AntiAliasing>(kuki::AntiAliasing
     return;
   static auto &modes = kuki::EnumTraits<kuki::AntiAliasingMode>::GetNames();
   auto mode = static_cast<int>(antiAliasing->mode);
-  if (ImGui::Combo("Mode", &mode, modes.data(), modes.size()))
+  if (field::Combo("Mode", &mode, modes.data(), modes.size()))
     antiAliasing->mode = static_cast<kuki::AntiAliasingMode>(mode);
   ImGui::SetItemTooltip("How many samples a pixel of the scene is rasterised at before it is\nresolved. Multisampling is the only method offered because it is the\nonly one the pipeline has: the antialiasing pass is a resolve, not a\nfilter with an opinion.");
   // Said rather than left to be inferred from the mode's name, because the cost is the whole of
@@ -539,54 +541,54 @@ inline auto PropertyDisplayer::operator()<kuki::AtmosphereSky>(kuki::AtmosphereS
   // spend twenty-one dispatches rebuilding the sky. Handing a widget the live field would let it
   // write while that hash is being taken.
   auto edited = *sky;
-  if (ImGui::CollapsingHeader("Placement", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::SliderFloat("Altitude", &edited.viewAltitude, .0f, std::max(1.f, edited.atmosphereHeight), "%.2f km");
+  if (field::Fold("Placement", true)) {
+    field::SliderFloat("Altitude", &edited.viewAltitude, .0f, std::max(1.f, edited.atmosphereHeight), "%.2f km");
     ImGui::SetItemTooltip("How high above the ground the scene sits. At zero this is the sky from a\nfield; at a few kilometres the horizon drops, the blue deepens overhead\nand the haze thins out. Past the top of the atmosphere there is no air\nleft to scatter and the sky goes black.");
-    ImGui::SliderFloat("Sun Intensity", &edited.sunIntensity, .0f, 100.f, "%.1f");
+    field::SliderFloat("Sun Intensity", &edited.sunIntensity, .0f, 100.f, "%.1f");
     ImGui::SetItemTooltip("What the whole sky is multiplied by. Not a physical quantity and it cannot\nbe: this engine's lights carry bare multipliers rather than photometric\nunits, so there is no illuminance that would make the sky come out at a\ndefensible absolute brightness.");
-    ImGui::SliderFloat("Ground Albedo", &edited.groundAlbedo, .0f, 1.f);
+    field::SliderFloat("Ground Albedo", &edited.groundAlbedo, .0f, 1.f);
     ImGui::SetItemTooltip("How much light the ground bounces back up. Most of the lower half of the\nsky cubemap is ground, and that cubemap is where the diffuse irradiance\nand the reflections are gathered from -- so this is most of the fill\nlight arriving from below, not a detail of the background.");
   }
-  if (ImGui::CollapsingHeader("Sun Disc", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (field::Fold("Sun Disc", true)) {
     ImGui::TextDisabled("Drawn over the sky, not baked into it.");
     ImGui::SetItemTooltip("The disc is added by the background pass rather than written into the sky\ncubemap. That cubemap is projected to harmonics and prefiltered to light\nthe scene, and the scene already has a directional light standing for the\nsun -- a disc in there would be the same sun counted twice.");
-    ImGui::SliderFloat("Angular Radius", &edited.sunAngularRadius, .0f, 5.f, "%.2f deg");
+    field::SliderFloat("Angular Radius", &edited.sunAngularRadius, .0f, 5.f, "%.2f deg");
     ImGui::SetItemTooltip("A quarter of a degree is the real sun and looks it. Larger reads as a\nbigger, softer star, and costs nothing: the disc is a comparison against\na cosine rather than anything drawn.");
-    ImGui::SliderFloat("Disc Intensity", &edited.sunDiscIntensity, .0f, 4.f);
+    field::SliderFloat("Disc Intensity", &edited.sunDiscIntensity, .0f, 4.f);
     ImGui::SetItemTooltip("A multiplier on the physical figure, which is the sun's whole output\narriving from seven millionths of a steradian -- correct, and more than\nthe bloom chain can take without whiting out the frame. Zero removes the\ndisc and leaves the sky it sits in alone.");
   }
-  if (ImGui::CollapsingHeader("Air")) {
+  if (field::Fold("Air")) {
     ImGui::TextDisabled("Rayleigh: why the sky is blue.");
-    ImGui::DragFloat3("Rayleigh", &edited.rayleighScattering.x, 1.0e-4f, .0f, 1.f, "%.5f");
+    field::DragFloat3("Rayleigh", &edited.rayleighScattering.x, 1.0e-4f, .0f, 1.f, "%.5f");
     ImGui::SetItemTooltip("Scattering per kilometre, per channel. The three differ by about a factor\nof six across the visible range, which is what scatters short wavelengths\nout of a sunbeam and into every other direction. Scaling all three makes\nthicker or thinner air; changing the ratio gives a sky that is not Earth's.");
-    ImGui::DragFloat("Rayleigh Scale Height", &edited.rayleighScaleHeight, .1f, .1f, 50.f, "%.2f km");
+    field::DragFloat("Rayleigh Scale Height", &edited.rayleighScaleHeight, .1f, .1f, 50.f, "%.2f km");
     ImGui::Separator();
     ImGui::TextDisabled("Mie: haze, and the halo around the sun.");
-    ImGui::DragFloat("Mie Scattering", &edited.mieScattering, 1.0e-4f, .0f, 1.f, "%.5f");
-    ImGui::DragFloat("Mie Absorption", &edited.mieAbsorption, 1.0e-4f, .0f, 1.f, "%.5f");
+    field::DragFloat("Mie Scattering", &edited.mieScattering, 1.0e-4f, .0f, 1.f, "%.5f");
+    field::DragFloat("Mie Absorption", &edited.mieAbsorption, 1.0e-4f, .0f, 1.f, "%.5f");
     ImGui::SetItemTooltip("Added to the scattering to give the extinction, so a medium can never\nremove less light than it scatters. A negative value is clamped away.");
-    ImGui::DragFloat("Mie Scale Height", &edited.mieScaleHeight, .05f, .05f, 20.f, "%.2f km");
-    ImGui::SliderFloat("Mie Anisotropy", &edited.mieAnisotropy, .0f, .95f);
+    field::DragFloat("Mie Scale Height", &edited.mieScaleHeight, .05f, .05f, 20.f, "%.2f km");
+    field::SliderFloat("Mie Anisotropy", &edited.mieAnisotropy, .0f, .95f);
     ImGui::SetItemTooltip("How strongly the aerosols scatter forward. The knob to reach for when the\nsun looks like a sticker rather than a light: higher tightens the halo\nand brightens the sky right around the sun at the expense of the rest.");
     ImGui::Separator();
     ImGui::TextDisabled("Ozone: why a sunset is red and not just dim.");
-    ImGui::DragFloat3("Ozone", &edited.ozoneAbsorption.x, 1.0e-5f, .0f, 1.f, "%.5f");
+    field::DragFloat3("Ozone", &edited.ozoneAbsorption.x, 1.0e-5f, .0f, 1.f, "%.5f");
     ImGui::SetItemTooltip("Absorbs and does not scatter, and absorbs most in the middle of the\nvisible range -- which takes the green out of a low sun. Setting this to\nzero is the quickest way to see what it is doing.");
-    ImGui::DragFloat("Ozone Centre", &edited.ozoneCenter, .5f, .0f, 100.f, "%.1f km");
-    ImGui::DragFloat("Ozone Width", &edited.ozoneWidth, .5f, .1f, 100.f, "%.1f km");
+    field::DragFloat("Ozone Centre", &edited.ozoneCenter, .5f, .0f, 100.f, "%.1f km");
+    field::DragFloat("Ozone Width", &edited.ozoneWidth, .5f, .1f, 100.f, "%.1f km");
   }
-  if (ImGui::CollapsingHeader("Planet")) {
-    ImGui::DragFloat("Planet Radius", &edited.bottomRadius, 10.f, 100.f, 100000.f, "%.0f km");
-    ImGui::DragFloat("Atmosphere Height", &edited.atmosphereHeight, 1.f, 1.f, 1000.f, "%.0f km");
+  if (field::Fold("Planet")) {
+    field::DragFloat("Planet Radius", &edited.bottomRadius, 10.f, 100.f, 100000.f, "%.0f km");
+    field::DragFloat("Atmosphere Height", &edited.atmosphereHeight, 1.f, 1.f, 1000.f, "%.0f km");
   }
-  if (ImGui::CollapsingHeader("Quality")) {
+  if (field::Fold("Quality")) {
     ImGui::TextDisabled("Paid on a rebuild, not per frame.");
     ImGui::SetItemTooltip("The sky is marched once into a cubemap and only when something here or the\nsun changes, so these buy smoothness rather than frame rate. What they\ncost is the length of the pause when you drag a slider.");
     auto steps = static_cast<int>(edited.marchSteps);
-    if (ImGui::SliderInt("March Steps", &steps, 8, 128))
+    if (field::SliderInt("March Steps", &steps, 8, 128))
       edited.marchSteps = static_cast<uint32_t>(std::max(8, steps));
     ImGui::SetItemTooltip("Below about sixteen the banding shows near the horizon, where the medium\nchanges fastest along a ray.");
-    ImGui::SliderFloat("Multiple Scattering", &edited.multiscatterStrength, .0f, 2.f);
+    field::SliderFloat("Multiple Scattering", &edited.multiscatterStrength, .0f, 2.f);
     ImGui::SetItemTooltip("One is the answer; this exists because the difference is otherwise hard\nto see and easy to mistake for something else. At zero the sky is single\nscattering only: too dark towards the horizon, with no blue hour at all\nonce the sun is down.");
   }
   if (edited != *sky)
@@ -613,50 +615,50 @@ inline auto PropertyDisplayer::operator()<kuki::VolumetricClouds>(kuki::Volumetr
   ImGui::SetItemTooltip("Unlike the sky, which is built once into a cubemap when the sun moves, this is\nmarched from the camera in every frame -- which is what lets it drift and show\nparallax, and what makes the two step counts at the bottom the cost of the\nfeature.");
   ImGui::Separator();
   auto edited = *clouds;
-  if (ImGui::CollapsingHeader("Layer", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::DragFloat("Base", &edited.bottomAltitude, .05f, .0f, 60.f, "%.2f km");
+  if (field::Fold("Layer", true)) {
+    field::DragFloat("Base", &edited.bottomAltitude, .05f, .0f, 60.f, "%.2f km");
     ImGui::SetItemTooltip("Altitude of the cloud base above the ground. Compare it with the scene's own\naltitude on the Atmosphere Sky: a scene below this looks up at the layer, one\nabove it looks down on it, and one between the two is in the clouds.");
-    ImGui::DragFloat("Top", &edited.topAltitude, .05f, .05f, 80.f, "%.2f km");
+    field::DragFloat("Top", &edited.topAltitude, .05f, .05f, 80.f, "%.2f km");
     ImGui::SetItemTooltip("A thin layer reads as stratus however the shape is tuned, because there is no\nroom in it for the vertical development that makes a cumulus look like one.");
-    ImGui::SliderFloat("Coverage", &edited.coverage, .0f, 1.f);
+    field::SliderFloat("Coverage", &edited.coverage, .0f, 1.f);
     ImGui::SetItemTooltip("How much of the sky has cloud in it. A threshold rather than a multiplier, so\nraising it grows clouds together rather than thickening each one -- which is\nwhat cloud cover actually does.");
-    ImGui::DragFloat("Density", &edited.density, .25f, .0f, 80.f, "%.1f /km");
+    field::DragFloat("Density", &edited.density, .25f, .0f, 80.f, "%.1f /km");
     ImGui::SetItemTooltip("Extinction of the cloud interior. This is what decides whether a cloud is a\nsolid white wall or something the sun comes through.");
   }
-  if (ImGui::CollapsingHeader("Wind", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::DragFloat2("Direction", &edited.windDirection.x, .01f, -1.f, 1.f, "%.2f");
-    ImGui::DragFloat("Speed", &edited.windSpeed, .001f, .0f, .2f, "%.3f km/s");
+  if (field::Fold("Wind", true)) {
+    field::DragFloat2("Direction", &edited.windDirection.x, .01f, -1.f, 1.f, "%.2f");
+    field::DragFloat(ICON_LC_GAUGE " Speed", &edited.windSpeed, .001f, .0f, .2f, "%.3f km/s");
     ImGui::SetItemTooltip("Small numbers. A cloud field crossing a kilometre a minute is already brisk to\nlook at, and anything above about a tenth reads as weather on fast forward.");
   }
-  if (ImGui::CollapsingHeader("Shape")) {
-    ImGui::DragFloat("Shape Scale", &edited.shapeScale, .1f, .1f, 60.f, "%.2f km");
+  if (field::Fold("Shape")) {
+    field::DragFloat("Shape Scale", &edited.shapeScale, .1f, .1f, 60.f, "%.2f km");
     ImGui::SetItemTooltip("How big one cloud is. Raising it makes fewer, larger clouds out of the same\nfield rather than spreading the ones already there.");
-    ImGui::DragFloat("Detail Scale", &edited.detailScale, .01f, .01f, 5.f, "%.2f km");
-    ImGui::SliderFloat("Detail Strength", &edited.detailStrength, .0f, 1.f);
+    field::DragFloat("Detail Scale", &edited.detailScale, .01f, .01f, 5.f, "%.2f km");
+    field::SliderFloat("Detail Strength", &edited.detailStrength, .0f, 1.f);
     ImGui::SetItemTooltip("How deeply the detail noise cuts into an edge, from smooth to shredded. It is\napplied to the boundary rather than the interior: the inside of a cloud is\nopaque, so detail spent there is detail thrown away.");
   }
-  if (ImGui::CollapsingHeader("Light")) {
-    ImGui::SliderFloat("Anisotropy", &edited.anisotropy, .0f, .95f);
+  if (field::Fold("Light")) {
+    field::SliderFloat("Anisotropy", &edited.anisotropy, .0f, .95f);
     ImGui::SetItemTooltip("How strongly the droplets scatter forward. High, because a droplet is enormous\ncompared to a wavelength -- this is what puts the silver lining on a cloud with\nthe sun behind it.");
-    ImGui::SliderFloat("Backscatter", &edited.backscatter, .0f, 1.f);
+    field::SliderFloat("Backscatter", &edited.backscatter, .0f, 1.f);
     ImGui::SetItemTooltip("How much of the backward lobe is mixed in. A cloud lit from behind has a bright\nrim and one lit from in front is bright all over, and a single lobe has to\nchoose between saying the first and saying the second.");
-    ImGui::SliderFloat("Powder", &edited.powder, .0f, 1.f);
+    field::SliderFloat("Powder", &edited.powder, .0f, 1.f);
     ImGui::SetItemTooltip("How dark the approach to an edge goes before it brightens. Light entering a thin\nedge has to scatter several times before it leaves and most of it does not,\nwhich is why a cumulus base reads as bruised rather than grey. Zero removes it.");
-    ImGui::SliderFloat("Ambient", &edited.ambient, .0f, 2.f);
+    field::SliderFloat("Ambient", &edited.ambient, .0f, 2.f);
     ImGui::SetItemTooltip("What the sky around a cloud fills its shaded side with, read from the same\ncubemap the scene's image-based lighting uses -- so a cloud at sunset is filled\nwith orange without that being said here.");
-    ImGui::SliderFloat("Scattering Scale", &edited.scatteringScale, .0f, 4.f);
-    ImGui::SliderFloat("Shadow Strength", &edited.shadowStrength, .0f, 1.f);
+    field::SliderFloat("Scattering Scale", &edited.scatteringScale, .0f, 4.f);
+    field::SliderFloat("Shadow Strength", &edited.shadowStrength, .0f, 1.f);
     ImGui::SetItemTooltip("How much the layer darkens the light reaching the air below it. What this\nreaches is the shafts in Volumetric Fog: a cloud crossing the sun takes the\nbeams with it.\n\nIt does not reach surface shading. The scene is shaded before this pass runs,\nso the ground under an overcast sky is still lit as though it were clear.");
   }
-  if (ImGui::CollapsingHeader("Quality")) {
+  if (field::Fold("Quality")) {
     ImGui::TextDisabled("Paid every frame, unlike the sky's.");
     ImGui::SetItemTooltip("The sky is marched once per cubemap texel when the sun moves. This is marched\nper pixel per frame, at half the viewport on each axis, so these two are the\ncost of the feature.");
     auto steps = static_cast<int>(edited.steps);
-    if (ImGui::SliderInt("View Steps", &steps, 8, 192))
+    if (field::SliderInt("View Steps", &steps, 8, 192))
       edited.steps = static_cast<uint32_t>(std::max(8, steps));
     ImGui::SetItemTooltip("Distributed over the layer's thickness rather than the whole ray, so too few\nshows first as banding in the thick parts of a cloud.");
     auto lightSteps = static_cast<int>(edited.lightSteps);
-    if (ImGui::SliderInt("Light Steps", &lightSteps, 1, 16))
+    if (field::SliderInt("Light Steps", &lightSteps, 1, 16))
       edited.lightSteps = static_cast<uint32_t>(std::max(1, lightSteps));
     ImGui::SetItemTooltip("Taken from every view step, so this multiplies the count above. Six is enough\nbecause what it integrates is smooth and the several-orders term covers the\nrest.");
   }
@@ -676,36 +678,36 @@ inline auto PropertyDisplayer::operator()<kuki::VolumetricFog>(kuki::VolumetricF
   ImGui::SetItemTooltip("This is the air the scene stands in rather than a planet's, so it is measured\nagainst the geometry around it. A sealed room has air in it, and a spot light in\na sealed room throws a cone that this is what draws.\n\nAerial Perspective below is the exception: that one is the atmosphere's air, in\nkilometres, and does nothing without an Atmosphere Sky.");
   ImGui::Separator();
   auto edited = *fog;
-  if (ImGui::CollapsingHeader("Medium", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::DragFloat("Density", &edited.density, .002f, .0f, 2.f, "%.3f");
+  if (field::Fold("Medium", true)) {
+    field::DragFloat("Density", &edited.density, .002f, .0f, 2.f, "%.3f");
     ImGui::SetItemTooltip("Extinction at the base height, per scene unit. Zero switches the scene's own\nmedium off entirely and leaves only the aerial perspective below, which is what\nan outdoor scene usually wants -- two media over the same air is haze counted\ntwice.");
-    ImGui::DragFloat("Base Height", &edited.baseHeight, .05f, -100.f, 100.f, "%.2f");
-    ImGui::SliderFloat("Height Falloff", &edited.heightFalloff, .0f, 4.f);
+    field::DragFloat("Base Height", &edited.baseHeight, .05f, -100.f, 100.f, "%.2f");
+    field::SliderFloat("Height Falloff", &edited.heightFalloff, .0f, 4.f);
     ImGui::SetItemTooltip("How quickly the air thins going up. This is the reason a shaft is brightest near\nthe floor: an even medium gives a cone of uniform brightness, which reads as a\nsolid object rather than as light.");
-    ImGui::ColorEdit3("Albedo", &edited.albedo.x);
+    field::ColorEdit3("Albedo", &edited.albedo.x);
     ImGui::SetItemTooltip("What fraction of what the medium removes it scatters back, per channel -- so it\ncannot brighten what is behind it. Slightly blue keeps a white shaft from\nreading as smoke.");
-    ImGui::SliderFloat("Anisotropy", &edited.anisotropy, -.9f, .9f);
+    field::SliderFloat("Anisotropy", &edited.anisotropy, -.9f, .9f);
     ImGui::SetItemTooltip("Modest on purpose. High values make a shaft visible only when looking nearly\ninto its light, which is correct for genuine haze and disappointing in a room,\nwhere the beam is meant to be seen from the side.");
   }
-  if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::ColorEdit3("Ambient", &edited.ambient.x);
+  if (field::Fold("Light", true)) {
+    field::ColorEdit3("Ambient", &edited.ambient.x);
     ImGui::SetItemTooltip("Light arriving from everywhere rather than from a light. Without it the fog is\nblack wherever no light reaches it, so a room with one lamp gets a bright cone\nstanding in a void.");
-    ImGui::SliderFloat("Light Scale", &edited.lightScale, .0f, 4.f);
+    field::SliderFloat("Light Scale", &edited.lightScale, .0f, 4.f);
     ImGui::SetItemTooltip("A viewing decision rather than a fact about the air: the physically right shaft\nis often a faint one, and a scene that wants the beam to be the subject needs to\nsay so without lying about the density.");
   }
-  if (ImGui::CollapsingHeader("Distance", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::DragFloat("Max Distance", &edited.maxDistance, .5f, 1.f, 5000.f, "%.0f");
+  if (field::Fold("Distance", true)) {
+    field::DragFloat("Max Distance", &edited.maxDistance, .5f, 1.f, 5000.f, "%.0f");
     ImGui::SetItemTooltip("How far the march goes. Beyond it the medium is taken to continue unchanged, so\na distant surface still fogs -- what is lost past here is the shadowing, not the\nhaze. The step count is fixed, so doubling this halves every shaft's resolution.");
-    ImGui::SliderFloat("Aerial Perspective", &edited.aerialPerspective, .0f, 2.f);
+    field::SliderFloat("Aerial Perspective", &edited.aerialPerspective, .0f, 2.f);
     ImGui::SetItemTooltip("The atmosphere's own haze, applied over the distance to each surface using the\nsame figures the sky was marched from -- which is what turns a far wall blue and\nis most of why distance reads as distance outdoors.\n\nDoes nothing without an Atmosphere Sky.");
-    ImGui::DragFloat("Kilometres / Unit", &edited.kilometresPerUnit, .0005f, .0f, 1.f, "%.4f");
+    field::DragFloat("Kilometres / Unit", &edited.kilometresPerUnit, .0005f, .0f, 1.f, "%.4f");
     ImGui::SetItemTooltip("The one place the scene's units and the atmosphere's have to agree, because how\nblue a far wall goes depends on how far away the wall really is. Raise it for a\nscene meant to read as a landscape.\n\nRead only by Aerial Perspective above.");
   }
-  if (ImGui::CollapsingHeader("Quality")) {
+  if (field::Fold("Quality")) {
     ImGui::TextDisabled("Paid every frame, at the full viewport.");
     ImGui::SetItemTooltip("Each step samples a shadow map, so this is the whole cost of the pass. The\nsamples are coherent between neighbouring pixels -- they walk the same map\nthrough nearly the same texels -- so they are cheaper than the count suggests.");
     auto steps = static_cast<int>(edited.steps);
-    if (ImGui::SliderInt("Steps", &steps, 4, 128))
+    if (field::SliderInt("Steps", &steps, 4, 128))
       edited.steps = static_cast<uint32_t>(std::max(4, steps));
     ImGui::SetItemTooltip("The march is dithered per pixel, so too few steps costs a fine grain rather than\nvisible bands.");
   }
@@ -727,7 +729,7 @@ inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleE
   auto edited = *emitter;
   // Written over the whole component, since that is what a preset is -- except the two fields that
   // are not a description of an effect: which mesh, and how many bursts have gone off.
-  if (ImGui::BeginCombo("Preset", "Choose...")) {
+  if (field::BeginCombo("Preset", "Choose...")) {
     for (const auto &preset : kuki::PARTICLE_PRESETS)
       if (ImGui::Selectable(preset.name)) {
         const auto mesh = edited.mesh;
@@ -739,15 +741,15 @@ inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleE
     ImGui::EndCombo();
   }
   ImGui::SetItemTooltip("Replaces every setting below with a starting point for one kind of effect.");
-  if (ImGui::CollapsingHeader("Emission", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (field::Fold("Emission", true)) {
     static auto &shapes = kuki::EnumTraits<kuki::ParticleShape>::GetNames();
     auto shape = static_cast<int>(edited.shape);
-    if (ImGui::Combo("Shape", &shape, shapes.data(), static_cast<int>(shapes.size())))
+    if (field::Combo("Shape", &shape, shapes.data(), static_cast<int>(shapes.size())))
       edited.shape = static_cast<kuki::ParticleShape>(shape);
     ImGui::SetItemTooltip("Where particles are born: inside a sphere around the emitter, or on the\nsurface of a mesh, thrown along its normals.");
     if (edited.shape == kuki::ParticleShape::Mesh) {
       auto mesh = edited.mesh;
-      ImGui::InputScalar("Mesh", ImGuiDataType_U64, &mesh, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+      field::InputScalar("Mesh", ImGuiDataType_U64, &mesh, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
       if (ImGui::BeginDragDropTarget()) {
         if (const auto *payload = ImGui::AcceptDragDropPayload("##SpawnPayload"); payload && payload->DataSize == sizeof(kuki::AssetID))
           edited.mesh = *static_cast<const kuki::AssetID *>(payload->Data);
@@ -755,18 +757,18 @@ inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleE
       }
       ImGui::SetItemTooltip("Drop a mesh here from the asset browser. It is read and never altered, and it\nis not drawn: add a mesh to the entity as well to see it.\n\nAnything that is not a mesh leaves the emitter on the sphere.");
     }
-    ImGui::Checkbox("Emitting", &edited.emitting);
+    field::Toggle(ICON_LC_SPARKLES, "Emitting", &edited.emitting);
     ImGui::SetItemTooltip("Stops new particles. The ones in flight live out their time.");
-    ImGui::DragFloat("Rate", &edited.rate, 5.f, .0f, 1.0e6f, "%.0f /s");
+    field::DragFloat("Rate", &edited.rate, 5.f, .0f, 1.0e6f, "%.0f /s");
     auto burst = static_cast<int>(edited.burst);
-    if (ImGui::DragInt("Burst", &burst, 16.f, 0, 1 << 20))
+    if (field::DragInt("Burst", &burst, 16.f, 0, 1 << 20))
       edited.burst = static_cast<uint32_t>(std::clamp(burst, 0, 1 << 20));
     ImGui::SetItemTooltip("Particles spawned at once each time the emitter is fired, whatever the rate\nis doing. No more than the capacity.");
     ImGui::SameLine();
     if (ImGui::Button("Fire"))
       ++edited.fired;
     auto capacity = static_cast<int>(edited.capacity);
-    if (ImGui::DragInt("Capacity", &capacity, 64.f, 1, 1 << 20))
+    if (field::DragInt("Capacity", &capacity, 64.f, 1, 1 << 20))
       edited.capacity = static_cast<uint32_t>(std::clamp(capacity, 1, 1 << 20));
     ImGui::SetItemTooltip("Slots in the pool. Every one is simulated and submitted each frame whether or\nnot anything is alive in it, so this is what the emitter costs.\n\nChanging it discards the particles in flight.");
     // The one sum worth doing for whoever is looking at this panel. The pool is a ring refilled in
@@ -777,38 +779,38 @@ inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleE
       ImGui::SetItemTooltip("Rate times lifetime is how many particles are alive at once. With fewer slots\nthan that the ring comes back round to a slot before its particle has\nfinished, and the oldest ones vanish early.");
     }
     if (edited.shape == kuki::ParticleShape::Sphere) {
-      ImGui::DragFloat("Radius", &edited.radius, .005f, .0f, 100.f, "%.3f");
+      field::DragFloat("Radius", &edited.radius, .005f, .0f, 100.f, "%.3f");
       ImGui::SetItemTooltip("Particles appear somewhere inside a sphere this size around the emitter.");
     }
   }
-  if (ImGui::CollapsingHeader("Motion", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::DragFloat("Lifetime", &edited.lifetime, .01f, .01f, 600.f, "%.2f s");
-    ImGui::SliderFloat("Lifetime Variance", &edited.lifetimeVariance, .0f, 1.f);
+  if (field::Fold("Motion", true)) {
+    field::DragFloat(ICON_LC_TIMER " Lifetime", &edited.lifetime, .01f, .01f, 600.f, "%.2f s");
+    field::SliderFloat("Lifetime Variance", &edited.lifetimeVariance, .0f, 1.f);
     ImGui::SetItemTooltip("How much of its lifetime a particle may fall short by. Only ever shortens, so\nthe figure above stays the longest any of them lasts.");
-    ImGui::DragFloat("Hold", &edited.hold, .01f, .0f, 600.f, "%.2f s");
+    field::DragFloat("Hold", &edited.hold, .01f, .0f, 600.f, "%.2f s");
     ImGui::SetItemTooltip("How long a particle waits where it was born before it starts to move. Held, it\nis drawn at its starting size and colour and does not age.");
-    ImGui::SliderFloat("Hold Variance", &edited.holdVariance, .0f, 1.f);
+    field::SliderFloat("Hold Variance", &edited.holdVariance, .0f, 1.f);
     ImGui::SetItemTooltip("How much of the hold a particle may fall short by, which is what lets a burst\ngo a piece at a time.");
-    ImGui::DragFloat("Speed", &edited.speed, .02f, .0f, 1000.f, "%.2f");
-    ImGui::SliderFloat("Speed Variance", &edited.speedVariance, .0f, 1.f);
-    ImGui::SliderFloat("Spread", &edited.spread, .0f, 180.f, "%.0f deg");
+    field::DragFloat(ICON_LC_GAUGE " Speed", &edited.speed, .02f, .0f, 1000.f, "%.2f");
+    field::SliderFloat("Speed Variance", &edited.speedVariance, .0f, 1.f);
+    field::SliderFloat("Spread", &edited.spread, .0f, 180.f, "%.0f deg");
     ImGui::SetItemTooltip("Half-angle of the cone particles are thrown into, around the local +Y or the\nmesh's normal. Nought is a jet, ninety a hemisphere and a hundred and eighty\nevery direction at once.");
-    ImGui::DragFloat3("Gravity", &edited.gravity.x, .05f, -100.f, 100.f, "%.2f");
+    field::DragFloat3(ICON_LC_ARROW_DOWN " Gravity", &edited.gravity.x, .05f, -100.f, 100.f, "%.2f");
     ImGui::SetItemTooltip("Any constant acceleration. Point it upwards and a little weaker for embers\ncarried by their own heat.");
-    ImGui::SliderFloat("Drag", &edited.drag, .0f, 10.f);
+    field::SliderFloat("Drag", &edited.drag, .0f, 10.f);
     ImGui::SetItemTooltip("How quickly the air takes a particle's speed away. Without it every particle\nfollows a clean parabola, and a spray of clean parabolas is water.");
   }
-  if (ImGui::CollapsingHeader("Appearance", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (field::Fold("Appearance", true)) {
     static auto &blends = kuki::EnumTraits<kuki::ParticleBlend>::GetNames();
     auto blend = static_cast<int>(edited.blend);
-    if (ImGui::Combo("Blend", &blend, blends.data(), static_cast<int>(blends.size())))
+    if (field::Combo("Blend", &blend, blends.data(), static_cast<int>(blends.size())))
       edited.blend = static_cast<kuki::ParticleBlend>(blend);
     ImGui::SetItemTooltip("Additive particles brighten what is behind them and can do nothing else.\nOpaque ones are solid discs, which is the one way to draw a dark particle;\nborn on a mesh they are shaded once by the sun and keep that shade.");
-    ImGui::DragFloat("Start Size", &edited.startSize, .002f, .0f, 100.f, "%.3f");
-    ImGui::DragFloat("End Size", &edited.endSize, .002f, .0f, 100.f, "%.3f");
-    ImGui::ColorEdit3("Start Colour", &edited.startColor.x);
-    ImGui::ColorEdit3("End Colour", &edited.endColor.x);
-    ImGui::DragFloat("Intensity", &edited.intensity, .05f, .0f, 1000.f, "%.2f");
+    field::DragFloat("Start Size", &edited.startSize, .002f, .0f, 100.f, "%.3f");
+    field::DragFloat("End Size", &edited.endSize, .002f, .0f, 100.f, "%.3f");
+    field::ColorEdit3(ICON_LC_PALETTE " Start Colour", &edited.startColor.x);
+    field::ColorEdit3(ICON_LC_PALETTE " End Colour", &edited.endColor.x);
+    field::DragFloat(ICON_LC_SUN " Intensity", &edited.intensity, .05f, .0f, 1000.f, "%.2f");
     ImGui::SetItemTooltip("What the colours are multiplied by. Drawn ahead of the bloom chain, so an\nadditive particle only glows if this takes it past white -- which is a statement\nabout how much light there is rather than what colour it is.");
   }
   if (edited != *emitter)
@@ -834,57 +836,57 @@ inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::Indirect
   const auto probes = context.capabilities.probeVolume;
   const auto defaults = kuki::IndirectLighting{};
   auto edited = *indirect;
-  if (ImGui::CollapsingHeader("Terms", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (field::Fold("Terms", true)) {
     if (probes)
       ImGui::TextDisabled("Applied after the field is read. Repaints immediately.");
     else
       ImGui::TextDisabled("This backend has no probe field. Repaints immediately.");
     if (probes) {
-      ImGui::SliderFloat("Bounce", &edited.bounceIntensity, .0f, 4.f);
+      field::SliderFloat("Bounce", &edited.bounceIntensity, .0f, 4.f);
       ImGui::SetItemTooltip("How much of the probe volume's bounce reaches the picture.\nThe first thing to reach for: most of the time the question is\nwhether there is too much indirect light or too little.");
     }
-    ImGui::SliderFloat("Sky", &edited.skyIntensity, .0f, 4.f);
+    field::SliderFloat("Sky", &edited.skyIntensity, .0f, 4.f);
     ImGui::SetItemTooltip("The same, for the sky's diffuse contribution. Separate from the\nbounce because the two arrive by different routes, and finding the\nbalance between them needs both.");
-    ImGui::SliderFloat("Ambient Fallback", &edited.ambientFallback, .0f, .5f, "%.3f");
+    field::SliderFloat("Ambient Fallback", &edited.ambientFallback, .0f, .5f, "%.3f");
     ImGui::SetItemTooltip("The flat ambient a scene falls back on with no sky, no ambient\nlight and no probe volume. Shades nothing when any of the three\nis present.");
-    ImGui::ColorEdit3("Background", &edited.backgroundColor.x, ImGuiColorEditFlags_Float);
+    field::ColorEdit3(ICON_LC_PALETTE " Background", &edited.backgroundColor.x, ImGuiColorEditFlags_Float);
     ImGui::SetItemTooltip("What fills the frame behind everything with no skybox. Linear,\nand tone mapped along with the rest of the picture -- so the swatch\nis not what reaches the display. The other half of Ambient Fallback:\nthis is what a scene stands in front of, and that is the light it\ngets for standing there.");
   }
-  if (probes && ImGui::CollapsingHeader("Reconstruction", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (probes && field::Fold("Reconstruction", true)) {
     ImGui::TextDisabled("How the field is read at a point. Repaints immediately.");
-    ImGui::SliderFloat("Surface Bias", &edited.probeSurfaceBias, .0f, 1.f);
+    field::SliderFloat("Surface Bias", &edited.probeSurfaceBias, .0f, 1.f);
     ImGui::SetItemTooltip("A step off the surface before the field is sampled, as a fraction\nof the local cell. Too small and a concave corner reads as occluded\nfrom every probe around it; too large and the bounce detaches from\nthe geometry, losing the darkening where surfaces meet.");
-    ImGui::SliderFloat("Weight Floor", &edited.probeWeightFloor, .0f, 1.f);
+    field::SliderFloat("Weight Floor", &edited.probeWeightFloor, .0f, 1.f);
     ImGui::SetItemTooltip("Below this a probe the point can barely see is crushed towards\nnothing rather than merely reduced. Raise it to stop light coming\nthrough a thin wall; watch for the probe lattice printing itself\nonto flat surfaces as single corners start deciding whole cells.");
-    ImGui::SliderFloat("Visibility Sharpness", &edited.probeVisibilitySharpness, 1.f, 8.f);
+    field::SliderFloat("Visibility Sharpness", &edited.probeVisibilitySharpness, 1.f, 8.f);
     ImGui::SetItemTooltip("How sharply a partly-visible probe is disbelieved. One is the\nstatistical answer and it leaks; higher distrusts a partial verdict\nmore, at the cost of darkening the creases the test is least\ncertain about.");
   }
-  if (probes && ImGui::CollapsingHeader("Trace")) {
+  if (probes && field::Fold("Trace")) {
     ImGui::TextDisabled("Changes what the probes store. Settles over a few dozen frames.");
-    ImGui::SliderFloat("Depth Sharpness", &edited.probeDepthSharpness, 4.f, 64.f);
+    field::SliderFloat("Depth Sharpness", &edited.probeDepthSharpness, 4.f, 64.f);
     ImGui::SetItemTooltip("How tightly a ray must line up with a visibility texel to count\ntowards it. Tied to the map's width rather than free: 28 puts the\nlobe's half-width at the angle one texel subtends, and sharpening\nmuch past it leaves texels that no ray feeds.");
-    ImGui::SliderFloat("Depth Range", &edited.probeDepthRange, .05f, 2.f);
+    field::SliderFloat("Depth Range", &edited.probeDepthRange, .05f, 2.f);
     ImGui::SetItemTooltip("How far a probe's visibility reaches, as a fraction of the volume's\nside. Sited too close and probes invent an occluder in a ring at\nwhatever radius the clamp begins to bite.");
-    ImGui::SliderFloat("Ray Distance", &edited.rayDistanceScale, .25f, 4.f);
+    field::SliderFloat("Ray Distance", &edited.rayDistanceScale, .25f, 4.f);
     ImGui::SetItemTooltip("How far a ray may travel, as a multiple of the volume's side.\nThe cheapest thing here to shorten: a ray that reaches nothing\ncosts the same as one that does.");
-    ImGui::SliderFloat("Hit Normal Nudge", &edited.hitNormalNudge, .0f, 1.f);
+    field::SliderFloat("Hit Normal Nudge", &edited.hitNormalNudge, .0f, 1.f);
     ImGui::SetItemTooltip("How far a hit is nudged along its normal before it is shaded, as a\nfraction of a cell. The trace's equivalent of a shadow bias.");
-    ImGui::SliderFloat("Opaque Threshold", &edited.opaqueThreshold, .001f, .5f, "%.3f");
+    field::SliderFloat("Opaque Threshold", &edited.opaqueThreshold, .001f, .5f, "%.3f");
     ImGui::SetItemTooltip("How much light must still be getting through before a ray stops\nbeing followed. Purely a cost control: raising it ends alpha-blended\nchains sooner.");
     auto meanStep = static_cast<int>(edited.meanStep);
-    if (ImGui::SliderInt("Mean Step", &meanStep, 1, 16))
+    if (field::SliderInt("Mean Step", &meanStep, 1, 16))
       edited.meanStep = static_cast<uint32_t>(std::max(meanStep, 1));
     ImGui::SetItemTooltip("Estimates the running mean is worth, so a fresh one is folded in at\none over n plus this. Lower converges faster and holds more of the\nray set's noise; higher is steadier and slower to notice that the\nlight changed.");
   }
-  if (probes && ImGui::CollapsingHeader("Probe Placement")) {
+  if (probes && field::Fold("Probe Placement")) {
     ImGui::TextDisabled("Where probes stand. Settles over a few dozen frames.");
-    ImGui::SliderFloat("Relocation Margin", &edited.relocationMargin, .0f, 1.f);
+    field::SliderFloat("Relocation Margin", &edited.relocationMargin, .0f, 1.f);
     ImGui::SetItemTooltip("How far a probe steps towards open space each trace, as a fraction\nof its allowance.");
-    ImGui::SliderFloat("Relocation Damping", &edited.relocationDamping, .0f, 1.f);
+    field::SliderFloat("Relocation Damping", &edited.relocationDamping, .0f, 1.f);
     ImGui::SetItemTooltip("How much of each step is held back, which is what keeps a probe\nfrom oscillating between two placements.");
-    ImGui::SliderFloat("Escape Agreement", &edited.escapeAgreement, .01f, 1.f);
+    field::SliderFloat("Escape Agreement", &edited.escapeAgreement, .01f, 1.f);
     ImGui::SetItemTooltip("How much the rays coming back off a far side must agree before\ntheir mean is taken for a direction rather than the residue of a\nray set. A probe just outside a surface scores about a half; one\nsealed inside solid geometry, about 0.0016.");
-    ImGui::SliderFloat("Buried Limit", &edited.buriedLimit, .01f, 1.f);
+    field::SliderFloat("Buried Limit", &edited.buriedLimit, .01f, 1.f);
     ImGui::SetItemTooltip("What share of a probe's rays may come back off the far side of a\nsurface before it is disbelieved and filled in from its neighbours.\nThe Probe View's Trust and Classification entries show the verdict.");
     ImGui::TextDisabled("Their allowance is fixed when the volume is built.");
     ImGui::SetItemTooltip("PROBE_RELOCATION_LIMIT, baked into each probe's anchor. Changing it\nmeans rebuilding the volume rather than retracing, which is a\ndifferent tier of cost and is not exposed here.");
@@ -904,14 +906,14 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
     return;
   static auto &types = kuki::EnumTraits<kuki::LightType>::GetNames();
   auto type = static_cast<int>(light->type);
-  if (ImGui::Combo("Type", &type, types.data(), types.size()))
+  if (field::Combo("Type", &type, types.data(), types.size()))
     light->type = static_cast<kuki::LightType>(type);
   auto position = light->position;
-  if (ImGui::DragFloat3("Position", glm::value_ptr(position), .1f))
+  if (field::DragFloat3(ICON_LC_MOVE_3D " Position", glm::value_ptr(position), .1f))
     light->position = position;
   auto rotationQuat = light->rotation;
   auto rotationDegrees = glm::degrees(glm::eulerAngles(rotationQuat));
-  if (ImGui::DragFloat3("Rotation", glm::value_ptr(rotationDegrees), .1f)) {
+  if (field::DragFloat3(ICON_LC_ROTATE_3D " Rotation", glm::value_ptr(rotationDegrees), .1f)) {
     for (auto i = 0; i < 3; ++i) {
       auto angle = rotationDegrees[i];
       while (angle > 180.f)
@@ -923,16 +925,16 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
     light->SetRotation(glm::quat(rotationRadians));
   }
   auto ambient = light->ambient;
-  if (ImGui::ColorEdit3("Ambient Color", glm::value_ptr(ambient)))
+  if (field::ColorEdit3(ICON_LC_PALETTE " Ambient Color", glm::value_ptr(ambient)))
     light->ambient = ambient;
   auto diffuse = light->diffuse;
-  if (ImGui::ColorEdit3("Diffuse Color", glm::value_ptr(diffuse)))
+  if (field::ColorEdit3(ICON_LC_PALETTE " Diffuse Color", glm::value_ptr(diffuse)))
     light->diffuse = diffuse;
   auto specular = light->specular;
-  if (ImGui::ColorEdit3("Specular Color", glm::value_ptr(specular)))
+  if (field::ColorEdit3(ICON_LC_PALETTE " Specular Color", glm::value_ptr(specular)))
     light->specular = specular;
   auto intensity = light->intensity;
-  if (ImGui::DragFloat("Intensity", &intensity, .05f, .0f, MAX_FLOAT, "%.2f"))
+  if (field::DragFloat(ICON_LC_SUN " Intensity", &intensity, .05f, .0f, MAX_FLOAT, "%.2f"))
     light->intensity = intensity;
   ImGui::SameLine();
   ImGui::TextDisabled("(?)");
@@ -940,13 +942,13 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
     ImGui::SetTooltip("Brightness multiplier applied on top of the diffuse/specular colors above.\nRaise this instead of pushing color channels past 1.0 to make a light brighter.");
   if (light->type == kuki::LightType::Directional) {
     auto angularDiameter = light->angularDiameter;
-    if (ImGui::DragFloat("Angular Diameter", &angularDiameter, .01f, .0f, 30.f, "%.2f deg"))
+    if (field::DragFloat("Angular Diameter", &angularDiameter, .01f, .0f, 30.f, "%.2f deg"))
       light->angularDiameter = std::clamp(angularDiameter, .0f, 30.f);
     ImGui::SetItemTooltip("How wide the light is in the sky, which is what makes its shadows soften the\nfurther they fall. The sun is a little over half a degree.\n\nNought is a light with no size: every shadow the same fixed width.");
   }
   if (light->type == kuki::LightType::Spot) {
     auto sourceRadius = light->sourceRadius;
-    if (ImGui::DragFloat("Source Radius", &sourceRadius, .005f, .0f, MAX_FLOAT, "%.3f"))
+    if (field::DragFloat("Source Radius", &sourceRadius, .005f, .0f, MAX_FLOAT, "%.3f"))
       light->sourceRadius = std::max(sourceRadius, .0f);
     ImGui::SetItemTooltip("The size of the bulb, in scene units. A larger one gives shadows that are\nsharp at the foot of what casts them and soft further away.\n\nNought is a point: every shadow the same fixed width.");
   }
@@ -955,7 +957,7 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
     const auto currentLinear = std::max(light->linear, 1.0e-4f);
     const auto currentRange = 4.5f / currentLinear;
     auto range = currentRange;
-    if (ImGui::DragFloat("Range", &range, .5f, MIN_RANGE, MAX_FLOAT, "%.1f")) {
+    if (field::DragFloat("Range", &range, .5f, MIN_RANGE, MAX_FLOAT, "%.1f")) {
       range = std::max(range, MIN_RANGE);
       light->constant = 1.f;
       light->linear = 4.5f / range;
@@ -969,38 +971,38 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
     // hand puts the falloff somewhere Range cannot express, and the next drag of Range overwrites
     // all three; that is the intended relationship, and it is easier to see when both are visible.
     auto constant = light->constant;
-    if (ImGui::SliderFloat("Constant Term", &constant, .0f, 1.f))
+    if (field::SliderFloat("Constant Term", &constant, .0f, 1.f))
       light->constant = constant;
     auto linear = light->linear;
-    if (ImGui::SliderFloat("Linear Term", &linear, .0f, 1.f))
+    if (field::SliderFloat("Linear Term", &linear, .0f, 1.f))
       light->linear = linear;
     auto quadratic = light->quadratic;
-    if (ImGui::SliderFloat("Quadratic Term", &quadratic, .0f, 1.f))
+    if (field::SliderFloat("Quadratic Term", &quadratic, .0f, 1.f))
       light->quadratic = quadratic;
   }
   if (light->type == kuki::LightType::Spot) {
     auto innerAngle = glm::degrees(std::acos(std::clamp(light->innerCutoff, -1.f, 1.f)));
     auto outerAngle = glm::degrees(std::acos(std::clamp(light->outerCutoff, -1.f, 1.f)));
-    if (ImGui::DragFloat("Inner Cone Angle", &innerAngle, .1f, .0f, outerAngle))
+    if (field::DragFloat("Inner Cone Angle", &innerAngle, .1f, .0f, outerAngle))
       light->innerCutoff = std::cos(glm::radians(innerAngle));
-    if (ImGui::DragFloat("Outer Cone Angle", &outerAngle, .1f, innerAngle, 89.f))
+    if (field::DragFloat("Outer Cone Angle", &outerAngle, .1f, innerAngle, 89.f))
       light->outerCutoff = std::cos(glm::radians(outerAngle));
     auto spotNearPlane = light->nearPlane;
-    if (ImGui::DragFloat("Shadow Near Plane", &spotNearPlane, .1f, .0f, MAX_FLOAT))
+    if (field::DragFloat("Shadow Near Plane", &spotNearPlane, .1f, .0f, MAX_FLOAT))
       light->nearPlane = spotNearPlane;
     auto spotFarPlane = light->farPlane;
-    if (ImGui::DragFloat("Shadow Far Plane", &spotFarPlane, .1f, .0f, MAX_FLOAT))
+    if (field::DragFloat("Shadow Far Plane", &spotFarPlane, .1f, .0f, MAX_FLOAT))
       light->farPlane = spotFarPlane;
   }
   if (light->type == kuki::LightType::Directional) {
     auto nearPlane = light->nearPlane;
-    if (ImGui::DragFloat("Shadow Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT))
+    if (field::DragFloat("Shadow Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT))
       light->nearPlane = nearPlane;
     auto farPlane = light->farPlane;
-    if (ImGui::DragFloat("Shadow Far Plane", &farPlane, .1f, .0f, MAX_FLOAT))
+    if (field::DragFloat("Shadow Far Plane", &farPlane, .1f, .0f, MAX_FLOAT))
       light->farPlane = farPlane;
     auto orthoSize = light->orthoSize;
-    if (ImGui::DragFloat("Shadow Coverage Size", &orthoSize, .1f, .0f, MAX_FLOAT))
+    if (field::DragFloat("Shadow Coverage Size", &orthoSize, .1f, .0f, MAX_FLOAT))
       light->orthoSize = orthoSize;
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
@@ -1013,32 +1015,32 @@ inline auto PropertyDisplayer::operator()<kuki::MaterialHandle>(kuki::MaterialHa
   if (!handle)
     return;
   auto assetId = handle->assetId;
-  ImGui::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::MeshHandle>(kuki::MeshHandle *handle) -> void {
   if (!handle)
     return;
   auto assetId = handle->assetId;
-  ImGui::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::ModelMaterialHandle>(kuki::ModelMaterialHandle *handle) -> void {
   if (!handle)
     return;
   auto modelAssetId = handle->modelAssetId;
-  ImGui::InputScalar("Model Asset ID", ImGuiDataType_U64, &modelAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputScalar("Model Asset ID", ImGuiDataType_U64, &modelAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
   auto materialIndex = handle->materialIndex;
-  ImGui::InputScalar("Material Index", ImGuiDataType_U64, &materialIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputScalar("Material Index", ImGuiDataType_U64, &materialIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::ModelMeshHandle>(kuki::ModelMeshHandle *handle) -> void {
   if (!handle)
     return;
   auto modelAssetId = handle->modelAssetId;
-  ImGui::InputScalar("Model Asset ID", ImGuiDataType_U64, &modelAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputScalar("Model Asset ID", ImGuiDataType_U64, &modelAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
   auto meshIndex = handle->meshIndex;
-  ImGui::InputScalar("Mesh Index", ImGuiDataType_U64, &meshIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputScalar("Mesh Index", ImGuiDataType_U64, &meshIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Script>(kuki::Script *script) -> void {
@@ -1051,7 +1053,7 @@ inline auto PropertyDisplayer::operator()<kuki::Skeleton>(kuki::Skeleton *skelet
   if (!skeleton)
     return;
   auto nodeCount = static_cast<int>(skeleton->nodeEntities.size());
-  ImGui::InputInt("Node Count", &nodeCount, 0, 0, ImGuiInputTextFlags_ReadOnly);
+  field::InputInt("Node Count", &nodeCount, 0, 0, ImGuiInputTextFlags_ReadOnly);
   // A skeleton is a flat array indexed by the animation channels, and a hole in it means a channel
   // that will animate nothing. Counting the holes is the part worth surfacing: the array's length
   // alone looks healthy right up until the moment a clip drives a bone that was never bound.
@@ -1067,14 +1069,14 @@ inline auto PropertyDisplayer::operator()<kuki::SkyboxHandle>(kuki::SkyboxHandle
   if (!handle)
     return;
   auto assetId = handle->assetId;
-  ImGui::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::TextureHandle>(kuki::TextureHandle *handle) -> void {
   if (!handle)
     return;
   auto assetId = handle->assetId;
-  ImGui::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+  field::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Transform>(kuki::Transform *transform) -> void {
@@ -1083,13 +1085,13 @@ inline auto PropertyDisplayer::operator()<kuki::Transform>(kuki::Transform *tran
     return;
   auto dirty = false;
   auto position = transform->position;
-  if (ImGui::DragFloat3("Position", glm::value_ptr(position), .1f)) {
+  if (field::DragFloat3(ICON_LC_MOVE_3D " Position", glm::value_ptr(position), .1f)) {
     transform->position = position;
     dirty = true;
   }
   auto rotationQuat = transform->rotation;
   auto rotationDegrees = glm::degrees(glm::eulerAngles(rotationQuat));
-  if (ImGui::DragFloat3("Rotation", glm::value_ptr(rotationDegrees), .1f)) {
+  if (field::DragFloat3(ICON_LC_ROTATE_3D " Rotation", glm::value_ptr(rotationDegrees), .1f)) {
     for (auto i = 0; i < 3; ++i) {
       auto angle = rotationDegrees[i];
       while (angle > 180.f)
@@ -1105,19 +1107,19 @@ inline auto PropertyDisplayer::operator()<kuki::Transform>(kuki::Transform *tran
   static auto uniformMode = true;
   if (uniformMode) {
     auto uniformScale = scale.x;
-    if (ImGui::DragFloat("Scale", &uniformScale, .1f, .0f, MAX_FLOAT)) {
+    if (field::DragFloat(ICON_LC_SCALE_3D " Scale", &uniformScale, .1f, .0f, MAX_FLOAT)) {
       transform->scale = glm::vec3(uniformScale);
       dirty = true;
     }
     ImGui::SameLine();
-    ImGui::Checkbox("Uniform", &uniformMode);
+    field::Toggle(ICON_LC_LINK, "Uniform", &uniformMode);
   } else {
-    if (ImGui::DragFloat3("Scale", glm::value_ptr(scale), .1f, .0f, MAX_FLOAT)) {
+    if (field::DragFloat3(ICON_LC_SCALE_3D " Scale", glm::value_ptr(scale), .1f, .0f, MAX_FLOAT)) {
       transform->scale = scale;
       dirty = true;
     }
     ImGui::SameLine();
-    ImGui::Checkbox("Uniform", &uniformMode);
+    field::Toggle(ICON_LC_LINK, "Uniform", &uniformMode);
   }
   if (dirty)
     app.MarkTransformDirty(context.selectedEntityId);

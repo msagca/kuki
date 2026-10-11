@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <engine_config.hpp>
 #include <filesystem>
+#include <game_module.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <id.hpp>
 #include <imgui.h>
@@ -102,10 +103,16 @@ struct EditorContext {
   /// -- so there is nothing here that can change while the editor is up.
   kuki::RendererCapabilities capabilities{};
 };
-class Editor final : public SystemApplication<ScriptingSystem, AnimationSystem, PhysicsSystem, RenderingSystem> {
+/// Animation ahead of scripting, which is the order a game that uses both lists them in: a script
+/// then sees the events a tick fired during that same tick. A game played in here is stepped by
+/// these systems and not its own, so the order has to be the one it was written against.
+class Editor final : public SystemApplication<AnimationSystem, ScriptingSystem, PhysicsSystem, RenderingSystem> {
 public:
   Editor();
   EditorContext context{};
+  /// @brief A game to open once the editor has started, and whether to play it straight away.
+  std::string startGame;
+  bool startPlaying{};
   /// @brief The editor's own tooling, which used to sit on the engine's `Application` facade.
   ///
   /// Every one of these is a question only an editor asks. Thumbnails at a size a panel picked; a
@@ -194,7 +201,30 @@ private:
   auto DisplayAssets() -> void;
   auto DisplayEntity(const EntityID) -> void;
   auto DisplayHierarchy() -> void;
-  auto DisplayPanelBar() -> void;
+  /// @brief The bar in the top left corner, as wide as what is in it: the View menu, which opens and closes the panels, then which game
+  /// is loaded and play, pause, step and stop.
+  auto DisplayMenuBar() -> void;
+  /// @brief Removes a component the way the Properties panel means it, which for a backend's
+  /// material includes the handle it is made from.
+  auto RemoveComponent(const kuki::EntityID, const kuki::ComponentType) -> bool;
+  /// @brief What this is and whose work is in it: the version and build, then every library and
+  /// font that ships, each with the licence it is used under folded beneath it.
+  auto DisplayHelp() -> void;
+  /// @brief Loads a game's library, if it is not loaded yet, and has it build its scene in place of this one.
+  auto OpenGame(const std::filesystem::path &) -> void;
+  /// @brief Saves the scene as it stands and lets the game run.
+  ///
+  /// The save is what stopping goes back to. Playing changes the scene in every way a game can --
+  /// scripts spawn things, move them, delete them -- and none of it is meant to outlast the run.
+  auto BeginPlay() -> void;
+  /// @brief Opens, and perhaps plays, the game the command line asked for. Once.
+  auto OpenStartGame() -> void;
+  /// @brief Shuts the game's scripts down, undoes what it bound, and puts the saved scene back.
+  auto EndPlay() -> void;
+  std::vector<std::filesystem::path> gamePaths;
+  std::vector<LoadedGame> loadedGames;
+  int currentGame{-1};
+  std::filesystem::path playSnapshot;
   auto DisplayProfileNode(const size_t) -> void;
   auto DisplayProfiler() -> void;
   auto DisplayProperties() -> void;

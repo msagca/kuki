@@ -21,9 +21,23 @@ auto ScriptingSystem::Collect() const -> std::vector<std::pair<EntityID, Script 
   });
   return scripts;
 }
+auto ScriptingSystem::Runs(const Script &script) const -> bool {
+  const auto mode = script.GetRunMode();
+  return mode == ScriptRun::Always || (mode == ScriptRun::Play) == (app.GetPlayState() == PlayState::Playing);
+}
+auto ScriptingSystem::ShutdownPlayed() -> void {
+  for (const auto &[id, script] : Collect()) {
+    if (!app.IsEntity(id) || script->state != ScriptState::Started || script->GetRunMode() != ScriptRun::Play)
+      continue;
+    script->entityId = id;
+    script->app = &app;
+    script->Shutdown(app);
+    script->state = ScriptState::Idle;
+  }
+}
 auto ScriptingSystem::Start() -> void {
   for (const auto &[id, script] : Collect()) {
-    if (!app.IsEntity(id))
+    if (!app.IsEntity(id) || !Runs(*script))
       continue;
     script->entityId = id;
     script->app = &app;
@@ -33,7 +47,7 @@ auto ScriptingSystem::Start() -> void {
 auto ScriptingSystem::Update(const float deltaTime) -> void {
   KUKI_PROFILE_SCOPE("Scripting");
   for (const auto &[id, script] : Collect()) {
-    if (!app.IsEntity(id))
+    if (!app.IsEntity(id) || !Runs(*script))
       continue;
     script->entityId = id;
     script->app = &app;
@@ -44,7 +58,9 @@ auto ScriptingSystem::Update(const float deltaTime) -> void {
 auto ScriptingSystem::Tick() -> void {
   KUKI_PROFILE_SCOPE("Scripting");
   for (const auto &[id, script] : Collect()) {
-    if (!app.IsEntity(id))
+    // By mode alone and not by `Runs`: a tick is only ever run for the game, and one stepped by
+    // hand while paused is still the game's.
+    if (!app.IsEntity(id) || script->GetRunMode() == ScriptRun::Edit)
       continue;
     script->entityId = id;
     script->app = &app;

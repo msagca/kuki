@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <editor.hpp>
+#include <field.hpp>
 #include <imgui.h>
 #include <input_manager.hpp>
 #include <key_binding_widget.hpp>
@@ -23,12 +24,15 @@ auto DisplayKeyBindingRow(Editor &app, const char *label, const std::string &des
   ImGui::TextUnformatted(label);
   if (!description.empty() && ImGui::IsItemHovered())
     ImGui::SetTooltip("%s", description.c_str());
-  ImGui::SameLine(140.f);
+  // The name where the line starts and its key against the right edge, as every row of this kind
+  // is laid out. See `field::RightAlign`.
+  static constexpr auto BUTTON_WIDTH = 140.f;
+  field::RightAlign(BUTTON_WIDTH);
   const auto rebinding = rebindingIndex == index;
   if (rebinding)
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(.8f, .2f, .2f, 1.f));
   const auto buttonLabel = rebinding ? "Press a key..." : app.GetTriggerName(app.GetBinding(bindingName));
-  if (ImGui::Button(buttonLabel.c_str(), ImVec2(140.f, 0.f)) && rebindingIndex == -1) {
+  if (ImGui::Button(buttonLabel.c_str(), ImVec2(BUTTON_WIDTH, 0.f)) && rebindingIndex == -1) {
     rebindingIndex = index;
     app.BeginKeyCapture();
     app.SetInputCaptureActive(true);
@@ -53,8 +57,7 @@ auto DisplaySequenceRow(const std::string &sequence, const std::string &descript
   ImGui::TextUnformatted(TruncateText(description, descriptionMaxWidth).c_str());
   if (!description.empty() && ImGui::IsItemHovered())
     ImGui::SetTooltip("%s", description.c_str());
-  ImGui::SameLine();
-  ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - sequenceWidth);
+  field::RightAlign(sequenceWidth);
   ImGui::BeginDisabled();
   ImGui::Button(sequence.c_str());
   ImGui::EndDisabled();

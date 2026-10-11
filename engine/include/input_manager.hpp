@@ -43,6 +43,14 @@ public:
     WASD };
   InputManager(Application &);
   auto BeginKeyCapture() -> void;
+  /// @brief Marks the start of a stretch whose bindings, buttons and actions are to be undone.
+  ///
+  /// A game run inside an editor registers what it needs as it starts, the same as it does on its
+  /// own, and that is not harmless there: a binding takes its key from whoever had it, so a game
+  /// that steps with A leaves the editor's own A unbound. `EndSession` puts every binding back as
+  /// it stood here, forgets the buttons, and unregisters each action registered since.
+  auto BeginSession() -> void;
+  auto EndSession() -> void;
   auto CancelKeyCapture() -> void;
   /// @brief Feeds a printable character into the key-sequence trie, resetting the sequence when it stops matching a known prefix.
   ///
@@ -146,6 +154,14 @@ private:
   std::bitset<256> tickLatch{0};
   uint32_t tickButtons{};
   std::vector<std::string> buttonOrder;
+  struct Session {
+    bool active{};
+    ActionID firstAction{};
+    std::unordered_map<std::string, Trigger> nameToBinding;
+    std::unordered_map<std::string, std::string> nameToDescription;
+    std::vector<std::string> bindingOrder;
+    std::vector<std::string> buttonOrder;
+  } session;
   std::unordered_map<ActionID, Registration> idToRegistration;
   std::unordered_map<std::string, Trigger> nameToBinding;
   std::unordered_map<std::string, std::string> nameToDescription;

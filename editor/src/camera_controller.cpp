@@ -4,6 +4,7 @@
 #include <application.hpp>
 #include <camera.hpp>
 #include <camera_controller.hpp>
+#include <field.hpp>
 #include <camera_type.hpp>
 #include <entity_manager.hpp>
 #include <glm/detail/type_vec2.hpp>
@@ -67,6 +68,9 @@ auto BindingName(int index) -> std::string {
 }
 } // namespace
 KUKI_REGISTER_SCRIPT(CameraController)
+auto CameraController::GetRunMode() const -> ScriptRun {
+  return ScriptRun::Edit;
+}
 CameraController::CameraController()
   : Script(std::in_place_type<CameraController>) {}
 CameraController::~CameraController() {
@@ -97,11 +101,11 @@ auto CameraController::CloneTo(EntityManager &entityManager, const EntityID id) 
   script->mmbReleaseActionId = InputManager::InvalidActionID;
 }
 auto CameraController::Display() const -> void {
-  ImGui::DragFloat("Move Speed", &settings.moveSpeed, .1f, .1f, 100.f, "%.1f");
-  ImGui::DragFloat("Boost Multiplier", &settings.moveBoostMax, .1f, 1.f, 50.f, "%.1f");
-  ImGui::DragFloat("Precision Multiplier", &settings.precisionMin, .01f, .01f, 1.f, "%.2f");
-  ImGui::DragFloat("Boost Ramp Up Time", &settings.boostRampUpTime, .05f, .05f, 10.f, "%.2fs");
-  ImGui::DragFloat("Boost Ramp Down Time", &settings.boostRampDownTime, .05f, .05f, 10.f, "%.2fs");
+  field::DragFloat("Move Speed", &settings.moveSpeed, .1f, .1f, 100.f, "%.1f");
+  field::DragFloat("Boost Multiplier", &settings.moveBoostMax, .1f, 1.f, 50.f, "%.1f");
+  field::DragFloat("Precision Multiplier", &settings.precisionMin, .01f, .01f, 1.f, "%.2f");
+  field::DragFloat("Boost Ramp Up Time", &settings.boostRampUpTime, .05f, .05f, 10.f, "%.2fs");
+  field::DragFloat("Boost Ramp Down Time", &settings.boostRampDownTime, .05f, .05f, 10.f, "%.2fs");
 }
 auto CameraController::GetTypeName() const -> std::string {
   return "Camera Controller";

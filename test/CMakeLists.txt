@@ -21,6 +21,9 @@ target_include_directories(
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngine gtest)
+# Before discovery, which runs the binary: in a shared build it does not start without the engine
+# beside it.
+kuki_stage_runtime(${PROJECT_NAME})
 gtest_discover_tests(${PROJECT_NAME})
 install(
   TARGETS ${PROJECT_NAME}

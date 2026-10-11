@@ -3,6 +3,7 @@
 #include <camera.hpp>
 #include <chess.hpp>
 #include <game_builder.hpp>
+#include <game_module.hpp>
 #include <game_manager.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -45,16 +46,19 @@ auto LookAt(const glm::vec3 &from, const glm::vec3 &to) -> glm::quat {
 Chess::Chess()
   : SystemApplication(ApplicationDescription{.name = "Kuki Chess"}) {}
 auto Chess::Start() -> void {
+  SetupChess(*this);
+}
+auto SetupChess(Application &app) -> void {
   for (const auto *name : MATERIALS)
-    LoadAsset<MaterialAsset>(ResolvePath(std::string("material/") + name + ".mat"), name);
+    app.LoadAsset<MaterialAsset>(ResolvePath(std::string("material/") + name + ".mat"), name);
   // A model loads as a prefab of nodes, which is the shape for instantiating a whole file into a
   // scene. The game wants something else: a mesh it can name on an entity it already has, and swap
   // when a square changes hands. So each file's one mesh is lifted out and registered on its own
   // under the file's name -- the route `GameManager` already takes for the meshes it builds itself.
   // The model keeps its own name with a suffix, so the two never answer to the same lookup.
   for (const auto *name : MODELS) {
-    const auto modelId = LoadAsset<ModelAsset>(ResolvePath(std::string("model/") + name + ".glb"), std::string(name) + ".glb");
-    const auto *model = modelId ? GetAsset<ModelAsset>(modelId) : nullptr;
+    const auto modelId = app.LoadAsset<ModelAsset>(ResolvePath(std::string("model/") + name + ".glb"), std::string(name) + ".glb");
+    const auto *model = modelId ? app.GetAsset<ModelAsset>(modelId) : nullptr;
     if (!model || model->meshes.empty()) {
       spdlog::warn("[Chess] Model {} did not load, so it will not be drawn", name);
       continue;
@@ -62,16 +66,16 @@ auto Chess::Start() -> void {
     auto meshAsset = std::make_unique<MeshAsset>(MakeBuiltInAssetID(std::string("chess/model/") + name));
     meshAsset->mesh = model->meshes.front().mesh;
     meshAsset->bounds = BoundingBox::Calculate(meshAsset->mesh.vertices);
-    AddAsset(std::move(meshAsset), name);
+    app.AddAsset(std::move(meshAsset), name);
   }
   // Before the scene, because `GameManager::Start` draws the board's labels out of this same atlas
   // and scripts start after this function returns.
-  if (!SetOverlayFont(ResolvePath(CHESS_FONT)))
+  if (!app.SetOverlayFont(ResolvePath(CHESS_FONT)))
     spdlog::warn("[Chess] No font, so the clocks and the board's labels will not be drawn");
   // The whole scene skeleton in one expression. `Entity` asks for scene scope, so each call
   // discards the entity frame the previous one left open -- which is what lets these run on after
   // one another without a closing call between them. See `Application::Game`.
-  Game("Chess")
+  app.Game("Chess")
     .Scene("Main")
     .Entity("Camera")
     .With<Camera>([](Camera &camera) {
@@ -177,3 +181,5 @@ auto Chess::Start() -> void {
     .Entity("GameManager")
     .Script<GameManager>();
 }
+KUKI_GAME_MODULE("Chess", SetupChess)
+KUKI_GAME_MAIN(Chess)

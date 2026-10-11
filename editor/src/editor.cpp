@@ -4,6 +4,10 @@
 #endif
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <launch_path.hpp>
+#include <iterator>
+#include <fstream>
+#include <cctype>
 #include <animator.hpp>
 #include <anti_aliasing.hpp>
 #include <application.hpp>
@@ -21,6 +25,7 @@
 #include <editor.hpp>
 #include <engine_config.hpp>
 #include <enum_traits.hpp>
+#include <field.hpp>
 #include <filesystem>
 #include <gl_render_target.hpp>
 #include <gl_skybox.hpp>
@@ -34,6 +39,7 @@
 #include <imgui_file_browser.hpp>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <icons_lucide.hpp>
 #include <imgui_internal.h>
 #include <imguizmo.hpp>
 #include <key_binding_widget.hpp>
@@ -96,12 +102,18 @@ enum ShortcutIndex : int {
   ToggleFPS,
   Copy,
   Paste,
+  PlayStop,
+  PauseResume,
+  StepTick,
   ShortcutCount
 };
 constexpr ShortcutDef kShortcuts[ShortcutCount] = {
   {"Show FPS", "Toggle the FPS counter overlay in the viewport", GLFW_KEY_C, 0},
   {"Copy", "Copy the selected entities", GLFW_KEY_C, GLFW_MOD_CONTROL},
   {"Paste", "Paste the copied entities", GLFW_KEY_V, GLFW_MOD_CONTROL},
+  {"Play", "Play the game in the open scene, or stop it and put the scene back", GLFW_KEY_F5, 0},
+  {"Pause", "Pause the game that is playing, or resume it", GLFW_KEY_F6, 0},
+  {"Step", "Run one tick of the paused game", GLFW_KEY_F10, 0},
 };
 struct DebugViewSequenceDef {
   const char *sequence;
@@ -193,7 +205,7 @@ struct ModelAnimationSequence final : public ImSequencer::SequenceInterface {
       DrawKey(key.time);
   }
 };
-/// @brief A panel of the editor: one window, and one toggle for it on the bottom bar.
+/// @brief A panel of the editor: one window, and one entry for it in the View menu.
 ///
 /// `size` is a fraction of the area the panels share, which is the viewport work area minus the
 /// bar. `anchor` says where in that area the window sits, 0 being the left or top edge and 1 the
@@ -208,24 +220,53 @@ struct WindowLayout {
   ImVec2 anchor;
   bool open;
   int dockSlot;
+  /// What stands for the panel where it is listed. Kept apart from the name, which is also the
+  /// window's identity: an icon in that would change which saved layout the window answers to.
+  const char *icon;
 };
-/// Mutable: `open` is what the bottom bar toggles, and what a window's close button clears.
+/// Mutable: `open` is what the View menu toggles -- the Help button, for that one -- and what a
+/// window's close button clears.
 WindowLayout gWindowLayouts[] = {
-  {"Hierarchy", {.26f, 1.f}, {1.f, .0f}, true, 0},
-  {"Properties", {.26f, 1.f}, {1.f, .0f}, true, 1},
-  {"Settings", {.5f, .5f}, {.0f, 1.f}, false, -1},
-  {"Assets", {.5f, .5f}, {.0f, 1.f}, false, -1},
-  {"Animation", {.5f, .5f}, {.0f, 1.f}, false, -1},
-  {"Profiler", {.5f, .5f}, {.0f, 1.f}, false, -1},
+  {"Hierarchy", {.26f, 1.f}, {1.f, .0f}, true, 0, ICON_LC_LIST_TREE},
+  {"Properties", {.26f, 1.f}, {1.f, .0f}, true, 1, ICON_LC_SLIDERS_HORIZONTAL},
+  {"Settings", {.5f, .5f}, {.0f, 1.f}, false, -1, ICON_LC_SETTINGS},
+  {"Assets", {.5f, .5f}, {.0f, 1.f}, false, -1, ICON_LC_FOLDER},
+  {"Animation", {.5f, .5f}, {.0f, 1.f}, false, -1, ICON_LC_FILM},
+  {"Profiler", {.5f, .5f}, {.0f, 1.f}, false, -1, ICON_LC_ACTIVITY},
+  {"Help", {.5f, .6f}, {.5f, .5f}, false, -1, ICON_LC_CIRCLE_QUESTION_MARK},
 };
-/// @brief The height of the bottom bar, which the panels stay clear of.
-auto BarHeight() -> float {
-  return ImGui::GetFrameHeight();
-}
+/// @brief Something that ships inside the editor, and the terms it is used on.
+///
+/// `file` is the name `KUKI_LICENSES` in the root CMakeLists.txt gave the licence when it gathered
+/// them, which is the name it is read back by. The two lists are kept in step by hand; an entry
+/// here with no file there shows as a licence that could not be found, which is the right thing to
+/// be told.
+struct Credit {
+  const char *name;
+  const char *use;
+  const char *licence;
+};
+constexpr Credit kCredits[] = {
+  {"Assimp", "Model import", "BSD 3-Clause"},
+  {"Dear ImGui", "The editor's interface", "MIT"},
+  {"DirectX-Headers", "Direct3D 12 headers", "MIT"},
+  {"GLFW", "Windows and input", "zlib"},
+  {"GLM", "Vector and matrix mathematics", "The Happy Bunny Licence or MIT"},
+  {"ImGuizmo", "The transform gizmo and the animation sequencer", "MIT"},
+  {"imgui-filebrowser", "The file dialog", "MIT"},
+  {"Inter", "The typeface", "SIL Open Font Licence 1.1"},
+  {"JSON for Modern C++", "Scene and settings files", "MIT"},
+  {"Kaitai Struct", "Reading icon files", "MIT"},
+  {"Lucide", "The icons", "ISC"},
+  {"spdlog", "Logging", "MIT"},
+  {"stb", "Image loading and font rasterising", "MIT or public domain"},
+  {"tinyexr", "OpenEXR images", "BSD 3-Clause"},
+  {"whereami", "Finding the executable's directory", "MIT"},
+};
 /// @brief The rectangle a layout asks for, in screen coordinates.
 auto LayoutRect(const WindowLayout &layout) -> ImRect {
   const auto *viewport = ImGui::GetMainViewport();
-  const ImVec2 area(viewport->WorkSize.x, viewport->WorkSize.y - BarHeight());
+  const ImVec2 area(viewport->WorkSize.x, viewport->WorkSize.y);
   const ImVec2 size(layout.size.x * area.x, layout.size.y * area.y);
   const ImVec2 pos(viewport->WorkPos.x + layout.anchor.x * (area.x - size.x), viewport->WorkPos.y + layout.anchor.y * (area.y - size.y));
   return ImRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
@@ -241,6 +282,18 @@ auto PanelDockId(const int slot) -> ImGuiID {
   static const auto rootId = ImHashStr("PanelDock");
   static ImGuiID slotIds[]{rootId, rootId};
   static auto built = false;
+  // The column the two panels share runs from the top pixel of the view to the bottom one, on every
+  // frame and whatever imgui.ini remembers. How wide it is and where it sits across the view are
+  // the user's to change and are left as found; its height is not, because a saved layout keeps the
+  // height it was saved with -- one from when a bar ran under the panels leaves a strip of that
+  // bar's height under them for good, long after the bar has gone.
+  if (auto *node = ImGui::DockBuilderGetNode(rootId); node) {
+    const auto *viewport = ImGui::GetMainViewport();
+    if (node->Pos.y != viewport->Pos.y || node->Size.y != viewport->Size.y) {
+      ImGui::DockBuilderSetNodePos(rootId, ImVec2(node->Pos.x, viewport->Pos.y));
+      ImGui::DockBuilderSetNodeSize(rootId, ImVec2(node->Size.x, viewport->Size.y));
+    }
+  }
   if (built)
     return slotIds[slot];
   built = true;
@@ -258,6 +311,104 @@ auto PanelDockId(const int slot) -> ImGuiID {
     break;
   }
   return slotIds[slot];
+}
+/// @brief What a panel is coloured while the thing it controls is running, and while it is paused.
+///
+/// One pair for everything that can be started, paused and stopped -- the game, the profiler -- so
+/// that green means running and amber means held wherever they are seen. Given the panels' own
+/// alpha where they are used; only the hue is said here.
+constexpr ImVec4 RUNNING_TINT(.16f, .42f, .22f, 1.f);
+constexpr ImVec4 PAUSED_TINT(.5f, .38f, .1f, 1.f);
+/// @brief The background a panel should have for a running/paused state, at the panels' own alpha.
+auto StateTint(const bool running, const bool paused) -> ImVec4 {
+  const auto &panel = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+  auto colour = !running ? panel : paused ? PAUSED_TINT : RUNNING_TINT;
+  colour.w = panel.w;
+  return colour;
+}
+/// @brief The picture that stands for a kind of component, wherever one is named.
+///
+/// One table for the Properties headers, the add-component menu and the Hierarchy, so that a camera
+/// is the same glyph in all three. A full switch with nothing after a `default`, deliberately: a
+/// component type added to the engine and not given a case here is a compiler warning, where a
+/// default would quietly hand it somebody else's picture.
+///
+/// The backend's own objects -- buffers, programs, render targets -- share a few between them. They
+/// are there to be inspected and nobody goes looking for one by its icon.
+auto ComponentIcon(const ComponentType type) -> const char * {
+  switch (type) {
+  case ComponentType::Animator:
+    return ICON_LC_FILM;
+  case ComponentType::AntiAliasing:
+    return ICON_LC_SCAN_LINE;
+  case ComponentType::AtmosphereSky:
+    return ICON_LC_SUNRISE;
+  case ComponentType::BoundingBox:
+    return ICON_LC_FRAME;
+  case ComponentType::Camera:
+    return ICON_LC_VIDEO;
+  case ComponentType::DXMaterial:
+  case ComponentType::GLMaterial:
+  case ComponentType::MaterialHandle:
+  case ComponentType::ModelMaterialHandle:
+    return ICON_LC_PALETTE;
+  case ComponentType::GLBuffer:
+    return ICON_LC_DATABASE;
+  case ComponentType::GLComputeShader:
+  case ComponentType::GLLitShader:
+  case ComponentType::GLUnlitShader:
+    return ICON_LC_SQUARE_FUNCTION;
+  case ComponentType::GLMesh:
+  case ComponentType::MeshHandle:
+  case ComponentType::ModelMeshHandle:
+    return ICON_LC_BOX;
+  case ComponentType::GLSkybox:
+  case ComponentType::SkyboxHandle:
+    return ICON_LC_GLOBE;
+  case ComponentType::GLRenderTarget:
+    return ICON_LC_MONITOR;
+  case ComponentType::GLTexture:
+  case ComponentType::TextureHandle:
+    return ICON_LC_IMAGE;
+  case ComponentType::IndirectLighting:
+    return ICON_LC_SUN_DIM;
+  case ComponentType::Light:
+    return ICON_LC_LIGHTBULB;
+  case ComponentType::ParticleEmitter:
+    return ICON_LC_SPARKLES;
+  case ComponentType::Script:
+    return ICON_LC_FILE_CODE;
+  case ComponentType::Skeleton:
+    return ICON_LC_BONE;
+  case ComponentType::Transform:
+    return ICON_LC_MOVE_3D;
+  case ComponentType::VolumetricClouds:
+    return ICON_LC_CLOUDY;
+  case ComponentType::VolumetricFog:
+    return ICON_LC_CLOUD_FOG;
+  }
+  return ICON_LC_CIRCLE_DASHED;
+}
+/// @brief The picture that stands for an entity in the Hierarchy: that of the most telling thing it has.
+///
+/// Nearly everything has a transform and a bounding box, so those say nothing; what an entity is
+/// for is whichever of the rarer components it carries. Asked in order, most particular first, and
+/// the first one found is the answer. Something with none of them is a plain node -- an empty
+/// parent, or a bone.
+auto EntityIcon(const std::vector<ComponentType> &types) -> const char * {
+  static constexpr ComponentType TELLING[]{ComponentType::Camera, ComponentType::Light, ComponentType::ParticleEmitter, ComponentType::Animator, ComponentType::Script, ComponentType::AtmosphereSky, ComponentType::VolumetricClouds, ComponentType::VolumetricFog, ComponentType::SkyboxHandle, ComponentType::IndirectLighting, ComponentType::AntiAliasing, ComponentType::ModelMeshHandle, ComponentType::MeshHandle};
+  for (const auto telling : TELLING)
+    if (std::ranges::find(types, telling) != types.end())
+      return ComponentIcon(telling);
+  return ICON_LC_CIRCLE_DASHED;
+}
+/// @brief A label with an icon in front, whose identity is the name alone.
+///
+/// The `###` is what keeps a header's open-or-closed state, and anything else kept by label, tied
+/// to the name: changing which icon a component has would otherwise make every such header a
+/// different widget from the one that was open a moment ago.
+auto IconLabel(const char *icon, const std::string &name) -> std::string {
+  return std::string(icon) + " " + name + "###" + name;
 }
 /// Whether the last `BeginWindow` reached `ImGui::Begin`, so `EndWindow` knows what to close.
 bool gWindowBegun{};
@@ -294,8 +445,12 @@ auto EndWindow() -> void {
 }
 } // namespace
 Editor::Editor()
-  : SystemApplication<ScriptingSystem, AnimationSystem, PhysicsSystem, RenderingSystem>({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api}) {
+  : SystemApplication<AnimationSystem, ScriptingSystem, PhysicsSystem, RenderingSystem>({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api}) {
   context.pendingApi = GetDescription().api;
+  // Before anything starts, so that no game script is started by the scene merely being open. An
+  // application is playing unless told otherwise, which is right for a game and wrong for this.
+  SetPlayState(PlayState::Stopped);
+  SetHosting(true);
 }
 auto Editor::SaveGraphicsConfig() -> void {
   auto config = EngineConfig::Load();
@@ -382,8 +537,29 @@ auto Editor::Start() -> void {
     }, "Step through the irradiance probe visualisations");
   }
 }
+auto Editor::OpenStartGame() -> void {
+  if (startGame.empty())
+    return;
+  gamePaths = FindGames();
+  const auto wanted = std::ranges::find_if(gamePaths, [this](const std::filesystem::path &path) {
+    const auto name = path.stem().string();
+    return std::ranges::search(name, startGame, [](const char a, const char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); }).begin() != name.end();
+  });
+  if (wanted == gamePaths.end())
+    spdlog::error("[Editor] No game library matching {} was found", startGame);
+  else {
+    OpenGame(*wanted);
+    if (startPlaying)
+      BeginPlay();
+  }
+  startGame.clear();
+}
 auto Editor::Update(const float deltaTime) -> void {
   KUKI_PROFILE_SCOPE("Editor");
+  // On the first frame rather than in `Start`. Scripts start after `Start` returns, the camera
+  // controller among them, and playing before it has registered its keys means the game takes them
+  // first and the editor's own bindings are what the session then undoes.
+  OpenStartGame();
   UpdateIO();
   UpdateView();
 }
@@ -483,7 +659,28 @@ auto Editor::InitImGui() -> void {
   // this a drag that begins on empty panel space would move the window instead of reaching the tool.
   io.ConfigWindowsMoveFromTitleBarOnly = true;
   auto fontPath = std::filesystem::path{GetDescription().path / "font/Inter-VariableFont_opsz,wght.ttf"}.string();
-  io.Fonts->AddFontFromFileTTF(fontPath.c_str(), FONT_SIZE);
+  // The text font is told to leave the icons' codepoints alone. They are in the Private Use Area,
+  // which is nobody's, and Inter draws things of its own there -- circled digits, ticks in circles
+  // -- and in a merged font the first font to have a glyph is the one that draws it. Left as it
+  // was, Play was a tick in a circle and Pause a circled four: the right codepoint, out of the
+  // wrong font.
+  static constexpr ImWchar ICON_RANGE[]{ICON_LC_MIN, ICON_LC_MAX, 0};
+  ImFontConfig text;
+  text.GlyphExcludeRanges = ICON_RANGE;
+  io.Fonts->AddFontFromFileTTF(fontPath.c_str(), FONT_SIZE, &text);
+  // The icons, merged into the font above so that one can sit in a label beside its text: after
+  // this an icon is a character like any other, written with the names in `icons_lucide.hpp`.
+  // Given the width of the text's own line height each, so that a column of labels that begin with
+  // different icons still begins its words at one place.
+  ImFontConfig icons;
+  icons.MergeMode = true;
+  icons.GlyphMinAdvanceX = FONT_SIZE;
+  // Lucide draws in a square that sits on the baseline, which puts an icon visibly higher than the
+  // middle of the lower-case letters beside it. Lowered by a tenth of the size to sit level.
+  icons.GlyphOffset.y = FONT_SIZE * .1f;
+  const auto iconPath = std::filesystem::path{GetDescription().path / "font/lucide.ttf"}.string();
+  if (!io.Fonts->AddFontFromFileTTF(iconPath.c_str(), FONT_SIZE, &icons))
+    spdlog::warn("[Editor] The icon font did not load from {}, so icons will show as missing glyphs", iconPath);
   auto &style = ImGui::GetStyle();
   style.ChildRounding = .0f;
   style.FrameRounding = .0f;
@@ -571,6 +768,7 @@ auto Editor::UpdateView() -> void {
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
   ImGuizmo::BeginFrame();
+  DisplayMenuBar();
   DisplayScene();
   DisplayAssets();
   DisplayAnimation();
@@ -578,7 +776,11 @@ auto Editor::UpdateView() -> void {
   DisplayHierarchy();
   DisplayProperties();
   DisplaySettings();
-  DisplayPanelBar();
+  DisplayHelp();
+  // After the frame's panels rather than where the request was made, which was inside a script: the
+  // scene that script is in is about to be replaced.
+  if (TakeStopRequest())
+    EndPlay();
   if (wasPicking && context.state == EditorState::PickingAsset && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
     context.state = EditorState::Normal;
   ImGui::Render();
@@ -810,10 +1012,9 @@ auto Editor::DisplayAnimation() -> void {
     return;
   }
   auto &clip = modelAsset->animations[animator->clipIndex];
-  if (ImGui::Button(animator->playing ? "Pause" : "Play"))
-    animator->playing = !animator->playing;
+  field::Toggle(ICON_LC_PLAY, "Playing", &animator->playing);
   ImGui::SameLine();
-  ImGui::Checkbox("Loop", &animator->loop);
+  field::Toggle(ICON_LC_REPEAT, "Loop", &animator->loop);
   ImGui::SameLine();
   const auto seconds = clip.ticksPerSecond > 0.f ? clip.duration / clip.ticksPerSecond : 0.f;
   ImGui::TextDisabled("%s (%.2fs)", clip.name.c_str(), seconds);
@@ -865,7 +1066,7 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
   }
   const auto entityName = GetEntityName(id);
   const auto entityNameCStr = entityName.c_str();
-  const auto nodeOpen = ImGui::TreeNodeEx(static_cast<const void *>(id), nodeFlags, "%s", entityNameCStr);
+  const auto nodeOpen = ImGui::TreeNodeEx(static_cast<const void *>(id), nodeFlags, "%s %s", EntityIcon(GetEntityComponentTypes(id)), entityNameCStr);
   displayedEntitiesNext.push_back(id);
   const auto doubleClicked = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
   const auto focused = ImGui::IsItemFocused();
@@ -1171,55 +1372,255 @@ auto Editor::DisplayProfileNode(const size_t index) -> void {
   if (!children.empty())
     ImGui::TreePop();
 }
-auto Editor::DisplayPanelBar() -> void {
+auto Editor::DisplayMenuBar() -> void {
   static constexpr auto BAR_FLAGS = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_AlwaysAutoResize;
+  // The keys first and from here, so that they answer whether or not the bar is being looked at.
+  // Read before the buttons are drawn and acted on the same way, so the two cannot disagree.
+  const auto togglePlay = IsBindingPressed(ShortcutName(PlayStop));
+  const auto togglePause = IsBindingPressed(ShortcutName(PauseResume));
+  const auto step = IsBindingPressed(ShortcutName(ShortcutIndex::StepTick));
+  const auto state = GetPlayState();
+  // Tinted for as long as the scene is not the one that will be kept. Anything changed while the
+  // bar is this colour is gone at stop, and the colour is the only thing that says so.
+  //
+  // As see-through as the panels, whatever the colour, since it lies over the game view the same
+  // way they do.
+  //
+  // An ordinary window pinned to the top left corner and sized by what is in it, and not Dear
+  // ImGui's main menu bar. That one runs the full width of the viewport however little it holds,
+  // which is a strip across the top of the picture for the sake of a few buttons at one end.
+  const auto colour = StateTint(state != PlayState::Stopped, state == PlayState::Paused);
   const auto *viewport = ImGui::GetMainViewport();
-  const auto height = BarHeight();
-  // Pinned to the bottom left of the viewport by its own bottom left corner and sized by its
-  // contents: with no padding and no border that makes it exactly one toggle tall, which is the
-  // room the panels leave for it. A fixed size would be pushed back up to style.WindowMinSize and
-  // leave a bare strip under the toggles that the panels above would then overlap.
-  ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x, viewport->WorkPos.y + viewport->WorkSize.y), ImGuiCond_Always, ImVec2(.0f, 1.f));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(.0f, .0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, .0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(.0f, .0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(.5f, .5f));
-  ImGui::Begin("##PanelBar", nullptr, BAR_FLAGS);
-  const auto padding = ImGui::GetStyle().FramePadding.x * 2.f;
-  auto first = true;
-  for (auto &layout : gWindowLayouts) {
-    if (!first)
-      ImGui::SameLine();
-    first = false;
-    if (ImGui::Selectable(layout.name, layout.open, ImGuiSelectableFlags_None, ImVec2(ImGui::CalcTextSize(layout.name).x + padding, height)))
-      layout.open = !layout.open;
+  ImGui::SetNextWindowPos(viewport->Pos);
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, colour);
+  ImGui::Begin("##MenuBar", nullptr, BAR_FLAGS);
+  ImGui::PopStyleColor();
+  if (ImGui::Button(ICON_LC_PANELS_TOP_LEFT " View"))
+    ImGui::OpenPopup("##View");
+  // Help is a panel like the rest and is opened from a button of its own beside View rather than
+  // from inside it: it is not a view of the scene, and it is the one somebody looks for by name.
+  WindowLayout *help{};
+  for (auto &layout : gWindowLayouts)
+    if (std::string_view(layout.name) == "Help")
+      help = &layout;
+  if (ImGui::BeginPopup("##View")) {
+    for (auto &layout : gWindowLayouts)
+      if (&layout != help)
+        ImGui::MenuItem((std::string(layout.icon) + " " + layout.name).c_str(), nullptr, &layout.open);
+    ImGui::EndPopup();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(ICON_LC_CIRCLE_QUESTION_MARK " Help") && help)
+    help->open = !help->open;
+  ImGui::SameLine();
+  if (gamePaths.empty() && loadedGames.empty())
+    gamePaths = FindGames();
+  const auto name = currentGame >= 0 ? loadedGames[currentGame].module->name : "No game";
+  ImGui::SetNextItemWidth(ImGui::CalcTextSize("A longer game name").x);
+  ImGui::BeginDisabled(state != PlayState::Stopped);
+  if (ImGui::BeginCombo("##Game", name)) {
+    if (gamePaths.empty())
+      ImGui::TextDisabled("No game libraries were found.\nThey are built only when BUILD_SHARED_LIBS is on.");
+    for (const auto &path : gamePaths)
+      if (ImGui::Selectable(path.stem().string().c_str()))
+        OpenGame(path);
+    ImGui::EndCombo();
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  // One button for play, pause and resume, since only one of them ever applies: it says what
+  // pressing it would do now. Either key presses it -- the play key from stopped, the pause key
+  // from then on, where the play key means stop.
+  const auto *toggle = state == PlayState::Stopped ? ICON_LC_PLAY " Play###PlayPause" : state == PlayState::Playing ? ICON_LC_PAUSE " Pause###PlayPause" : ICON_LC_PLAY " Resume###PlayPause";
+  const auto pressed = ImGui::Button(toggle);
+  ImGui::SetItemTooltip("Play (%s), pause or resume (%s)", GetTriggerName(GetBinding(ShortcutName(PlayStop))).c_str(), GetTriggerName(GetBinding(ShortcutName(PauseResume))).c_str());
+  const auto play = state == PlayState::Stopped && (pressed || togglePlay || togglePause);
+  const auto pause = state != PlayState::Stopped && (pressed || togglePause);
+  // Only what can be pressed is there to press. Stepping is something done to a paused game and
+  // stopping to one that has been started, so neither button exists until its moment; shown
+  // greyed out they were two things to read past on a bar that mostly says Play. The keys answer
+  // in exactly the states the buttons are shown in.
+  auto stepped = step && state == PlayState::Paused;
+  if (state == PlayState::Paused) {
+    ImGui::SameLine();
+    stepped |= ImGui::Button(ICON_LC_STEP_FORWARD " Step");
+    ImGui::SetItemTooltip("Run one tick (%s)", GetTriggerName(GetBinding(ShortcutName(ShortcutIndex::StepTick))).c_str());
+  }
+  auto stop = togglePlay && state != PlayState::Stopped;
+  if (state != PlayState::Stopped) {
+    ImGui::SameLine();
+    stop |= ImGui::Button(ICON_LC_SQUARE " Stop");
+    ImGui::SetItemTooltip("Stop and put the scene back (%s)", GetTriggerName(GetBinding(ShortcutName(PlayStop))).c_str());
+  }
+  if (play)
+    BeginPlay();
+  else if (pause)
+    SetPlayState(state == PlayState::Paused ? PlayState::Playing : PlayState::Paused);
+  else if (stepped)
+    StepTick();
+  else if (stop)
+    EndPlay();
+  if (state != PlayState::Stopped) {
+    ImGui::SameLine();
+    ImGui::AlignTextToFramePadding();
+    // Drawn in a slot as wide as the longest count it is likely to show, so nothing beside it is
+    // pushed about as the digits change sixty times a second -- the digits of this font are not all
+    // one width, and a count that grew by one could be narrower than the one before it.
+    const auto slot = ImGui::CalcTextSize("tick 00000000").x;
+    const auto left = ImGui::GetCursorPosX();
+    ImGui::Text("tick %llu", static_cast<unsigned long long>(TickIndex()));
+    ImGui::SameLine(left + slot);
+    ImGui::Dummy(ImVec2(.0f, .0f));
   }
   ImGui::End();
-  ImGui::PopStyleVar(4);
 }
-auto Editor::DisplayProfiler() -> void {
-  static constexpr auto TABLE_FLAGS = ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_ScrollY;
-  if (!BeginWindow("Profiler")) {
+auto Editor::DisplayHelp() -> void {
+  if (!BeginWindow("Help")) {
     EndWindow();
     return;
   }
+  // Each licence is folded away under the line that names what it is for, and read from disk the
+  // first time its fold is opened: there are fifteen of them and most are never looked at. One slot
+  // past the credits is the editor's own.
+  static std::array<std::string, std::size(kCredits) + 1> texts;
+  const auto Licence = [](const char *name, std::string &text) {
+    if (text.empty()) {
+      std::ifstream file(ResolvePath(std::string("licenses/") + name + ".txt"));
+      text = file ? std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()) : std::string("The licence for ") + name + " was not found beside the editor.";
+    }
+    ImGui::TextUnformatted(text.c_str(), text.c_str() + text.size());
+  };
+  ImGui::SeparatorText("Kuki Editor");
+  // What it is down the left and the answer down the right. `LabelText` would do this in one call
+  // and the other way round, value first.
+  const auto width = ImGui::GetContentRegionAvail().x;
+  const auto Row = field::Row;
+  Row("Version", KUKI_VERSION);
+#ifdef NDEBUG
+  Row("Build", "Release");
+#else
+  Row("Build", "Debug");
+#endif
+#ifdef KUKI_HAS_DIRECTX
+  Row("Graphics", dynamic_cast<DXContext *>(GetGraphicsContext()) ? "Direct3D 12" : "OpenGL");
+#else
+  Row("Graphics", "OpenGL");
+#endif
+  if (field::Fold("Licence: MIT", false, false))
+    Licence("Kuki", texts.back());
+  ImGui::SeparatorText("Made with");
+  // The name is the fold, and what it is used for and on what terms follow it on the same line, at
+  // the same two places down the whole list so that they read as columns.
+  for (size_t i = 0; i < std::size(kCredits); ++i) {
+    const auto &credit = kCredits[i];
+    const auto open = field::Fold(credit.name, false, false);
+    ImGui::SameLine(width * .3f);
+    ImGui::TextDisabled("%s", credit.use);
+    field::RightAlign(ImGui::CalcTextSize(credit.licence).x);
+    ImGui::TextDisabled("%s", credit.licence);
+    if (open)
+      Licence(credit.name, texts[i]);
+  }
+  EndWindow();
+}
+auto Editor::RemoveComponent(const EntityID id, const ComponentType type) -> bool {
+  // A backend's material is not something an entity has in its own right. The renderer makes it,
+  // every frame, for whatever carries a material handle, and puts back one that has gone missing --
+  // so removing it alone did nothing that lasted: it was there again on the next frame, and the
+  // panel showed a Remove that appeared not to work. What the request means is "this is to have no
+  // material", and what says that is the handle, so the handle goes with it.
+  if (type == ComponentType::DXMaterial || type == ComponentType::GLMaterial) {
+    RemoveEntityComponent<MaterialHandle>(id);
+    RemoveEntityComponent<ModelMaterialHandle>(id);
+  }
+  return RemoveComponentByType(*this, id, type);
+}
+auto Editor::OpenGame(const std::filesystem::path &path) -> void {
+  if (GetPlayState() != PlayState::Stopped)
+    return;
+  auto index = -1;
+  for (size_t i = 0; i < loadedGames.size(); ++i)
+    if (loadedGames[i].path == path)
+      index = static_cast<int>(i);
+  if (index < 0) {
+    const auto game = LoadGame(path);
+    if (!game.module)
+      return;
+    loadedGames.push_back(game);
+    index = static_cast<int>(loadedGames.size() - 1);
+  }
+  // The game builds a scene of its own and says nothing about what was there before, so what was
+  // there is cleared first: otherwise it is built on top of whatever was open.
+  context.selectedEntities.clear();
+  context.selectedEntityId = EntityID::Invalid;
+  context.state = EditorState::Normal;
+  displayedEntities.clear();
+  DeleteEntities();
+  loadedGames[index].module->setup(*this);
+  currentGame = index;
+  AttachCameraController();
+  AttachSettingsEntity();
+  spdlog::info("[Editor] Opened game {}", loadedGames[index].module->name);
+}
+auto Editor::BeginPlay() -> void {
+  if (GetPlayState() != PlayState::Stopped)
+    return;
+  std::error_code error;
+  playSnapshot = std::filesystem::temp_directory_path(error) / "kuki-editor-play.json";
+  if (error || !SceneSerializer::Save(*this, playSnapshot)) {
+    // Not played at all rather than played with nothing to go back to.
+    spdlog::error("[Editor] The scene could not be saved to {}, so it was not played", playSnapshot.string());
+    playSnapshot.clear();
+    return;
+  }
+  SetPlayState(PlayState::Playing);
+}
+auto Editor::EndPlay() -> void {
+  if (GetPlayState() == PlayState::Stopped)
+    return;
+  if (auto *scripting = GetSystem<ScriptingSystem>(); scripting)
+    scripting->ShutdownPlayed();
+  SetPlayState(PlayState::Stopped);
+  if (!playSnapshot.empty())
+    LoadScene(playSnapshot);
+}
+auto Editor::DisplayProfiler() -> void {
+  static constexpr auto TABLE_FLAGS = ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_ScrollY;
   auto &profiler = Profiler::Get();
-  auto enabled = profiler.IsEnabled();
-  if (ImGui::Checkbox("Enabled", &enabled))
-    profiler.SetEnabled(enabled);
-  ImGui::SameLine();
-  auto paused = profiler.IsPaused();
-  if (ImGui::Checkbox("Pause", &paused))
-    profiler.SetPaused(paused);
-  ImGui::SameLine();
-  if (ImGui::Button("Reset"))
-    profiler.Reset();
+  const auto recording = profiler.IsEnabled();
+  const auto paused = profiler.IsPaused();
+  // Green while it records and amber while it is held, as the menu bar is for the game.
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, StateTint(recording, paused));
+  const auto visible = BeginWindow("Profiler");
+  ImGui::PopStyleColor();
+  if (!visible) {
+    EndWindow();
+    return;
+  }
+  // Laid out as the game's controls are: one button to begin with, and the rest only once there
+  // is something for them to act on. Stopping also lets go of a pause, so that the next recording
+  // starts running rather than held from the last one.
+  if (!recording) {
+    if (ImGui::Button(ICON_LC_CIRCLE " Record"))
+      profiler.SetEnabled(true);
+  } else {
+    if (ImGui::Button(paused ? ICON_LC_PLAY " Resume###PauseResume" : ICON_LC_PAUSE " Pause###PauseResume"))
+      profiler.SetPaused(!paused);
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_LC_ROTATE_CCW " Reset"))
+      profiler.Reset();
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_LC_SQUARE " Stop")) {
+      profiler.SetPaused(false);
+      profiler.SetEnabled(false);
+    }
+  }
   ImGui::SameLine();
   const auto frameMillis = profiler.GetFrameMillis();
   ImGui::TextDisabled("frame %llu | %.2f ms | %.0f FPS", static_cast<unsigned long long>(profiler.GetFrameIndex()), frameMillis, frameMillis > .0f ? 1000.f / frameMillis : .0f);
   const auto &history = profiler.GetFrameHistory();
   ImGui::PlotLines("##FrameTimes", history.data(), static_cast<int>(history.size()), static_cast<int>(profiler.GetFrameHistoryOffset()), nullptr, .0f, std::numeric_limits<float>::max(), ImVec2(-1.f, 48.f));
-  if (const auto &marks = profiler.GetMarks(); !marks.empty() && ImGui::CollapsingHeader("Marks")) {
+  if (const auto &marks = profiler.GetMarks(); !marks.empty() && field::Fold("Marks")) {
     ImGui::TextDisabled("recorded on frame %llu", static_cast<unsigned long long>(profiler.GetMarkFrame()));
     for (const auto &mark : marks)
       ImGui::Text("%8.3f ms  %s", mark.millis, mark.name.c_str());
@@ -1268,7 +1669,7 @@ auto Editor::DisplayProperties() -> void {
         if (!script)
           continue;
         ImGui::PushID(static_cast<int>(s));
-        const auto scriptOpen = ImGui::CollapsingHeader(script->GetTypeName().c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+        const auto scriptOpen = field::Fold(IconLabel(ComponentIcon(ComponentType::Script), script->GetTypeName()).c_str(), true);
         if (ImGui::BeginPopupContextItem()) {
           if (ImGui::MenuItem("Remove"))
             scriptRemoved = RemoveEntityScript(context.selectedEntityId, script->GetTypeIndex());
@@ -1288,12 +1689,11 @@ auto Editor::DisplayProperties() -> void {
       continue;
     }
     const auto name = Component::GetTypeName(componentType);
-    const auto open = ImGui::CollapsingHeader(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+    const auto open = field::Fold(IconLabel(ComponentIcon(componentType), name).c_str(), true);
     auto removed = false;
     if (ImGui::BeginPopupContextItem()) {
-      if (ImGui::MenuItem("Remove")) {
-        removed = RemoveComponentByType(*this, context.selectedEntityId, componentType);
-      }
+      if (ImGui::MenuItem("Remove"))
+        removed = RemoveComponent(context.selectedEntityId, componentType);
       ImGui::EndPopup();
     }
     if (!removed && open) {
@@ -1320,12 +1720,12 @@ auto Editor::DisplayProperties() -> void {
         continue;
       if (compType == ComponentType::ParticleEmitter && !context.capabilities.particles)
         continue;
-      if (!IsHandleComponent(compType) && !Component::IsGL(compType) && compType != ComponentType::Script && !HasSceneSingleton(compType) && ImGui::MenuItem(Component::GetTypeName(compType).c_str()))
+      if (!IsHandleComponent(compType) && !Component::IsGL(compType) && compType != ComponentType::Script && !HasSceneSingleton(compType) && ImGui::MenuItem(IconLabel(ComponentIcon(compType), Component::GetTypeName(compType)).c_str()))
         AddComponentByType(*this, context.selectedEntityId, compType);
     }
     if (ImGui::BeginMenu("GL")) {
       for (const auto &compType : availableComponents)
-        if (Component::IsGL(compType) && ImGui::MenuItem(Component::GetTypeName(compType).c_str()))
+        if (Component::IsGL(compType) && ImGui::MenuItem(IconLabel(ComponentIcon(compType), Component::GetTypeName(compType)).c_str()))
           AddComponentByType(*this, context.selectedEntityId, compType);
       ImGui::EndMenu();
     }
@@ -1335,7 +1735,7 @@ auto Editor::DisplayProperties() -> void {
         const auto alreadyPresent = std::any_of(currentScripts.begin(), currentScripts.end(), [&](const Script *script) {
           return script && script->GetTypeIndex() == type;
         });
-        if (!alreadyPresent && ImGui::MenuItem(info.name.c_str()))
+        if (!alreadyPresent && ImGui::MenuItem(IconLabel(ComponentIcon(ComponentType::Script), info.name).c_str()))
           info.add(*this, context.selectedEntityId);
       }
       ImGui::EndMenu();
@@ -1358,6 +1758,8 @@ auto Editor::DisplayScene() -> void {
   static constexpr ImVec2 UV1(1.f, 1.f);
   static constexpr float PICK_DRAG_THRESHOLD_SQ = 4.f * 4.f;
   const auto *viewport = ImGui::GetMainViewport();
+  // The whole viewport, always. The menu bar floats over a corner of the picture as the panels
+  // float over its sides, and the picture is never resized to make room for any of them.
   ImGui::SetNextWindowPos(viewport->Pos);
   ImGui::SetNextWindowSize(viewport->Size);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(.0f, .0f));
@@ -1433,7 +1835,8 @@ auto Editor::DisplayScene() -> void {
   }
   if (context.showFPS) {
     // The game view has no padding of its own, so this lands in the very corner of the viewport.
-    ImGui::SetCursorPos(ImVec2(.0f, .0f));
+    // The bottom left one: the top left is where the menu bar is, and the panels keep to the right.
+    ImGui::SetCursorPos(ImVec2(.0f, ImGui::GetWindowHeight() - ImGui::GetTextLineHeight()));
     ImGui::Text("%zu", GetFPS());
   }
   ImGui::End();
@@ -1443,11 +1846,11 @@ auto Editor::DisplaySettings() -> void {
     EndWindow();
     return;
   }
-  ImGui::Checkbox("Show FPS", &context.showFPS);
+  field::Toggle(ICON_LC_GAUGE, "Show FPS", &context.showFPS);
   auto previewSize = GetPreviewSize();
-  if (ImGui::SliderInt("Asset Preview Size", &previewSize, 32, 256, "%d", ImGuiSliderFlags_AlwaysClamp))
+  if (field::SliderInt("Asset Preview Size", &previewSize, 32, 256, "%d", ImGuiSliderFlags_AlwaysClamp))
     SetPreviewSize(previewSize);
-  if (auto renderingSystem = GetSystem<RenderingSystem>(); renderingSystem && ImGui::BeginCombo("Debug View", context.debugViewTarget.empty() ? "Final" : context.debugViewTarget.c_str())) {
+  if (auto renderingSystem = GetSystem<RenderingSystem>(); renderingSystem && field::BeginCombo("Debug View", context.debugViewTarget.empty() ? "Final" : context.debugViewTarget.c_str())) {
     if (ImGui::Selectable("Final", context.debugViewTarget.empty()))
       context.debugViewTarget.clear();
     renderingSystem->ForEachTarget([this](const std::string &name, const TargetDescription &desc) {
@@ -1478,7 +1881,7 @@ auto Editor::DisplaySettings() -> void {
     // not in this panel.
     ImGui::TextDisabled("How much antialiasing is on the Settings entity.");
     ImGui::SetItemTooltip("Select it in the hierarchy to change the sample count. The checkbox in\nthe fold below is a different control: it stands the resolve pass down,\nrather than changing how many samples there were to resolve.");
-    if (ImGui::CollapsingHeader("Passes")) {
+    if (field::Fold("Passes")) {
       // Collapsed by default. Twelve checkboxes is a lot to put in front of somebody who came here
       // to change the tone curve, and the reason to open it -- finding out what a pass is worth by
       // taking it away -- is a thing you go looking for rather than come across.
@@ -1491,7 +1894,7 @@ auto Editor::DisplaySettings() -> void {
         if (pass == RenderPass::ProbeTrace && !context.capabilities.probeVolume)
           continue;
         auto enabled = renderingSystem->IsPassEnabled(pass);
-        if (ImGui::Checkbox(passNames[i], &enabled))
+        if (field::Toggle(ICON_LC_EYE, passNames[i], &enabled))
           renderingSystem->SetPassEnabled(pass, enabled);
       }
       ImGui::SetItemTooltip("A pass that is off still runs a stand-in, so the passes after it are\nhanded something usable rather than the picture from last frame.\nMostly that means the input passed through untouched.");
@@ -1505,7 +1908,7 @@ auto Editor::DisplaySettings() -> void {
   ImGui::Separator();
   ImGui::TextUnformatted("Graphics");
   const auto activeApi = GetDescription().api;
-  if (ImGui::BeginCombo("Rendering API", std::string(ToString(context.pendingApi)).c_str())) {
+  if (field::BeginCombo("Rendering API", std::string(ToString(context.pendingApi)).c_str())) {
     for (const auto api : {RenderingAPI::OpenGL, RenderingAPI::DirectX, RenderingAPI::Vulkan}) {
       const auto available = IsAvailable(api);
       ImGui::BeginDisabled(!available);
@@ -1521,7 +1924,7 @@ auto Editor::DisplaySettings() -> void {
   if (auto renderingSystem = GetSystem<RenderingSystem>(); renderingSystem) {
     const auto &toneMapperNames = EnumTraits<ToneMapper>::GetNames();
     const auto activeToneMapper = renderingSystem->GetToneMapper();
-    if (ImGui::BeginCombo("Tone Mapping", toneMapperNames[static_cast<size_t>(activeToneMapper)])) {
+    if (field::BeginCombo("Tone Mapping", toneMapperNames[static_cast<size_t>(activeToneMapper)])) {
       for (size_t i = 0; i < toneMapperNames.size(); ++i)
         if (ImGui::Selectable(toneMapperNames[i], static_cast<size_t>(activeToneMapper) == i)) {
           renderingSystem->SetToneMapper(static_cast<ToneMapper>(i));
@@ -1534,7 +1937,7 @@ auto Editor::DisplaySettings() -> void {
     ImGui::SetItemTooltip("The curve is a property of the display you are working at, so it lives here.\nThe exposure feeding it belongs to the shot, so it lives on the Camera\ncomponent and is saved with the scene.");
     if (const auto budget = renderingSystem->GetUploadBudget(); budget > 0) {
       auto megabytes = static_cast<int>(budget / (1024 * 1024));
-      if (ImGui::SliderInt("Texture Upload Batch", &megabytes, 16, 512, "%d MB", ImGuiSliderFlags_AlwaysClamp))
+      if (field::SliderInt("Texture Upload Batch", &megabytes, 16, 512, "%d MB", ImGuiSliderFlags_AlwaysClamp))
         renderingSystem->SetUploadBudget(static_cast<size_t>(megabytes) * 1024 * 1024);
       ImGui::SetItemTooltip("Texture staging held in flight before the upload path waits for the GPU.\nLarger batches mean fewer waits while a model loads and more memory held while it does.");
     }

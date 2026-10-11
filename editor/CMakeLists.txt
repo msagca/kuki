@@ -124,5 +124,20 @@ add_custom_command(
     ${CMAKE_COMMAND} -E copy_directory "${MATERIAL_SOURCE_DIR}"
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/material
 )
+# The version the Help window reports, and the licences it shows. See `KUKI_LICENSES` in the root.
+target_compile_definitions(
+  ${PROJECT_NAME}
+  PRIVATE KUKI_VERSION="${CMAKE_PROJECT_VERSION}"
+)
+add_custom_command(
+  TARGET ${PROJECT_NAME}
+  POST_BUILD
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_directory "${KUKI_LICENSE_DIR}"
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/licenses
+  COMMENT "Staging licences next to the editor"
+  VERBATIM
+)
 kuki_hide_console(${PROJECT_NAME})
+kuki_stage_runtime(${PROJECT_NAME})
 kuki_report_binary(${PROJECT_NAME})

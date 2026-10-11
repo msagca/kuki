@@ -125,6 +125,17 @@ target_sources(${PROJECT_NAME} PRIVATE "${EMBEDDED_SHADER_HEADER}")
 # So: a static build installs the archive as it always did, and a shared build installs a package.
 # That is also the arrangement worth having -- see the note on target_link_libraries above.
 if(BUILD_SHARED_LIBS)
+  if(WIN32)
+    # The libraries the engine's own DLL loads -- assimp, glfw, spdlog -- under the engine's
+    # component. They have install rules of their own, but under components of their own naming
+    # that the installer is not told to include, so a package built from those rules alone holds an
+    # engine that cannot be loaded. Windows wants them beside it and has no other place to look.
+    install(
+      FILES $<TARGET_RUNTIME_DLLS:${PROJECT_NAME}>
+      DESTINATION "${CMAKE_INSTALL_BINDIR}"
+      COMPONENT ${PROJECT_NAME}
+    )
+  endif()
   install(
     TARGETS ${PROJECT_NAME}
     EXPORT KukiEngineTargets

@@ -194,11 +194,29 @@ namespace {
       j.at("rotation").get_to(transform.rotation);
     c.SetTransform(transform);
   }
+  /// @brief The rotation a light is saved with: its own, unless that is not the way it is pointing.
+  ///
+  /// A light keeps a rotation and the direction that follows from it, and loading sets the second
+  /// from the first. Code is free to write the direction alone, though, and a game building its
+  /// scene does -- `light.forward = ...` -- which leaves a rotation that says something else. Saved
+  /// as it stood, such a light came back pointing along -Z: a sun set by a game was on the horizon
+  /// after one round trip. So where the two disagree it is the direction that is believed, and the
+  /// rotation written is one that gives it.
+  auto SavedRotation(const Light &l) -> glm::quat {
+    const auto length = glm::length(l.forward);
+    if (length < 1e-6f)
+      return l.rotation;
+    const auto forward = l.forward / length;
+    if (glm::dot(l.rotation * glm::vec3(.0f, .0f, -1.f), forward) > .99999f)
+      return l.rotation;
+    const auto up = std::abs(forward.y) > .999f ? glm::vec3(.0f, .0f, 1.f) : glm::vec3(.0f, 1.f, .0f);
+    return glm::quatLookAt(forward, up);
+  }
   auto ToJson(const Light &l) -> json {
     return {
       {"type", static_cast<int>(l.type)},
       {"position", l.position},
-      {"rotation", l.rotation},
+      {"rotation", SavedRotation(l)},
       {"ambient", l.ambient},
       {"diffuse", l.diffuse},
       {"specular", l.specular},
@@ -282,7 +300,22 @@ namespace {
       j.at("assetId").get_to(h.assetId);
   }
   auto ToJson(const Animator &a) -> json {
-    return {{"modelAssetId", a.modelAssetId}, {"clipIndex", a.clipIndex}, {"time", a.time}, {"playing", a.playing}, {"loop", a.loop}};
+    json j{{"modelAssetId", a.modelAssetId}, {"clipIndex", a.clipIndex}, {"time", a.time}, {"playing", a.playing}, {"loop", a.loop}};
+    // What the states are, and not which one is playing or how far in: a scene is saved as it was
+    // set up, and one that came back half way through a punch would be a surprise to load.
+    if (!a.rootNode.empty())
+      j["rootNode"] = a.rootNode;
+    if (!a.states.empty()) {
+      auto states = json::array();
+      for (const auto &state : a.states) {
+        auto events = json::array();
+        for (const auto &event : state.events)
+          events.push_back({{"tick", event.tick}, {"name", event.name}});
+        states.push_back({{"name", state.name}, {"clip", state.clip}, {"loop", state.loop}, {"speed", state.speed}, {"fade", state.fade}, {"next", state.next}, {"events", std::move(events)}});
+      }
+      j["states"] = std::move(states);
+    }
+    return j;
   }
   auto FromJson(const json &j, Animator &a) -> void {
     if (j.contains("modelAssetId"))
@@ -295,6 +328,22 @@ namespace {
       j.at("playing").get_to(a.playing);
     if (j.contains("loop"))
       j.at("loop").get_to(a.loop);
+    if (j.contains("rootNode"))
+      j.at("rootNode").get_to(a.rootNode);
+    if (j.contains("states") && j.at("states").is_array())
+      for (const auto &entry : j.at("states")) {
+        AnimationState state;
+        state.name = entry.value("name", std::string{});
+        state.clip = entry.value("clip", std::string{});
+        state.loop = entry.value("loop", false);
+        state.speed = entry.value("speed", 1.f);
+        state.fade = entry.value("fade", state.fade);
+        state.next = entry.value("next", std::string{});
+        if (entry.contains("events") && entry.at("events").is_array())
+          for (const auto &event : entry.at("events"))
+            state.events.push_back({event.value("tick", 0), event.value("name", std::string{})});
+        a.states.push_back(std::move(state));
+      }
   }
   auto ToJson(const ModelMeshHandle &h) -> json {
     return {{"modelAssetId", h.modelAssetId}, {"meshIndex", h.meshIndex}};

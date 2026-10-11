@@ -16,6 +16,8 @@ public:
   auto CloneTo(kuki::EntityManager &, const kuki::EntityID) const -> void override;
   auto Display() const -> void override;
   auto GetTypeName() const -> std::string override;
+  /// @brief While the game is not playing. A game that is has the keyboard, the mouse and the camera.
+  auto GetRunMode() const -> kuki::ScriptRun override;
   auto GetProjection() const -> const glm::mat4 &;
   auto GetType() const -> const kuki::CameraType &;
   auto GetView() const -> const glm::mat4 &;

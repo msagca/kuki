@@ -69,6 +69,9 @@ auto Script::GetTypeName() const -> std::string {
 auto Script::GetTypeIndex() const -> std::type_index {
   return typeIndex;
 }
+auto Script::GetRunMode() const -> ScriptRun {
+  return ScriptRun::Play;
+}
 auto Script::Start(Application &) -> void {}
 auto Script::Update(Application &) -> void {}
 auto Script::Tick(Application &) -> void {}

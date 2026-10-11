@@ -81,6 +81,62 @@ function(kuki_hide_console target)
     PRIVATE "$<$<NOT:$<CONFIG:Debug>>:LINKER:/ENTRY:mainCRTStartup>"
   )
 endfunction()
+# Declares a game: a library holding everything the game is, and an executable that starts it.
+#
+# The library is the game. Under BUILD_SHARED_LIBS it is a shared one named `<target>Game`, which
+# the game's own executable links and the editor loads at run time to play the game inside itself
+# -- see `game_module.hpp`. The executable is `cmake/game_main.cpp` and nothing else, the same file
+# for every game.
+#
+# A static build has no such library. The engine would be linked into the game and into the editor
+# separately, and a game loaded into the editor would bring a second engine with it; so there the
+# sources are compiled straight into the executable, as they always were, and the editor cannot
+# host the game. Straight in rather than through a static library, because the scripts register
+# themselves from static initialisers and a linker drops an archive member nothing refers to.
+#
+# `KUKI_GAME_CODE` is set for the caller to the target the game's sources are compiled in, which is
+# where its include directories and anything else about its code belong.
+function(kuki_add_game target)
+  set(entry "${CMAKE_SOURCE_DIR}/cmake/game_main.cpp")
+  if(BUILD_SHARED_LIBS)
+    add_library(${target}Game SHARED ${ARGN})
+    target_link_libraries(${target}Game PUBLIC KukiEngine)
+    add_executable(${target} "${entry}")
+    target_link_libraries(${target} PRIVATE ${target}Game)
+    install(
+      TARGETS ${target}Game
+      RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT ${target}
+      LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT ${target}
+    )
+    set(KUKI_GAME_CODE ${target}Game PARENT_SCOPE)
+  else()
+    add_executable(${target} ${ARGN} "${entry}")
+    target_link_libraries(${target} PRIVATE KukiEngine)
+    set(KUKI_GAME_CODE ${target} PARENT_SCOPE)
+  endif()
+  kuki_stage_runtime(${target})
+endfunction()
+# Copies the shared libraries an executable loads to the directory it is in.
+#
+# Windows looks for a DLL beside the executable and has no rpath to be told otherwise, so a shared
+# build that leaves the engine in `build/engine` produces executables that do not start. Nothing to
+# do in a static build, where the list is empty, and the generator expression is why this needs no
+# condition of its own.
+function(kuki_stage_runtime target)
+  if(NOT WIN32)
+    return()
+  endif()
+  add_custom_command(
+    TARGET ${target}
+    POST_BUILD
+    COMMAND
+      "${CMAKE_COMMAND}" -E
+      "$<IF:$<BOOL:$<TARGET_RUNTIME_DLLS:${target}>>,copy_if_different,true>"
+      "$<TARGET_RUNTIME_DLLS:${target}>" "$<TARGET_FILE_DIR:${target}>"
+    COMMAND_EXPAND_LISTS
+    VERBATIM
+  )
+endfunction()
 # Prints where a built executable ended up, so whoever ran the build does not have to go looking.
 #
 # A function each target calls rather than something applied centrally, because
@@ -166,7 +222,9 @@ function(kuki_add_blender_models target blend destination)
     COMPONENT ${target}
   )
 endfunction()
-project(Kuki VERSION 1.0.0)
+# Nought throughout until there is something to call a release. The number is shown in the editor
+# and stamped on the installer, and anything higher would be a claim.
+project(Kuki VERSION 0.0.0)
 string(TOUPPER ${PROJECT_NAME} PROJECT_NAME_UPPER)
 # Whether a directory can actually be written to, asked by writing to it.
 #
@@ -282,7 +340,10 @@ set(
 # want to add an `uninstall` target; assimp and glfw skip it when one already exists and glm does
 # not, so glm has to be the one that gets there first. The alternative is patching a submodule.
 set(GLM_BUILD_INSTALL ON CACHE BOOL "")
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glm")
+# Static whatever the rest is. glm is all but header-only: as a DLL it exports nothing, and a DLL
+# that exports nothing gets no import library from the Microsoft linker, so the engine then fails
+# to link against a glm.lib that was never written.
+kuki_static_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glm")
 ## assimp
 set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF CACHE BOOL "")
 set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE BOOL "")
@@ -442,6 +503,51 @@ target_include_directories(
 )
 # targets to build
 add_subdirectory(engine)
+# The licence of everything that ships, gathered into one directory under one name each.
+#
+# Nearly every library here is used on terms that come to the same thing: do as you like, and keep
+# this notice with whatever you give out. A binary carries no notices, so they are carried beside
+# it -- staged next to the editor, which shows them in its Help window, and installed with the
+# engine, since it is the engine that the libraries are linked into and every game ships that.
+#
+# Copied at configure time from where each project keeps its own, so the text is theirs and is
+# never a copy that could go stale in this repository. What is used only to build or to test is
+# left out: nothing of googletest is in anything a user receives.
+set(KUKI_LICENSE_DIR "${CMAKE_BINARY_DIR}/licenses")
+set(
+  KUKI_LICENSES
+  "Kuki|LICENSE"
+  "Assimp|external/assimp/LICENSE"
+  "Dear ImGui|external/imgui/LICENSE.txt"
+  "DirectX-Headers|external/DirectX-Headers/LICENSE"
+  "GLFW|external/glfw/LICENSE.md"
+  "GLM|external/glm/copying.txt"
+  "ImGuizmo|external/ImGuizmo/LICENSE"
+  "imgui-filebrowser|external/imgui-filebrowser/LICENSE"
+  "Inter|asset/font/Inter-LICENSE.txt"
+  "JSON for Modern C++|external/json/LICENSE.MIT"
+  "Kaitai Struct|external/kaitai-struct/LICENSE"
+  "Lucide|asset/font/Lucide-LICENSE.txt"
+  "spdlog|external/spdlog/LICENSE"
+  "stb|external/stb/LICENSE"
+  "tinyexr|external/tinyexr/LICENSE"
+  "whereami|external/whereami/LICENSE.MIT"
+)
+foreach(entry ${KUKI_LICENSES})
+  string(REPLACE "|" ";" entry "${entry}")
+  list(GET entry 0 name)
+  list(GET entry 1 file)
+  configure_file(
+    "${CMAKE_SOURCE_DIR}/${file}"
+    "${KUKI_LICENSE_DIR}/${name}.txt"
+    COPYONLY
+  )
+endforeach()
+install(
+  DIRECTORY "${KUKI_LICENSE_DIR}/"
+  DESTINATION "${CMAKE_INSTALL_BINDIR}/licenses"
+  COMPONENT KukiEngine
+)
 add_subdirectory(editor)
 if(${PROJECT_NAME_UPPER}_BUILD_GAMES)
   add_subdirectory(game)
@@ -449,7 +555,9 @@ endif()
 if(${PROJECT_NAME_UPPER}_BUILD_TESTS)
   enable_testing()
   set(INSTALL_GTEST OFF CACHE BOOL "")
-  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/googletest")
+  # Static whatever the rest is. As a DLL gmock does not link here -- its mutex is not exported --
+  # and a test framework has no reason to be shared with anything.
+  kuki_static_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/googletest")
   add_subdirectory(test)
 endif()
 if(WIN32)

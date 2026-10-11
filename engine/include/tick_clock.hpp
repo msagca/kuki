@@ -41,6 +41,11 @@ public:
   auto Complete() -> void {
     ++index;
   }
+  /// @brief Back to the first tick with nothing owed, keeping the rate. For the start of a run.
+  auto Reset() -> void {
+    accumulated = 0.;
+    index = 0;
+  }
   /// @brief How far the present moment is into the tick that has not run yet, from 0 up to 1.
   ///
   /// What drawing wants and the rules must not read. The state a tick leaves is up to a whole tick
