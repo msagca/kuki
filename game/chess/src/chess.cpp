@@ -2,9 +2,10 @@
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <chess.hpp>
+#include <chess_world.hpp>
 #include <game_builder.hpp>
-#include <game_module.hpp>
 #include <game_manager.hpp>
+#include <game_module.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <indirect_lighting.hpp>
@@ -68,16 +69,16 @@ auto SetupChess(Application &app) -> void {
     meshAsset->bounds = BoundingBox::Calculate(meshAsset->mesh.vertices);
     app.AddAsset(std::move(meshAsset), name);
   }
-  // Before the scene, because `GameManager::Start` draws the board's labels out of this same atlas
-  // and scripts start after this function returns.
+  // Before the scene, because `GameManager::PostStart` draws the board's labels out of this same
+  // atlas, and systems are post-started after this function returns.
   if (!app.SetOverlayFont(ResolvePath(CHESS_FONT)))
     spdlog::warn("[Chess] No font, so the clocks and the board's labels will not be drawn");
   // The whole scene skeleton in one expression. `Entity` asks for scene scope, so each call
   // discards the entity frame the previous one left open -- which is what lets these run on after
-  // one another without a closing call between them. See `Application::Game`.
-  app.Game("Chess")
+  // one another without a closing call between them. See `kuki::Game`.
+  chess::ChessWorld::Game(app, "Chess")
     .Scene("Main")
-    .Entity("Camera")
+    .Entity<CameraObject>("Camera")
     .With<Camera>([](Camera &camera) {
       // The camera's own position and rotation, not the entity's transform: nothing in the engine
       // syncs one into the other, and `Camera::Update` reads these. The editor's camera controller
@@ -88,7 +89,7 @@ auto SetupChess(Application &app) -> void {
       camera.farPlane = 60.f;
     })
     .ActiveCamera()
-    .Entity("Sun")
+    .Entity<LightObject>("Sun")
     .With<Light>([](Light &light) {
       light.type = LightType::Directional;
       light.forward = glm::normalize(glm::vec3(-.35f, -1.f, -.45f));
@@ -96,7 +97,7 @@ auto SetupChess(Application &app) -> void {
       light.specular = {1.f, 1.f, 1.f};
       light.intensity = 3.f;
     })
-    .Entity("Settings")
+    .Entity<chess::Settings>("Settings")
     // The board is meant to read as being up in the sky, so it is given one to be up in. Present is
     // what switches the computed sky on: this scene had no skybox at all before, so what it stood
     // in front of was the flat background below, and the two settings after this are now what it
@@ -177,9 +178,7 @@ auto SetupChess(Application &app) -> void {
       // both have something to stand out against. Darker and Black's disappear into it, lighter and
       // White's do.
       lighting.backgroundColor = {.34f, .35f, .4f};
-    })
-    .Entity("GameManager")
-    .Script<GameManager>();
+    });
 }
 KUKI_GAME_MODULE("Chess", SetupChess)
 KUKI_GAME_MAIN(Chess)

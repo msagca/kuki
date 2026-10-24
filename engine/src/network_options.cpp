@@ -24,12 +24,12 @@ auto kuki::ParseNetworkOptions(const std::span<const std::string> arguments, std
       return false;
     };
     double number{};
-    if (argument == "--host") {
+    if (argument == HOST_FLAG.name) {
       if (!value(number))
         return std::nullopt;
       options.host = hosting = true;
       options.port = static_cast<uint16_t>(std::clamp(number, 0., 65535.));
-    } else if (argument == "--join") {
+    } else if (argument == JOIN_FLAG.name) {
       if (index + 1 >= arguments.size()) {
         error = "--join needs an address and a port, as host:port";
         return std::nullopt;
@@ -43,27 +43,27 @@ auto kuki::ParseNetworkOptions(const std::span<const std::string> arguments, std
       options.address = target.substr(0, colon);
       options.port = static_cast<uint16_t>(std::clamp(number, 0., 65535.));
       joining = true;
-    } else if (argument == "--lag") {
+    } else if (argument == LAG_FLAG.name) {
       if (!value(number))
         return std::nullopt;
       options.lag = std::max(0., number) / 1000.;
-    } else if (argument == "--jitter") {
+    } else if (argument == JITTER_FLAG.name) {
       if (!value(number))
         return std::nullopt;
       options.jitter = std::max(0., number) / 1000.;
-    } else if (argument == "--loss") {
+    } else if (argument == LOSS_FLAG.name) {
       if (!value(number))
         return std::nullopt;
       options.loss = static_cast<float>(std::clamp(number, 0., 100.) / 100.);
-    } else if (argument == "--delay") {
+    } else if (argument == DELAY_FLAG.name) {
       if (!value(number))
         return std::nullopt;
       options.inputDelay = static_cast<int>(number);
-    } else if (argument == "--prediction") {
+    } else if (argument == PREDICTION_FLAG.name) {
       if (!value(number))
         return std::nullopt;
       options.maxPrediction = static_cast<int>(number);
-    } else if (argument == "--bot")
+    } else if (argument == BOT_FLAG.name)
       options.bot = true;
   }
   if (hosting && joining) {

@@ -6,11 +6,9 @@
 // seen by the processor not at all -- it sends a block of constants describing the emitter and a
 // range of slots to refill, and that is the whole of its part.
 static const float TWO_PI = 6.28318530718;
-// Threads in a group. Mirrors PARTICLE_GROUP_SIZE in dx_renderer.cpp, which divides by it to decide
-// how many groups cover a pool.
-#define PARTICLE_GROUP_SIZE 64
-// Mirrors ParticleShape in particle_emitter.hpp.
-#define PARTICLE_SHAPE_MESH 1u
+// The group's width, KUKI_PARTICLE_GROUP_SIZE, and the value of `ParticleShape::Mesh`,
+// KUKI_PARTICLE_SHAPE_MESH, are not written here: the C++ decides both and compiles this with them.
+// See `SHADER_DEFINITIONS`.
 // Forty-four bytes. A particle's size and colour are not here because they are functions of how far
 // through its life it is, and the two floats that say so already are: the vertex shader works both
 // out from `age / lifetime`. Storing them would hold values every particle of an emitter derives the
@@ -150,7 +148,7 @@ Particle Spawn(uint index) {
   float3 origin;
   float3 axis = u_axis;
   particle.tint = float3(1.0, 1.0, 1.0);
-  if (u_shape == PARTICLE_SHAPE_MESH) {
+  if (u_shape == KUKI_PARTICLE_SHAPE_MESH) {
     // The slot's own point, every time. Which point that is was settled when the samples were
     // scattered, so a burst that fills the pool covers the mesh exactly as evenly as they do.
     SurfaceSample surface = g_samples[index];
@@ -174,7 +172,7 @@ Particle Spawn(uint index) {
   particle.lifetime = max(u_lifetime * (1.0 - u_lifetimeVariance * Random(state)), 1.0e-3);
   return particle;
 }
-[numthreads(PARTICLE_GROUP_SIZE, 1, 1)]
+[numthreads(KUKI_PARTICLE_GROUP_SIZE, 1, 1)]
 void CSSimulate(uint3 thread : SV_DispatchThreadID) {
   uint index = thread.x;
   // The last group runs past the end of a pool whose size is not a multiple of the group's.

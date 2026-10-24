@@ -36,7 +36,7 @@ struct NetplayConfig {
 /// opens the socket, goes through the handshake and then runs a `RollbackSession` on the rules, and
 /// the rules cannot tell the difference: they are given the buttons of both seats for a tick either
 /// way. That is the point of having it, and it is why a networked game keeps its rules in a
-/// `RollbackGame` and not in a script's `Tick`, which a rollback has no way to run again.
+/// `RollbackGame` and not in a system's `Tick`, which a rollback has no way to run again.
 ///
 /// Knows nothing of a window or an application, so it can be run from a test. `NetworkSystem` is
 /// what puts it in a game.

@@ -34,6 +34,7 @@
 #include <mesh_handle.hpp>
 #include <model_asset.hpp>
 #include <particle_presets.hpp>
+#include <render_binding.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <string>
@@ -1265,11 +1266,24 @@ inline auto PropertyDisplayer::operator()<kuki::ModelMeshHandle>(kuki::ModelMesh
   auto meshIndex = handle->meshIndex;
   field::InputScalar("Mesh Index", ImGuiDataType_U64, &meshIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
+/// @brief What the running backend resolved the entity's handles to: its own material and mesh.
+///
+/// They were components of their own, one per backend, and had panels of their own. They are one
+/// component now, of which only the running backend's half is ever filled in, so that half is what
+/// is shown -- with the same panels.
 template <>
-inline auto PropertyDisplayer::operator()<kuki::Script>(kuki::Script *script) -> void {
-  if (!script)
+inline auto PropertyDisplayer::operator()<kuki::RenderBinding>(kuki::RenderBinding *binding) -> void {
+  if (!binding)
     return;
-  script->Display();
+  if (binding->glMaterialBound || binding->glMesh) {
+    if (binding->glMaterialBound && field::Fold("Material", true))
+      (*this)(&binding->glMaterial);
+    if (binding->glMesh && field::Fold("Mesh", false))
+      (*this)(&binding->glMesh);
+  } else if (binding->dxMaterialBound)
+    (*this)(&binding->dxMaterial);
+  else
+    ImGui::TextDisabled("Not resolved by the running backend yet.");
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Skeleton>(kuki::Skeleton *skeleton) -> void {

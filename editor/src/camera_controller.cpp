@@ -1,4 +1,3 @@
-#define GLM_ENABLE_EXPERIMENTAL
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <application.hpp>
@@ -16,8 +15,6 @@
 #include <glm/gtx/quaternion.hpp>
 #include <id.hpp>
 #include <imguizmo.hpp>
-#include <script.hpp>
-#include <script_registry.hpp>
 #include <string>
 #include <transform.hpp>
 #include <utility>
@@ -57,58 +54,30 @@ constexpr BindingDef kBindings[BindingCount] = {
 /// Registered application-wide rather than held per controller, and so shared by every controller in
 /// the scene. Two of them cannot be given different keys, which is a real limitation and the right
 /// trade: the alternative is a set of keys per instance, which nothing can edit without a panel for
-/// it, and a panel for it makes every script's input a thing the editor has to know how to display.
+/// it.
 ///
 /// What a shared registry does buy is that a collision is detectable. `InputManager::AssignBinding`
 /// warns when one of these takes a key from something else, or when something else takes one of
 /// these -- which is the failure worth catching, and it is caught in the engine, so a build with no
-/// editor in it still reports two scripts fighting over a key.
+/// editor in it still reports two systems fighting over a key.
 auto BindingName(int index) -> std::string {
   return std::string("CameraController.") + kBindings[index].label;
 }
 } // namespace
-KUKI_REGISTER_SCRIPT(CameraController)
-auto CameraController::GetRunMode() const -> ScriptRun {
-  return ScriptRun::Edit;
-}
-CameraController::CameraController()
-  : Script(std::in_place_type<CameraController>) {}
-CameraController::~CameraController() {
-  auto *app = GetApp();
-  if (!app)
-    return;
-  if (rmbPressActionId != InputManager::InvalidActionID)
-    app->UnregisterInputAction(rmbPressActionId);
-  if (rmbReleaseActionId != InputManager::InvalidActionID)
-    app->UnregisterInputAction(rmbReleaseActionId);
-  if (lmbPressActionId != InputManager::InvalidActionID)
-    app->UnregisterInputAction(lmbPressActionId);
-  if (lmbReleaseActionId != InputManager::InvalidActionID)
-    app->UnregisterInputAction(lmbReleaseActionId);
-  if (mmbPressActionId != InputManager::InvalidActionID)
-    app->UnregisterInputAction(mmbPressActionId);
-  if (mmbReleaseActionId != InputManager::InvalidActionID)
-    app->UnregisterInputAction(mmbReleaseActionId);
-}
-auto CameraController::CloneTo(EntityManager &entityManager, const EntityID id) const -> void {
-  auto script = entityManager.AddComponent<CameraController>(id);
-  *script = *this;
-  script->rmbPressActionId = InputManager::InvalidActionID;
-  script->rmbReleaseActionId = InputManager::InvalidActionID;
-  script->lmbPressActionId = InputManager::InvalidActionID;
-  script->lmbReleaseActionId = InputManager::InvalidActionID;
-  script->mmbPressActionId = InputManager::InvalidActionID;
-  script->mmbReleaseActionId = InputManager::InvalidActionID;
-}
-auto CameraController::Display() const -> void {
+CameraController::CameraController(Application &app)
+  : System(std::in_place_type<CameraController>, app) {}
+auto CameraController::Display() -> void {
   field::DragFloat("Move Speed", &settings.moveSpeed, .1f, .1f, 100.f, "%.1f");
   field::DragFloat("Boost Multiplier", &settings.moveBoostMax, .1f, 1.f, 50.f, "%.1f");
   field::DragFloat("Precision Multiplier", &settings.precisionMin, .01f, .01f, 1.f, "%.2f");
   field::DragFloat("Boost Ramp Up Time", &settings.boostRampUpTime, .05f, .05f, 10.f, "%.2fs");
   field::DragFloat("Boost Ramp Down Time", &settings.boostRampDownTime, .05f, .05f, 10.f, "%.2fs");
 }
-auto CameraController::GetTypeName() const -> std::string {
-  return "Camera Controller";
+auto CameraController::SetEntity(const EntityID id) -> void {
+  entity = id;
+}
+auto CameraController::GetEntity() const -> EntityID {
+  return entity;
 }
 auto CameraController::GetProjection() const -> const glm::mat4 & {
   return camera.transform.projection;
@@ -119,10 +88,10 @@ auto CameraController::GetType() const -> const CameraType & {
 auto CameraController::GetView() const -> const glm::mat4 & {
   return camera.transform.view;
 }
-auto CameraController::Start(Application &app) -> void {
+auto CameraController::Start() -> void {
   for (auto i = 0; i < BindingCount; ++i)
     app.RegisterBinding(BindingName(i), InputManager::Trigger{kBindings[i].key, kBindings[i].mods}, kBindings[i].description);
-  rmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this, &app]() {
+  rmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
     if (!app.IsViewportHovered())
       return;
     mouselook = true;
@@ -131,14 +100,14 @@ auto CameraController::Start(Application &app) -> void {
   });
   rmbReleaseActionId = app.RegisterInputAction(
     GLFW_MOUSE_BUTTON_RIGHT,
-    [this, &app]() {
+    [this]() {
       mouselook = false;
       app.SetCursorLocked(false);
       const auto pos = app.GetMousePosition();
       ImGui::GetIO().AddMousePosEvent(pos.x, pos.y);
     },
     false);
-  lmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_LEFT, [this, &app]() {
+  lmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_LEFT, [this]() {
     if (!app.IsViewportHovered() || ImGuizmo::IsOver() || ImGuizmo::IsUsing())
       return;
     if (const auto transform = app.GetEntityComponent<Transform>(app.GetSelectedEntity()); transform)
@@ -152,14 +121,14 @@ auto CameraController::Start(Application &app) -> void {
   });
   lmbReleaseActionId = app.RegisterInputAction(
     GLFW_MOUSE_BUTTON_LEFT,
-    [this, &app]() {
+    [this]() {
       orbiting = false;
       app.SetCursorLocked(false);
       const auto pos = app.GetMousePosition();
       ImGui::GetIO().AddMousePosEvent(pos.x, pos.y);
     },
     false);
-  mmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_MIDDLE, [this, &app]() {
+  mmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_MIDDLE, [this]() {
     if (!app.IsViewportHovered())
       return;
     panning = true;
@@ -168,7 +137,7 @@ auto CameraController::Start(Application &app) -> void {
   });
   mmbReleaseActionId = app.RegisterInputAction(
     GLFW_MOUSE_BUTTON_MIDDLE,
-    [this, &app]() {
+    [this]() {
       panning = false;
       app.SetCursorLocked(false);
       const auto pos = app.GetMousePosition();
@@ -176,7 +145,12 @@ auto CameraController::Start(Application &app) -> void {
     },
     false);
 }
-auto CameraController::Update(Application &app) -> void {
+auto CameraController::Shutdown() -> void {
+  for (const auto action : {rmbPressActionId, rmbReleaseActionId, lmbPressActionId, lmbReleaseActionId, mmbPressActionId, mmbReleaseActionId})
+    if (action != InputManager::InvalidActionID)
+      app.UnregisterInputAction(action);
+}
+auto CameraController::Update(const float) -> void {
   auto dirty = false;
   dirty |= UpdatePosition(app);
   dirty |= mouselook && UpdateRotation(app);
@@ -186,7 +160,7 @@ auto CameraController::Update(Application &app) -> void {
   if (app.IsBindingPressed(BindingName(Focus)))
     app.AlignView(app.GetSelectedEntity());
   camera.dirty += dirty;
-  auto cameraPtr = GetComponent<Camera>();
+  auto cameraPtr = app.GetEntityComponent<Camera>(entity);
   if (cameraPtr) {
     // Where the camera is, and nothing else. These three are the whole of what this controller
     // writes -- movement and orbit set the first two, the scroll wheel sets the third under an

@@ -34,6 +34,38 @@ target_include_directories(
   PRIVATE "${CMAKE_SOURCE_DIR}/game/duel/include"
 )
 kuki_stage_runtime(${PROJECT_NAME})
+# Mistakes the engine promises to refuse at compile time: an archetype a world never declared, a
+# query no archetype answers, a component an entity was not made with, two flags of one name. A
+# promise like that is only kept if something breaks when it stops being, and the thing that breaks
+# has to be a build. So each of these sources is a target of its own, left out of the build, and a
+# test builds it and passes only if the compiler's output carries the message the source's first
+# line expects -- the engine's own `static_assert`. A source that compiled fails its test, and so
+# does one that failed for some other reason, which is what a missing include would look like.
+#
+# Serial, because each one runs the build tool in this tree, and two at once would fight over it.
+file(
+  GLOB COMPILE_FAIL_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/compile_fail/*.cpp"
+)
+foreach(source ${COMPILE_FAIL_SOURCES})
+  get_filename_component(name "${source}" NAME_WE)
+  set(target KukiCompileFail_${name})
+  add_library(${target} OBJECT EXCLUDE_FROM_ALL "${source}")
+  target_link_libraries(${target} PRIVATE KukiEngine)
+  file(STRINGS "${source}" expected LIMIT_COUNT 1 REGEX "^// expect: ")
+  string(REPLACE "// expect: " "" expected "${expected}")
+  add_test(
+    NAME CompileFail.${name}
+    COMMAND
+      ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}" --target ${target} --config
+      $<CONFIG>
+  )
+  set_tests_properties(
+    CompileFail.${name}
+    PROPERTIES PASS_REGULAR_EXPRESSION "${expected}" RUN_SERIAL TRUE
+  )
+endforeach()
 # Discovered when the tests are run and not when the binary links. Discovery runs the binary, and
 # in a shared build it does not start until the engine has been staged beside it, which happens
 # after the link and not as part of it.

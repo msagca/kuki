@@ -1,4 +1,3 @@
-#define GLM_ENABLE_EXPERIMENTAL
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <camera_type.hpp>

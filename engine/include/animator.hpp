@@ -93,7 +93,7 @@ enum class IKKind {
 /// correction for that, made on every frame on top of whatever the clips said. It changes nothing
 /// else: the pose is still the clip's above the bones it turns and below them, which follow along.
 ///
-/// It is drawing, not rules. A goal is solved in `AnimationSystem::LateUpdate`, after every script
+/// It is drawing, not rules. A goal is solved in `AnimationSystem::LateUpdate`, after every system
 /// has moved what it is going to move this frame, and nothing a tick reads may depend on it.
 ///
 /// The point is `offset`, either in the world or, with a `target`, in that entity's own space so

@@ -5,28 +5,35 @@
 #include <glm/ext/vector_float3.hpp>
 #include <id.hpp>
 #include <input_manager.hpp>
-#include <script.hpp>
 #include <string>
 #include <string_view>
+#include <system.hpp>
 namespace kuki {
 class Application;
 class EntityManager;
 } // namespace kuki
 /// @brief Everything the chess game does that is not a rule: geometry, picking, and turn flow.
 ///
-/// A `Script`, which is the engine's one extension point for game code -- `ComponentType` is a
-/// fixed enum in the engine, so a game cannot introduce a component of its own and has to keep its
-/// state in a script instead. That is why this class holds the board rather than a component doing
-/// so, and it is the right shape here anyway: there is exactly one of these in the scene.
-class GameManager final : public kuki::Script {
+/// A system: there is one game in the application and this is it, so it holds the board itself
+/// rather than a component on some entity doing so. It was a script on an entity of its own, which
+/// was the engine's one extension point for game code at the time, and nothing about it was ever
+/// that entity's.
+class GameManager final : public kuki::System {
 public:
-  GameManager();
-  auto CloneTo(kuki::EntityManager &, const kuki::EntityID) const -> void override;
-  auto GetTypeName() const -> std::string override;
-  auto Start(kuki::Application &) -> void override;
-  auto Update(kuki::Application &) -> void override;
-  auto Shutdown(kuki::Application &) -> void override;
+  explicit GameManager(kuki::Application &);
+  /// @brief Draws the board, the clock and the labels, and takes the mouse. After the scene's
+  /// skeleton has been built, and the font baked whose atlas the labels are drawn from.
+  auto PostStart() -> void override;
+  auto Update(const float) -> void override;
+  auto Shutdown() -> void override;
 private:
+  auto Begin(kuki::Application &) -> void;
+  auto Frame(kuki::Application &) -> void;
+  auto End(kuki::Application &) -> void;
+  /// @brief The application, for the code written when this was a script and asked for it.
+  auto GetApp() -> kuki::Application * {
+    return &app;
+  }
   /// @brief Edge length of one square in world units, which is also the board's unit of everything.
   ///
   /// The squares are drawn at exactly this and butt up against one another, so the board reads as

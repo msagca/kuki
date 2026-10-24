@@ -1,22 +1,21 @@
 #pragma once
 #include <filesystem>
 #include <kuki_engine_export.h>
+#include <macros.hpp>
 #include <string>
 #include <vector>
-#if defined(_WIN32)
-#define KUKI_MODULE_EXPORT __declspec(dllexport)
-#else
-#define KUKI_MODULE_EXPORT __attribute__((visibility("default")))
-#endif
 namespace kuki {
 class Application;
 /// @brief What a game says about itself to whatever is hosting it.
 ///
-/// A game is a library: its scripts, and one function that loads its assets and builds its scenes
-/// into an application it is handed. Its own executable is a few lines that make an application and
-/// call that function. The editor is another application that can call it, which is the whole of
-/// how a game comes to run inside the editor -- the same code, built once, set up by a different
-/// host.
+/// A game is a library: its systems and components, and one function that loads its assets and
+/// builds its scenes into an application it is handed. Its own executable is a few lines that make
+/// an application of the game's world and systems and call that function. The editor is another
+/// application that can call it -- the same code, built once, set up by a different host.
+///
+/// What the editor cannot yet do is run the game: the game's behaviour is in its systems, which
+/// are part of its application's type, and the editor's application is a different type with its
+/// own list. Until a host can be handed a game's systems, a game set up in the editor is a scene.
 ///
 /// So `setup` must not assume which application it is in. It is given one; it does not make one,
 /// and anything it would have done in a constructor or a `Start` override belongs in it.
@@ -26,13 +25,10 @@ struct GameModule {
 };
 /// @brief A game's library, loaded into this process.
 ///
-/// Loading runs the library's static initialisers, which is where its `KUKI_REGISTER_SCRIPT` lines
-/// put its scripts in the registry -- the one registry, since the engine is itself a shared library
-/// that host and game both link. That is why this needs a shared build: with the engine linked
-/// statically into each, a game would arrive carrying a second engine of its own, with its own
-/// registry, its own window system and its own log.
+/// That needs a shared build: with the engine linked statically into each, a game would arrive
+/// carrying a second engine of its own, with its own window system and its own log.
 ///
-/// Never unloaded. The registry and any scene the game built hold functions and objects whose code
+/// Never unloaded. Any scene the game built holds columns of the game's components, whose code
 /// lives in the library, and taking it away from under them is a crash at whatever moment they are
 /// next touched. A process has room for the games it was shown.
 struct LoadedGame {
@@ -53,19 +49,3 @@ KUKI_ENGINE_API auto LoadGame(const std::filesystem::path &) -> LoadedGame;
 /// of a build tree's `game/`.
 KUKI_ENGINE_API auto FindGames() -> std::vector<std::filesystem::path>;
 } // namespace kuki
-/// @brief Declares a library to be a game. Once, in one source file of the game.
-#define KUKI_GAME_MODULE(Name, Setup) \
-  extern "C" KUKI_MODULE_EXPORT auto KukiGameModule() -> const ::kuki::GameModule * { \
-    static const ::kuki::GameModule module{Name, Setup}; \
-    return &module; \
-  }
-/// @brief Gives a game's own executable something to call, so its `main` needs no header of the game's.
-///
-/// `App` is the game's application class. It stays inside the library, where nothing has to be
-/// exported for it; the executable sees one C function.
-#define KUKI_GAME_MAIN(App) \
-  extern "C" KUKI_MODULE_EXPORT auto KukiGameRun() -> int { \
-    App app; \
-    app.Run(); \
-    return 0; \
-  }

@@ -1,22 +1,20 @@
 #include <animator.hpp>
-#include <inverse_kinematics.hpp>
-#include <atmosphere_sky.hpp>
 #include <application.hpp>
+#include <atmosphere_sky.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <component.hpp>
 #include <fstream>
-#include <gl_skybox.hpp>
+#include <inverse_kinematics.hpp>
 #include <launch_path.hpp>
 #include <light.hpp>
 #include <material_asset.hpp>
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
-#include <particle_emitter.hpp>
 #include <model_asset.hpp>
+#include <optional>
+#include <particle_emitter.hpp>
 #include <scene_serializer.hpp>
-#include <script.hpp>
-#include <script_registry.hpp>
 #include <serdes.hpp>
 #include <shader_asset.hpp>
 #include <skybox_handle.hpp>
@@ -72,6 +70,48 @@ namespace {
       return m;
     }();
     return map;
+  }
+  /// @brief Every component the application's archetypes have, by id and by name.
+  ///
+  /// From the archetypes and not from the engine's list, because a game's components are among them
+  /// and the engine knows their names only from what the game's archetypes say.
+  struct ComponentNames {
+    std::unordered_map<ComponentId, std::string> byId;
+    std::unordered_map<std::string, ComponentId> byName;
+  };
+  auto GetComponentNames(const Application &app) -> ComponentNames {
+    ComponentNames names;
+    for (const auto &spec : app.GetArchetypes())
+      for (size_t index = 0; index < spec.ids.size(); ++index) {
+        names.byId.emplace(spec.ids[index], std::string(spec.names[index]));
+        names.byName.emplace(std::string(spec.names[index]), spec.ids[index]);
+      }
+    return names;
+  }
+  /// @brief The archetype an entity of a file written before archetypes were recorded was of.
+  ///
+  /// The file has only the components that travel. The archetype that has exactly those, of the
+  /// ones that travel, is the answer when there is one. Several can: `{Transform}` is an empty node
+  /// and also every setting that stays behind on its entity's transform, and the plainest of them --
+  /// the one with the fewest components -- is taken, which is the empty node.
+  ///
+  /// Failing that, the plainest archetype that has all of them and more besides, which is what a
+  /// file saved before every entity had a transform needs: a camera saved as nothing but a `Camera`
+  /// comes back as a `CameraObject`, its transform at its default. What it cannot be is an archetype
+  /// missing one of the components the file has values for, which would throw them away.
+  auto GuessArchetype(const Application &app, const ComponentMask &saved) -> std::optional<ComponentMask> {
+    ComponentMask travelling;
+    for (const auto type : SERIALIZED_TYPES)
+      travelling.set(static_cast<size_t>(type));
+    std::optional<ComponentMask> exact, wider;
+    for (const auto &spec : app.GetArchetypes()) {
+      const auto kept = spec.mask & travelling;
+      if (kept == saved && (!exact || spec.mask.count() < exact->count()))
+        exact = spec.mask;
+      else if ((kept & saved) == saved && (!wider || spec.mask.count() < wider->count()))
+        wider = spec.mask;
+    }
+    return exact ? exact : wider;
   }
   auto Remap(const std::unordered_map<AssetID, AssetID> &remap, const AssetID id) -> AssetID {
     if (auto it = remap.find(id); it != remap.end())
@@ -623,33 +663,31 @@ namespace {
       return {};
     }
   };
-  auto SerializeEntity(Application &app, const EntityID id, std::unordered_set<AssetID> &referenced, const EntityOrder &order) -> json {
+  auto SerializeEntity(Application &app, const EntityID id, std::unordered_set<AssetID> &referenced, const EntityOrder &order, const ComponentNames &names) -> json {
     json entity;
     const auto name = app.GetEntityName(id);
     entity["name"] = name;
+    // Every component of the entity's archetype by name, the ones that are not written below as well
+    // as the ones that are: the archetype is fixed when an entity is made, so the file has to say
+    // which one to make it of, and the components it has values for are not enough to tell.
+    auto archetype = json::array();
+    const auto signature = app.GetEntitySignature(id);
+    for (size_t bit = 0; bit < MAX_COMPONENTS; ++bit)
+      if (signature[bit])
+        if (auto it = names.byId.find(static_cast<ComponentId>(bit)); it != names.byId.end())
+          archetype.push_back(it->second);
+    entity["archetype"] = std::move(archetype);
     auto components = json::object();
     for (const auto type : app.GetEntityComponentTypes(id)) {
-      if (type == ComponentType::Script)
-        continue;
       if (!IsSerialized(type))
         continue;
       if (auto variant = app.GetEntityComponent(id, type); variant.has_value())
         components[Component::GetTypeName(type)] = std::visit(ToJsonVisitor{referenced, order}, *variant);
     }
     entity["components"] = std::move(components);
-    // Attachment only: which scripts are on the entity, not what any of them currently holds. A
-    // script's members are arbitrary C++ with no description of themselves anywhere, so there is
-    // nothing generic to write; what a scene can say is which behaviours belong to which entity,
-    // and a freshly constructed script is what `Start` expects to be handed anyway.
-    auto scripts = json::array();
-    for (const auto *script : app.GetEntityComponent<Script>(id))
-      if (script)
-        scripts.push_back(script->GetTypeName());
-    if (!scripts.empty())
-      entity["scripts"] = std::move(scripts);
     auto children = json::array();
     app.ForEachChildEntity(id, [&](const EntityID childId) {
-      children.push_back(SerializeEntity(app, childId, referenced, order));
+      children.push_back(SerializeEntity(app, childId, referenced, order, names));
     });
     entity["children"] = std::move(children);
     return entity;
@@ -670,20 +708,40 @@ namespace {
       }
     });
   }
-  auto DeserializeEntity(Application &app, const json &entityJson, const EntityID parent, const std::unordered_map<AssetID, AssetID> &remap, std::vector<EntityID> &created) -> void {
-    const auto id = app.CreateEntity(entityJson.value("name", std::string{}));
-    created.push_back(id);
-    if (parent)
-      app.AddChildEntity(parent, id);
-    if (entityJson.contains("scripts"))
-      for (const auto &scriptJson : entityJson.at("scripts")) {
-        const auto scriptName = scriptJson.get<std::string>();
-        if (const auto *info = ScriptRegistry::FindByName(scriptName); info)
-          info->add(app, id);
+  auto DeserializeEntity(Application &app, const json &entityJson, const EntityID parent, const std::unordered_map<AssetID, AssetID> &remap, std::vector<EntityID> &created, const ComponentNames &names) -> void {
+    const auto name = entityJson.value("name", std::string{});
+    // The archetype the file names, or failing that the one its components suggest. Either way it
+    // must be one the application declared; an entity of any other is reported and left out, with
+    // its children brought in at the top of the scene.
+    ComponentMask mask;
+    auto known = true;
+    if (entityJson.contains("archetype")) {
+      for (const auto &componentName : entityJson.at("archetype")) {
+        if (auto it = names.byName.find(componentName.get<std::string>()); it != names.byName.end())
+          mask.set(it->second);
         else
-          spdlog::warn("[SceneSerializer] Entity '{}' wants script '{}', which this build does not register", entityJson.value("name", std::string{}), scriptName);
+          known = false;
       }
-    if (entityJson.contains("components"))
+    } else if (entityJson.contains("components")) {
+      ComponentMask saved;
+      const auto &nameToType = NameToType();
+      for (const auto &[typeName, componentJson] : entityJson.at("components").items())
+        if (auto it = nameToType.find(typeName); it != nameToType.end())
+          saved.set(static_cast<size_t>(it->second));
+      if (auto guessed = GuessArchetype(app, saved); guessed)
+        mask = *guessed;
+      else
+        known = false;
+    }
+    if (entityJson.contains("scripts"))
+      spdlog::warn("[SceneSerializer] Entity '{}' names scripts, which are no longer a thing an entity can have; its behaviour belongs to a system now", name);
+    const auto id = known ? app.CreateEntity(mask, name) : EntityID::Invalid;
+    if (!id)
+      spdlog::error("[SceneSerializer] Entity '{}' is of an archetype this application does not declare, and was left out", name);
+    created.push_back(id);
+    if (id && parent)
+      app.AddChildEntity(parent, id);
+    if (id && entityJson.contains("components"))
       for (const auto &[typeName, componentJson] : entityJson.at("components").items()) {
         const auto &nameToType = NameToType();
         const auto it = nameToType.find(typeName);
@@ -691,34 +749,45 @@ namespace {
           continue;
         switch (it->second) {
         case ComponentType::Transform:
-          FromJson(componentJson, *app.AddEntityComponent<Transform>(id));
+          if (auto *c = app.GetEntityComponent<Transform>(id))
+            FromJson(componentJson, *c);
           break;
         case ComponentType::AtmosphereSky:
-          FromJson(componentJson, *app.AddEntityComponent<AtmosphereSky>(id));
+          if (auto *c = app.GetEntityComponent<AtmosphereSky>(id))
+            FromJson(componentJson, *c);
           break;
         case ComponentType::VolumetricClouds:
-          FromJson(componentJson, *app.AddEntityComponent<VolumetricClouds>(id));
+          if (auto *c = app.GetEntityComponent<VolumetricClouds>(id))
+            FromJson(componentJson, *c);
           break;
         case ComponentType::VolumetricFog:
-          FromJson(componentJson, *app.AddEntityComponent<VolumetricFog>(id));
+          if (auto *c = app.GetEntityComponent<VolumetricFog>(id))
+            FromJson(componentJson, *c);
           break;
         case ComponentType::ParticleEmitter: {
-          auto p = app.AddEntityComponent<ParticleEmitter>(id);
+          auto p = app.GetEntityComponent<ParticleEmitter>(id);
+          if (!p)
+            break;
           FromJson(componentJson, *p);
           p->mesh = Remap(remap, p->mesh);
           break;
         }
         case ComponentType::BoundingBox:
-          FromJson(componentJson, *app.AddEntityComponent<BoundingBox>(id));
+          if (auto *c = app.GetEntityComponent<BoundingBox>(id))
+            FromJson(componentJson, *c);
           break;
         case ComponentType::Camera:
-          FromJson(componentJson, *app.AddEntityComponent<Camera>(id));
+          if (auto *c = app.GetEntityComponent<Camera>(id))
+            FromJson(componentJson, *c);
           break;
         case ComponentType::Light:
-          FromJson(componentJson, *app.AddEntityComponent<Light>(id));
+          if (auto *c = app.GetEntityComponent<Light>(id))
+            FromJson(componentJson, *c);
           break;
         case ComponentType::Animator: {
-          auto a = app.AddEntityComponent<Animator>(id);
+          auto a = app.GetEntityComponent<Animator>(id);
+          if (!a)
+            break;
           FromJson(componentJson, *a);
           a->modelAssetId = Remap(remap, a->modelAssetId);
           for (auto &state : a->states) {
@@ -731,38 +800,49 @@ namespace {
           break;
         }
         case ComponentType::MeshHandle: {
-          auto h = app.AddEntityComponent<MeshHandle>(id);
+          auto h = app.GetEntityComponent<MeshHandle>(id);
+          if (!h)
+            break;
           FromJson(componentJson, *h);
           h->assetId = Remap(remap, h->assetId);
           break;
         }
         case ComponentType::MaterialHandle: {
-          auto h = app.AddEntityComponent<MaterialHandle>(id);
+          auto h = app.GetEntityComponent<MaterialHandle>(id);
+          if (!h)
+            break;
           FromJson(componentJson, *h);
           h->assetId = Remap(remap, h->assetId);
           break;
         }
         case ComponentType::SkyboxHandle: {
-          auto h = app.AddEntityComponent<SkyboxHandle>(id);
+          auto h = app.GetEntityComponent<SkyboxHandle>(id);
+          if (!h)
+            break;
           FromJson(componentJson, *h);
           h->assetId = Remap(remap, h->assetId);
-          app.AddEntityComponent<GLSkybox>(id);
           break;
         }
         case ComponentType::TextureHandle: {
-          auto h = app.AddEntityComponent<TextureHandle>(id);
+          auto h = app.GetEntityComponent<TextureHandle>(id);
+          if (!h)
+            break;
           FromJson(componentJson, *h);
           h->assetId = Remap(remap, h->assetId);
           break;
         }
         case ComponentType::ModelMeshHandle: {
-          auto h = app.AddEntityComponent<ModelMeshHandle>(id);
+          auto h = app.GetEntityComponent<ModelMeshHandle>(id);
+          if (!h)
+            break;
           FromJson(componentJson, *h);
           h->modelAssetId = Remap(remap, h->modelAssetId);
           break;
         }
         case ComponentType::ModelMaterialHandle: {
-          auto h = app.AddEntityComponent<ModelMaterialHandle>(id);
+          auto h = app.GetEntityComponent<ModelMaterialHandle>(id);
+          if (!h)
+            break;
           FromJson(componentJson, *h);
           h->modelAssetId = Remap(remap, h->modelAssetId);
           break;
@@ -773,7 +853,7 @@ namespace {
       }
     if (entityJson.contains("children"))
       for (const auto &childJson : entityJson.at("children"))
-        DeserializeEntity(app, childJson, id, remap, created);
+        DeserializeEntity(app, childJson, id, remap, created, names);
   }
 } // namespace
 auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) -> bool {
@@ -795,8 +875,9 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
   app.ForEachRootEntity([&](const EntityID id) {
     Order(app, id, order);
   });
+  const auto names = GetComponentNames(app);
   app.ForEachRootEntity([&](const EntityID id) {
-    entities.push_back(SerializeEntity(app, id, referenced, order));
+    entities.push_back(SerializeEntity(app, id, referenced, order, names));
   });
   json sceneJson;
   sceneJson["name"] = scenePath.stem().string();
@@ -884,15 +965,16 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) 
     spdlog::warn("[SceneSerializer] No asset manifest found: {}", manifestPath.string());
   app.DeleteEntities();
   std::vector<EntityID> created;
+  const auto names = GetComponentNames(app);
   if (sceneJson.contains("entities"))
     for (const auto &entityJson : sceneJson.at("entities"))
-      DeserializeEntity(app, entityJson, EntityID::Invalid, remap, created);
+      DeserializeEntity(app, entityJson, EntityID::Invalid, remap, created, names);
   ResolveTargets(app, created);
-  // Gathered first and resolved after, not from inside the walk over the animators. Resolving adds
-  // a `Skeleton`, and a component added while a `ForEach` is under way is put off until it ends
-  // and handed back as null in the meantime -- so the skeleton arrived empty, the list of the
-  // entities standing for its bones dropped on the floor, and every model in a loaded scene stood
-  // still. In the editor that was every model after Stop.
+  // Gathered first and resolved after, not from inside the walk over the animators. Resolving used
+  // to add a `Skeleton`, and a component added while a `ForEach` was under way was put off until it
+  // ended -- so the skeleton arrived empty and every model in a loaded scene stood still. It only
+  // writes into the skeleton the entity was made with now, but the walk is no place to be calling
+  // back into the asset manager from either way.
   std::vector<std::pair<EntityID, AssetID>> instances;
   app.ForEachEntity<Animator>([&](const EntityID id, Animator *animator) {
     instances.emplace_back(id, animator->modelAssetId);

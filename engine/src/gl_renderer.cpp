@@ -10,9 +10,9 @@
 #include <color.hpp>
 #include <cstddef>
 #include <enum_traits.hpp>
-#include <gl_context.hpp>
 #include <gl_buffer.hpp>
 #include <gl_compute_shader.hpp>
+#include <gl_context.hpp>
 #include <gl_lit_shader.hpp>
 #include <gl_material.hpp>
 #include <gl_mesh.hpp>
@@ -45,6 +45,7 @@
 #include <post_process.hpp>
 #include <primitive.hpp>
 #include <profiler.hpp>
+#include <render_binding.hpp>
 #include <render_target.hpp>
 #include <renderer.hpp>
 #include <scene.hpp>
@@ -64,22 +65,18 @@
 #include <variant>
 #include <vector>
 namespace kuki {
-/// @brief S3TC enumerants, which glad does not generate because they arrive through an extension.
-///
-/// Their values are fixed by `EXT_texture_compression_s3tc` and `EXT_texture_sRGB`, and every
-/// desktop driver that can offer the 4.5 core profile this renderer already requires offers them.
-#ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
-#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
-#endif
-#ifndef GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
-#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
-#endif
-#ifndef GL_COMPRESSED_SRGB_S3TC_DXT1_EXT
-#define GL_COMPRESSED_SRGB_S3TC_DXT1_EXT 0x8C4C
-#endif
-#ifndef GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT
-#define GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT 0x8C4F
-#endif
+namespace {
+  /// @brief S3TC enumerants, which glad does not generate because they arrive through an extension.
+  ///
+  /// Their values are fixed by `EXT_texture_compression_s3tc` and `EXT_texture_sRGB`, and every
+  /// desktop driver that can offer the 4.5 core profile this renderer already requires offers them.
+  /// Constants and not the extension's macros, guarded in case a header had them: named apart from
+  /// those, they cannot clash with one that does.
+  constexpr GLenum COMPRESSED_RGB_S3TC_DXT1 = 0x83F0;
+  constexpr GLenum COMPRESSED_RGBA_S3TC_DXT5 = 0x83F3;
+  constexpr GLenum COMPRESSED_SRGB_S3TC_DXT1 = 0x8C4C;
+  constexpr GLenum COMPRESSED_SRGB_ALPHA_S3TC_DXT5 = 0x8C4F;
+} // namespace
 GLRenderer::GLRenderer(Application &app)
   : Renderer(std::in_place_type<GLRenderer>, app) {}
 auto GLRenderer::BypassPass(const RenderPass pass, std::span<std::string> inputs, std::span<std::string> outputs) -> void {
@@ -430,7 +427,7 @@ auto GLRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   glViewport(0, 0, out->desc.width, out->desc.height);
   DrawSkybox();
   DrawEntities(inputs, *out);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glDisable(GL_DEPTH_TEST);
 }
 auto GLRenderer::PickEntity(const int x, const int y) -> EntityID {
@@ -568,8 +565,10 @@ auto GLRenderer::CollectBatches(Scene &scene, const Camera *camera) -> std::span
   // how many pooled batches this call has claimed; the rest is last call's, left alone for its capacity
   size_t used = 0;
   batchLookup.clear();
-  scene.ForEachEntity<GLMesh, GLMaterial, Transform, Optional<BoundingBox>>([&](const EntityID id, const GLMesh *mesh, const GLMaterial *material, const Transform *transform, const BoundingBox *bounds) {
-    if (mesh->vao == 0 || mesh->skinned)
+  scene.ForEachEntity<RenderBinding, Transform, Optional<BoundingBox>>([&](const EntityID id, const RenderBinding *binding, const Transform *transform, const BoundingBox *bounds) {
+    const auto *mesh = &binding->glMesh;
+    const auto *material = &binding->glMaterial;
+    if (!binding->glMaterialBound || mesh->vao == 0 || mesh->skinned)
       return;
     // an entity with no bounds cannot be tested, so it is drawn; over-drawing is the safe way to be wrong
     if (camera && bounds && *bounds && !camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world)))
@@ -603,8 +602,10 @@ auto GLRenderer::DrawSkinnedEntities(std::span<std::string> inputs, std::vector<
   auto camera = scene->GetCamera();
   if (!camera)
     return;
-  scene->ForEachEntity<ModelMeshHandle, GLMesh, GLMaterial, Transform, Optional<BoundingBox>>([&](const EntityID id, const ModelMeshHandle *handle, const GLMesh *mesh, const GLMaterial *material, const Transform *transform, const BoundingBox *bounds) {
-    if (!mesh->skinned || mesh->vao == 0)
+  scene->ForEachEntity<ModelMeshHandle, RenderBinding, Transform, Optional<BoundingBox>>([&](const EntityID id, const ModelMeshHandle *handle, const RenderBinding *binding, const Transform *transform, const BoundingBox *bounds) {
+    const auto *mesh = &binding->glMesh;
+    const auto *material = &binding->glMaterial;
+    if (!binding->glMaterialBound || !mesh->skinned || mesh->vao == 0)
       return;
     if (bounds && *bounds && !camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world)))
       return;
@@ -669,7 +670,7 @@ auto GLRenderer::DrawSkinnedMesh(std::span<std::string> inputs, const GLMesh &me
     return;
   shader->Use();
   shader->SetCamera(*camera, cameraBuffer->id);
-  auto skybox = scene->GetAnyComponent<GLSkybox>();
+  auto skybox = GetSceneSkybox(*scene);
   shader->SetSkybox(skybox);
   shader->SetIndirectLighting(indirect);
   std::vector<Light> lights;
@@ -722,7 +723,7 @@ auto GLRenderer::DrawEntitiesInstanced(std::span<std::string> inputs, const GLMe
     return;
   shader->Use();
   shader->SetCamera(*camera, cameraBuffer->id);
-  auto skybox = scene->GetAnyComponent<GLSkybox>();
+  auto skybox = GetSceneSkybox(*scene);
   shader->SetSkybox(skybox);
   shader->SetIndirectLighting(indirect);
   std::vector<Light> lights;
@@ -771,10 +772,11 @@ auto GLRenderer::DrawOpaqueMeshes(const glm::mat4 &view, const glm::mat4 &projec
   if (!scene)
     return;
   std::unordered_map<GLMesh, std::vector<glm::mat4>> meshToTransforms;
-  scene->ForEachEntity<GLMesh, Transform>([&](const EntityID id, const GLMesh *mesh, const Transform *transform) {
+  scene->ForEachEntity<RenderBinding, Transform>([&](const EntityID, const RenderBinding *binding, const Transform *transform) {
+    const auto *mesh = &binding->glMesh;
     if (mesh->vao == 0 || mesh->skinned)
       return;
-    if (const auto material = scene->GetEntityComponent<GLMaterial>(id); material && (material->fallback.alphaMode == AlphaMode::Blend || material->fallback.transmission > .0f))
+    if (const auto *material = binding->glMaterialBound ? &binding->glMaterial : nullptr; material && (material->fallback.alphaMode == AlphaMode::Blend || material->fallback.transmission > .0f))
       return;
     meshToTransforms[*mesh].push_back(transform->world);
   });
@@ -820,6 +822,11 @@ auto GLRenderer::FitShadowFrustum(Scene &scene, const Light &light) -> void {
   KUKI_PROFILE_SCOPE("FitShadowFrustum");
   BoundingBox sceneBounds{};
   scene.ForEachEntity<BoundingBox, Transform>([&](const EntityID, const BoundingBox *box, const Transform *transform) {
+    // An empty box says nothing about where anything is, and taken into the world its corners are
+    // infinities that swallow every real box. Every drawable archetype carries bounds, filled in or
+    // not: a mesh placed by the builder has an empty one, where it used to have none at all.
+    if (!*box)
+      return;
     const auto worldBounds = box->GetWorldBounds(transform->world);
     sceneBounds.min = glm::min(sceneBounds.min, worldBounds.min);
     sceneBounds.max = glm::max(sceneBounds.max, worldBounds.max);
@@ -874,10 +881,11 @@ auto GLRenderer::CreateSpotShadowMap(std::span<std::string> inputs, std::span<st
   if (spotShadowCount == 0)
     return;
   std::unordered_map<GLMesh, std::vector<glm::mat4>> meshToTransforms;
-  scene->ForEachEntity<GLMesh, Transform>([&](const EntityID id, const GLMesh *mesh, const Transform *transform) {
+  scene->ForEachEntity<RenderBinding, Transform>([&](const EntityID, const RenderBinding *binding, const Transform *transform) {
+    const auto *mesh = &binding->glMesh;
     if (mesh->vao == 0 || mesh->skinned)
       return;
-    if (const auto material = scene->GetEntityComponent<GLMaterial>(id); material && (material->fallback.alphaMode == AlphaMode::Blend || material->fallback.transmission > .0f))
+    if (const auto *material = binding->glMaterialBound ? &binding->glMaterial : nullptr; material && (material->fallback.alphaMode == AlphaMode::Blend || material->fallback.transmission > .0f))
       return;
     meshToTransforms[*mesh].push_back(transform->world);
   });
@@ -921,7 +929,7 @@ auto GLRenderer::DrawSkybox() -> void {
     return;
   shader->Use();
   shader->SetCamera(*camera, cameraBuffer->id);
-  auto skybox = scene->GetAnyComponent<GLSkybox>();
+  auto skybox = GetSceneSkybox(*scene);
   shader->SetTexture("u_skybox", skybox ? skybox->skybox : 0);
   shader->SetUniform("u_useGradient", skybox != nullptr);
   shader->SetUniform("u_useSkybox", skybox != nullptr && skybox->skybox > 0);
@@ -1211,16 +1219,13 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
     if (auto materialAsset = app.GetAsset<MaterialAsset>(targetId); materialAsset) {
       LoadAsset<MaterialAsset>(*materialAsset);
       const auto resourceId = GetAssetResourceId(materialAsset->id);
-      scene.AddEntityComponent<GLMaterial>(id);
       materialsToPopulate.emplace_back(id, resourceId);
       if (!pending)
         materialHandle->resourceId = resourceId;
     }
   });
   for (const auto &[id, resourceId] : materialsToPopulate)
-    if (auto material = scene.GetEntityComponent<GLMaterial>(id); material)
-      if (auto material_ = resourceRegistry.GetComponent<GLMaterial>(resourceId); material_)
-        *material = *material_;
+    BindMaterial(scene, id, resourceId);
   std::vector<std::pair<EntityID, EntityID>> meshesToPopulate;
   scene.ForEachEntity<MeshHandle>([&](const EntityID id, MeshHandle *meshHandle) {
     if (!meshHandle || meshHandle->resourceId)
@@ -1230,7 +1235,6 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
     if (auto meshAsset = app.GetAsset<MeshAsset>(targetId); meshAsset) {
       LoadAsset<MeshAsset>(*meshAsset);
       const auto resourceId = GetAssetResourceId(meshAsset->id);
-      scene.AddEntityComponent<GLMesh>(id);
       meshesToPopulate.emplace_back(id, resourceId);
       UpdatePlaceholderScale(scene, id, pending);
       if (!pending)
@@ -1238,9 +1242,7 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
     }
   });
   for (const auto &[id, resourceId] : meshesToPopulate)
-    if (auto mesh = scene.GetEntityComponent<GLMesh>(id); mesh)
-      if (auto mesh_ = resourceRegistry.GetComponent<GLMesh>(resourceId); mesh_)
-        *mesh = *mesh_;
+    BindMesh(scene, id, resourceId);
   std::vector<std::pair<EntityID, EntityID>> modelMaterialsToPopulate;
   scene.ForEachEntity<ModelMaterialHandle>([&](const EntityID id, ModelMaterialHandle *materialHandle) {
     if (!materialHandle || materialHandle->resourceId)
@@ -1248,21 +1250,17 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
     if (app.IsAssetLoaded(materialHandle->modelAssetId)) {
       if (auto modelAsset = app.GetAsset<ModelAsset>(materialHandle->modelAssetId); modelAsset) {
         materialHandle->resourceId = LoadModelMaterial(*modelAsset, materialHandle->materialIndex);
-        scene.AddEntityComponent<GLMaterial>(id);
         modelMaterialsToPopulate.emplace_back(id, materialHandle->resourceId);
       }
       return;
     }
     if (auto materialAsset = app.GetAsset<MaterialAsset>(GetDefaultMaterialAssetId()); materialAsset) {
       LoadAsset<MaterialAsset>(*materialAsset);
-      scene.AddEntityComponent<GLMaterial>(id);
       modelMaterialsToPopulate.emplace_back(id, GetAssetResourceId(materialAsset->id));
     }
   });
   for (const auto &[id, resourceId] : modelMaterialsToPopulate)
-    if (auto material = scene.GetEntityComponent<GLMaterial>(id); material)
-      if (auto material_ = resourceRegistry.GetComponent<GLMaterial>(resourceId); material_)
-        *material = *material_;
+    BindMaterial(scene, id, resourceId);
   std::vector<std::pair<EntityID, EntityID>> modelMeshesToPopulate;
   scene.ForEachEntity<ModelMeshHandle>([&](const EntityID id, ModelMeshHandle *meshHandle) {
     if (!meshHandle || meshHandle->resourceId)
@@ -1270,7 +1268,6 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
     if (app.IsAssetLoaded(meshHandle->modelAssetId)) {
       if (auto modelAsset = app.GetAsset<ModelAsset>(meshHandle->modelAssetId); modelAsset) {
         meshHandle->resourceId = LoadModelMesh(*modelAsset, meshHandle->meshIndex);
-        scene.AddEntityComponent<GLMesh>(id);
         modelMeshesToPopulate.emplace_back(id, meshHandle->resourceId);
         UpdatePlaceholderScale(scene, id, false);
       }
@@ -1278,17 +1275,13 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
     }
     if (auto meshAsset = app.GetAsset<MeshAsset>(GetDefaultMeshAssetId()); meshAsset) {
       LoadAsset<MeshAsset>(*meshAsset);
-      scene.AddEntityComponent<GLMesh>(id);
       modelMeshesToPopulate.emplace_back(id, GetAssetResourceId(meshAsset->id));
       UpdatePlaceholderScale(scene, id, true);
     }
   });
   for (const auto &[id, resourceId] : modelMeshesToPopulate)
-    if (auto mesh = scene.GetEntityComponent<GLMesh>(id); mesh)
-      if (auto mesh_ = resourceRegistry.GetComponent<GLMesh>(resourceId); mesh_)
-        *mesh = *mesh_;
-  std::vector<std::pair<EntityID, EntityID>> skyboxesToPopulate;
-  scene.ForEachEntity<SkyboxHandle>([&](const EntityID id, SkyboxHandle *skyboxHandle) {
+    BindMesh(scene, id, resourceId);
+  scene.ForEachEntity<SkyboxHandle>([&](const EntityID, SkyboxHandle *skyboxHandle) {
     if (!skyboxHandle || skyboxHandle->resourceId)
       return;
     if (!skyboxHandle->assetId || !app.IsAssetLoaded(skyboxHandle->assetId))
@@ -1296,13 +1289,34 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
     if (auto textureAsset = app.GetAsset<TextureAsset>(skyboxHandle->assetId); textureAsset) {
       LoadAsset<TextureAsset>(*textureAsset);
       skyboxHandle->resourceId = GetAssetResourceId(textureAsset->id);
-      skyboxesToPopulate.emplace_back(id, skyboxHandle->resourceId);
     }
   });
-  for (const auto &[id, resourceId] : skyboxesToPopulate)
-    if (auto skybox = scene.GetEntityComponent<GLSkybox>(id); skybox)
-      if (auto skybox_ = resourceRegistry.GetComponent<GLSkybox>(resourceId); skybox_)
-        *skybox = *skybox_;
+}
+auto GLRenderer::BindMaterial(Scene &scene, const EntityID id, const EntityID resourceId) -> void {
+  auto *binding = scene.GetEntityComponent<RenderBinding>(id);
+  const auto *material = resourceRegistry.GetComponent<GLMaterial>(resourceId);
+  if (!binding || !material)
+    return;
+  binding->glMaterial = *material;
+  binding->glMaterialBound = true;
+}
+auto GLRenderer::BindMesh(Scene &scene, const EntityID id, const EntityID resourceId) -> void {
+  auto *binding = scene.GetEntityComponent<RenderBinding>(id);
+  const auto *mesh = resourceRegistry.GetComponent<GLMesh>(resourceId);
+  if (!binding || !mesh)
+    return;
+  binding->glMesh = *mesh;
+}
+auto GLRenderer::GetSceneSkybox(Scene &scene) -> const GLSkybox * {
+  // The first sky that has been loaded, as the scene's own `GLSkybox` component used to be found.
+  // That was added to an entity only by the scene serializer, so a sky placed by the builder was
+  // never drawn here; reading it off the handle draws both.
+  const GLSkybox *skybox = nullptr;
+  scene.ForEachEntity<SkyboxHandle>([&](const EntityID, const SkyboxHandle *handle) {
+    if (!skybox && handle->resourceId)
+      skybox = resourceRegistry.GetComponent<GLSkybox>(handle->resourceId);
+  });
+  return skybox;
 }
 auto GLRenderer::PreviewAsset(const AssetID id) -> GLTexture * {
   LoadAsset(id);
@@ -1683,10 +1697,10 @@ auto GLRenderer::LoadCompressedTexture(Texture &texture, GLTexture &glTexture) -
   GLenum internalFormat;
   switch (texture.compression) {
   case TextureCompression::BC1:
-    internalFormat = isSRGB ? GL_COMPRESSED_SRGB_S3TC_DXT1_EXT : GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
+    internalFormat = isSRGB ? COMPRESSED_SRGB_S3TC_DXT1 : COMPRESSED_RGB_S3TC_DXT1;
     break;
   case TextureCompression::BC3:
-    internalFormat = isSRGB ? GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+    internalFormat = isSRGB ? COMPRESSED_SRGB_ALPHA_S3TC_DXT5 : COMPRESSED_RGBA_S3TC_DXT5;
     break;
   case TextureCompression::BC4:
     internalFormat = GL_COMPRESSED_RED_RGTC1;

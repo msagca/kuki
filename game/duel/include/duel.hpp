@@ -1,9 +1,10 @@
 #pragma once
 #include <animation_system.hpp>
 #include <application_description.hpp>
+#include <duel_system.hpp>
+#include <duel_world.hpp>
 #include <network_system.hpp>
 #include <rendering_system.hpp>
-#include <scripting_system.hpp>
 #include <system_application.hpp>
 inline constexpr const char *DUEL_FONT = "font/Inter-VariableFont_opsz,wght.ttf";
 inline constexpr const char *FIGHTER_MODEL = "fighter.glb";
@@ -12,8 +13,8 @@ class Application;
 } // namespace kuki
 /// @brief Loads the game's assets and builds its scene into whichever application is hosting it.
 ///
-/// The game's own, below, or the editor. Everything that makes this a game is done here and in the
-/// scripts the scene names, so that neither host has anything to do but call it.
+/// The game's own, below, or the editor. The scene is all it builds: what plays the game is
+/// `DuelSystem`, which a host that wants the game played lists among its systems.
 auto SetupDuel(kuki::Application &) -> void;
 /// @brief Two figures on a strip of floor, one of them played from the keyboard.
 ///
@@ -21,9 +22,10 @@ auto SetupDuel(kuki::Application &) -> void;
 /// states to work together on something with rules, and it has only as much game as that takes.
 ///
 /// The network system plays the rules, alone or against another machine, so it is listed ahead of
-/// scripting: a script that draws the game finds the rules where this tick left them. The scene's
-/// animators are listed ahead of it only because they always were; the rules step their own.
-class Duel final : public kuki::SystemApplication<kuki::AnimationSystem, kuki::NetworkSystem, kuki::ScriptingSystem, kuki::RenderingSystem> {
+/// the duel's own system: that draws the game, and finds the rules where this tick left them. The
+/// scene's animators are listed ahead of both only because they always were; the rules step their
+/// own.
+class Duel final : public kuki::SystemApplication<duel::DuelWorld, kuki::AnimationSystem, kuki::NetworkSystem, DuelSystem, kuki::RenderingSystem> {
 public:
   Duel();
 private:

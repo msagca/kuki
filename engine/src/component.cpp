@@ -1,110 +1,14 @@
-#include <animator.hpp>
-#include <anti_aliasing.hpp>
-#include <atmosphere_sky.hpp>
-#include <bounding_box.hpp>
-#include <camera.hpp>
 #include <component.hpp>
 #include <component_type.hpp>
-#include <gl_buffer.hpp>
-#include <gl_compute_shader.hpp>
-#include <gl_lit_shader.hpp>
-#include <gl_material.hpp>
-#include <gl_mesh.hpp>
-#include <gl_render_target.hpp>
-#include <gl_skybox.hpp>
-#include <gl_texture.hpp>
-#include <gl_unlit_shader.hpp>
-#include <light.hpp>
-#include <material_handle.hpp>
-#include <mesh_handle.hpp>
-#include <particle_emitter.hpp>
-#include <script.hpp>
-#include <skeleton.hpp>
-#include <skybox_handle.hpp>
 #include <string>
-#include <texture_handle.hpp>
-#include <transform.hpp>
-#include <typeindex>
 #include <unordered_map>
-#include <volumetric_clouds.hpp>
-#include <volumetric_fog.hpp>
 namespace kuki {
-const std::unordered_map<std::type_index, ComponentType> Component::indexToType = {
-  {typeid(Animator), ComponentType::Animator},
-  {typeid(AntiAliasing), ComponentType::AntiAliasing},
-  {typeid(AtmosphereSky), ComponentType::AtmosphereSky},
-  {typeid(BoundingBox), ComponentType::BoundingBox},
-  {typeid(Camera), ComponentType::Camera},
-  {typeid(GLBuffer), ComponentType::GLBuffer},
-  {typeid(GLComputeShader), ComponentType::GLComputeShader},
-  {typeid(GLLitShader), ComponentType::GLLitShader},
-  {typeid(DXMaterial), ComponentType::DXMaterial},
-  {typeid(GLMaterial), ComponentType::GLMaterial},
-  {typeid(GLMesh), ComponentType::GLMesh},
-  {typeid(GLRenderTarget), ComponentType::GLRenderTarget},
-  {typeid(GLSkybox), ComponentType::GLSkybox},
-  {typeid(GLTexture), ComponentType::GLTexture},
-  {typeid(GLUnlitShader), ComponentType::GLUnlitShader},
-  {typeid(IndirectLighting), ComponentType::IndirectLighting},
-  {typeid(Light), ComponentType::Light},
-  {typeid(MaterialHandle), ComponentType::MaterialHandle},
-  {typeid(MeshHandle), ComponentType::MeshHandle},
-  {typeid(ModelMaterialHandle), ComponentType::ModelMaterialHandle},
-  {typeid(ModelMeshHandle), ComponentType::ModelMeshHandle},
-  {typeid(ParticleEmitter), ComponentType::ParticleEmitter},
-  {typeid(Script), ComponentType::Script},
-  {typeid(Skeleton), ComponentType::Skeleton},
-  {typeid(SkyboxHandle), ComponentType::SkyboxHandle},
-  {typeid(TextureHandle), ComponentType::TextureHandle},
-  {typeid(Transform), ComponentType::Transform},
-  {typeid(VolumetricClouds), ComponentType::VolumetricClouds},
-  {typeid(VolumetricFog), ComponentType::VolumetricFog}};
-const std::unordered_map<ComponentType, std::type_index> Component::typeToIndex = {
-  {ComponentType::Animator, typeid(Animator)},
-  {ComponentType::AntiAliasing, typeid(AntiAliasing)},
-  {ComponentType::AtmosphereSky, typeid(AtmosphereSky)},
-  {ComponentType::BoundingBox, typeid(BoundingBox)},
-  {ComponentType::Camera, typeid(Camera)},
-  {ComponentType::GLBuffer, typeid(GLBuffer)},
-  {ComponentType::GLComputeShader, typeid(GLComputeShader)},
-  {ComponentType::GLLitShader, typeid(GLLitShader)},
-  {ComponentType::DXMaterial, typeid(DXMaterial)},
-  {ComponentType::GLMaterial, typeid(GLMaterial)},
-  {ComponentType::GLMesh, typeid(GLMesh)},
-  {ComponentType::GLRenderTarget, typeid(GLRenderTarget)},
-  {ComponentType::GLSkybox, typeid(GLSkybox)},
-  {ComponentType::GLTexture, typeid(GLTexture)},
-  {ComponentType::GLUnlitShader, typeid(GLUnlitShader)},
-  {ComponentType::IndirectLighting, typeid(IndirectLighting)},
-  {ComponentType::Light, typeid(Light)},
-  {ComponentType::MaterialHandle, typeid(MaterialHandle)},
-  {ComponentType::MeshHandle, typeid(MeshHandle)},
-  {ComponentType::ModelMaterialHandle, typeid(ModelMaterialHandle)},
-  {ComponentType::ModelMeshHandle, typeid(ModelMeshHandle)},
-  {ComponentType::ParticleEmitter, typeid(ParticleEmitter)},
-  {ComponentType::Script, typeid(Script)},
-  {ComponentType::Skeleton, typeid(Skeleton)},
-  {ComponentType::SkyboxHandle, typeid(SkyboxHandle)},
-  {ComponentType::TextureHandle, typeid(TextureHandle)},
-  {ComponentType::Transform, typeid(Transform)},
-  {ComponentType::VolumetricClouds, typeid(VolumetricClouds)},
-  {ComponentType::VolumetricFog, typeid(VolumetricFog)}};
 const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::Animator, "Animator"},
   {ComponentType::AntiAliasing, "Anti Aliasing"},
   {ComponentType::AtmosphereSky, "Atmosphere Sky"},
   {ComponentType::BoundingBox, "BoundingBox"},
   {ComponentType::Camera, "Camera"},
-  {ComponentType::GLBuffer, "GLBuffer"},
-  {ComponentType::GLComputeShader, "GLComputeShader"},
-  {ComponentType::GLLitShader, "GLLitShader"},
-  {ComponentType::DXMaterial, "DXMaterial"},
-  {ComponentType::GLMaterial, "GLMaterial"},
-  {ComponentType::GLMesh, "GLMesh"},
-  {ComponentType::GLRenderTarget, "GLRenderTarget"},
-  {ComponentType::GLSkybox, "GLSkybox"},
-  {ComponentType::GLTexture, "GLTexture"},
-  {ComponentType::GLUnlitShader, "GLUnlitShader"},
   {ComponentType::IndirectLighting, "Indirect Lighting"},
   {ComponentType::Light, "Light"},
   {ComponentType::MaterialHandle, "MaterialHandle"},
@@ -112,28 +16,13 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::ModelMaterialHandle, "ModelMaterialHandle"},
   {ComponentType::ModelMeshHandle, "ModelMeshHandle"},
   {ComponentType::ParticleEmitter, "Particle Emitter"},
-  {ComponentType::Script, "Script"},
+  {ComponentType::RenderBinding, "RenderBinding"},
   {ComponentType::Skeleton, "Skeleton"},
   {ComponentType::SkyboxHandle, "SkyboxHandle"},
   {ComponentType::TextureHandle, "TextureHandle"},
   {ComponentType::Transform, "Transform"},
   {ComponentType::VolumetricClouds, "Volumetric Clouds"},
   {ComponentType::VolumetricFog, "Volumetric Fog"}};
-auto Component::GetBit(const std::type_index &typeIndex) -> size_t {
-  if (auto it = indexToType.find(typeIndex); it != indexToType.end())
-    return static_cast<size_t>(it->second);
-  return static_cast<size_t>(ComponentType::Transform);
-}
-auto Component::GetType(const std::type_index &typeIndex) -> ComponentType {
-  if (auto it = indexToType.find(typeIndex); it != indexToType.end())
-    return it->second;
-  return ComponentType::Transform;
-}
-auto Component::GetTypeIndex(const ComponentType type) -> std::type_index {
-  if (auto it = typeToIndex.find(type); it != typeToIndex.end())
-    return it->second;
-  return typeid(void);
-}
 auto Component::GetTypeName(const ComponentType type) -> std::string {
   if (auto it = typeToName.find(type); it != typeToName.end())
     return it->second;
@@ -141,8 +30,5 @@ auto Component::GetTypeName(const ComponentType type) -> std::string {
 }
 auto Component::IsSceneSingleton(const ComponentType type) -> bool {
   return type == ComponentType::AntiAliasing || type == ComponentType::AtmosphereSky || type == ComponentType::IndirectLighting || type == ComponentType::VolumetricClouds || type == ComponentType::VolumetricFog;
-}
-auto Component::IsGL(const ComponentType type) -> bool {
-  return type >= ComponentType::GLBuffer && type <= ComponentType::GLUnlitShader;
 }
 } // namespace kuki

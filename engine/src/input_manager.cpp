@@ -108,7 +108,7 @@ auto InputManager::LatchTick() -> void {
   for (size_t bit = 0; bit < buttonOrder.size(); ++bit) {
     const auto trigger = GetBinding(buttonOrder[bit]);
     const auto index = GLFWInputToIndex(trigger.key);
-    if (index != 255 && (inputState[index] || tickLatch[index]) && (mods & trigger.mods) == trigger.mods)
+    if (index != 255 && (inputState[index] || tickLatch[index]) && ModsSatisfy(trigger, mods))
       tickButtons |= uint32_t{1} << bit;
   }
   tickLatch.reset();
@@ -180,7 +180,7 @@ auto InputManager::IsBindingHeld(const std::string &name) const -> bool {
   const auto index = GLFWInputToIndex(it->second.key);
   if (index == 255)
     return false;
-  return inputState[index] && (CurrentMods() & it->second.mods) == it->second.mods;
+  return inputState[index] && ModsSatisfy(it->second, CurrentMods());
 }
 auto InputManager::IsBindingPressed(const std::string &name) const -> bool {
   auto it = nameToBinding.find(name);
@@ -189,7 +189,7 @@ auto InputManager::IsBindingPressed(const std::string &name) const -> bool {
   const auto index = GLFWInputToIndex(it->second.key);
   if (index == 255)
     return false;
-  return pressState[index] && (CurrentMods() & it->second.mods) == it->second.mods;
+  return pressState[index] && ModsSatisfy(it->second, CurrentMods());
 }
 auto InputManager::IsPressed(int input) const -> bool {
   const auto index = GLFWInputToIndex(input);
@@ -274,13 +274,13 @@ auto InputManager::SetBinding(const std::string &name, const Trigger &trigger) -
 }
 auto InputManager::AssignBinding(const std::string &name, const Trigger &trigger) -> void {
   // A key belongs to one binding, so claiming it takes it from whoever had it. That has always been
-  // the rule; what is new is that it says so. Silence here is what made a script and an editor
-  // shortcut wanting the same key look like the script's binding simply not working -- the script
+  // the rule; what is new is that it says so. Silence here is what made a game and an editor
+  // shortcut wanting the same key look like the game's binding simply not working -- the game
   // registers later, wins, and the shortcut stops responding with nothing anywhere to say why.
   //
-  // Here rather than at either call site, because both of them displace: a script registering on
+  // Here rather than at either call site, because both of them displace: a game registering on
   // start, and a rebind from a panel. And in the engine rather than the editor, so that a stripped
-  // build running two scripts that both want the same key still reports it. That is the case with no
+  // build running two systems that both want the same key still reports it. That is the case with no
   // other way of being found out -- there is no shortcut list to look at and no panel to open.
   if (trigger.key != 0)
     for (auto &[otherName, otherTrigger] : nameToBinding)
@@ -367,6 +367,14 @@ auto InputManager::CurrentMods() const -> int {
   if (inputState[GLFWInputToIndex(GLFW_KEY_LEFT_SUPER)] || inputState[GLFWInputToIndex(GLFW_KEY_RIGHT_SUPER)])
     mods |= GLFW_MOD_SUPER;
   return mods;
+}
+auto InputManager::ModsSatisfy(const Trigger &trigger, const int mods) const -> bool {
+  if ((mods & trigger.mods) != trigger.mods)
+    return false;
+  for (const auto &[name, other] : nameToBinding)
+    if (other.key == trigger.key && other.mods != trigger.mods && (other.mods & trigger.mods) == trigger.mods && (mods & other.mods) == other.mods)
+      return false;
+  return true;
 }
 auto InputManager::FireAction(unsigned char index, const bool pressed) -> void {
   if (!keysEnabled || IsSequenceInProgress())

@@ -13,11 +13,11 @@
 namespace kuki {
 /// @brief Plays a game's rules against another machine, or alone, a tick at a time.
 ///
-/// An application lists it ahead of `ScriptingSystem`, and a game hands it the rules with `Begin`.
-/// From then on the rules are advanced by this and not by any script: once a tick when playing
-/// alone, and when playing over a network as often as the session needs, which includes running a
-/// tick again that was run on a wrong guess. That is why the rules are a `RollbackGame` and not a
-/// script's `Tick`, and why the scripts that remain are for what is drawn. They run after this
+/// An application lists it ahead of the game's own systems, and a game hands it the rules with
+/// `Begin`. From then on the rules are advanced by this and not by the game: once a tick when
+/// playing alone, and when playing over a network as often as the session needs, which includes
+/// running a tick again that was run on a wrong guess. That is why the rules are a `RollbackGame`
+/// and not a system's `Tick`, and why the game's systems are for what is drawn. They run after this
 /// each tick and find the rules where it has left them.
 ///
 /// Command-line arguments choose how the match is played, so that every game gets them without
@@ -33,6 +33,8 @@ class KUKI_ENGINE_API NetworkSystem final : public System {
 public:
   using Seat = std::function<ButtonMask(const int64_t)>;
   using Bot = std::function<ButtonMask(const int, const int64_t)>;
+  /// The flags it reads. See `NetworkOptions`.
+  static constexpr auto FLAGS = NETWORK_FLAGS;
   explicit NetworkSystem(Application &);
   /// @brief Makes itself known to the application and reads the command line.
   void Start() override;

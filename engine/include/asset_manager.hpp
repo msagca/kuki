@@ -3,6 +3,7 @@
 #include <bounding_box.hpp>
 #include <color.hpp>
 #include <concepts.hpp>
+#include <engine_archetypes.hpp>
 #include <entity_manager.hpp>
 #include <filesystem>
 #include <future>
@@ -26,6 +27,12 @@
 #include <unordered_set>
 #include <utility>
 namespace kuki {
+/// @brief What a material or a texture asset is as a prefab: a handle to it and nothing else.
+///
+/// Only ever in the asset manager's own entity manager, which is the one place they are made. A
+/// scene does not declare them, so placing one of these assets in a scene places nothing.
+using MaterialPrefab = Archetype<MaterialHandle>;
+using TexturePrefab = Archetype<TextureHandle>;
 class KUKI_ENGINE_API AssetManager final : public Manager {
 public:
   AssetManager(Application &);
@@ -47,8 +54,23 @@ public:
   auto GetPath(const AssetID) const -> std::filesystem::path;
   auto GetPrefabID(const AssetID) const -> EntityID;
   auto GetType(const AssetID) const -> AssetType;
-  auto Instantiate(const AssetID, Scene &) -> EntityID;
-  auto Instantiate(const std::string &, Scene &) -> EntityID;
+  /// @brief Places an asset in a scene, from its prefab.
+  ///
+  /// A model is placed as an entity of archetype `root`, which stands for the model's top node: it
+  /// is named after that node and takes the components the two have in common -- its transform and
+  /// bounds -- and the nodes below come in as its children. A top node that carries a mesh, which
+  /// `root` has no place for, brings it as a child of its own, drawn where it was. Then the model's
+  /// skeleton and animator are resolved, if `root` has them and the model has clips.
+  ///
+  /// The root used to be the top node's own prefab, which then had a skeleton and an animator added
+  /// to it once it was placed. That was the one place a placed entity changed archetype after it was
+  /// made, and the reason for standing in for the top node rather than putting an entity above it
+  /// is that a game places a model by its root: the top node's own place and turn are the game's to
+  /// set, as they always were, and an extra parent would have kept the file's turn on top of them.
+  ///
+  /// Anything else -- a mesh -- is placed as a copy of its prefab.
+  auto Instantiate(const AssetID, Scene &, const ComponentMask &root) -> EntityID;
+  auto Instantiate(const std::string &, Scene &, const ComponentMask &root) -> EntityID;
   auto IsLoaded(const AssetID) const -> bool;
   auto ResolveModelInstance(Scene &, const EntityID, const ModelAsset &, const AssetID) -> void;
   auto LoadComputeFromSource(const std::string_view, std::string = "") -> AssetID;
@@ -223,9 +245,8 @@ template <>
 inline auto AssetManager::CreatePrefab<MaterialAsset>(const AssetID assetId) -> EntityID {
   if (auto materialAsset = Get<MaterialAsset>(assetId); materialAsset) {
     const auto name = GetName(assetId);
-    const auto prefabId = prefabManager.Create(name);
-    auto materialHandle = prefabManager.AddComponent<MaterialHandle>(prefabId);
-    materialHandle->assetId = assetId;
+    const auto prefabId = prefabManager.Create<MaterialPrefab>(name);
+    prefabManager.GetComponent<MaterialHandle>(prefabId)->assetId = assetId;
     return prefabId;
   }
   return EntityID::Invalid;
@@ -234,13 +255,10 @@ template <>
 inline auto AssetManager::CreatePrefab<MeshAsset>(const AssetID assetId) -> EntityID {
   if (auto meshAsset = Get<MeshAsset>(assetId); meshAsset) {
     const auto name = GetName(assetId);
-    const auto prefabId = prefabManager.Create(name);
-    prefabManager.AddComponent<Transform>(prefabId);
-    auto bounds = prefabManager.AddComponent<BoundingBox>(prefabId);
-    *bounds = meshAsset->bounds;
-    auto meshHandle = prefabManager.AddComponent<MeshHandle>(prefabId);
-    meshHandle->assetId = assetId;
-    auto materialHandle = prefabManager.AddComponent<MaterialHandle>(prefabId);
+    const auto prefabId = prefabManager.Create<MeshObject>(name);
+    *prefabManager.GetComponent<BoundingBox>(prefabId) = meshAsset->bounds;
+    prefabManager.GetComponent<MeshHandle>(prefabId)->assetId = assetId;
+    auto materialHandle = prefabManager.GetComponent<MaterialHandle>(prefabId);
     materialHandle->assetId = meshAsset->material;
     CreatePrefab(materialHandle->assetId);
     return prefabId;
@@ -257,9 +275,8 @@ template <>
 inline auto AssetManager::CreatePrefab<TextureAsset>(const AssetID assetId) -> EntityID {
   if (auto textureAsset = Get<TextureAsset>(assetId); textureAsset) {
     const auto name = GetName(assetId);
-    const auto prefabId = prefabManager.Create(name);
-    auto textureHandle = prefabManager.AddComponent<TextureHandle>(prefabId);
-    textureHandle->assetId = assetId;
+    const auto prefabId = prefabManager.Create<TexturePrefab>(name);
+    prefabManager.GetComponent<TextureHandle>(prefabId)->assetId = assetId;
     return prefabId;
   }
   return EntityID::Invalid;

@@ -1,4 +1,3 @@
-#define GLM_ENABLE_EXPERIMENTAL
 #include <algorithm>
 #include <animator.hpp>
 #include <application.hpp>
@@ -54,7 +53,7 @@ namespace {
     /// @brief Where an entity is in the world as its transforms stand now.
     ///
     /// Up through every parent, from what each one holds and not from its world matrix. Those were
-    /// last made before the pose was written this frame and before the scripts moved anything, and a
+    /// last made before the pose was written this frame and before the game moved anything, and a
     /// foot put down by them would be put down where the character was a frame ago.
     auto WorldOf(const EntityID id) const -> glm::mat4 {
       glm::mat4 world(1.f);

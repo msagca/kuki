@@ -3,8 +3,6 @@
 #include <string>
 #include <udp_transport.hpp>
 #ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
@@ -25,9 +23,8 @@ constexpr Handle INVALID = INVALID_SOCKET;
 // listening yet -- into an error on the next read from the socket. Without it, a joiner that starts
 // before its host has opened the port makes the joiner's own socket fail, which is not what
 // anybody means by "nothing has arrived".
-#ifndef SIO_UDP_CONNRESET
-#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
-#endif
+// The control code is `SIO_UDP_CONNRESET` from `mstcpip.h`, written out rather than included for.
+constexpr DWORD UDP_CONNRESET = _WSAIOW(IOC_VENDOR, 12);
 auto Startup() -> bool {
   static const auto started = [] {
     WSADATA data;
@@ -41,7 +38,7 @@ auto Configure(const Handle socket) -> bool {
     return false;
   DWORD bytes = 0;
   BOOL reset = FALSE;
-  WSAIoctl(socket, SIO_UDP_CONNRESET, &reset, sizeof(reset), nullptr, 0, &bytes, nullptr, nullptr);
+  WSAIoctl(socket, UDP_CONNRESET, &reset, sizeof(reset), nullptr, 0, &bytes, nullptr, nullptr);
   return true;
 }
 auto Close(const Handle socket) -> void {

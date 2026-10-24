@@ -21,7 +21,7 @@ void NetworkSystem::Start() {
   options = ParseNetworkOptions(arguments, error);
   if (!error.empty())
     spdlog::error("[Network] {}", error);
-  botAlone = std::ranges::find(arguments, "--bot") != arguments.end();
+  botAlone = HasFlag(arguments, BOT_FLAG);
 }
 void NetworkSystem::Shutdown() {
   End();

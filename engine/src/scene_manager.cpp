@@ -15,7 +15,12 @@ auto SceneManager::Create(std::string name) -> SceneID {
   if (auto it = nameToId.find(name); it != nameToId.end())
     return it->second;
   const auto id = nextId++;
-  idToScene[id] = std::make_unique<Scene>(id);
+  auto scene = std::make_unique<Scene>(id);
+  // Every archetype the application will make entities of, before any is made. A scene learns of
+  // no archetype after this, so one left out here is one the scene cannot hold.
+  for (const auto &spec : app.GetArchetypes())
+    scene->Declare(spec);
+  idToScene[id] = std::move(scene);
   nameToId[name] = id;
   idToName[id] = std::move(name);
   if (!activeScene)
@@ -26,7 +31,7 @@ auto SceneManager::Create(std::string name) -> SceneID {
 auto SceneManager::Switch(const std::string &name) -> bool {
   if (auto it = nameToId.find(name); it != nameToId.end()) {
     // Switching to the scene already active is not a switch, and is not logged as one. The builder
-    // names its scene on every chain, and a script that edits its own scene from `Update` would
+    // names its scene on every chain, and a system that edits its own scene from `Update` would
     // otherwise write a line to the log every frame -- which in a debug build, where the log goes
     // to a console, costs more than the frame does.
     if (activeScene == it->second)

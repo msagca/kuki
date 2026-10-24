@@ -91,8 +91,9 @@ endfunction()
 # A static build has no such library. The engine would be linked into the game and into the editor
 # separately, and a game loaded into the editor would bring a second engine with it; so there the
 # sources are compiled straight into the executable, as they always were, and the editor cannot
-# host the game. Straight in rather than through a static library, because the scripts register
-# themselves from static initialisers and a linker drops an archive member nothing refers to.
+# host the game. Straight in rather than through a static library, because the scripts once
+# registered themselves from static initialisers and a linker drops an archive member nothing refers
+# to. Nothing registers itself that way now, but the module entry points are still found by name.
 #
 # `KUKI_GAME_CODE` is set for the caller to the target the game's sources are compiled in, which is
 # where its include directories and anything else about its code belong.

@@ -1,8 +1,10 @@
 #pragma once
 #include <application_description.hpp>
+#include <archetype.hpp>
 #include <asset_manager.hpp>
 #include <component_type.hpp>
 #include <concepts.hpp>
+#include <engine_archetypes.hpp>
 #include <entity_manager.hpp>
 #include <graphics_context.hpp>
 #include <id.hpp>
@@ -20,7 +22,6 @@
 #include <tick_clock.hpp>
 #include <vector>
 namespace kuki {
-class GameBuilder;
 class NetworkSystem;
 class RenderingSystem;
 /// @brief Whether the game in an application is running, as opposed to the application.
@@ -29,7 +30,7 @@ class RenderingSystem;
 /// the application that does: it starts `Stopped`, with the scene standing still to be worked on,
 /// and plays, pauses and stops the game inside it.
 ///
-/// Stopped and paused both mean no tick is run and no game script is updated. What tells them
+/// Stopped and paused both mean no tick is run. What tells them
 /// apart is what the host does about it: stopping puts the scene back as it was before play.
 enum class PlayState : uint8_t { Stopped,
   Playing,
@@ -46,29 +47,20 @@ public:
   Event<Scene &> OnSceneLoaded;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
   auto AlignView(const EntityID) -> void;
+  /// @brief Makes an entity of an archetype in the active scene. See `EntityManager::Create`.
+  ///
+  /// A game that wants the archetype checked against its own at compile time goes through its
+  /// `World` instead (`World::Create`), which refuses one the game never declared.
+  template <IsArchetype A>
   auto CreateEntity(std::string = "") -> EntityID;
+  auto CreateEntity(const ComponentMask &, std::string = "") -> EntityID;
   auto CreateScene(std::string = "") -> SceneID;
+  /// @brief The archetypes every scene of this application is given when it is made.
+  ///
+  /// The engine's own, unless a `SystemApplication` was given a `World` that adds to them.
+  auto GetArchetypes() const -> const std::vector<ArchetypeSpec> &;
   /// @brief Makes an existing scene the active one. False when nothing goes by that name.
   auto SwitchScene(const std::string &) -> bool;
-  /// @brief Starts a fluent description of a game: scenes, entities, components and scripts.
-  ///
-  /// The ergonomic path, in place of `CreateScene` / `CreateEntity` / `AddEntityComponent` written
-  /// out by hand. One expression describes a whole scene, and the builders track their own nesting
-  /// so no call has to be paired with a closing one:
-  ///
-  ///     Game("Chess").Scene("Main").Entity("Manager").Script<GameManager>().Entity("Pawn").Mesh("Cube");
-  ///
-  /// `Entity` there asks for scene scope, so the entity frame left open by `Script` is discarded
-  /// on the way through. See `BuilderStack` for how that resolution works and for what it cannot
-  /// do -- deep hierarchies still want `Child`/`Parent`, and anything genuinely complicated is
-  /// clearer built from the calls this wraps.
-  ///
-  /// The name is the window's title, which is the only effect it can honestly have.
-  ///
-  /// Declared here but defined in `game_builder.hpp`, which every caller has to include: the
-  /// builders need the whole facade, so having the facade know more than their names would be
-  /// circular.
-  auto Game(const std::string & = "") -> GameBuilder;
   /// @brief Renames the window.
   ///
   /// Worth having for its own sake, and worth more than usual here: with no text rendering in the
@@ -108,7 +100,7 @@ public:
   /// @brief The fixed step: how far through the next tick drawing is, which tick is running, how many
   /// make a second and how long one lasts.
   ///
-  /// `System::Tick` and `Script::Tick` are called a whole number of times each frame, for as many
+  /// `System::Tick` is called a whole number of times each frame, for as many
   /// steps of `TickTime` seconds as the frame's time has made due. See `TickClock` for why, and for
   /// what `TickAlpha` is for.
   ///
@@ -162,7 +154,7 @@ public:
   /// sentence above to imply otherwise. It is public because those two renderers hold an
   /// `Application &` rather than deriving from one, so protected would not reach them and the
   /// alternative is a friend declaration per backend, one of them behind `KUKI_HAS_DIRECTX`.
-  /// Public it therefore is, which means every script sees it too, and a script that downcasts to
+  /// Public it therefore is, which means every system sees it too, and a system that downcasts to
   /// `DXContext` and drives the command list itself will compile and appear to work.
   ///
   /// If that ever stops being hypothetical, the fix is not to hide this but to give the renderers
@@ -173,10 +165,11 @@ public:
   auto GetEntityCount() const -> size_t;
   auto GetEntityName(const EntityID) const -> std::string;
   auto GetEntityParent(const EntityID) const -> EntityID;
+  auto GetEntitySignature(const EntityID) const -> ComponentMask;
   auto GetMousePosition() const -> glm::vec2;
   /// @brief Named values this application keeps between runs. See `Preferences`.
   ///
-  /// Loaded before `Start` and written back after the systems have shut down, so a script may read
+  /// Loaded before `Start` and written back after the systems have shut down, so a system may read
   /// them as it starts and set them as it stops without arranging either itself.
   auto GetPreferences(this auto &self) -> decltype(auto) {
     return (self.preferences);
@@ -196,8 +189,18 @@ public:
   auto SetOverlayFont(const std::filesystem::path &, const int = Font::DefaultPixelHeight) -> bool;
   auto GetScene(this auto &, const std::string & = "") -> decltype(auto);
   auto GetScrollOffset() const -> glm::vec2;
+  /// @brief Places an asset in the active scene: a model, as an entity of archetype `Root` with the
+  /// model's nodes below it, or a mesh as a `MeshObject`.
+  ///
+  /// `Root` is `ModelRoot` unless the game wants its own components on the model's top entity, in
+  /// which case it declares an archetype with a transform and those, and passes it here. With
+  /// `Animated` among them the model's clips can be played. See `AssetManager::Instantiate`.
+  template <IsArchetype Root = ModelRoot>
   auto InstantiateAsset(const AssetID) -> EntityID;
+  template <IsArchetype Root = ModelRoot>
   auto InstantiateAsset(const std::string &) -> EntityID;
+  auto InstantiateAsset(const AssetID, const ComponentMask &) -> EntityID;
+  auto InstantiateAsset(const std::string &, const ComponentMask &) -> EntityID;
   auto IsAssetLoaded(const AssetID) const -> bool;
   auto IsEntity(const EntityID) const -> bool;
   auto IsViewportHovered() const -> bool;
@@ -271,12 +274,12 @@ public:
   /// @brief Turns keys, mouse buttons or both on or off. See `InputManager::SetEnabled`.
   auto SetInputEnabled(const InputManager::InputKind, const bool) -> void;
   auto SetViewportHovered(bool) -> void;
-  template <typename... T>
-  auto AddEntityComponent(const EntityID) -> decltype(auto);
   template <IsAsset... T>
   auto ForEachAsset(this auto &, auto &&) -> void;
   template <typename... T>
   auto ForEachEntity(this auto &, auto &&) -> void;
+  template <IsArchetype A, typename... T>
+  auto ForEachEntityOf(this auto &, auto &&) -> void;
   template <IsAsset T>
   auto GetAsset(const AssetID) -> decltype(auto);
   template <typename... T>
@@ -285,8 +288,6 @@ public:
   auto LoadAsset(const std::filesystem::path &, std::string = "", const AssetID = {}) -> AssetID;
   template <IsAsset T>
   auto LoadAssetAsync(const std::filesystem::path &, std::string = "", const AssetID = {}) -> AssetID;
-  template <typename... T>
-  auto RemoveEntityComponent(const EntityID) -> bool;
 protected:
   GLFWwindow *window{};
   std::unique_ptr<GraphicsContext> graphicsContext;
@@ -298,7 +299,7 @@ protected:
   /// Here for the editor, which owns the rebinding panel: reading out every binding's name and
   /// description, capturing the next keystroke, and writing the result back is a settings screen's
   /// job, not something an engine facade should carry. Those nine forwards used to be public, which
-  /// put a key-capture state machine in front of every script for the sake of one panel.
+  /// put a key-capture state machine in front of every system for the sake of one panel.
   ///
   /// Protected rather than public, and a manager rather than nine methods, because a subclass
   /// reaching its own manager is a narrower hole than nine forwards that everything can see. It is
@@ -309,10 +310,10 @@ protected:
   /// @brief The hooks `Run` drives the application through, for a subclass to fill in.
   ///
   /// Protected rather than public, because nothing holding an `Application` has any business
-  /// calling them -- and everything holding one is a script. `Script::Update` is handed the whole
-  /// facade by design, so while these were public a script could call `Shutdown` mid-frame or
-  /// `Update` a second time within the frame it was called from. Neither is a thing anyone did;
-  /// both were a thing the type permitted, and `Run` is the only caller either ever had.
+  /// calling them -- and every system holds one. A system is handed the whole facade by design, so
+  /// while these were public one could call `Shutdown` mid-frame or `Update` a second time within
+  /// the frame it was called from. Neither is a thing anyone did; both were a thing the type
+  /// permitted, and `Run` is the only caller either ever had.
   ///
   /// The access level does not affect overriding, and `Editor` keeps its own overrides private.
   ///
@@ -330,6 +331,8 @@ protected:
   virtual auto UpdateSystems(const float) -> void {}
   virtual auto TickSystems() -> void {}
   virtual auto ShutdownSystems() -> void {}
+  /// @brief Replaces the archetypes scenes are made with. For `SystemApplication`, before any scene is.
+  auto SetArchetypes(std::vector<ArchetypeSpec>) -> void;
 private:
   ApplicationDescription desc;
   AssetManager assetManager;
@@ -337,6 +340,7 @@ private:
   Preferences preferences;
   InputManager inputManager;
   SceneManager sceneManager;
+  std::vector<ArchetypeSpec> archetypes;
   float deltaTime{};
   TickClock tickClock;
   double tickScale{1.};
@@ -397,16 +401,17 @@ auto Application::GetCamera(this auto &self, const std::string &name) -> ConstCo
 auto Application::GetScene(this auto &self, const std::string &name) -> decltype(auto) {
   return self.sceneManager.Get(name);
 }
-template <typename... T>
-auto Application::AddEntityComponent(const EntityID id) -> decltype(auto) {
-  static_assert(sizeof...(T) > 0, "`AddEntityComponent` requires at least one type parameter.");
-  if (auto scene = GetScene(); scene)
-    return scene->template AddEntityComponent<T...>(id);
-  if constexpr (sizeof...(T) == 1) {
-    using C = std::tuple_element_t<0, std::tuple<T...>>;
-    return static_cast<C *>(nullptr);
-  } else
-    return std::tuple(AddEntityComponent<T>(id)...);
+template <IsArchetype A>
+auto Application::CreateEntity(std::string name) -> EntityID {
+  return CreateEntity(A::Mask(), std::move(name));
+}
+template <IsArchetype Root>
+auto Application::InstantiateAsset(const AssetID id) -> EntityID {
+  return InstantiateAsset(id, Root::Mask());
+}
+template <IsArchetype Root>
+auto Application::InstantiateAsset(const std::string &name) -> EntityID {
+  return InstantiateAsset(name, Root::Mask());
 }
 template <IsAsset... T>
 auto Application::ForEachAsset(this auto &self, auto &&func) -> void {
@@ -417,6 +422,11 @@ auto Application::ForEachEntity(this auto &self, auto &&func) -> void {
   if (auto scene = self.GetScene(); scene)
     scene->template ForEachEntity<T...>(std::forward<decltype(func)>(func));
 }
+template <IsArchetype A, typename... T>
+auto Application::ForEachEntityOf(this auto &self, auto &&func) -> void {
+  if (auto scene = self.GetScene(); scene)
+    scene->template ForEachEntityOf<A, T...>(std::forward<decltype(func)>(func));
+}
 template <IsAsset T>
 auto Application::GetAsset(const AssetID id) -> decltype(auto) {
   return assetManager.Get<T>(id);
@@ -425,17 +435,10 @@ template <typename... T>
 auto Application::GetEntityComponent(this auto &self, const EntityID id) -> decltype(auto) {
   if constexpr (sizeof...(T) == 1) {
     using C = std::tuple_element_t<0, std::tuple<T...>>;
-    if constexpr (std::is_same_v<Script, C>) {
-      if (auto scene = self.GetScene(); scene)
-        return scene->template GetEntityComponent<T...>(id);
-      else
-        return std::vector<ConstCorrectPointer<decltype(self), C>>();
-    } else {
-      if (auto scene = self.GetScene(); scene)
-        return scene->template GetEntityComponent<T...>(id);
-      else
-        return static_cast<ConstCorrectPointer<decltype(self), C>>(nullptr);
-    }
+    if (auto scene = self.GetScene(); scene)
+      return scene->template GetEntityComponent<T...>(id);
+    else
+      return static_cast<ConstCorrectPointer<decltype(self), C>>(nullptr);
   } else {
     if (auto scene = self.GetScene(); scene)
       return scene->template GetEntityComponent<T...>(id);
@@ -450,57 +453,5 @@ auto Application::LoadAsset(const std::filesystem::path &path, std::string name,
 template <IsAsset T>
 auto Application::LoadAssetAsync(const std::filesystem::path &path, std::string name, const AssetID forcedId) -> AssetID {
   return assetManager.LoadAsync<T>(path, std::move(name), forcedId);
-}
-template <typename... T>
-auto Application::RemoveEntityComponent(const EntityID id) -> bool {
-  if (auto scene = GetScene(); scene)
-    return scene->template RemoveEntityComponent<T...>(id);
-  return false;
-}
-/// The `Script` helpers that act on the script's own entity. Declared on `Script`, defined here
-/// because they call into `Application` and `script.hpp` only forward declares it -- the call is
-/// through a plain `Application *`, which is not a dependent type, so the lookup happens where the
-/// body is written rather than where it is instantiated.
-template <typename... T>
-auto Script::AddComponent() -> decltype(auto) {
-  static_assert(sizeof...(T) > 0, "`AddComponent` requires at least one type parameter.");
-  if (app && entityId)
-    return app->AddEntityComponent<T...>(entityId);
-  if constexpr (sizeof...(T) == 1) {
-    using C = std::tuple_element_t<0, std::tuple<T...>>;
-    return static_cast<C *>(nullptr);
-  } else
-    return std::tuple(AddComponent<T>()...);
-}
-template <typename... T>
-auto Script::GetComponent() -> decltype(auto) {
-  static_assert(sizeof...(T) > 0, "`GetComponent` requires at least one type parameter.");
-  // Whatever the facade hands back for this query: a pointer, a tuple of them, or a vector for
-  // `Script`. Naming it rather than repeating the three shapes means a default-constructed one is
-  // the right empty answer in every case.
-  using Result = decltype(app->template GetEntityComponent<T...>(entityId));
-  if (!app || !entityId)
-    return Result{};
-  return app->template GetEntityComponent<T...>(entityId);
-}
-auto Script::ForEachChild(auto &&func) -> void {
-  if (app && entityId)
-    app->ForEachChildEntity(entityId, std::forward<decltype(func)>(func));
-}
-template <typename... T>
-auto Script::HasComponent() const -> bool {
-  static_assert(sizeof...(T) > 0, "`HasComponent` requires at least one type parameter.");
-  if (!app || !entityId)
-    return false;
-  if (auto scene = app->GetScene(); scene)
-    return scene->template EntityHasComponent<T...>(entityId);
-  return false;
-}
-template <typename... T>
-auto Script::RemoveComponent() -> bool {
-  static_assert(sizeof...(T) > 0, "`RemoveComponent` requires at least one type parameter.");
-  if (!app || !entityId)
-    return false;
-  return app->RemoveEntityComponent<T...>(entityId);
 }
 } // namespace kuki

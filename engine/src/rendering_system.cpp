@@ -1,9 +1,8 @@
-#define GLM_ENABLE_EXPERIMENTAL
 #include <anti_aliasing.hpp>
-#include <atmosphere_sky.hpp>
 #include <application.hpp>
 #include <array>
 #include <asset_type.hpp>
+#include <atmosphere_sky.hpp>
 #include <camera.hpp>
 #include <cstdint>
 #include <cstdlib>
@@ -12,7 +11,9 @@
 #ifdef KUKI_HAS_DIRECTX
 #include <dx_renderer.hpp>
 #endif
+#include <engine_config.hpp>
 #include <id.hpp>
+#include <light.hpp>
 #include <light_limits.hpp>
 #include <material_type.hpp>
 #include <memory>
@@ -21,18 +22,16 @@
 #include <render_pass.hpp>
 #include <render_target.hpp>
 #include <renderer.hpp>
-#include <engine_config.hpp>
 #include <rendering_system.hpp>
-#include <spdlog/spdlog.h>
-#include <light.hpp>
+#include <scene.hpp>
 #include <skybox_handle.hpp>
 #include <skybox_light.hpp>
-#include <texture.hpp>
-#include <texture_asset.hpp>
-#include <scene.hpp>
+#include <spdlog/spdlog.h>
 #include <string>
 #include <system.hpp>
 #include <target_description.hpp>
+#include <texture.hpp>
+#include <texture_asset.hpp>
 #include <utility>
 namespace kuki {
 RenderingSystem::RenderingSystem(Application &app)
@@ -432,19 +431,19 @@ auto RenderingSystem::UpdateSkyboxLight(Scene &scene) -> void {
   if (!textureAsset)
     return;
   derivedSkyboxAsset = skyboxAsset;
+  // Into a light the sky's entity already has, and not one added to it: an entity's components are
+  // its archetype's. It used to be added, which made this the renderer changing a scene's entities.
+  auto light = scene.GetEntityComponent<Light>(skyboxEntity);
+  if (!light) {
+    spdlog::info("[RenderingSystem] The sky's entity has no light to adopt a sun into; give its archetype one for that");
+    return;
+  }
   const auto hadPixels = HasTexturePixels(textureAsset->texture);
   EnsureTexturePixels(textureAsset->texture);
   const auto dominant = ExtractDominantLight(textureAsset->texture);
   if (!hadPixels)
     ReleaseTexturePixels(textureAsset->texture);
   if (!dominant)
-    return;
-  auto light = scene.GetEntityComponent<Light>(skyboxEntity);
-  if (!light) {
-    scene.AddEntityComponent<Light>(skyboxEntity);
-    light = scene.GetEntityComponent<Light>(skyboxEntity);
-  }
-  if (!light)
     return;
   light->type = LightType::Directional;
   light->forward = dominant->direction;

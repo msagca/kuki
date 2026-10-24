@@ -27,12 +27,12 @@ class KUKI_ENGINE_API AnimationSystem final : public System {
 public:
   AnimationSystem(Application &);
   void Start() override;
-  /// @brief Steps every animator that has states. Put this system ahead of `ScriptingSystem` in an
-  /// application's list for a script to see a tick's events during that same tick.
+  /// @brief Steps every animator that has states. Put this system ahead of a game's own in an
+  /// application's list for the game to see a tick's events during that same tick.
   auto Tick() -> void override;
   void Update(const float) override;
   /// @brief Solves every animator's inverse kinematics goals, on the pose `Update` sampled and with
-  /// characters and targets where the scripts have put them.
+  /// characters and targets where the game's systems have put them.
   auto LateUpdate(const float) -> void override;
   void Shutdown() override;
 private:
@@ -42,7 +42,7 @@ private:
   /// in an editor, a character whose states were being set up would stand in its bind pose until
   /// the game was played. So while stopped, an animator marked as playing is stepped from here
   /// instead, at the same rate, for the sake of being looked at. Nothing reads what it reports --
-  /// there is no script running to take an event or apply the root's travel -- and the count is
+  /// there is no game running to take an event or apply the root's travel -- and the count is
   /// forgotten the moment the game starts, which begins every state again from its first tick.
   TickClock preview;
 };

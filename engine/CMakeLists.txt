@@ -90,6 +90,28 @@ if(WIN32)
   # Winsock, for `UdpTransport`. Private: no header names a socket type.
   target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
 endif()
+# Configuration of the libraries the engine is built on, which has to be seen before their headers
+# are, and so is given to the compiler here rather than written at the top of each file that needs
+# it. It was written at the top of each -- `GLM_ENABLE_EXPERIMENTAL` in eight files,
+# `GLFW_INCLUDE_NONE` in three, the two Windows ones in three -- and each was right only for as long
+# as nothing included the library's header ahead of it. The engine's own macros are in
+# `macros.hpp`, which says what is kept where.
+#
+# Public where a consumer meets the same headers through the engine's: glm's extensions, and the
+# Windows headers, whose `min` and `max` macros would otherwise break `std::min` in a game. Private
+# where it is how the engine uses GLFW, which a game includes only for the names of its keys.
+target_compile_definitions(
+  ${PROJECT_NAME}
+  PUBLIC GLM_ENABLE_EXPERIMENTAL
+  PRIVATE GLFW_INCLUDE_NONE
+)
+if(WIN32)
+  target_compile_definitions(
+    ${PROJECT_NAME}
+    PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN
+    PRIVATE GLFW_EXPOSE_NATIVE_WIN32
+  )
+endif()
 # Listed so they show up in an IDE, and marked so nothing tries to compile them. Every one of
 # these is embedded as text by the custom command below and handed to a compiler at run time -- dxc
 # through dxcompiler.dll for the HLSL, the driver for the GLSL.
