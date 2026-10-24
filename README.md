@@ -1,14 +1,9 @@
 # Kuki
 
-A hobby game engine project that I'm working on to learn about game engine architecture and graphics programming.
-
-It is written in C++23 and is made up of:
+A game engine written in C++23, made up of:
 
 - **KukiEngine**, the engine library: an archetype-based ECS fixed at compile time, a fixed-tick game loop with rebindable buttons and a gesture recognizer, skeletal animation with state machines and inverse kinematics, rollback networking, and a render graph with Direct3D 12 and OpenGL backends (physically based lighting, image-based lighting, shadows, bloom, a computed sky with clouds and fog, anti-aliasing).
 - **KukiEditor**, a [Dear ImGui](https://github.com/ocornut/imgui) editor for building, saving and playing scenes.
-- **Games** built on the engine, in `game/`:
-  - `chess`, two players at one board with a chess clock, moving pieces with the mouse.
-  - `duel`, a small one-on-one fighting game, played on one machine or between two over the network.
 
 ## Installation
 
@@ -52,6 +47,9 @@ Linux builds use OpenGL. Continuous integration only builds on Windows at the mo
 
 ```bash
 git lfs install
+```
+
+```bash
 git clone --recursive https://github.com/msagca/kuki
 ```
 
@@ -85,7 +83,15 @@ All presets share the `build/` directory, so switching between them reconfigures
 | `MSVC` (build presets `MSVC-Debug`, `MSVC-Release`) | Visual Studio |
 | `Clang-Debug`, `Clang-Release` | Ninja with Clang |
 
-`cmake --workflow Debug` configures and builds a debug build, and runs the tests if they are turned on (see below). To iterate without packaging, use `cmake --preset Debug && cmake --build --preset Debug`.
+`cmake --workflow Debug` configures and builds a debug build, and runs the tests if they are turned on (see below). To iterate without packaging, configure and build separately:
+
+```bash
+cmake --preset Debug
+```
+
+```bash
+cmake --build --preset Debug
+```
 
 ### Tests and linting
 
@@ -93,18 +99,17 @@ Tests and linting are off by default.
 
 ```bash
 cmake --preset Debug -DKUKI_BUILD_TESTS=ON
+```
+
+```bash
 cmake --build --preset Debug
-ctest --test-dir build --output-on-failure
+```
+
+```bash
+ctest --preset Debug --output-on-failure
 ```
 
 Pass `-DKUKI_ENABLE_LINTING=ON` at configure time to run clang-tidy on every target.
-
-## Playing the games
-
-Every application lists its command-line flags with `--help`.
-
-- **Chess**: click a piece to select it, then a green square to move it (red marks a piece it can take); drag anywhere else to turn the board; `R` restarts the game and `Esc` quits.
-- **Duel**: `A`/`D` step left and right, `J` punches, `K` kicks and `Esc` quits. Run one instance with `--host <port>` and another with `--join <host:port>` to play over the network; `--lag`, `--jitter` and `--loss` simulate a bad connection on a single machine.
 
 ## License
 
