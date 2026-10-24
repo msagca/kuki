@@ -85,7 +85,7 @@ All presets share the `build/` directory, so switching between them reconfigures
 | `MSVC` (build presets `MSVC-Debug`, `MSVC-Release`) | Visual Studio |
 | `Clang-Debug`, `Clang-Release` | Ninja with Clang |
 
-`cmake --workflow Debug` configures, builds and tests a debug build. To iterate without packaging, use `cmake --preset Debug && cmake --build --preset Debug`.
+`cmake --workflow Debug` configures and builds a debug build, and runs the tests if they are turned on (see below). To iterate without packaging, use `cmake --preset Debug && cmake --build --preset Debug`.
 
 ### Tests and linting
 

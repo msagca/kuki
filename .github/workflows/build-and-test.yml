@@ -1,4 +1,4 @@
-name: CMake
+name: Build and test
 # Every branch but main: work is pushed on a branch, built and tested here, and reaches main only by
 # a pull request, which main's protection lets through once this job has passed on the branch's head.
 # Not on main itself, because nothing arrives there that has not already run.
@@ -6,6 +6,8 @@ on:
   push:
     branches-ignore: ["main"]
 jobs:
+  # The job keeps its id: main's protection requires the check by the name GitHub makes from it and
+  # the matrix, `cmake (windows-latest)`, and a renamed job would leave that check waiting forever.
   cmake:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -40,8 +42,15 @@ jobs:
           path: build
           key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt','**/CMakePresets.json') }}
           restore-keys: ${{ runner.os }}-cmake-
-      - name: CMake configure, build, test
-        run: cmake --workflow Debug
+      # Not `cmake --workflow Debug`: the presets leave tests off, and a workflow preset takes no
+      # cache overrides, so that ran a test step with nothing registered and passed on a build alone.
+      # The steps are the workflow's, with tests turned on at configure.
+      - name: Configure
+        run: cmake --preset Debug -DKUKI_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build --preset Debug
+      - name: Test
+        run: ctest --preset Debug --output-on-failure
       - uses: actions/upload-artifact@v7
         if: startsWith(github.ref, 'refs/tags/')
         with:
