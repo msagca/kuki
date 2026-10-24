@@ -1,21 +1,25 @@
 #pragma once
 #include <archetype.hpp>
-#include <component_type.hpp>
+#include <component_traits.hpp>
 #include <concepts.hpp>
 #include <id.hpp>
 #include <kuki_engine_export.h>
 #include <memory>
+#include <optional>
 #include <unordered_map>
+#include <vector>
 namespace kuki {
 struct EntityLocation {
-  ComponentMask signature;
+  /// The archetype's place in the registry, which never changes once it is declared.
+  uint32_t table{};
   size_t row{};
 };
-struct MoveResult {
-  EntityLocation location;
-  EntityID displacedEntity{};
-  size_t displacedRow{};
-};
+/// @brief The archetypes an entity manager was told about, and their tables.
+///
+/// Declared, not discovered. An archetype exists because something said it would be used, before
+/// any entity of it was made, and the set does not change after: nothing here makes an archetype
+/// because an entity happened to need one. Tables are kept in the order they were declared, which
+/// is the order every query visits them in.
 class KUKI_ENGINE_API ArchetypeRegistry {
 public:
   // Declaring any constructor suppresses the implicit default one, so it is asked for back.
@@ -27,24 +31,27 @@ public:
   /// does not compile. Nothing copies this, so the declaration costs nothing and says so.
   ArchetypeRegistry(const ArchetypeRegistry &) = delete;
   auto operator=(const ArchetypeRegistry &) -> ArchetypeRegistry & = delete;
-  auto Clear() -> void;
-  auto GetArchetype(this auto &, const ComponentMask &) -> decltype(auto);
-  auto GetOrCreateArchetype(const ComponentMask &) -> Archetype *;
-  auto ForEachArchetype(this auto &, auto &&) -> void;
-  auto MoveEntity(const EntityID, const EntityLocation &from, const ComponentMask &newMask) -> MoveResult;
-  auto RemoveEntity(const EntityID, const EntityLocation &from) -> EntityID;
+  /// @brief Adds an archetype. Declaring one that is already here does nothing.
+  auto Declare(const ArchetypeSpec &) -> void;
+  auto Find(const ComponentMask &) const -> std::optional<uint32_t>;
+  auto GetTable(this auto &, const uint32_t) -> decltype(auto);
+  auto GetTableCount() const -> size_t;
+  auto ForEachTable(this auto &, auto &&) -> void;
+  /// @brief A new row of default components at the end of a table.
+  auto Append(const uint32_t, const EntityID) -> size_t;
+  /// @brief Takes a row out by moving the last one into it, and says whose row that was.
+  auto Remove(const EntityLocation &) -> EntityID;
+  /// @brief Empties every table and keeps every declaration.
+  auto ClearRows() -> void;
 private:
-  std::unordered_map<ComponentMask, std::unique_ptr<Archetype>> archetypes;
-  static auto CreateColumn(const ComponentType) -> std::unique_ptr<IArchetypeColumn>;
+  std::vector<std::unique_ptr<ArchetypeTable>> tables;
+  std::unordered_map<ComponentMask, uint32_t> tableByMask;
 };
-auto ArchetypeRegistry::GetArchetype(this auto &self, const ComponentMask &mask) -> decltype(auto) {
-  auto it = self.archetypes.find(mask);
-  if (it == self.archetypes.end())
-    return ConstCorrectPointer<decltype(self), Archetype>(nullptr);
-  return ConstCorrectPointer<decltype(self), Archetype>(it->second.get());
+auto ArchetypeRegistry::GetTable(this auto &self, const uint32_t index) -> decltype(auto) {
+  return static_cast<ConstCorrectPointer<decltype(self), ArchetypeTable>>(self.tables[index].get());
 }
-auto ArchetypeRegistry::ForEachArchetype(this auto &self, auto &&func) -> void {
-  for (auto &[mask, archetype] : self.archetypes)
-    func(*archetype);
+auto ArchetypeRegistry::ForEachTable(this auto &self, auto &&func) -> void {
+  for (auto &table : self.tables)
+    func(*static_cast<ConstCorrectPointer<decltype(self), ArchetypeTable>>(table.get()));
 }
 } // namespace kuki

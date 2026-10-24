@@ -27,10 +27,10 @@
 #include <light.hpp>
 #include <light_limits.hpp>
 #include <material_asset.hpp>
-#include <overlay.hpp>
 #include <material_fallback.hpp>
 #include <mesh_asset.hpp>
 #include <model_asset.hpp>
+#include <overlay.hpp>
 #include <render_graph.hpp>
 #include <renderer.hpp>
 #include <rendering_system.hpp>
@@ -168,6 +168,11 @@ public:
   auto LoadAsset(Asset &) -> void;
   auto LoadAsset(const AssetID) -> void override;
   auto LoadAssets(const AssetType) -> void override;
+  /// @brief Fills in an entity's `RenderBinding` from a resource this renderer holds.
+  auto BindMaterial(Scene &, const EntityID, const EntityID) -> void;
+  auto BindMesh(Scene &, const EntityID, const EntityID) -> void;
+  /// @brief The sky the scene is lit and backed by, or null if it has none loaded.
+  auto GetSceneSkybox(Scene &) -> const GLSkybox *;
   auto LoadScene(Scene &) -> void override;
   /// @brief Reads the entity ID written to the picking buffer at the given pixel.
   ///

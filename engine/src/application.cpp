@@ -1,5 +1,5 @@
-#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <application.hpp>
 #include <application_description.hpp>
 #include <array>
@@ -9,9 +9,10 @@
 #include <component.hpp>
 #include <component_type.hpp>
 #include <concepts.hpp>
+#include <cstdlib>
+#include <engine_archetypes.hpp>
 #include <filesystem>
 #include <fstream>
-#include <game_builder.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_int2.hpp>
 #include <graphics_context.hpp>
@@ -30,7 +31,6 @@
 #include <render_target.hpp>
 #include <rendering_system.hpp>
 #include <scene.hpp>
-#include <cstdlib>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <string.h>
@@ -81,7 +81,7 @@ auto ConfigureLogging() -> void {
 } // namespace
 namespace kuki {
 Application::Application(ApplicationDescription desc)
-  : desc(std::move(desc)), assetManager(*this), inputManager(*this), sceneManager(*this) {
+  : desc(std::move(desc)), assetManager(*this), inputManager(*this), sceneManager(*this), archetypes(MakeArchetypeSpecs(EngineArchetypes{})) {
   // First, so that nothing this constructor goes on to do can log before the level is settled.
   ConfigureLogging();
   this->desc.path = GetExePath();
@@ -140,7 +140,7 @@ auto Application::PreUpdate() -> void {
     // the last, and any further ticks the frame owes see the keyboard as it now stands.
     KUKI_PROFILE_SCOPE("Ticks");
     // Time owed is only counted while playing, so a pause is not a debt to be run off afterwards.
-    auto due = playState == PlayState::Playing ? tickClock.Advance(deltaTime) : 0;
+    auto due = playState == PlayState::Playing ? tickClock.Advance(deltaTime * tickScale) : 0;
     if (stepRequested && playState == PlayState::Paused)
       due = 1;
     stepRequested = false;
@@ -164,7 +164,7 @@ auto Application::PostUpdate() -> void {
 }
 auto Application::PreShutdown() -> void {
   ShutdownSystems();
-  // After the systems, so a script that writes a preference as it stops is not writing into a file
+  // After the systems, so a system that writes a preference as it stops is not writing into a file
   // that has already been saved.
   preferences.Save();
   if (graphicsContext)
@@ -272,19 +272,22 @@ auto Application::AlignView(const EntityID id) -> void {
     return;
   scene->AlignView(id);
 }
-auto Application::CreateEntity(std::string name) -> EntityID {
+auto Application::CreateEntity(const ComponentMask &mask, std::string name) -> EntityID {
   if (auto scene = GetScene(); scene)
-    return scene->CreateEntity(std::move(name));
+    return scene->CreateEntity(mask, std::move(name));
   return EntityID::Invalid;
+}
+auto Application::GetArchetypes() const -> const std::vector<ArchetypeSpec> & {
+  return archetypes;
+}
+auto Application::SetArchetypes(std::vector<ArchetypeSpec> value) -> void {
+  archetypes = std::move(value);
 }
 auto Application::CreateScene(std::string name) -> SceneID {
   return sceneManager.Create(std::move(name));
 }
 auto Application::SwitchScene(const std::string &name) -> bool {
   return sceneManager.Switch(name);
-}
-auto Application::Game(const std::string &name) -> GameBuilder {
-  return GameBuilder(*this, name);
 }
 auto Application::SetWindowTitle(const std::string &title) -> void {
   if (window)
@@ -331,6 +334,18 @@ auto Application::TickRate() const -> int {
 }
 auto Application::TickTime() const -> float {
   return static_cast<float>(tickClock.Step());
+}
+auto Application::GetNetwork() const -> NetworkSystem * {
+  return network;
+}
+auto Application::SetNetwork(NetworkSystem *value) -> void {
+  network = value;
+}
+auto Application::GetTickScale() const -> double {
+  return tickScale;
+}
+auto Application::SetTickScale(const double scale) -> void {
+  tickScale = std::clamp(scale, .1, 1.);
 }
 auto Application::SetTickRate(const int rate) -> void {
   tickClock.SetRate(rate);
@@ -410,15 +425,20 @@ auto Application::GetMousePosition() const -> glm::vec2 {
 auto Application::GetScrollOffset() const -> glm::vec2 {
   return inputManager.GetScrollOffset();
 }
-auto Application::InstantiateAsset(const AssetID id) -> EntityID {
+auto Application::InstantiateAsset(const AssetID id, const ComponentMask &root) -> EntityID {
   if (auto scene = GetScene(); scene)
-    return assetManager.Instantiate(id, *scene);
+    return assetManager.Instantiate(id, *scene, root);
   return EntityID::Invalid;
 }
-auto Application::InstantiateAsset(const std::string &name) -> EntityID {
+auto Application::InstantiateAsset(const std::string &name, const ComponentMask &root) -> EntityID {
   if (auto scene = GetScene(); scene)
-    return assetManager.Instantiate(name, *scene);
+    return assetManager.Instantiate(name, *scene, root);
   return EntityID::Invalid;
+}
+auto Application::GetEntitySignature(const EntityID id) const -> ComponentMask {
+  if (auto scene = GetScene(); scene)
+    return scene->GetEntitySignature(id);
+  return {};
 }
 auto Application::IsAssetLoaded(const AssetID id) const -> bool {
   return assetManager.IsLoaded(id);

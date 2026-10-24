@@ -4,24 +4,37 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <id.hpp>
 #include <input_manager.hpp>
-#include <script.hpp>
+#include <system.hpp>
 namespace kuki {
 class Application;
 }
-class CameraController final : public kuki::Script {
+/// @brief Flies the editor's camera: moves, turns, orbits the selection and pans.
+///
+/// The editor's own, and nothing a scene holds. It was a script on the camera's entity, which made
+/// it something a scene could save, copy, paste and be missing, and it had to say it ran only while
+/// the game was stopped so that it let go of the keyboard when one was played. Now it is one of the
+/// editor's systems, and finds its camera by the entity it is pointed at.
+///
+/// A system and not something the editor steps from its own `Update`, because that runs after the
+/// frame has been drawn: the camera would be where the mouse put it a frame ago. Listed ahead of
+/// `RenderingSystem`, it moves the camera before the frame that shows it.
+class CameraController final : public kuki::System {
 public:
-  CameraController();
-  ~CameraController() override;
-  auto CloneTo(kuki::EntityManager &, const kuki::EntityID) const -> void override;
-  auto Display() const -> void override;
-  auto GetTypeName() const -> std::string override;
-  /// @brief While the game is not playing. A game that is has the keyboard, the mouse and the camera.
-  auto GetRunMode() const -> kuki::ScriptRun override;
+  explicit CameraController(kuki::Application &);
+  /// @brief The settings, as sliders, for the editor's settings panel.
+  auto Display() -> void;
   auto GetProjection() const -> const glm::mat4 &;
   auto GetType() const -> const kuki::CameraType &;
   auto GetView() const -> const glm::mat4 &;
-  auto Start(kuki::Application &) -> void override;
+  /// @brief Registers the keys and mouse buttons it flies by.
+  auto Start() -> void override;
+  /// @brief Unregisters them: the actions capture `this`.
+  auto Shutdown() -> void override;
+  /// @brief Which entity's `Camera` it flies. Pointed again whenever a scene is loaded.
+  auto SetEntity(const kuki::EntityID) -> void;
+  auto GetEntity() const -> kuki::EntityID;
   /// @brief Applies the frame's input, then syncs with the entity's `Camera` component.
   ///
   /// The sync is deliberately lopsided. Outwards it writes only the placement -- position, rotation
@@ -32,11 +45,11 @@ public:
   /// not be written back from here.
   ///
   /// The comparison is on a wrapping counter, so the sync direction briefly inverts if `dirty` wraps around.
-  auto Update(kuki::Application &) -> void override;
+  auto Update(const float) -> void override;
 private:
+  kuki::EntityID entity{};
   kuki::Camera camera{};
-  // NOTE: mutable so `Display() const` can expose these as editable sliders in the Inspector.
-  mutable ControllerSettings settings{};
+  ControllerSettings settings{};
   bool cameraMissing{true};
   bool mouseEnter{true};
   bool mouselook{false};

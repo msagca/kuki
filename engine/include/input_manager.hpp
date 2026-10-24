@@ -174,12 +174,22 @@ private:
   std::vector<std::string> sequenceOrder;
   auto AssignBinding(const std::string &, const Trigger &) -> void;
   auto CurrentMods() const -> int;
+  /// @brief Whether the held modifiers are this trigger's, given every binding on its key.
+  ///
+  /// The modifiers a trigger names must be held, and that alone was the test: so a trigger with
+  /// none was satisfied whatever was held, and Ctrl+C, which is Copy, was also C, which toggled the
+  /// FPS counter. Requiring exactly the trigger's modifiers instead breaks two things that work --
+  /// a button held while a modifier is down for something else, and a binding whose key is itself
+  /// a modifier, which sets its own bit by being held. So the most particular binding wins: a
+  /// trigger yields only to another binding on the same key that names all of its modifiers and
+  /// more, and has them all held.
+  auto ModsSatisfy(const Trigger &, const int mods) const -> bool;
   /// @brief Runs the actions registered for the event that has just arrived.
   ///
   /// Told which event it was rather than reading the pulse flags, because those are sticky for the
   /// whole frame: a press and a release inside one frame left the press flag still set when the
   /// release arrived, and the release actions never ran at all. A click faster than a frame then
-  /// looked to a script like a button that went down and stayed down.
+  /// looked to a game like a button that went down and stayed down.
   auto FireAction(unsigned char, const bool) -> void;
   auto RegisterSequence(std::string, InputAction, std::string = "") -> ActionID;
   static auto GLFWInputToIndex(int) -> unsigned char;

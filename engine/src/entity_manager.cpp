@@ -1,28 +1,47 @@
 #include <algorithm>
 #include <bit>
 #include <component.hpp>
-#include <component_cloner.hpp>
 #include <component_type.hpp>
 #include <entity_manager.hpp>
 #include <id.hpp>
 #include <profiler.hpp>
+#include <spdlog/spdlog.h>
 #include <string>
 #include <transform.hpp>
 #include <unordered_map>
 #include <utility>
-#include <variant>
 #include <vector>
 namespace kuki {
+namespace {
+  /// @brief A signature as the names of its components, for saying which archetype was missing.
+  auto Describe(const ComponentMask &mask) -> std::string {
+    std::string names;
+    for (size_t id = 0; id < MAX_COMPONENTS; ++id) {
+      if (!mask[id])
+        continue;
+      if (!names.empty())
+        names += ", ";
+      names += id < ENGINE_COMPONENT_COUNT ? Component::GetTypeName(static_cast<ComponentType>(id)) : "game component " + std::to_string(id - FIRST_GAME_COMPONENT);
+    }
+    return names.empty() ? "nothing" : names;
+  }
+} // namespace
+auto EntityManager::Declare(const ArchetypeSpec &spec) -> void {
+  archetypeRegistry.Declare(spec);
+}
+auto EntityManager::IsDeclared(const ComponentMask &mask) const -> bool {
+  return archetypeRegistry.Find(mask).has_value();
+}
 auto EntityManager::AddChild(const EntityID parent, const EntityID child, bool keepWorld) -> bool {
   if (!IsEntity(parent) || !IsEntity(child))
     return false;
-  if (idToChildren.find(parent) == idToChildren.end())
-    idToChildren[parent] = {};
-  rootEntities.erase(child);
-  AddComponent<Transform>(child);
-  AddComponent<Transform>(parent);
   auto *childTransform = GetComponent<Transform>(child);
   auto *parentTransform = GetComponent<Transform>(parent);
+  if (!childTransform || !parentTransform) {
+    spdlog::warn("[EntityManager] {} cannot be put under {}: both need a transform", GetName(child), GetName(parent));
+    return false;
+  }
+  rootEntities.erase(child);
   childTransform->parent = parent;
   childTransform->Reparent(parentTransform, keepWorld);
   idToChildren[parent].insert(child);
@@ -31,46 +50,68 @@ auto EntityManager::AddChild(const EntityID parent, const EntityID child, bool k
   return true;
 }
 auto EntityManager::Clear() -> void {
-  archetypeRegistry.Clear();
+  archetypeRegistry.ClearRows();
   idToChildren.clear();
   idToLocation.clear();
   idToName.clear();
   idToParent.clear();
   nameToId.clear();
   rootEntities.clear();
-  scriptStore.Clear();
   transformUpdateOrder.clear();
   transformOrderDirty = false;
   transformCacheValid = false;
+  ++structuralGeneration;
 }
 auto EntityManager::CopyFrom(const EntityManager &other, const EntityID otherId) -> EntityID {
   if (!otherId || !other.IsEntity(otherId))
     return EntityID::Invalid;
-  const auto id = Create(other.GetName(otherId));
-  auto cloner = ComponentCloner(*this, id);
-  other.ForEachComponent(otherId, [&](ConstComponentVariant component) {
-    std::visit(cloner, component);
-  });
+  const auto id = Create(other.GetSignature(otherId), other.GetName(otherId));
+  if (!id)
+    return EntityID::Invalid;
+  CopyComponents(other, otherId, id);
   other.ForEachChild(otherId, [&](const EntityID otherChildId) {
-    const auto childId = CopyFrom(other, otherChildId);
-    AddChild(id, childId);
+    if (const auto childId = CopyFrom(other, otherChildId); childId)
+      AddChild(id, childId);
   });
   return id;
 }
 auto EntityManager::CopyTo(const EntityID id, EntityManager &other) const -> EntityID {
   return other.CopyFrom(*this, id);
 }
-auto EntityManager::Create(std::string name) -> EntityID {
+auto EntityManager::CopyComponents(const EntityManager &other, const EntityID from, const EntityID to) -> ComponentMask {
+  const auto source = other.idToLocation.find(from);
+  const auto destination = idToLocation.find(to);
+  if (source == other.idToLocation.end() || destination == idToLocation.end())
+    return {};
+  const auto *sourceTable = other.archetypeRegistry.GetTable(source->second.table);
+  auto *destinationTable = archetypeRegistry.GetTable(destination->second.table);
+  for (size_t id = 0; id < MAX_COMPONENTS; ++id)
+    if (const auto *sourceColumn = sourceTable->GetColumn(static_cast<ComponentId>(id)))
+      if (auto *destinationColumn = destinationTable->GetColumn(static_cast<ComponentId>(id)))
+        destinationColumn->CopyRow(*sourceColumn, source->second.row, destination->second.row);
+  // A copied transform still names the parent it had over there, which is not an entity here. The
+  // hierarchy is put back by whoever is copying it, with `AddChild`.
+  if (auto *transform = GetComponent<Transform>(to); transform && !idToParent.contains(to))
+    transform->parent = EntityID::Invalid;
+  return sourceTable->signature & ~destinationTable->signature;
+}
+auto EntityManager::Create(const ComponentMask &mask, std::string name) -> EntityID {
+  const auto table = archetypeRegistry.Find(mask);
+  if (!table) {
+    spdlog::error("[EntityManager] No archetype of {} was declared, so '{}' was not made", Describe(mask), name);
+    return EntityID::Invalid;
+  }
   const auto id = nextId++;
   if (!name.empty()) {
     idToName[id] = name;
     nameToId.insert({std::move(name), id});
   }
-  auto *archetype = archetypeRegistry.GetOrCreateArchetype(ComponentMask{});
-  archetype->entities.push_back(id);
-  idToLocation[id] = {ComponentMask{}, archetype->entities.size() - 1};
+  const auto row = archetypeRegistry.Append(*table, id);
+  idToLocation[id] = {*table, row};
   rootEntities.insert(id);
   transformUpdateOrder.push_back(id);
+  // A row added to a table can move the whole column, and the transform cache points into it.
+  ++structuralGeneration;
   return id;
 }
 auto EntityManager::Delete(const EntityID id) -> bool {
@@ -80,7 +121,7 @@ auto EntityManager::Delete(const EntityID id) -> bool {
     pendingStructuralChanges.push_back([this, id] { Delete(id); });
     return true;
   }
-  if (!RemoveAllComponents(id))
+  if (!IsEntity(id))
     return false;
   if (auto pit = idToParent.find(id); pit != idToParent.end())
     if (auto cit = idToChildren.find(pit->second); cit != idToChildren.end())
@@ -88,38 +129,24 @@ auto EntityManager::Delete(const EntityID id) -> bool {
   ForEachChild(id, [this](const EntityID childId) {
     Delete(childId);
   });
-  if (auto it = idToLocation.find(id); it != idToLocation.end()) {
-    const auto row = it->second.row;
-    const auto displaced = archetypeRegistry.RemoveEntity(id, it->second);
-    idToLocation.erase(id);
-    if (displaced)
-      idToLocation[displaced].row = row;
-  }
+  const auto location = idToLocation.at(id);
+  const auto displaced = archetypeRegistry.Remove(location);
+  idToLocation.erase(id);
+  if (displaced)
+    idToLocation[displaced].row = location.row;
   DeleteRecords(id);
+  ++structuralGeneration;
   return true;
 }
 auto EntityManager::GetComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
   std::vector<ComponentType> components;
-  if (auto it = idToLocation.find(id); it != idToLocation.end()) {
-    const auto &mask = it->second.signature;
-    Component::ForEachSetType(mask, [&](const ComponentType type) {
-      components.emplace_back(type);
-    });
-  }
+  Component::ForEachSetType(GetSignature(id), [&](const ComponentType type) {
+    components.emplace_back(type);
+  });
   return components;
 }
 auto EntityManager::GetCount() const -> size_t {
   return idToLocation.size();
-}
-auto EntityManager::GetMissingComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
-  std::vector<ComponentType> components;
-  if (auto it = idToLocation.find(id); it != idToLocation.end()) {
-    const auto &mask = it->second.signature;
-    Component::ForEachUnsetType(mask, [this, &id, &components](const ComponentType type) {
-      components.emplace_back(type);
-    });
-  }
-  return components;
 }
 auto EntityManager::GetName(const EntityID id) const -> std::string {
   if (auto it = idToName.find(id); it != idToName.end())
@@ -142,6 +169,11 @@ auto EntityManager::GetParent(const EntityID id) const -> EntityID {
     return it->second;
   return EntityID::Invalid;
 }
+auto EntityManager::GetSignature(const EntityID id) const -> ComponentMask {
+  if (auto it = idToLocation.find(id); it != idToLocation.end())
+    return archetypeRegistry.GetTable(it->second.table)->signature;
+  return {};
+}
 auto EntityManager::HasChildren(const EntityID id) const -> bool {
   if (auto it = idToChildren.find(id); it != idToChildren.end())
     return it->second.size() > 0;
@@ -157,13 +189,12 @@ auto EntityManager::IsEntity(const std::string &name) const -> bool {
   return false;
 }
 auto EntityManager::HasComponentAnywhere(const ComponentType type) const -> bool {
-  const auto bit = static_cast<size_t>(type);
-  if (bit >= ComponentMask{}.size())
-    return false;
-  for (const auto &[id, location] : idToLocation)
-    if (location.signature[bit])
-      return true;
-  return false;
+  const auto id = static_cast<size_t>(type);
+  auto found = false;
+  archetypeRegistry.ForEachTable([&](const ArchetypeTable &table) {
+    found = found || (table.signature[id] && !table.entities.empty());
+  });
+  return found;
 }
 auto EntityManager::RemoveChild(const EntityID parent, const EntityID child) -> bool {
   if (auto it = idToChildren.find(parent); it != idToChildren.end()) {
@@ -180,35 +211,6 @@ auto EntityManager::RemoveChild(const EntityID parent, const EntityID child) -> 
   rootEntities.insert(child);
   transformOrderDirty = true;
   return true;
-}
-auto EntityManager::RemoveAllComponents(const EntityID id) -> bool {
-  auto it = idToLocation.find(id);
-  if (it == idToLocation.end())
-    return false;
-  if (forEachDepth > 0) {
-    pendingStructuralChanges.push_back([this, id] { RemoveAllComponents(id); });
-    return true;
-  }
-  if (it->second.signature.test(static_cast<size_t>(ComponentType::Script)))
-    scriptStore.Remove(id);
-  MoveToArchetype(id, ComponentMask{});
-  return true;
-}
-auto EntityManager::RemoveScript(const EntityID id, const std::type_index type) -> bool {
-  if (forEachDepth > 0) {
-    pendingStructuralChanges.push_back([this, id, type] { RemoveScript(id, type); });
-    return false;
-  }
-  const auto removed = scriptStore.Remove(id, type);
-  if (removed && !scriptStore.Has<Script>(id)) {
-    auto it = idToLocation.find(id);
-    if (it != idToLocation.end() && it->second.signature.test(static_cast<size_t>(ComponentType::Script))) {
-      auto newMask = it->second.signature;
-      newMask.reset(static_cast<size_t>(ComponentType::Script));
-      MoveToArchetype(id, newMask);
-    }
-  }
-  return removed;
 }
 auto EntityManager::Rename(const EntityID id, std::string nameNew) -> bool {
   if (auto it = idToName.find(id); it != idToName.end()) {
@@ -262,14 +264,6 @@ auto EntityManager::DrainPendingStructuralChanges() const -> void {
   for (auto &change : pending)
     change();
 }
-auto EntityManager::MoveToArchetype(const EntityID id, const ComponentMask &newMask) -> void {
-  auto &location = idToLocation.at(id);
-  const auto result = archetypeRegistry.MoveEntity(id, location, newMask);
-  location = result.location;
-  if (result.displacedEntity)
-    idToLocation[result.displacedEntity].row = result.displacedRow;
-  ++structuralGeneration;
-}
 auto EntityManager::RebuildTransformOrder() -> void {
   KUKI_PROFILE_SCOPE("RebuildTransformOrder");
   transformOrderDirty = false;
@@ -287,8 +281,10 @@ void EntityManager::AppendTransformOrder(const EntityID id) {
       AppendTransformOrder(childId);
 }
 auto EntityManager::IsTransformCacheStale() const -> bool {
-  // `Create` appends to the order without touching the generation, which leaves the existing rows
-  // valid but the cache short; comparing sizes is what catches that.
+  // Making an entity both lengthens the order and moves the generation on, and either would be
+  // enough: a new row can move the column the cache points into, which is what the generation says,
+  // and the cache is then short by one, which is what comparing sizes says. Both are kept because
+  // they guard different things -- the size the hierarchy's order, the generation the columns.
   return !transformCacheValid || transformCacheGeneration != structuralGeneration || transformCache.size() != transformUpdateOrder.size();
 }
 auto EntityManager::RebuildTransformCache() -> void {
@@ -317,9 +313,9 @@ auto EntityManager::RebuildTransformCache() -> void {
       transformSubtree[parent] = std::max<uint32_t>(transformSubtree[parent], static_cast<uint32_t>(row - parent) + transformSubtree[row]);
     }
   // A rebuild follows something that moved entities or rewrote the hierarchy, and either can
-  // change a world matrix, so everything is recomputed once. This is also what makes a newly
-  // added transform correct without its own flag: adding the component moved the entity between
-  // archetypes, which is what brought us here.
+  // change a world matrix, so everything is recomputed once. This is also what makes a new
+  // entity's transform correct without its own flag: making it added a row, which is what
+  // brought us here.
   transformDirtyBits.assign((count + 63) / 64, ~0ull);
   if (const auto tail = count % 64; tail != 0)
     transformDirtyBits.back() = (1ull << tail) - 1ull;

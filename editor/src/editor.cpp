@@ -20,7 +20,6 @@
 #include <camera_controller.hpp>
 #include <camera_type.hpp>
 #include <component.hpp>
-#include <component_reflection.hpp>
 #include <cstdint>
 #include <editor.hpp>
 #include <engine_config.hpp>
@@ -28,7 +27,6 @@
 #include <field.hpp>
 #include <filesystem>
 #include <gl_render_target.hpp>
-#include <gl_skybox.hpp>
 #include <gl_texture.hpp>
 #include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float3.hpp>
@@ -49,11 +47,11 @@
 #include <material_type.hpp>
 #include <model_asset.hpp>
 #include <post_process.hpp>
+#include <render_binding.hpp>
 #include <profiler.hpp>
 #include <property_displayer.hpp>
 #include <rendering_system.hpp>
 #include <scene_serializer.hpp>
-#include <script_registry.hpp>
 #include <shader_asset.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
@@ -319,6 +317,8 @@ auto PanelDockId(const int slot) -> ImGuiID {
 /// alpha where they are used; only the hue is said here.
 constexpr ImVec4 RUNNING_TINT(.16f, .42f, .22f, 1.f);
 constexpr ImVec4 PAUSED_TINT(.5f, .38f, .1f, 1.f);
+/// @brief The header of a component the running backend can do nothing with.
+constexpr ImVec4 UNSUPPORTED_TINT(.72f, .36f, .08f, 1.f);
 /// @brief The background a panel should have for a running/paused state, at the panels' own alpha.
 auto StateTint(const bool running, const bool paused) -> ImVec4 {
   const auto &panel = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
@@ -347,27 +347,14 @@ auto ComponentIcon(const ComponentType type) -> const char * {
     return ICON_LC_FRAME;
   case ComponentType::Camera:
     return ICON_LC_VIDEO;
-  case ComponentType::DXMaterial:
-  case ComponentType::GLMaterial:
   case ComponentType::MaterialHandle:
   case ComponentType::ModelMaterialHandle:
     return ICON_LC_PALETTE;
-  case ComponentType::GLBuffer:
-    return ICON_LC_DATABASE;
-  case ComponentType::GLComputeShader:
-  case ComponentType::GLLitShader:
-  case ComponentType::GLUnlitShader:
-    return ICON_LC_SQUARE_FUNCTION;
-  case ComponentType::GLMesh:
   case ComponentType::MeshHandle:
   case ComponentType::ModelMeshHandle:
     return ICON_LC_BOX;
-  case ComponentType::GLSkybox:
   case ComponentType::SkyboxHandle:
     return ICON_LC_GLOBE;
-  case ComponentType::GLRenderTarget:
-    return ICON_LC_MONITOR;
-  case ComponentType::GLTexture:
   case ComponentType::TextureHandle:
     return ICON_LC_IMAGE;
   case ComponentType::IndirectLighting:
@@ -376,8 +363,8 @@ auto ComponentIcon(const ComponentType type) -> const char * {
     return ICON_LC_LIGHTBULB;
   case ComponentType::ParticleEmitter:
     return ICON_LC_SPARKLES;
-  case ComponentType::Script:
-    return ICON_LC_FILE_CODE;
+  case ComponentType::RenderBinding:
+    return ICON_LC_MONITOR;
   case ComponentType::Skeleton:
     return ICON_LC_BONE;
   case ComponentType::Transform:
@@ -389,6 +376,35 @@ auto ComponentIcon(const ComponentType type) -> const char * {
   }
   return ICON_LC_CIRCLE_DASHED;
 }
+/// @brief A kind of entity the Hierarchy's New menu makes: a name, an icon, and the archetype.
+///
+/// `singleton` is the scene setting it carries, for the two checks the menu makes before offering
+/// it, and `Transform` for a kind that carries none.
+///
+/// `asset`, where there is one, is what the kind is placed from instead of being made empty. A mesh
+/// made empty had no mesh, no material and a bounding box with nothing in it, and nothing left in
+/// the editor could give it any of the three: the handles have no rows in the inspector, and adding
+/// components is gone. It drew as the renderer's stand-in cube and sat in the scene's bounds as
+/// nothing. Placed from the Cube primitive, as one dropped from the asset browser is, it arrives
+/// with all three.
+struct CreatableKind {
+  const char *label;
+  const char *icon;
+  ComponentType singleton;
+  auto (*mask)() -> ComponentMask;
+  const char *asset{};
+};
+inline constexpr CreatableKind CREATABLE[]{
+  {"Empty", ICON_LC_CIRCLE_DASHED, ComponentType::Transform, &EmptyNode::Mask},
+  {"Mesh", ICON_LC_BOX, ComponentType::Transform, &MeshObject::Mask, "Cube"},
+  {"Camera", ICON_LC_VIDEO, ComponentType::Transform, &CameraObject::Mask},
+  {"Light", ICON_LC_LIGHTBULB, ComponentType::Transform, &LightObject::Mask},
+  {"Particle Emitter", ICON_LC_SPARKLES, ComponentType::ParticleEmitter, &ParticleObject::Mask},
+  {"Skybox", ICON_LC_GLOBE, ComponentType::Transform, &SkyboxObject::Mask},
+  {"Atmosphere Sky", ICON_LC_SUNRISE, ComponentType::AtmosphereSky, &AtmosphereSkyObject::Mask},
+  {"Volumetric Clouds", ICON_LC_CLOUDY, ComponentType::VolumetricClouds, &VolumetricCloudsObject::Mask},
+  {"Volumetric Fog", ICON_LC_CLOUD_FOG, ComponentType::VolumetricFog, &VolumetricFogObject::Mask},
+};
 /// @brief The picture that stands for an entity in the Hierarchy: that of the most telling thing it has.
 ///
 /// Nearly everything has a transform and a bounding box, so those say nothing; what an entity is
@@ -396,7 +412,7 @@ auto ComponentIcon(const ComponentType type) -> const char * {
 /// the first one found is the answer. Something with none of them is a plain node -- an empty
 /// parent, or a bone.
 auto EntityIcon(const std::vector<ComponentType> &types) -> const char * {
-  static constexpr ComponentType TELLING[]{ComponentType::Camera, ComponentType::Light, ComponentType::ParticleEmitter, ComponentType::Animator, ComponentType::Script, ComponentType::AtmosphereSky, ComponentType::VolumetricClouds, ComponentType::VolumetricFog, ComponentType::SkyboxHandle, ComponentType::IndirectLighting, ComponentType::AntiAliasing, ComponentType::ModelMeshHandle, ComponentType::MeshHandle};
+  static constexpr ComponentType TELLING[]{ComponentType::Camera, ComponentType::Light, ComponentType::ParticleEmitter, ComponentType::Animator, ComponentType::AtmosphereSky, ComponentType::VolumetricClouds, ComponentType::VolumetricFog, ComponentType::SkyboxHandle, ComponentType::IndirectLighting, ComponentType::AntiAliasing, ComponentType::ModelMeshHandle, ComponentType::MeshHandle};
   for (const auto telling : TELLING)
     if (std::ranges::find(types, telling) != types.end())
       return ComponentIcon(telling);
@@ -445,12 +461,13 @@ auto EndWindow() -> void {
 }
 } // namespace
 Editor::Editor()
-  : SystemApplication<AnimationSystem, ScriptingSystem, PhysicsSystem, RenderingSystem>({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api}) {
+  : SystemApplication({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api}) {
   context.pendingApi = GetDescription().api;
-  // Before anything starts, so that no game script is started by the scene merely being open. An
+  // Before anything starts, so that no tick is run on the scene merely for being open. An
   // application is playing unless told otherwise, which is right for a game and wrong for this.
   SetPlayState(PlayState::Stopped);
-  SetHosting(true);
+  for (const auto &spec : GetArchetypes())
+    entityClipboard.Declare(spec);
 }
 auto Editor::SaveGraphicsConfig() -> void {
   auto config = EngineConfig::Load();
@@ -537,29 +554,14 @@ auto Editor::Start() -> void {
     }, "Step through the irradiance probe visualisations");
   }
 }
-auto Editor::OpenStartGame() -> void {
-  if (startGame.empty())
-    return;
-  gamePaths = FindGames();
-  const auto wanted = std::ranges::find_if(gamePaths, [this](const std::filesystem::path &path) {
-    const auto name = path.stem().string();
-    return std::ranges::search(name, startGame, [](const char a, const char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); }).begin() != name.end();
-  });
-  if (wanted == gamePaths.end())
-    spdlog::error("[Editor] No game library matching {} was found", startGame);
-  else {
-    OpenGame(*wanted);
-    if (startPlaying)
-      BeginPlay();
-  }
-  startGame.clear();
-}
 auto Editor::Update(const float deltaTime) -> void {
   KUKI_PROFILE_SCOPE("Editor");
-  // On the first frame rather than in `Start`. Scripts start after `Start` returns, the camera
-  // controller among them, and playing before it has registered its keys means the game takes them
-  // first and the editor's own bindings are what the session then undoes.
-  OpenStartGame();
+  // On the first frame rather than in `Start`, so that the scene's first frame is drawn stopped and
+  // the camera controller has its keys before play begins a session that would take them.
+  if (startPlaying) {
+    startPlaying = false;
+    BeginPlay();
+  }
   UpdateIO();
   UpdateView();
 }
@@ -601,19 +603,9 @@ auto Editor::SetResolution(const int width, const int height) -> void {
   if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
     renderingSystem->SetResolution(width, height);
 }
-auto Editor::GetMissingEntityComponents(const EntityID id) const -> std::vector<ComponentType> {
-  if (auto scene = GetScene(); scene)
-    return scene->GetMissingEntityComponents(id);
-  return {};
-}
 auto Editor::HasComponentAnywhere(const ComponentType type) const -> bool {
   if (auto scene = GetScene(); scene)
     return scene->HasComponentAnywhere(type);
-  return false;
-}
-auto Editor::RemoveEntityScript(const EntityID id, const std::type_index type) -> bool {
-  if (auto scene = GetScene(); scene)
-    return scene->RemoveEntityScript(id, type);
   return false;
 }
 auto Editor::BeginKeyCapture() -> void {
@@ -777,8 +769,8 @@ auto Editor::UpdateView() -> void {
   DisplayProperties();
   DisplaySettings();
   DisplayHelp();
-  // After the frame's panels rather than where the request was made, which was inside a script: the
-  // scene that script is in is about to be replaced.
+  // After the frame's panels rather than where the request was made, which was inside a system: the
+  // scene it is in is about to be replaced.
   if (TakeStopRequest())
     EndPlay();
   if (wasPicking && context.state == EditorState::PickingAsset && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
@@ -801,8 +793,8 @@ auto Editor::UpdateView() -> void {
 auto Editor::ApplyPickedAsset(const AssetID assetId) -> void {
   switch (context.pickingTarget) {
   case PickingTarget::MaterialTexture: {
-    auto *material = GetEntityComponent<GLMaterial>(context.pickingEntityId);
-    if (material) {
+    auto *binding = GetEntityComponent<RenderBinding>(context.pickingEntityId);
+    if (auto *material = binding && binding->glMaterialBound ? &binding->glMaterial : nullptr; material) {
       const auto texture = PreviewAsset(assetId);
       if (texture) {
         const auto handle = static_cast<unsigned int>(texture->GetTextureHandle());
@@ -834,11 +826,9 @@ auto Editor::ApplyPickedAsset(const AssetID assetId) -> void {
     break;
   }
   case PickingTarget::Skybox: {
+    // Into the handle the entity has. It used to be given one if it had none, and an entity's
+    // components are its archetype's now; an entity with no sky to set is not offered the picker.
     auto *handle = GetEntityComponent<SkyboxHandle>(context.pickingEntityId);
-    if (!handle)
-      handle = AddEntityComponent<SkyboxHandle>(context.pickingEntityId);
-    if (!GetEntityComponent<GLSkybox>(context.pickingEntityId))
-      AddEntityComponent<GLSkybox>(context.pickingEntityId);
     if (handle && handle->assetId != assetId) {
       handle->assetId = assetId;
       handle->resourceId = EntityID::Invalid;
@@ -1122,6 +1112,14 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
     ImGui::OpenPopup("##EntityContextMenu");
     entityContextMenuTriggered = true;
   }
+  // Dragged, the row is the entity, to be dropped on a field that takes one: an inverse kinematics
+  // goal's target. After everything above that asks about the row, since a drag's tooltip is a
+  // window of its own and the row would no longer be the last thing drawn.
+  if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+    ImGui::SetDragDropPayload("##EntityPayload", &id, sizeof(EntityID));
+    ImGui::Text("%s %s", EntityIcon(GetEntityComponentTypes(id)), entityNameCStr);
+    ImGui::EndDragDropSource();
+  }
   if (ImGui::BeginPopup("##EntityContextMenu")) {
     if (ImGui::MenuItem("Copy"))
       CopySelectedEntities();
@@ -1177,12 +1175,31 @@ auto Editor::DisplayHierarchy() -> void {
   });
   displayedEntities = std::move(displayedEntitiesNext);
   if (!entityContextMenuTriggered && ImGui::BeginPopupContextWindow("CreateMenu", POPUP_WINDOW_FLAGS)) {
-    if (ImGui::MenuItem("New")) {
-      const auto id = CreateEntity("Entity");
-      context.state = EditorState::Rename;
-      context.renamedEntityId = id;
-      spdlog::info("[Editor] Created a new entity");
-      ImGui::CloseCurrentPopup();
+    if (ImGui::BeginMenu("New")) {
+      // What an entity is made of is chosen here and kept: nothing adds a component to it later.
+      // So the choice is of a kind of entity, not of an empty one to fill in.
+      for (const auto &kind : CREATABLE) {
+        // A scene setting the scene already has is not offered again, and nor is one the running
+        // backend cannot act on -- see the same rule in the property panels.
+        const auto taken = kind.singleton != ComponentType::Transform && HasSceneSingleton(kind.singleton);
+        const auto supported = kind.singleton == ComponentType::Transform || IsSupported(kind.singleton);
+        if (taken || !supported)
+          continue;
+        if (ImGui::MenuItem(IconLabel(kind.icon, kind.label).c_str())) {
+          auto id = EntityID::Invalid;
+          if (kind.asset) {
+            id = InstantiateAsset(kind.asset);
+            if (id)
+              RenameEntity(id, kind.label);
+          } else
+            id = CreateEntity(kind.mask(), kind.label);
+          context.state = EditorState::Rename;
+          context.renamedEntityId = id;
+          spdlog::info("[Editor] Created a new {}", kind.label);
+          ImGui::CloseCurrentPopup();
+        }
+      }
+      ImGui::EndMenu();
     }
     if (ImGui::MenuItem("Paste", nullptr, false, !entityClipboardRoots.empty())) {
       PasteEntities();
@@ -1249,23 +1266,15 @@ auto Editor::AttachSettingsEntity() -> EntityID {
   // Reused rather than replaced when one is already there, so reloading a scene does not throw away
   // tuning that was in the middle of being done.
   //
-  // Each settings component is then added only if it is missing, rather than as a block on a newly
-  // created entity. An entity that already carries one of them and not the other is the case that
-  // matters: a settings entity outlives the addition of a new setting to this list, and a person
-  // who removed one deliberately gets it back the next time a scene is loaded either way.
+  // Made as an `EditorSettings` when there is none, which has every setting on it; one found already
+  // is whatever it was made as, and keeps it.
   auto id = EntityID::Invalid;
   ForEachEntity<IndirectLighting>([&id](const EntityID entity, IndirectLighting *) {
     if (!id)
       id = entity;
   });
   if (!id)
-    id = CreateEntity("Settings");
-  if (!id)
-    return id;
-  if (!GetEntityComponent<IndirectLighting>(id))
-    AddEntityComponent<IndirectLighting>(id);
-  if (!GetEntityComponent<AntiAliasing>(id))
-    AddEntityComponent<AntiAliasing>(id);
+    id = EditorWorld::Create<EditorSettings>(*this, "Settings");
   return id;
 }
 auto Editor::AttachCameraController() -> EntityID {
@@ -1278,8 +1287,8 @@ auto Editor::AttachCameraController() -> EntityID {
     return cameraId;
   context.cameraEntity = cameraId;
   SetActiveCamera(cameraId);
-  if (!GetEntityComponent<CameraController>(cameraId))
-    AddEntityComponent<CameraController>(cameraId);
+  if (auto *controller = GetSystem<CameraController>(); controller)
+    controller->SetEntity(cameraId);
   return cameraId;
 }
 auto Editor::CopySelectedEntities() -> void {
@@ -1413,21 +1422,6 @@ auto Editor::DisplayMenuBar() -> void {
   if (ImGui::Button(ICON_LC_CIRCLE_QUESTION_MARK " Help") && help)
     help->open = !help->open;
   ImGui::SameLine();
-  if (gamePaths.empty() && loadedGames.empty())
-    gamePaths = FindGames();
-  const auto name = currentGame >= 0 ? loadedGames[currentGame].module->name : "No game";
-  ImGui::SetNextItemWidth(ImGui::CalcTextSize("A longer game name").x);
-  ImGui::BeginDisabled(state != PlayState::Stopped);
-  if (ImGui::BeginCombo("##Game", name)) {
-    if (gamePaths.empty())
-      ImGui::TextDisabled("No game libraries were found.\nThey are built only when BUILD_SHARED_LIBS is on.");
-    for (const auto &path : gamePaths)
-      if (ImGui::Selectable(path.stem().string().c_str()))
-        OpenGame(path);
-    ImGui::EndCombo();
-  }
-  ImGui::EndDisabled();
-  ImGui::SameLine();
   // One button for play, pause and resume, since only one of them ever applies: it says what
   // pressing it would do now. Either key presses it -- the play key from stopped, the pause key
   // from then on, where the play key means stop.
@@ -1523,44 +1517,18 @@ auto Editor::DisplayHelp() -> void {
   }
   EndWindow();
 }
-auto Editor::RemoveComponent(const EntityID id, const ComponentType type) -> bool {
-  // A backend's material is not something an entity has in its own right. The renderer makes it,
-  // every frame, for whatever carries a material handle, and puts back one that has gone missing --
-  // so removing it alone did nothing that lasted: it was there again on the next frame, and the
-  // panel showed a Remove that appeared not to work. What the request means is "this is to have no
-  // material", and what says that is the handle, so the handle goes with it.
-  if (type == ComponentType::DXMaterial || type == ComponentType::GLMaterial) {
-    RemoveEntityComponent<MaterialHandle>(id);
-    RemoveEntityComponent<ModelMaterialHandle>(id);
+auto Editor::IsSupported(const ComponentType type) const -> bool {
+  switch (type) {
+  case ComponentType::AtmosphereSky:
+    return context.capabilities.proceduralSky;
+  case ComponentType::VolumetricClouds:
+  case ComponentType::VolumetricFog:
+    return context.capabilities.volumetrics;
+  case ComponentType::ParticleEmitter:
+    return context.capabilities.particles;
+  default:
+    return true;
   }
-  return RemoveComponentByType(*this, id, type);
-}
-auto Editor::OpenGame(const std::filesystem::path &path) -> void {
-  if (GetPlayState() != PlayState::Stopped)
-    return;
-  auto index = -1;
-  for (size_t i = 0; i < loadedGames.size(); ++i)
-    if (loadedGames[i].path == path)
-      index = static_cast<int>(i);
-  if (index < 0) {
-    const auto game = LoadGame(path);
-    if (!game.module)
-      return;
-    loadedGames.push_back(game);
-    index = static_cast<int>(loadedGames.size() - 1);
-  }
-  // The game builds a scene of its own and says nothing about what was there before, so what was
-  // there is cleared first: otherwise it is built on top of whatever was open.
-  context.selectedEntities.clear();
-  context.selectedEntityId = EntityID::Invalid;
-  context.state = EditorState::Normal;
-  displayedEntities.clear();
-  DeleteEntities();
-  loadedGames[index].module->setup(*this);
-  currentGame = index;
-  AttachCameraController();
-  AttachSettingsEntity();
-  spdlog::info("[Editor] Opened game {}", loadedGames[index].module->name);
 }
 auto Editor::BeginPlay() -> void {
   if (GetPlayState() != PlayState::Stopped)
@@ -1578,8 +1546,6 @@ auto Editor::BeginPlay() -> void {
 auto Editor::EndPlay() -> void {
   if (GetPlayState() == PlayState::Stopped)
     return;
-  if (auto *scripting = GetSystem<ScriptingSystem>(); scripting)
-    scripting->ShutdownPlayed();
   SetPlayState(PlayState::Stopped);
   if (!playSnapshot.empty())
     LoadScene(playSnapshot);
@@ -1647,7 +1613,6 @@ auto Editor::DisplayProfiler() -> void {
   EndWindow();
 }
 auto Editor::DisplayProperties() -> void {
-  static constexpr auto POPUP_WINDOW_FLAGS = ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight;
   const auto expanded = BeginWindow("Properties");
   if (!expanded || !context.selectedEntityId) {
     if (expanded)
@@ -1661,86 +1626,29 @@ auto Editor::DisplayProperties() -> void {
     if (IsHandleComponent(componentType))
       continue;
     ImGui::PushID(static_cast<int>(i));
-    if (componentType == ComponentType::Script) {
-      auto scripts = GetEntityComponent<Script>(context.selectedEntityId);
-      auto scriptRemoved = false;
-      for (size_t s = 0; s < scripts.size(); ++s) {
-        auto *script = scripts[s];
-        if (!script)
-          continue;
-        ImGui::PushID(static_cast<int>(s));
-        const auto scriptOpen = field::Fold(IconLabel(ComponentIcon(ComponentType::Script), script->GetTypeName()).c_str(), true);
-        if (ImGui::BeginPopupContextItem()) {
-          if (ImGui::MenuItem("Remove"))
-            scriptRemoved = RemoveEntityScript(context.selectedEntityId, script->GetTypeIndex());
-          ImGui::EndPopup();
-        }
-        if (!scriptRemoved && scriptOpen)
-          DisplayProperties(ComponentVariant{script});
-        ImGui::PopID();
-        if (scriptRemoved)
-          break;
-      }
-      ImGui::PopID();
-      if (scriptRemoved) {
-        EndWindow();
-        return;
-      }
-      continue;
-    }
     const auto name = Component::GetTypeName(componentType);
-    const auto open = field::Fold(IconLabel(ComponentIcon(componentType), name).c_str(), true);
-    auto removed = false;
-    if (ImGui::BeginPopupContextItem()) {
-      if (ImGui::MenuItem("Remove"))
-        removed = RemoveComponent(context.selectedEntityId, componentType);
-      ImGui::EndPopup();
+    // A component the running backend cannot act on is headed in orange. Its section is empty --
+    // there is nothing to edit that would reach anything -- and without a colour that would look
+    // like a component with no properties, or one that had failed to draw. The New menu does not
+    // offer these, but a scene file carries them onto whichever backend opens it.
+    const auto unsupported = !IsSupported(componentType);
+    if (unsupported) {
+      const auto alpha = ImGui::GetStyleColorVec4(ImGuiCol_Header).w;
+      ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(UNSUPPORTED_TINT.x, UNSUPPORTED_TINT.y, UNSUPPORTED_TINT.z, alpha));
+      ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(UNSUPPORTED_TINT.x * 1.15f, UNSUPPORTED_TINT.y * 1.15f, UNSUPPORTED_TINT.z * 1.15f, alpha));
+      ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(UNSUPPORTED_TINT.x * 1.3f, UNSUPPORTED_TINT.y * 1.3f, UNSUPPORTED_TINT.z * 1.3f, alpha));
     }
-    if (!removed && open) {
+    const auto open = field::Fold(IconLabel(ComponentIcon(componentType), name).c_str(), true);
+    if (unsupported) {
+      ImGui::PopStyleColor(3);
+      ImGui::SetItemTooltip("The graphics backend that is running cannot act on this component.");
+    }
+    if (open) {
       auto componentOpt = GetEntityComponent(context.selectedEntityId, componentType);
       if (componentOpt.has_value())
         DisplayProperties(componentOpt.value());
     }
     ImGui::PopID();
-    if (removed) {
-      EndWindow();
-      return;
-    }
-  }
-  if (ImGui::BeginPopupContextWindow("AddComponent", POPUP_WINDOW_FLAGS)) {
-    auto availableComponents = GetMissingEntityComponents(context.selectedEntityId);
-    for (const auto &compType : availableComponents) {
-      // Offered only where it reaches something. A computed sky on the OpenGL backend would sit
-      // in the hierarchy looking like the scene had one while the picture showed the flat
-      // background, which reads as a broken renderer rather than an absent feature -- the same
-      // argument `RendererCapabilities` makes about the indirect lighting sliders.
-      if (compType == ComponentType::AtmosphereSky && !context.capabilities.proceduralSky)
-        continue;
-      if ((compType == ComponentType::VolumetricClouds || compType == ComponentType::VolumetricFog) && !context.capabilities.volumetrics)
-        continue;
-      if (compType == ComponentType::ParticleEmitter && !context.capabilities.particles)
-        continue;
-      if (!IsHandleComponent(compType) && !Component::IsGL(compType) && compType != ComponentType::Script && !HasSceneSingleton(compType) && ImGui::MenuItem(IconLabel(ComponentIcon(compType), Component::GetTypeName(compType)).c_str()))
-        AddComponentByType(*this, context.selectedEntityId, compType);
-    }
-    if (ImGui::BeginMenu("GL")) {
-      for (const auto &compType : availableComponents)
-        if (Component::IsGL(compType) && ImGui::MenuItem(IconLabel(ComponentIcon(compType), Component::GetTypeName(compType)).c_str()))
-          AddComponentByType(*this, context.selectedEntityId, compType);
-      ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Script")) {
-      auto currentScripts = GetEntityComponent<Script>(context.selectedEntityId);
-      for (const auto &[type, info] : ScriptRegistry::GetTypes()) {
-        const auto alreadyPresent = std::any_of(currentScripts.begin(), currentScripts.end(), [&](const Script *script) {
-          return script && script->GetTypeIndex() == type;
-        });
-        if (!alreadyPresent && ImGui::MenuItem(IconLabel(ComponentIcon(ComponentType::Script), info.name).c_str()))
-          info.add(*this, context.selectedEntityId);
-      }
-      ImGui::EndMenu();
-    }
-    ImGui::EndPopup();
   }
   EndWindow();
 }
@@ -1847,6 +1755,8 @@ auto Editor::DisplaySettings() -> void {
     return;
   }
   field::Toggle(ICON_LC_GAUGE, "Show FPS", &context.showFPS);
+  if (field::Fold(IconLabel(ICON_LC_VIDEO, "Camera Controller").c_str(), false))
+    GetSystem<CameraController>()->Display();
   auto previewSize = GetPreviewSize();
   if (field::SliderInt("Asset Preview Size", &previewSize, 32, 256, "%d", ImGuiSliderFlags_AlwaysClamp))
     SetPreviewSize(previewSize);
@@ -1970,13 +1880,9 @@ auto Editor::DisplaySettings() -> void {
 auto Editor::DrawManipulator(const float width, const float height) -> void {
   if (context.selectedEntities.empty())
     return;
-  auto cameraController = GetEntityComponent<CameraController>(context.cameraEntity);
-  if (!cameraController) {
+  auto *cameraController = GetSystem<CameraController>();
+  if (!cameraController->GetEntity() || !IsEntity(cameraController->GetEntity()))
     AttachCameraController();
-    cameraController = GetEntityComponent<CameraController>(context.cameraEntity);
-    if (!cameraController)
-      return;
-  }
   const auto windowPos = ImGui::GetWindowPos();
   ImGuizmo::SetRect(windowPos.x, windowPos.y, width, height);
   ImGuizmo::SetOrthographic(cameraController->GetType() == CameraType::Orthographic);

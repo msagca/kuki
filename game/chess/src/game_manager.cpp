@@ -4,7 +4,9 @@
 #include <array>
 #include <bounding_box.hpp>
 #include <camera.hpp>
+#include <chess_world.hpp>
 #include <cmath>
+#include <engine_archetypes.hpp>
 #include <entity_manager.hpp>
 #include <font.hpp>
 #include <game_builder.hpp>
@@ -22,13 +24,12 @@
 #include <material_asset.hpp>
 #include <material_type.hpp>
 #include <memory>
+#include <mesh.hpp>
+#include <mesh_asset.hpp>
 #include <overlay.hpp>
 #include <particle_emitter.hpp>
 #include <particle_presets.hpp>
 #include <preferences.hpp>
-#include <mesh.hpp>
-#include <mesh_asset.hpp>
-#include <script_registry.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
@@ -112,7 +113,6 @@ auto Blocks(const glm::vec3 &eye, const glm::vec3 &target, const glm::vec3 &cent
 auto LookAt(const glm::vec3 &from, const glm::vec3 &to) -> glm::quat {
   return glm::quatLookAt(glm::normalize(to - from), glm::vec3(.0f, 1.f, .0f));
 }
-
 /// @brief Colours the code draws with: the board's own blue, for the chosen time control, and the
 /// red its squares take when something can be captured there, for a clock that is running out.
 ///
@@ -314,52 +314,18 @@ auto Notation(const Board &board, const Move &move) -> std::string {
   return text;
 }
 } // namespace
-GameManager::GameManager()
-  : Script(std::in_place_type<GameManager>) {
+GameManager::GameManager(Application &app)
+  : System(std::in_place_type<GameManager>, app) {
   hidden.fill(-1);
 }
-auto GameManager::CloneTo(EntityManager &entityManager, const EntityID id) const -> void {
-  auto *script = entityManager.AddComponent<GameManager>(id);
-  // The board is worth copying; the entities it was drawn with belong to the original and the
-  // input actions belong to whoever registered them, so both are left for `Start` to redo.
-  script->board = board;
-  script->squares = {};
-  script->labels = {};
-  script->frame = {};
-  script->clock = {};
-  script->faces = {};
-  script->clockBody = {};
-  script->clockScreen = {};
-  script->rocker = {};
-  script->rockerAngle = .0f;
-  script->slashSparks = {};
-  script->dissolveGrains = {};
-  script->captureSparks = {};
-  script->slashing = false;
-  script->arriveFrom = -1;
-  script->arriveTo = -1;
-  script->arriveLeft = .0f;
-  script->victorySparks = {};
-  script->clocks = {StartSeconds(), StartSeconds()};
-  script->timeOption = timeOption;
-  script->incrementOption = incrementOption;
-  script->flagged = -1;
-  script->moves = {};
-  script->pieces = {};
-  script->reachable = {};
-  script->capturable = {};
-  script->state = GameState::Playing;
-  script->hidden.fill(-1);
-  script->selected = -1;
-  script->playable = true;
-  script->orbiting = false;
-  script->pressAction = InputManager::InvalidActionID;
-  script->releaseAction = InputManager::InvalidActionID;
-  script->quitAction = InputManager::InvalidActionID;
-  script->restartAction = InputManager::InvalidActionID;
+auto GameManager::PostStart() -> void {
+  Begin(app);
 }
-auto GameManager::GetTypeName() const -> std::string {
-  return "GameManager";
+auto GameManager::Update(const float) -> void {
+  Frame(app);
+}
+auto GameManager::Shutdown() -> void {
+  End(app);
 }
 auto GameManager::SquareCenter(const int square) -> glm::vec3 {
   const auto file = static_cast<float>(Board::FileOf(square));
@@ -368,7 +334,7 @@ auto GameManager::SquareCenter(const int square) -> glm::vec3 {
   // expects rather than mirrored.
   return {(file - 3.5f) * SQUARE_SIZE, .0f, (3.5f - rank) * SQUARE_SIZE};
 }
-auto GameManager::Start(Application &application) -> void {
+auto GameManager::Begin(Application &application) -> void {
   auto *app = GetApp();
   if (!app)
     return;
@@ -386,7 +352,9 @@ auto GameManager::Start(Application &application) -> void {
   Refresh();
   pressAction = app->RegisterInputAction(GLFW_MOUSE_BUTTON_LEFT, [this]() { OnPress(); });
   releaseAction = app->RegisterInputAction(
-    GLFW_MOUSE_BUTTON_LEFT, [this]() { orbiting = false; }, false);
+    GLFW_MOUSE_BUTTON_LEFT,
+    [this]() { orbiting = false; },
+    false);
   quitAction = app->RegisterInputAction(GLFW_KEY_ESCAPE, [this]() {
     // Through the base rather than captured: an input action outlives the call that registered it.
     if (auto *self = GetApp(); self)
@@ -395,7 +363,7 @@ auto GameManager::Start(Application &application) -> void {
   restartAction = app->RegisterInputAction(GLFW_KEY_R, [this]() { Restart(); });
   spdlog::info("[Chess] Click a piece to select it, then a green square to move it; red marks a piece it can take; drag anywhere else to turn the board; R restarts, Escape quits");
 }
-auto GameManager::Update(Application &application) -> void {
+auto GameManager::Frame(Application &application) -> void {
   if (orbiting)
     Orbit(application);
   UpdateClocks(application);
@@ -527,7 +495,7 @@ auto GameManager::UpdateClock(Application &application) -> void {
     return;
   // Asked for only on a frame that changes something. This runs every frame and almost every frame
   // changes nothing -- a reading moves once a second -- and naming the scene is a scene switch.
-  const auto Builder = [app] { return app->Game().Scene("Main"); };
+  const auto Builder = [app] { return chess::ChessWorld::Game(*app).Scene("Main"); };
   for (size_t side = 0; side < faces.size(); ++side) {
     const auto color = side == 0 ? PieceColor::White : PieceColor::Black;
     // White's half is the model's +x; see `CLOCK_YAW`.
@@ -554,14 +522,14 @@ auto GameManager::UpdateClock(Application &application) -> void {
         continue;
       faces[side].shown[slot] = c;
       if (id) {
-        Builder().Entity(id).Mesh(GlyphName(c)).Material(std::string(material));
+        Builder().Entity<MeshObject>(id).Mesh(GlyphName(c)).Material(std::string(material));
         continue;
       }
       // On the glass, leaning with it. The glyph meshes face +z and the tilt about x lays them on
       // the screen's slope, so each slot is only ever placed along the model's x.
       id = Builder()
-             .Entity(clock)
-             .Child("clock" + std::to_string(side) + "_" + std::to_string(slot))
+             .Entity<EmptyNode>(clock)
+             .Child<MeshObject>("clock" + std::to_string(side) + "_" + std::to_string(slot))
              .Mesh(GlyphName(c))
              .Material(std::string(material))
              .Scale(glyphSize)
@@ -578,7 +546,7 @@ auto GameManager::UpdateClock(Application &application) -> void {
   rockerAngle += (target - rockerAngle) * (1.f - std::exp(-ROCKER_SPEED * application.DeltaTime()));
   if (std::abs(target - rockerAngle) < 1e-3f)
     rockerAngle = target;
-  Builder().Entity(rocker).RotateEuler({.0f, .0f, rockerAngle});
+  Builder().Entity<MeshObject>(rocker).RotateEuler({.0f, .0f, rockerAngle});
 }
 auto GameManager::Orbit(Application &application) -> void {
   auto *camera = application.GetCamera();
@@ -608,12 +576,12 @@ auto GameManager::Orbit(Application &application) -> void {
   camera->Update();
   ++camera->dirty;
 }
-auto GameManager::Shutdown(Application &application) -> void {
+auto GameManager::End(Application &application) -> void {
   // Written on the way out as well as on every change, so that a first run leaves a file behind
   // rather than only the runs that touched a setting.
   SaveSettings(application);
   // Unregistered explicitly, because the actions capture `this` and the input manager outlives the
-  // scene: a stale action would call into a destroyed script on the next click.
+  // system: a stale action would call into a destroyed one on the next click.
   for (const auto action : {pressAction, releaseAction, quitAction, restartAction})
     if (action != InputManager::InvalidActionID)
       application.UnregisterInputAction(action);
@@ -630,7 +598,7 @@ auto GameManager::RefreshSquares() -> void {
   auto *app = GetApp();
   if (!app)
     return;
-  auto builder = app->Game().Scene("Main");
+  auto builder = chess::ChessWorld::Game(*app).Scene("Main");
   for (auto square = 0; square < Board::SquareCount; ++square) {
     const auto light = (Board::FileOf(square) + Board::RankOf(square)) % 2 == 1;
     const auto center = SquareCenter(square);
@@ -643,10 +611,10 @@ auto GameManager::RefreshSquares() -> void {
     // to say about the piece than about the square -- and for every capture but en passant the two
     // are the same square, so one of them has to win.
     const auto material = SquareMaterial(THEMES[themeOption], light, capturable[square] ? "_capture" : reachable[square] ? "_move"
-                                                                                                                      : "");
+                                                                                                                         : "");
     // Full width, so a square meets its neighbours rather than floating in a grid of gaps. The
     // slab is positioned by its upper face, since that is the surface everything else stands on.
-    squares[square] = (squares[square] ? builder.Entity(squares[square]) : builder.Entity("square" + std::to_string(square)))
+    squares[square] = (squares[square] ? builder.Entity<MeshObject>(squares[square]) : builder.Entity<MeshObject>("square" + std::to_string(square)))
                         .Mesh("Cube")
                         .Material(material)
                         .Scale({SQUARE_SIZE, SQUARE_HEIGHT, SQUARE_SIZE})
@@ -659,7 +627,7 @@ auto GameManager::CreateLabels() -> void {
   if (!app || labels)
     return;
   // The overlay's font and the overlay's atlas, rather than a bake of this game's own. `Chess`
-  // sets it before the scripts start, and one atlas can serve both: what the labels need from it
+  // sets it before the systems post-start, and one atlas can serve both: what the labels need from it
   // is where the glyphs are, which does not depend on whether they are going onto the board or
   // onto the window.
   const auto &font = app->GetOverlay().GetFont();
@@ -692,9 +660,9 @@ auto GameManager::CreateLabels() -> void {
   meshAsset->bounds = BoundingBox::Calculate(mesh.vertices);
   meshAsset->mesh = std::move(mesh);
   app->AddAsset(std::move(meshAsset), "labels");
-  labels = app->Game()
+  labels = chess::ChessWorld::Game(*app)
              .Scene("Main")
-             .Entity("Labels")
+             .Entity<MeshObject>("Labels")
              .Mesh("labels")
              .Material("label")
              .Scale(LABEL_SIZE)
@@ -711,7 +679,7 @@ auto GameManager::CreateFrame() -> void {
     return;
   // The frame's top is level with the squares' and its recess is exactly their size and depth, so
   // it is placed at the origin and the squares drop into it as they are.
-  frame = app->Game().Scene("Main").Entity("Frame").Mesh("board").Material(FrameMaterial(THEMES[themeOption])).At({.0f, .0f, .0f}).Id();
+  frame = chess::ChessWorld::Game(*app).Scene("Main").Entity<MeshObject>("Frame").Mesh("board").Material(FrameMaterial(THEMES[themeOption])).At({.0f, .0f, .0f}).Id();
 }
 auto GameManager::CreateThemeMaterials() -> void {
   auto *app = GetApp();
@@ -751,13 +719,13 @@ auto GameManager::ApplyTheme() -> void {
     return;
   const auto &theme = THEMES[themeOption];
   if (frame)
-    app->Game().Scene("Main").Entity(frame).Material(FrameMaterial(theme));
+    chess::ChessWorld::Game(*app).Scene("Main").Entity<MeshObject>(frame).Material(FrameMaterial(theme));
   if (clockBody)
-    app->Game().Scene("Main").Entity(clockBody).Material(ClockMaterial(theme, "case"));
+    chess::ChessWorld::Game(*app).Scene("Main").Entity<MeshObject>(clockBody).Material(ClockMaterial(theme, "case"));
   if (clockScreen)
-    app->Game().Scene("Main").Entity(clockScreen).Material(ClockMaterial(theme, "screen"));
+    chess::ChessWorld::Game(*app).Scene("Main").Entity<MeshObject>(clockScreen).Material(ClockMaterial(theme, "screen"));
   if (rocker)
-    app->Game().Scene("Main").Entity(rocker).Material(ClockMaterial(theme, "lever"));
+    chess::ChessWorld::Game(*app).Scene("Main").Entity<MeshObject>(rocker).Material(ClockMaterial(theme, "lever"));
   RefreshSquares();
 }
 auto GameManager::DrawThemes(Application &application) -> void {
@@ -788,7 +756,7 @@ auto GameManager::DrawThemes(Application &application) -> void {
       continue;
     const auto ink = (max.y - min.y) * THEME_TEXT_SIZE;
     const glm::vec4 tint = chosen ? glm::vec4(1.f, 1.f, 1.f, .95f) : id == hovered ? glm::vec4(1.f, 1.f, 1.f, .7f)
-                                                                                    : OPTION_IDLE;
+                                                                                   : OPTION_IDLE;
     overlay.DrawText(theme.name, {right - SWATCH_SIZE * 2.f - SWATCH_RING - OPTION_SPACING, y + (SWATCH_SIZE - ink) * .5f}, THEME_TEXT_SIZE, tint, TextAnchor::TopRight, id);
   }
 }
@@ -843,20 +811,20 @@ auto GameManager::CreateClock() -> void {
       app->AddAsset(std::move(meshAsset), GlyphName(c));
     }
   }
-  clock = app->Game().Scene("Main").Entity("Clock").At(CLOCK_POSITION).RotateEuler({.0f, CLOCK_YAW, .0f}).Id();
+  clock = chess::ChessWorld::Game(*app).Scene("Main").Entity<EmptyNode>("Clock").At(CLOCK_POSITION).RotateEuler({.0f, CLOCK_YAW, .0f}).Id();
   // Children of the clock, so the model's own coordinates place them -- the numbers in the header
   // are the ones Blender printed, and they hold wherever the clock is put.
   const auto &theme = THEMES[themeOption];
-  clockBody = app->Game().Scene("Main").Entity(clock).Child("ClockBody").Mesh("clock_body").Material(ClockMaterial(theme, "case")).Id();
-  clockScreen = app->Game().Scene("Main").Entity(clock).Child("ClockScreen").Mesh("clock_screen").Material(ClockMaterial(theme, "screen")).Id();
+  clockBody = chess::ChessWorld::Game(*app).Scene("Main").Entity<EmptyNode>(clock).Child<MeshObject>("ClockBody").Mesh("clock_body").Material(ClockMaterial(theme, "case")).Id();
+  clockScreen = chess::ChessWorld::Game(*app).Scene("Main").Entity<EmptyNode>(clock).Child<MeshObject>("ClockScreen").Mesh("clock_screen").Material(ClockMaterial(theme, "screen")).Id();
   // Placed by its pivot, which is its origin, so leaning it is a rotation and nothing else.
-  rocker = app->Game().Scene("Main").Entity(clock).Child("ClockRocker").Mesh("clock_rocker").Material(ClockMaterial(theme, "lever")).At(ROCKER_PIVOT).RotateEuler({.0f, .0f, rockerAngle}).Id();
+  rocker = chess::ChessWorld::Game(*app).Scene("Main").Entity<EmptyNode>(clock).Child<MeshObject>("ClockRocker").Mesh("clock_rocker").Material(ClockMaterial(theme, "lever")).At(ROCKER_PIVOT).RotateEuler({.0f, .0f, rockerAngle}).Id();
 }
 auto GameManager::RefreshPieces() -> void {
   auto *app = GetApp();
   if (!app)
     return;
-  auto builder = app->Game().Scene("Main");
+  auto builder = chess::ChessWorld::Game(*app).Scene("Main");
   for (auto square = 0; square < Board::SquareCount; ++square) {
     auto piece = board.Get(square);
     auto lift = selected == square ? SELECT_LIFT : .0f;
@@ -889,15 +857,15 @@ auto GameManager::RefreshPieces() -> void {
     const auto facing = king && piece.color == board.ToMove();
     // Ahead of the ghost, because a king with something to report is worth seeing through a piece
     // standing in front of it rather than instead of it.
-    const auto *material = king && Drawn(state) ? "piece_draw"
-      : facing && state == GameState::Checkmate ? "piece_checkmate"
-      : facing && state == GameState::Check     ? "piece_check"
-      : hidden[square] >= 0                     ? (white ? "piece_white_ghost" : "piece_black_ghost")
-                                                : (white ? "piece_white" : "piece_black");
+    const auto *material = king && Drawn(state)                      ? "piece_draw"
+                           : facing && state == GameState::Checkmate ? "piece_checkmate"
+                           : facing && state == GameState::Check     ? "piece_check"
+                           : hidden[square] >= 0                     ? (white ? "piece_white_ghost" : "piece_black_ghost")
+                                                                     : (white ? "piece_white" : "piece_black");
     // Every value below is written whether the entity is new or reused. A square a knight has left
     // and a queen has arrived on keeps one entity, and anything not overwritten here would still be
     // the knight's -- so the rotation is set on all of them rather than only where it is wanted.
-    pieces[square] = (pieces[square] ? builder.Entity(pieces[square]) : builder.Entity("piece" + std::to_string(square)))
+    pieces[square] = (pieces[square] ? builder.Entity<MeshObject>(pieces[square]) : builder.Entity<MeshObject>("piece" + std::to_string(square)))
                        .Mesh(shape.mesh)
                        .Material(material)
                        .Scale(1.f)
@@ -1108,9 +1076,9 @@ auto GameManager::CreateSparks() -> void {
   // they are given just enough speed in every direction to fray its edge as it fades. No gravity,
   // because a line of light that sagged would read as something falling rather than as a cut. Pale
   // and hot, where the burst after it is embers -- steel first and then what the steel struck.
-  slashSparks = app->Game()
+  slashSparks = chess::ChessWorld::Game(*app)
                   .Scene("Main")
-                  .Entity("SlashSparks")
+                  .Entity<ParticleObject>("SlashSparks")
                   .At({.0f, .0f, .0f})
                   .With<ParticleEmitter>([](ParticleEmitter &emitter) {
                     emitter.capacity = 2048;
@@ -1132,9 +1100,9 @@ auto GameManager::CreateSparks() -> void {
                   .Id();
   // The engine's own but for how long they take: one grain a slot, each with its own point on the
   // mesh, all born at once. The mesh and the colour are filled in by `Dissolve`, a capture at a time.
-  dissolveGrains = app->Game()
+  dissolveGrains = chess::ChessWorld::Game(*app)
                      .Scene("Main")
-                     .Entity("DissolveGrains")
+                     .Entity<ParticleObject>("DissolveGrains")
                      .At({.0f, .0f, .0f})
                      .With<ParticleEmitter>([](ParticleEmitter &emitter) {
                        emitter = ParticlePresets::Dissolve();
@@ -1145,9 +1113,9 @@ auto GameManager::CreateSparks() -> void {
   // The engine's burst as it comes too: thrown wide and slowed hard, so it opens quickly and then
   // hangs and falls rather than travelling. At the emitter's default drag these cleared the board's
   // edge from a centre square.
-  captureSparks = app->Game()
+  captureSparks = chess::ChessWorld::Game(*app)
                     .Scene("Main")
-                    .Entity("CaptureSparks")
+                    .Entity<ParticleObject>("CaptureSparks")
                     .At({.0f, .0f, .0f})
                     .With<ParticleEmitter>([](ParticleEmitter &emitter) {
                       emitter = ParticlePresets::Burst();
@@ -1157,9 +1125,9 @@ auto GameManager::CreateSparks() -> void {
                     .Id();
   // A narrow fountain in gold, steady rather than sudden. Its rate times its lifetime is under the
   // pool, so no spark is cut short by the ring coming back round to it.
-  victorySparks = app->Game()
+  victorySparks = chess::ChessWorld::Game(*app)
                     .Scene("Main")
-                    .Entity("VictorySparks")
+                    .Entity<ParticleObject>("VictorySparks")
                     .At({.0f, .0f, .0f})
                     .With<ParticleEmitter>([](ParticleEmitter &emitter) {
                       emitter.capacity = 1024;
@@ -1180,7 +1148,7 @@ auto GameManager::Burst(const glm::vec3 &position) -> void {
   auto *emitter = app && captureSparks ? app->GetEntityComponent<ParticleEmitter>(captureSparks) : nullptr;
   if (!emitter)
     return;
-  app->Game().Scene("Main").Entity(captureSparks).At(position);
+  chess::ChessWorld::Game(*app).Scene("Main").Entity<ParticleObject>(captureSparks).At(position);
   ++emitter->fired;
 }
 auto GameManager::Dissolve(const int square, const Piece &piece) -> void {
@@ -1193,7 +1161,7 @@ auto GameManager::Dissolve(const int square, const Piece &piece) -> void {
   // Exactly as `RefreshPieces` stands the piece, turn and all, since the grains have to be born
   // where its surface was.
   const auto center = SquareCenter(square);
-  app->Game().Scene("Main").Entity(dissolveGrains).At({center.x, .0f, center.z}).RotateEuler({.0f, white ? .0f : 180.f, .0f}).Scale(1.f);
+  chess::ChessWorld::Game(*app).Scene("Main").Entity<ParticleObject>(dissolveGrains).At({center.x, .0f, center.z}).RotateEuler({.0f, white ? .0f : 180.f, .0f}).Scale(1.f);
   // The albedo of `piece_white.mat` and `piece_black.mat`, which are data and cannot be read from
   // here; a colour changed there has to be changed here too.
   const auto color = white ? glm::vec3(.92f, .9f, .86f) : glm::vec3(.11f, .11f, .13f);
@@ -1224,7 +1192,7 @@ auto GameManager::Slash(const glm::vec3 &base, const float height) -> void {
   // Started, at the top of the line, with a rate of nought. The renderer takes a stopped emitter to
   // have travelled nowhere, so the frame it is started in spawns everything at one point; started
   // a frame early and silent, the sweep's first frame is spread along the line like the rest.
-  app->Game().Scene("Main").Entity(slashSparks).At(slashFrom);
+  chess::ChessWorld::Game(*app).Scene("Main").Entity<ParticleObject>(slashSparks).At(slashFrom);
   emitter->rate = .0f;
   emitter->emitting = true;
   slashing = true;
@@ -1241,13 +1209,13 @@ auto GameManager::UpdateSparks(Application &application) -> void {
       Burst(slashBurst);
     } else if (slashTime < .0f)
       // A click is answered between frames, and whether this update is the one before the frame
-      // that click is first drawn in is not something a script can tell. Waiting one out is what
+      // that click is first drawn in is not something a game can tell. Waiting one out is what
       // guarantees the renderer has seen the emitter standing at the top of the line.
       slashTime = .0f;
     else {
       slashTime = std::min(slashTime + application.DeltaTime(), SLASH_SWEEP);
       emitter->rate = SLASH_RATE;
-      application.Game().Scene("Main").Entity(slashSparks).At(glm::mix(slashFrom, slashTo, slashTime / SLASH_SWEEP));
+      chess::ChessWorld::Game(application).Scene("Main").Entity<ParticleObject>(slashSparks).At(glm::mix(slashFrom, slashTo, slashTime / SLASH_SWEEP));
     }
   }
   if (arriveTo < 0)
@@ -1277,7 +1245,7 @@ auto GameManager::UpdateVictory() -> void {
       continue;
     // From the top of the king, so the sparks leave the cross rather than the base.
     const auto center = SquareCenter(square);
-    app->Game().Scene("Main").Entity(victorySparks).At({center.x, ShapeOf(PieceType::King).height, center.z});
+    chess::ChessWorld::Game(*app).Scene("Main").Entity<ParticleObject>(victorySparks).At({center.x, ShapeOf(PieceType::King).height, center.z});
     emitter->emitting = true;
     return;
   }
@@ -1305,4 +1273,3 @@ auto GameManager::UpdateTitle() -> void {
     title += " | " + played;
   app->SetWindowTitle(title);
 }
-KUKI_REGISTER_SCRIPT(GameManager)

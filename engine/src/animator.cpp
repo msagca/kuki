@@ -8,6 +8,19 @@ auto Animator::Play(const std::string_view name, const bool restart) -> bool {
     Enter(index);
   return true;
 }
+auto Animator::FindGoal(const std::string_view name) -> IKGoal * {
+  for (auto &goal : ik)
+    if (goal.name == name)
+      return &goal;
+  return nullptr;
+}
+auto Animator::SetBlend(const std::string_view name, const float value) -> bool {
+  const auto index = FindState(name);
+  if (index < 0)
+    return false;
+  states[index].value = value;
+  return true;
+}
 auto Animator::Fired(const std::string_view name) const -> bool {
   for (const auto &event : events)
     if (event == name)
@@ -31,6 +44,8 @@ auto Animator::Enter(const int index) -> void {
   state = index;
   stateTicks = 0;
   finished = false;
+  phase = .0f;
+  previousPhase = .0f;
   // Nothing has been drawn yet the first time, and there is nothing to fade out of.
   fadeFrom = pose;
   fadeTicks = pose.empty() ? 0 : states[index].fade;

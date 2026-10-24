@@ -75,9 +75,8 @@ struct OverlayRun {
 /// queue is emptied once the frame that drew it is done. Nothing is retained, so a caption that
 /// stops being asked for stops being drawn, and there is no handle to keep or free.
 ///
-/// Submit from a script's `Update`. Systems run in the order `SystemApplication` was given them
-/// and `RenderingSystem` comes after `ScriptingSystem`, so text queued from a script is drawn in
-/// the same frame. Text queued from an application's own `Update`, which runs after the systems,
+/// Submit from a system's `Update`. `RenderingSystem` draws after every other system has updated,
+/// wherever it stands in the list, so text queued from a system is drawn in the same frame. Text queued from an application's own `Update`, which runs after the systems,
 /// is drawn in the next one.
 class KUKI_ENGINE_API Overlay {
 public:

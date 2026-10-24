@@ -1,4 +1,5 @@
 #include <dx_renderer.hpp>
+#include <render_binding.hpp>
 #ifdef KUKI_HAS_DIRECTX
 #include <algorithm>
 #include <application.hpp>
@@ -18,6 +19,7 @@
 #include <light.hpp>
 #include <material_handle.hpp>
 #include <particle_emitter.hpp>
+#include <particle_limits.hpp>
 #include <mesh_handle.hpp>
 #include <texture.hpp>
 #include <texture_asset.hpp>
@@ -32,6 +34,13 @@
 #include <string>
 #include <utility>
 namespace kuki {
+namespace {
+  /// @brief The material this backend resolved an entity's handles to, or null if it has not.
+  auto BoundMaterial(Scene &scene, const EntityID id) -> const DXMaterial * {
+    const auto *binding = scene.GetEntityComponent<RenderBinding>(id);
+    return binding && binding->dxMaterialBound ? &binding->dxMaterial : nullptr;
+  }
+} // namespace
 namespace {
 constexpr float TARGET_CLEAR_COLOR[4]{.05f, .05f, .06f, 1.f};
 constexpr uint32_t COMPUTE_STAGING_CAPACITY = 256;
@@ -67,8 +76,6 @@ constexpr uint32_t MULTISCATTER_HEIGHT = 32;
 /// error: the table is built once and read many times, so it is worth over-integrating, and it has
 /// no phase function to resolve. Forty is past the point where the result stops moving.
 constexpr uint32_t TRANSMITTANCE_STEPS = 40;
-/// @brief Threads in one group of the particle step. Mirrors `PARTICLE_GROUP_SIZE` in `particles.hlsl`.
-constexpr uint32_t PARTICLE_GROUP_SIZE = 64;
 /// @brief Bytes one particle occupies. Mirrors `Particle` in `particles.hlsl`: two `float4` rows
 /// and the tint.
 constexpr uint64_t PARTICLE_STRIDE = 44;
@@ -1807,7 +1814,7 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
     // actually is.
     //
     // Nor has one that was stopped. Spawns are spread along the path the emitter travelled while it
-    // was emitting, and a stopped one that is moved and then started -- which is how a script fires
+    // was emitting, and a stopped one that is moved and then started -- which is how a game fires
     // a burst somewhere new -- travelled that distance with nothing coming out of it. Without this
     // the first frame of the burst is smeared along the line from wherever the last one went off.
     if (pool.fresh || !pool.emitting)
@@ -2357,10 +2364,10 @@ auto DXRenderer::CollectSkinnedDraws(Scene &scene, const Camera *camera) -> std:
     }
     DXSkinnedDraw draw{};
     draw.mesh = &meshIt->second;
-    draw.material = scene.GetEntityComponent<DXMaterial>(id);
+    draw.material = BoundMaterial(scene, id);
     if (!draw.material)
       if (const auto parent = scene.GetParent(id); parent)
-        draw.material = scene.GetEntityComponent<DXMaterial>(parent);
+        draw.material = BoundMaterial(scene, parent);
     memcpy(draw.instance.model, glm::value_ptr(transform->world), sizeof(draw.instance.model));
     draw.instance.entityId = static_cast<uint32_t>(static_cast<long long>(id)) & 0xFFFFFFu;
     draw.bones.assign(modelMesh.bones.size(), glm::mat4(1.f));
@@ -2432,7 +2439,7 @@ auto DXRenderer::CollectBatches(Scene &scene, const bool shadowCastersOnly, cons
       if (auto fallback = app.GetAsset("Cube"); fallback)
         resolvedId = fallback->id;
     if (auto it = assetToMesh.find(resolvedId); it != assetToMesh.end())
-      Add(&it->second, scene.GetEntityComponent<DXMaterial>(id), transform, bounds, id);
+      Add(&it->second, BoundMaterial(scene, id), transform, bounds, id);
   });
   scene.ForEachEntity<ModelMeshHandle, Transform, Optional<BoundingBox>>([&](const EntityID id, const ModelMeshHandle *handle, const Transform *transform, const BoundingBox *bounds) {
     auto modelIt = modelToMeshes.find(handle->modelAssetId);
@@ -2441,10 +2448,10 @@ auto DXRenderer::CollectBatches(Scene &scene, const bool shadowCastersOnly, cons
     auto meshIt = modelIt->second.find(handle->meshIndex);
     if (meshIt == modelIt->second.end())
       return;
-    auto material = scene.GetEntityComponent<DXMaterial>(id);
+    auto material = BoundMaterial(scene, id);
     if (!material)
       if (const auto parent = scene.GetParent(id); parent)
-        material = scene.GetEntityComponent<DXMaterial>(parent);
+        material = BoundMaterial(scene, parent);
     Add(&meshIt->second, material, transform, bounds, id);
   });
   uint64_t required = instanceCursor;
@@ -2791,6 +2798,11 @@ auto DXRenderer::BuildShadowMatrix(Scene &scene, float *out) const -> bool {
     return false;
   BoundingBox sceneBounds{};
   scene.ForEachEntity<BoundingBox, Transform>([&](const EntityID, const BoundingBox *box, const Transform *transform) {
+    // An empty box says nothing about where anything is, and taken into the world its corners are
+    // infinities that swallow every real box. Every drawable archetype carries bounds, filled in or
+    // not: a mesh placed by the builder has an empty one, where it used to have none at all.
+    if (!*box)
+      return;
     const auto worldBounds = box->GetWorldBounds(transform->world);
     sceneBounds.min = glm::min(sceneBounds.min, worldBounds.min);
     sceneBounds.max = glm::max(sceneBounds.max, worldBounds.max);
@@ -3785,15 +3797,11 @@ auto DXRenderer::LoadScene(Scene &scene) -> void {
       Place(textures, EnsureModelTexture(modelAssetId, textureIndex));
     pending.emplace_back(id, Resolve(modelAssetId, materialIndex, modelMaterial.fallback, modelMaterial.type, textures));
   });
-  for (const auto &[id, value] : pending) {
-    auto material = scene.GetEntityComponent<DXMaterial>(id);
-    if (!material) {
-      scene.AddEntityComponent<DXMaterial>(id);
-      material = scene.GetEntityComponent<DXMaterial>(id);
+  for (const auto &[id, value] : pending)
+    if (auto *binding = scene.GetEntityComponent<RenderBinding>(id); binding) {
+      binding->dxMaterial = value;
+      binding->dxMaterialBound = true;
     }
-    if (material)
-      *material = value;
-  }
 }
 auto DXRenderer::EnsurePickResources() -> bool {
   if (pickResultBuffer && pickReadbackBuffer)
@@ -3826,7 +3834,7 @@ auto DXRenderer::PickEntity(const int x, const int y) -> EntityID {
   auto context = GetContext();
   if (!context)
     return EntityID::Invalid;
-  // A pick is answered from wherever it is asked, and that is not always inside a frame: a script
+  // A pick is answered from wherever it is asked, and that is not always inside a frame: a game
   // reads it from an input callback, and input is polled before the frame opens. Inside a frame the
   // frame's list is borrowed; outside one, a list is opened here and closed before returning. What
   // is read either way is the id buffer the last frame left behind, which is the picture the click

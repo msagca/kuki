@@ -9,6 +9,7 @@
 #include <array>
 #include <bounding_box.hpp>
 #include <camera.hpp>
+#include <cctype>
 #include <cmath>
 #include <component_type.hpp>
 #include <dx_material.hpp>
@@ -33,8 +34,10 @@
 #include <mesh_handle.hpp>
 #include <model_asset.hpp>
 #include <particle_presets.hpp>
+#include <render_binding.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
+#include <string>
 #include <texture_handle.hpp>
 struct PropertyDisplayer {
   EditorContext &context;
@@ -100,21 +103,331 @@ inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallb
 }
 template <typename T>
 inline auto PropertyDisplayer::operator()(T *) -> void {}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::Animator>(kuki::Animator *animator) -> void {
-  if (!animator)
+/// @brief The states of an animator, to be added, changed, tried and removed.
+///
+/// Everything `AnimationState` holds, a row each. Where the value is one of a known few it is a
+/// list to choose from rather than a name to type: the model a clip comes from is one of the models
+/// that are loaded and have clips, the clip is one of that model's, the root is one of the
+/// skeleton's nodes and what comes next is one of the other states. A name typed wrong is a state
+/// that silently plays nothing, and none of these can be.
+///
+/// Changing where a clip comes from forgets what was worked out about the old one -- its index and
+/// which bones its channels move -- so that the animation system works it out again for the new.
+///
+/// Trying a state enters it and sets the animator playing. Stopped, that is a preview stepped by
+/// the animation system for the purpose; nothing is saved of which state was being looked at.
+inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const kuki::ModelAsset &model) -> void {
+  static constexpr auto NAME_LENGTH = 64;
+  if (!field::Fold(ICON_LC_WORKFLOW " States", true))
     return;
+  const auto Forget = [](kuki::AnimationState &state) {
+    state.clipIndex = -1;
+    state.nodes.clear();
+  };
+  if (field::BeginCombo(ICON_LC_FOOTPRINTS " Root Node", animator.rootNode.empty() ? "(none)" : animator.rootNode.c_str())) {
+    if (ImGui::Selectable("(none)", animator.rootNode.empty()))
+      animator.rootNode.clear();
+    for (const auto &node : model.nodes)
+      if (!node.name.empty() && ImGui::Selectable(node.name.c_str(), node.name == animator.rootNode))
+        animator.rootNode = node.name;
+    ImGui::EndCombo();
+  }
+  ImGui::SetItemTooltip("The node whose travel along the ground is taken out of the pose and handed to the\ngame, so a walk moves the entity instead of striding off and snapping back.");
+  // The models a clip could come from: every one that is loaded and has any, but for this one,
+  // which is offered first under a name that says so.
+  std::vector<const kuki::ModelAsset *> sources;
+  app.ForEachAsset(kuki::AssetType::Model, [&](const kuki::Asset *asset) {
+    if (const auto *candidate = asset->As<kuki::ModelAsset>(); candidate && candidate != &model && !candidate->animations.empty())
+      sources.push_back(candidate);
+  });
+  auto removed = -1;
+  for (auto i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+    auto &state = animator.states[i];
+    ImGui::PushID(i);
+    // Named for the state and identified by its place, so that the fold does not shut every time
+    // a letter is typed into the name.
+    const auto current = animator.state == i;
+    if (field::Fold(((current ? ICON_LC_PLAY " " : "") + (state.name.empty() ? std::string("(unnamed)") : state.name) + "###State").c_str())) {
+      char name[NAME_LENGTH]{};
+      state.name.copy(name, NAME_LENGTH - 1);
+      if (field::InputText("Name", name, NAME_LENGTH))
+        state.name = name;
+      // A blend takes the place of the one clip, so the rows that choose that clip are greyed out
+      // for as long as there is anything in it.
+      ImGui::BeginDisabled(!state.blend.empty());
+      const auto *from = &model;
+      for (const auto *source : sources)
+        if (source->id == state.source)
+          from = source;
+      const auto fromName = from == &model ? std::string("(this model)") : app.GetAssetName(from->id);
+      if (field::BeginCombo(ICON_LC_BOX " Clip From", state.source && from == &model ? "(not loaded)" : fromName.c_str())) {
+        if (ImGui::Selectable("(this model)", !state.source)) {
+          state.source = {};
+          state.clip.clear();
+          Forget(state);
+        }
+        for (const auto *source : sources) {
+          ImGui::PushID(source);
+          if (ImGui::Selectable(app.GetAssetName(source->id).c_str(), source->id == state.source)) {
+            state.source = source->id;
+            state.clip.clear();
+            Forget(state);
+          }
+          ImGui::PopID();
+        }
+        ImGui::EndCombo();
+      }
+      if (field::BeginCombo(ICON_LC_FILM " Clip", state.clip.empty() ? "(first)" : state.clip.c_str())) {
+        if (ImGui::Selectable("(first)", state.clip.empty())) {
+          state.clip.clear();
+          Forget(state);
+        }
+        for (size_t clip = 0; clip < from->animations.size(); ++clip) {
+          ImGui::PushID(static_cast<int>(clip));
+          if (ImGui::Selectable(from->animations[clip].name.c_str(), from->animations[clip].name == state.clip)) {
+            state.clip = from->animations[clip].name;
+            Forget(state);
+          }
+          ImGui::PopID();
+        }
+        ImGui::EndCombo();
+      }
+      ImGui::EndDisabled();
+      // Each clip of the blend is which model it is from and the value it stands at, on one line
+      // with the button that removes it. The first clip of the model is the one taken, which is
+      // how a clip that came in a file of its own is named.
+      auto removedBlend = -1;
+      for (auto mixed = 0; mixed < static_cast<int>(state.blend.size()); ++mixed) {
+        auto &entry = state.blend[mixed];
+        ImGui::PushID(1000 + mixed);
+        const auto entryName = entry.source ? app.GetAssetName(entry.source) : std::string("(this model)");
+        ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * .65f);
+        if (ImGui::BeginCombo("##From", entryName.empty() ? "(not loaded)" : entryName.c_str())) {
+          for (const auto *source : sources) {
+            ImGui::PushID(source);
+            if (ImGui::Selectable(app.GetAssetName(source->id).c_str(), source->id == entry.source)) {
+              entry.source = source->id;
+              entry.clip.clear();
+              entry.clipIndex = -1;
+              entry.nodes.clear();
+            }
+            ImGui::PopID();
+          }
+          ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * .35f - ImGui::GetStyle().ItemSpacing.x);
+        ImGui::DragFloat("##At", &entry.at, .05f, -1000.f, 1000.f, "at %.2f");
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_LC_TRASH_2))
+          removedBlend = mixed;
+        ImGui::PopID();
+      }
+      if (removedBlend >= 0)
+        state.blend.erase(state.blend.begin() + removedBlend);
+      if (ImGui::Button(ICON_LC_BLEND " Add Blend Clip"))
+        state.blend.push_back({.at = state.blend.empty() ? .0f : state.blend.back().at + 1.f});
+      if (state.blend.size() > 1) {
+        auto low = state.blend.front().at;
+        auto high = low;
+        for (const auto &entry : state.blend) {
+          low = std::min(low, entry.at);
+          high = std::max(high, entry.at);
+        }
+        field::SliderFloat(ICON_LC_BLEND " Blend", &state.value, low, high, "%.2f");
+        ImGui::SetItemTooltip("Where along its blend the state is. A game sets this as it runs; here it is\nfor trying the blend out.");
+      }
+      field::Toggle(ICON_LC_REPEAT, "Loop", &state.loop);
+      field::DragFloat(ICON_LC_GAUGE " Speed", &state.speed, .01f, .05f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+      field::DragInt("Fade", &state.fade, .2f, 0, 600, "%d ticks", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::SetItemTooltip("How many ticks the pose takes to arrive from whatever was showing when this\nstate was entered.");
+      ImGui::BeginDisabled(state.loop);
+      if (field::BeginCombo("Next", state.next.empty() ? "(hold the last pose)" : state.next.c_str())) {
+        if (ImGui::Selectable("(hold the last pose)", state.next.empty()))
+          state.next.clear();
+        for (auto other = 0; other < static_cast<int>(animator.states.size()); ++other) {
+          ImGui::PushID(other);
+          if (other != i && !animator.states[other].name.empty() && ImGui::Selectable(animator.states[other].name.c_str(), animator.states[other].name == state.next))
+            state.next = animator.states[other].name;
+          ImGui::PopID();
+        }
+        ImGui::EndCombo();
+      }
+      ImGui::EndDisabled();
+      // An event is a tick and a name on one line, with the button that removes it at the end. Two
+      // fields to a row, so neither is one of the labelled ones: the row is its own label.
+      auto removedEvent = -1;
+      for (auto event = 0; event < static_cast<int>(state.events.size()); ++event) {
+        ImGui::PushID(event);
+        ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * .35f);
+        ImGui::DragInt("##Tick", &state.events[event].tick, .2f, 0, 100000, "tick %d", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SameLine();
+        char eventName[NAME_LENGTH]{};
+        state.events[event].name.copy(eventName, NAME_LENGTH - 1);
+        ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * .65f - ImGui::GetStyle().ItemSpacing.x);
+        if (ImGui::InputTextWithHint("##Event", "event name", eventName, NAME_LENGTH))
+          state.events[event].name = eventName;
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_LC_TRASH_2))
+          removedEvent = event;
+        ImGui::PopID();
+      }
+      if (removedEvent >= 0)
+        state.events.erase(state.events.begin() + removedEvent);
+      if (ImGui::Button(ICON_LC_FLAG " Add Event"))
+        state.events.push_back({0, "event"});
+      ImGui::SameLine();
+      if (ImGui::Button(ICON_LC_PLAY " Try")) {
+        animator.Play(state.name, true);
+        animator.playing = true;
+      }
+      ImGui::SameLine();
+      if (ImGui::Button(ICON_LC_TRASH_2 " Remove"))
+        removed = i;
+    }
+    ImGui::PopID();
+  }
+  if (removed >= 0) {
+    animator.states.erase(animator.states.begin() + removed);
+    animator.state = -1;
+    animator.stateTicks = 0;
+  }
+  if (ImGui::Button(ICON_LC_PLUS " Add State")) {
+    kuki::AnimationState state;
+    state.name = "state" + std::to_string(animator.states.size() + 1);
+    state.loop = true;
+    animator.states.push_back(std::move(state));
+  }
+}
+/// @brief The entity a goal reaches for, chosen from a list or dropped on from the hierarchy.
+///
+/// Listed as the hierarchy has them, a step in for each level, since one character's bones are all
+/// called what the other's are and only where they hang tells them apart. Searched, the list is
+/// only what matches, each with the name of the entity at the top of its tree beside it for the
+/// same reason.
+inline auto PickEntity(Editor &app, const char *label, kuki::EntityID &entity) -> void {
+  static constexpr auto FIND_LENGTH = 64;
+  static char find[FIND_LENGTH]{};
+  const auto name = entity ? app.GetEntityName(entity) : std::string("(none)");
+  if (field::BeginCombo(label, name.c_str(), ImGuiComboFlags_HeightLarge)) {
+    if (ImGui::IsWindowAppearing())
+      ImGui::SetKeyboardFocusHere();
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##Find", ICON_LC_SEARCH " find", find, FIND_LENGTH);
+    std::string wanted(find);
+    std::ranges::transform(wanted, wanted.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (wanted.empty() && ImGui::Selectable("(none)", !entity))
+      entity = kuki::EntityID::Invalid;
+    const auto Walk = [&](const kuki::EntityID id, const int depth, const std::string &top, const auto &self) -> void {
+      auto entityName = app.GetEntityName(id);
+      auto lowered = entityName;
+      std::ranges::transform(lowered, lowered.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (wanted.empty() || lowered.find(wanted) != std::string::npos) {
+        ImGui::PushID(static_cast<int>(id));
+        const auto shown = wanted.empty() ? std::string(static_cast<size_t>(depth) * 2, ' ') + entityName : entityName + (top.empty() || top == entityName ? "" : "  (" + top + ")");
+        if (ImGui::Selectable(shown.c_str(), id == entity))
+          entity = id;
+        ImGui::PopID();
+      }
+      app.ForEachChildEntity(id, [&](const kuki::EntityID child) {
+        self(child, depth + 1, top.empty() ? entityName : top, self);
+      });
+    };
+    app.ForEachRootEntity([&](const kuki::EntityID id) {
+      Walk(id, 0, std::string{}, Walk);
+    });
+    ImGui::EndCombo();
+  }
+  if (ImGui::BeginDragDropTarget()) {
+    if (const auto *payload = ImGui::AcceptDragDropPayload("##EntityPayload"); payload && payload->DataSize == sizeof(kuki::EntityID))
+      entity = *static_cast<const kuki::EntityID *>(payload->Data);
+    ImGui::EndDragDropTarget();
+  }
+}
+/// @brief An animator's inverse kinematics goals, to be added, changed and removed.
+///
+/// The rows that mean something only to one kind of goal are shown for that kind alone. The bone is
+/// one of the model's nodes rather than a name to type, for the same reason a state's clip is: a
+/// name typed wrong is a goal that silently does nothing.
+inline auto DisplayAnimatorIK(Editor &app, kuki::Animator &animator, const kuki::ModelAsset &model) -> void {
+  static constexpr auto NAME_LENGTH = 64;
+  if (!field::Fold(ICON_LC_HAND_GRAB " Inverse Kinematics"))
+    return;
+  static auto &kinds = kuki::EnumTraits<kuki::IKKind>::GetNames();
+  auto removed = -1;
+  for (auto i = 0; i < static_cast<int>(animator.ik.size()); ++i) {
+    auto &goal = animator.ik[i];
+    ImGui::PushID(i);
+    const auto aim = goal.kind == kuki::IKKind::Aim;
+    const auto title = !goal.name.empty() ? goal.name : !goal.bone.empty() ? goal.bone : std::string("(no bone)");
+    if (field::Fold(((aim ? ICON_LC_EYE " " : ICON_LC_HAND_GRAB " ") + title + "###Goal").c_str(), true)) {
+      char name[NAME_LENGTH]{};
+      goal.name.copy(name, NAME_LENGTH - 1);
+      if (field::InputText(ICON_LC_TAG " Name", name, NAME_LENGTH))
+        goal.name = name;
+      ImGui::SetItemTooltip("What the game finds the goal by.");
+      auto kind = static_cast<int>(goal.kind);
+      if (field::Combo("Kind", &kind, kinds.data(), static_cast<int>(kinds.size())))
+        goal.kind = static_cast<kuki::IKKind>(kind);
+      ImGui::SetItemTooltip("Reach bends the bone's parent and grandparent to put the bone on the point.\nAim turns the bone, and the parents sharing the turn, to face it.");
+      if (field::BeginCombo(ICON_LC_BONE " Bone", goal.bone.empty() ? "(none)" : goal.bone.c_str(), ImGuiComboFlags_HeightLarge)) {
+        for (size_t node = 0; node < model.nodes.size(); ++node) {
+          ImGui::PushID(static_cast<int>(node));
+          if (!model.nodes[node].name.empty() && ImGui::Selectable(model.nodes[node].name.c_str(), model.nodes[node].name == goal.bone))
+            goal.bone = model.nodes[node].name;
+          ImGui::PopID();
+        }
+        ImGui::EndCombo();
+      }
+      PickEntity(app, ICON_LC_CROSSHAIR " Target", goal.target);
+      ImGui::SetItemTooltip("The entity the point goes with. None leaves the point fixed in the world.\nAn entity can be dragged here from the hierarchy.");
+      field::DragFloat3(ICON_LC_MOVE_3D " Offset", &goal.offset.x, .01f);
+      ImGui::SetItemTooltip(goal.target ? "Where the point is in the target's own space." : "Where the point is in the world.");
+      field::SliderFloat(ICON_LC_WEIGHT " Weight", &goal.weight, .0f, 1.f, "%.2f");
+      if (aim) {
+        field::DragFloat3(ICON_LC_AXIS_3D " Axis", &goal.axis.x, .01f, -1.f, 1.f, "%.2f");
+        ImGui::SetItemTooltip("The way that is to face the point, in the character's own axes as the model\nwas built. Forward is 0, 0, 1 for most.");
+        field::DragInt(ICON_LC_LINK " Chain", &goal.chain, .05f, 1, 16, "%d bones", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SetItemTooltip("How many bones share the turn, counting up from this one.");
+        field::SliderFloat(ICON_LC_ANGLE " Limit", &goal.limit, .0f, 180.f, "%.0f deg");
+      } else {
+        field::DragFloat3(ICON_LC_SPLINE " Bend", &goal.bend.x, .01f, -1.f, 1.f, "%.2f");
+        ImGui::SetItemTooltip("The way the middle joint points, in the character's own axes: forward for a\nknee. Zero keeps the way the clip bends it.");
+        field::Toggle(ICON_LC_ANCHOR, "Hold Rotation", &goal.holdRotation);
+        ImGui::SetItemTooltip("Keep the bone turned in the world as the pose had it, as a foot set flat\nstays flat, rather than turning with the bone above.");
+        ImGui::SameLine();
+      }
+      if (ImGui::Button(ICON_LC_TRASH_2 " Remove"))
+        removed = i;
+    }
+    ImGui::PopID();
+  }
+  if (removed >= 0)
+    animator.ik.erase(animator.ik.begin() + removed);
+  if (ImGui::Button(ICON_LC_PLUS " Add Goal"))
+    animator.ik.push_back({});
+}
+/// @brief An animator's clips: its states, or with none the one clip it plays and where it is in it.
+inline auto DisplayAnimatorClips(Editor &app, kuki::Animator *animator) -> void {
   const auto modelName = app.GetAssetName(animator->modelAssetId);
   field::LabelText(ICON_LC_BOX " Model", "%s", modelName.empty() ? "(none)" : modelName.c_str());
   // The clip list comes from the model, so everything below it depends on that model being loaded.
   // Without it there is nothing to name the clips with and nothing to bound the scrub by, so the
   // raw index is offered on its own rather than a set of controls that cannot describe themselves.
   const auto *model = app.GetAsset<kuki::ModelAsset>(animator->modelAssetId);
+  if (model) {
+    DisplayAnimatorStates(app, *animator, *model);
+    // With states the animator is a machine and not a clip being scrubbed: which clip is playing
+    // and how far in are the machine's business, so all that is offered is whether it runs.
+    if (!animator->states.empty()) {
+      field::Toggle(ICON_LC_PLAY, "Playing", &animator->playing);
+      return;
+    }
+  }
   if (!model || model->animations.empty()) {
     auto clipIndex = animator->clipIndex;
     if (field::InputInt(ICON_LC_FILM " Clip", &clipIndex))
       animator->clipIndex = clipIndex;
-    ImGui::TextDisabled(model ? "This model has no animation clips." : "Model asset is not loaded.");
     return;
   }
   const auto clipCount = static_cast<int>(model->animations.size());
@@ -149,9 +462,14 @@ inline auto PropertyDisplayer::operator()<kuki::Animator>(kuki::Animator *animat
   auto time = animator->time;
   if (field::SliderFloat(ICON_LC_CLOCK " Time", &time, .0f, clip.duration, "%.1f ticks", ImGuiSliderFlags_AlwaysClamp))
     animator->time = time;
-  if (clip.ticksPerSecond > .0f)
-    ImGui::TextDisabled("%.2f s of %.2f s, at %.0f ticks per second", animator->time / clip.ticksPerSecond, clip.duration / clip.ticksPerSecond, clip.ticksPerSecond);
-  ImGui::TextDisabled("%zu channels", clip.channels.size());
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::Animator>(kuki::Animator *animator) -> void {
+  if (!animator)
+    return;
+  DisplayAnimatorClips(app, animator);
+  if (const auto *model = app.GetAsset<kuki::ModelAsset>(animator->modelAssetId); model)
+    DisplayAnimatorIK(app, *animator, *model);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::BoundingBox>(kuki::BoundingBox *bounds) -> void {
@@ -260,15 +578,6 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   if (field::SliderFloat(compensating ? "Compensation" : "Exposure", &exposure, -kuki::EXPOSURE_RANGE, kuki::EXPOSURE_RANGE, "%+.2f EV", ImGuiSliderFlags_AlwaysClamp))
     camera->exposure = exposure;
   ImGui::SetItemTooltip("Stops applied on top of whatever the mode produced. One stop doubles the light.");
-  // The number both backends actually read, shown because neither mode makes it obvious: in
-  // Physical it is several stops away from anything on the dials, and having it on screen is what
-  // turns a black frame from a bug into a reading.
-  if (compensating) {
-    ImGui::TextDisabled("EV100 %.2f, applying %+.2f EV", kuki::ComputeEV100(camera->aperture, camera->shutterSpeed, camera->sensitivity), camera->GetExposureStops());
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.f, .8f, .2f, 1.f), "(?)");
-    ImGui::SetItemTooltip("Physical exposure assumes lights emit in photometric units, and this engine's do not:\ntheir intensity is a bare multiplier, not lumens or candela. Expect a near black image\nand a large compensation until lighting moves to real units. Manual mode is unaffected.");
-  }
   ImGui::Separator();
   // Kept to the bottom of the panel and behind a fold, under everything that describes the camera
   // itself. These do not change what the camera is, only what it draws instead of the picture, and
@@ -277,8 +586,6 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   // its scene shader writes finished pixels and nothing else, and there is no probe field for the
   // spheres to stand for. An empty fold would still read as a feature that had stopped working.
   if ((context.capabilities.lightingDebugViews || context.capabilities.probeVolume) && field::Fold("Debug Views")) {
-    ImGui::TextDisabled("Not saved with the scene.");
-    ImGui::SetItemTooltip("A view is a thing you are in the middle of looking at rather than part of\nthe shot, so it is left out of the scene file deliberately -- reopening a\nscene onto a picture of a weight buffer would look broken, not restored.");
     if (context.capabilities.lightingDebugViews) {
       static auto &lightingNames = kuki::EnumTraits<kuki::LightingDebugView>::GetNames();
       auto lighting = static_cast<int>(camera->lightingDebugView);
@@ -293,8 +600,6 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
         camera->probeDebugView = static_cast<kuki::ProbeDebugView>(probe);
       ImGui::SetItemTooltip("What the probes are drawn as, over the scene.\nIrradiance is what the field holds; distance and variance are what the\nvisibility test runs on; trust, relocation and classification are\nwhether the mechanisms that maintain the field are working.");
     }
-    if (!active)
-      ImGui::TextDisabled("Applies when this camera is active.");
   }
   camera->dirty += dirty;
 }
@@ -510,16 +815,6 @@ inline auto PropertyDisplayer::operator()<kuki::AntiAliasing>(kuki::AntiAliasing
   if (field::Combo("Mode", &mode, modes.data(), modes.size()))
     antiAliasing->mode = static_cast<kuki::AntiAliasingMode>(mode);
   ImGui::SetItemTooltip("How many samples a pixel of the scene is rasterised at before it is\nresolved. Multisampling is the only method offered because it is the\nonly one the pipeline has: the antialiasing pass is a resolve, not a\nfilter with an opinion.");
-  // Said rather than left to be inferred from the mode's name, because the cost is the whole of
-  // what this choice is between and a sample count does not read as a memory figure. The scene
-  // target and the entity id buffer beside it are both allocated per sample, so eight samples
-  // costs eight times the scene's memory and bandwidth for a difference only edges show.
-  ImGui::TextDisabled("The scene target and its id buffer are allocated per sample.");
-  ImGui::SetItemTooltip("Changing this reallocates both, which stalls for a frame. Eight\nsamples is eight times the memory and bandwidth of one.");
-  if (antiAliasing->mode == kuki::AntiAliasingMode::None) {
-    ImGui::TextColored(ImVec4(1.f, .8f, .2f, 1.f), "Picking gets stricter at a silhouette.");
-    ImGui::SetItemTooltip("A click is answered from the id buffer, and with several samples under\na pixel it can land on a piece the pixel only partly covers. With one\nsample there is nothing to be generous with -- see pick.frag.");
-  }
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::AtmosphereSky>(kuki::AtmosphereSky *sky) -> void {
@@ -528,14 +823,8 @@ inline auto PropertyDisplayer::operator()<kuki::AtmosphereSky>(kuki::AtmosphereS
   // Said once and nothing else offered, on a backend with no route to a computed sky. The
   // add-component menu already hides this, but a scene file carries the component onto whatever
   // backend opens it -- and thirty sliders that move nothing read as a broken renderer.
-  if (!context.capabilities.proceduralSky) {
-    ImGui::TextDisabled("This backend cannot compute a sky.");
-    ImGui::SetItemTooltip("The march is a compute pass writing the cubemap the image-based lighting\nchain already reads, and the OpenGL backend feeds that chain from a\ntexture asset instead. The scene falls back to its background colour.");
+  if (!context.capabilities.proceduralSky)
     return;
-  }
-  ImGui::TextDisabled("Kilometres. The sun is the scene's directional light.");
-  ImGui::SetItemTooltip("None of these are in the scene's units, and they do not have to be: the sky is\na background at infinity. Altitude below is the one field that relates the\ntwo, and it says how high up the scene is meant to be.\n\nRotate the directional light to move the sun. There is deliberately no sun\ndirection here: a scene with a sun already has a light, and two places to\nset it is two things to get out of step.");
-  ImGui::Separator();
   // Edited through a copy and written back in one go, as every other displayer here does: a widget
   // writes on the frame it is dragged, and the renderer hashes this struct to decide whether to
   // spend twenty-one dispatches rebuilding the sky. Handing a widget the live field would let it
@@ -550,20 +839,16 @@ inline auto PropertyDisplayer::operator()<kuki::AtmosphereSky>(kuki::AtmosphereS
     ImGui::SetItemTooltip("How much light the ground bounces back up. Most of the lower half of the\nsky cubemap is ground, and that cubemap is where the diffuse irradiance\nand the reflections are gathered from -- so this is most of the fill\nlight arriving from below, not a detail of the background.");
   }
   if (field::Fold("Sun Disc", true)) {
-    ImGui::TextDisabled("Drawn over the sky, not baked into it.");
-    ImGui::SetItemTooltip("The disc is added by the background pass rather than written into the sky\ncubemap. That cubemap is projected to harmonics and prefiltered to light\nthe scene, and the scene already has a directional light standing for the\nsun -- a disc in there would be the same sun counted twice.");
     field::SliderFloat("Angular Radius", &edited.sunAngularRadius, .0f, 5.f, "%.2f deg");
     ImGui::SetItemTooltip("A quarter of a degree is the real sun and looks it. Larger reads as a\nbigger, softer star, and costs nothing: the disc is a comparison against\na cosine rather than anything drawn.");
     field::SliderFloat("Disc Intensity", &edited.sunDiscIntensity, .0f, 4.f);
     ImGui::SetItemTooltip("A multiplier on the physical figure, which is the sun's whole output\narriving from seven millionths of a steradian -- correct, and more than\nthe bloom chain can take without whiting out the frame. Zero removes the\ndisc and leaves the sky it sits in alone.");
   }
   if (field::Fold("Air")) {
-    ImGui::TextDisabled("Rayleigh: why the sky is blue.");
     field::DragFloat3("Rayleigh", &edited.rayleighScattering.x, 1.0e-4f, .0f, 1.f, "%.5f");
     ImGui::SetItemTooltip("Scattering per kilometre, per channel. The three differ by about a factor\nof six across the visible range, which is what scatters short wavelengths\nout of a sunbeam and into every other direction. Scaling all three makes\nthicker or thinner air; changing the ratio gives a sky that is not Earth's.");
     field::DragFloat("Rayleigh Scale Height", &edited.rayleighScaleHeight, .1f, .1f, 50.f, "%.2f km");
     ImGui::Separator();
-    ImGui::TextDisabled("Mie: haze, and the halo around the sun.");
     field::DragFloat("Mie Scattering", &edited.mieScattering, 1.0e-4f, .0f, 1.f, "%.5f");
     field::DragFloat("Mie Absorption", &edited.mieAbsorption, 1.0e-4f, .0f, 1.f, "%.5f");
     ImGui::SetItemTooltip("Added to the scattering to give the extinction, so a medium can never\nremove less light than it scatters. A negative value is clamped away.");
@@ -571,7 +856,6 @@ inline auto PropertyDisplayer::operator()<kuki::AtmosphereSky>(kuki::AtmosphereS
     field::SliderFloat("Mie Anisotropy", &edited.mieAnisotropy, .0f, .95f);
     ImGui::SetItemTooltip("How strongly the aerosols scatter forward. The knob to reach for when the\nsun looks like a sticker rather than a light: higher tightens the halo\nand brightens the sky right around the sun at the expense of the rest.");
     ImGui::Separator();
-    ImGui::TextDisabled("Ozone: why a sunset is red and not just dim.");
     field::DragFloat3("Ozone", &edited.ozoneAbsorption.x, 1.0e-5f, .0f, 1.f, "%.5f");
     ImGui::SetItemTooltip("Absorbs and does not scatter, and absorbs most in the middle of the\nvisible range -- which takes the green out of a low sun. Setting this to\nzero is the quickest way to see what it is doing.");
     field::DragFloat("Ozone Centre", &edited.ozoneCenter, .5f, .0f, 100.f, "%.1f km");
@@ -582,8 +866,6 @@ inline auto PropertyDisplayer::operator()<kuki::AtmosphereSky>(kuki::AtmosphereS
     field::DragFloat("Atmosphere Height", &edited.atmosphereHeight, 1.f, 1.f, 1000.f, "%.0f km");
   }
   if (field::Fold("Quality")) {
-    ImGui::TextDisabled("Paid on a rebuild, not per frame.");
-    ImGui::SetItemTooltip("The sky is marched once into a cubemap and only when something here or the\nsun changes, so these buy smoothness rather than frame rate. What they\ncost is the length of the pause when you drag a slider.");
     auto steps = static_cast<int>(edited.marchSteps);
     if (field::SliderInt("March Steps", &steps, 8, 128))
       edited.marchSteps = static_cast<uint32_t>(std::max(8, steps));
@@ -598,22 +880,8 @@ template <>
 inline auto PropertyDisplayer::operator()<kuki::VolumetricClouds>(kuki::VolumetricClouds *clouds) -> void {
   if (!clouds)
     return;
-  if (!context.capabilities.volumetrics) {
-    ImGui::TextDisabled("This backend cannot march the air.");
-    ImGui::SetItemTooltip("The cloud layer is a raymarch through the same medium the sky is built from,\nand the OpenGL backend has no atmosphere to hang one in. The sky falls back\nto whatever it was showing before.");
+  if (!context.capabilities.volumetrics)
     return;
-  }
-  // Said plainly rather than left to be discovered. The layer needs an atmosphere for its sunlight
-  // and its ambient, and without one this pass does nothing at all -- which from the outside looks
-  // exactly like a cloud layer that is not working.
-  if (!app.GetScene() || !app.GetScene()->GetAnyComponent<kuki::AtmosphereSky>()) {
-    ImGui::TextDisabled("Add an Atmosphere Sky. Nothing is drawn without one.");
-    ImGui::SetItemTooltip("A cloud is lit by sunlight that has already come through the air above it and\nfilled in by the sky around it, and both of those are integrals through a\nmedium only the atmosphere describes. There is nothing to invent them from.");
-    ImGui::Separator();
-  }
-  ImGui::TextDisabled("Kilometres, like the atmosphere. Marched every frame.");
-  ImGui::SetItemTooltip("Unlike the sky, which is built once into a cubemap when the sun moves, this is\nmarched from the camera in every frame -- which is what lets it drift and show\nparallax, and what makes the two step counts at the bottom the cost of the\nfeature.");
-  ImGui::Separator();
   auto edited = *clouds;
   if (field::Fold("Layer", true)) {
     field::DragFloat("Base", &edited.bottomAltitude, .05f, .0f, 60.f, "%.2f km");
@@ -651,8 +919,6 @@ inline auto PropertyDisplayer::operator()<kuki::VolumetricClouds>(kuki::Volumetr
     ImGui::SetItemTooltip("How much the layer darkens the light reaching the air below it. What this\nreaches is the shafts in Volumetric Fog: a cloud crossing the sun takes the\nbeams with it.\n\nIt does not reach surface shading. The scene is shaded before this pass runs,\nso the ground under an overcast sky is still lit as though it were clear.");
   }
   if (field::Fold("Quality")) {
-    ImGui::TextDisabled("Paid every frame, unlike the sky's.");
-    ImGui::SetItemTooltip("The sky is marched once per cubemap texel when the sun moves. This is marched\nper pixel per frame, at half the viewport on each axis, so these two are the\ncost of the feature.");
     auto steps = static_cast<int>(edited.steps);
     if (field::SliderInt("View Steps", &steps, 8, 192))
       edited.steps = static_cast<uint32_t>(std::max(8, steps));
@@ -669,14 +935,8 @@ template <>
 inline auto PropertyDisplayer::operator()<kuki::VolumetricFog>(kuki::VolumetricFog *fog) -> void {
   if (!fog)
     return;
-  if (!context.capabilities.volumetrics) {
-    ImGui::TextDisabled("This backend cannot march the air.");
-    ImGui::SetItemTooltip("The shafts want a depth buffer, both shadow maps and a medium to walk through.\nThe OpenGL backend has the first two, so what is missing is the pass rather\nthan the plumbing -- the picture passes through untouched.");
+  if (!context.capabilities.volumetrics)
     return;
-  }
-  ImGui::TextDisabled("The scene's units. Needs no atmosphere.");
-  ImGui::SetItemTooltip("This is the air the scene stands in rather than a planet's, so it is measured\nagainst the geometry around it. A sealed room has air in it, and a spot light in\na sealed room throws a cone that this is what draws.\n\nAerial Perspective below is the exception: that one is the atmosphere's air, in\nkilometres, and does nothing without an Atmosphere Sky.");
-  ImGui::Separator();
   auto edited = *fog;
   if (field::Fold("Medium", true)) {
     field::DragFloat("Density", &edited.density, .002f, .0f, 2.f, "%.3f");
@@ -704,8 +964,6 @@ inline auto PropertyDisplayer::operator()<kuki::VolumetricFog>(kuki::VolumetricF
     ImGui::SetItemTooltip("The one place the scene's units and the atmosphere's have to agree, because how\nblue a far wall goes depends on how far away the wall really is. Raise it for a\nscene meant to read as a landscape.\n\nRead only by Aerial Perspective above.");
   }
   if (field::Fold("Quality")) {
-    ImGui::TextDisabled("Paid every frame, at the full viewport.");
-    ImGui::SetItemTooltip("Each step samples a shadow map, so this is the whole cost of the pass. The\nsamples are coherent between neighbouring pixels -- they walk the same map\nthrough nearly the same texels -- so they are cheaper than the count suggests.");
     auto steps = static_cast<int>(edited.steps);
     if (field::SliderInt("Steps", &steps, 4, 128))
       edited.steps = static_cast<uint32_t>(std::max(4, steps));
@@ -718,14 +976,8 @@ template <>
 inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleEmitter *emitter) -> void {
   if (!emitter)
     return;
-  if (!context.capabilities.particles) {
-    ImGui::TextDisabled("This backend does not run particles.");
-    ImGui::SetItemTooltip("The particles are stepped by a compute shader and drawn straight out of the\nbuffer it writes, and only the Direct3D 12 backend has that pass. The picture\npasses through untouched.");
+  if (!context.capabilities.particles)
     return;
-  }
-  ImGui::TextDisabled("Simulated on the GPU. Emits along the local +Y.");
-  ImGui::SetItemTooltip("Nothing about a particle ever comes back to the processor, so everything here\ndescribes the emitter. Rotate the entity to aim it; move it and the particles\nalready in flight stay where they were, which is what leaves a trail.");
-  ImGui::Separator();
   auto edited = *emitter;
   // Written over the whole component, since that is what a preset is -- except the two fields that
   // are not a description of an effect: which mesh, and how many bursts have gone off.
@@ -771,13 +1023,6 @@ inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleE
     if (field::DragInt("Capacity", &capacity, 64.f, 1, 1 << 20))
       edited.capacity = static_cast<uint32_t>(std::clamp(capacity, 1, 1 << 20));
     ImGui::SetItemTooltip("Slots in the pool. Every one is simulated and submitted each frame whether or\nnot anything is alive in it, so this is what the emitter costs.\n\nChanging it discards the particles in flight.");
-    // The one sum worth doing for whoever is looking at this panel. The pool is a ring refilled in
-    // order, so a rate and a lifetime it cannot hold do not fail -- they quietly cut the oldest
-    // particles short, which from the outside looks like a lifetime slider that stopped working.
-    if (const auto needed = edited.rate * (edited.lifetime + edited.hold); edited.emitting && needed > static_cast<float>(edited.capacity)) {
-      ImGui::TextDisabled("Pool is short: %.0f needed.", needed);
-      ImGui::SetItemTooltip("Rate times lifetime is how many particles are alive at once. With fewer slots\nthan that the ring comes back round to a slot before its particle has\nfinished, and the oldest ones vanish early.");
-    }
     if (edited.shape == kuki::ParticleShape::Sphere) {
       field::DragFloat("Radius", &edited.radius, .005f, .0f, 100.f, "%.3f");
       ImGui::SetItemTooltip("Particles appear somewhere inside a sphere this size around the emitter.");
@@ -837,10 +1082,6 @@ inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::Indirect
   const auto defaults = kuki::IndirectLighting{};
   auto edited = *indirect;
   if (field::Fold("Terms", true)) {
-    if (probes)
-      ImGui::TextDisabled("Applied after the field is read. Repaints immediately.");
-    else
-      ImGui::TextDisabled("This backend has no probe field. Repaints immediately.");
     if (probes) {
       field::SliderFloat("Bounce", &edited.bounceIntensity, .0f, 4.f);
       ImGui::SetItemTooltip("How much of the probe volume's bounce reaches the picture.\nThe first thing to reach for: most of the time the question is\nwhether there is too much indirect light or too little.");
@@ -853,7 +1094,6 @@ inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::Indirect
     ImGui::SetItemTooltip("What fills the frame behind everything with no skybox. Linear,\nand tone mapped along with the rest of the picture -- so the swatch\nis not what reaches the display. The other half of Ambient Fallback:\nthis is what a scene stands in front of, and that is the light it\ngets for standing there.");
   }
   if (probes && field::Fold("Reconstruction", true)) {
-    ImGui::TextDisabled("How the field is read at a point. Repaints immediately.");
     field::SliderFloat("Surface Bias", &edited.probeSurfaceBias, .0f, 1.f);
     ImGui::SetItemTooltip("A step off the surface before the field is sampled, as a fraction\nof the local cell. Too small and a concave corner reads as occluded\nfrom every probe around it; too large and the bounce detaches from\nthe geometry, losing the darkening where surfaces meet.");
     field::SliderFloat("Weight Floor", &edited.probeWeightFloor, .0f, 1.f);
@@ -862,7 +1102,6 @@ inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::Indirect
     ImGui::SetItemTooltip("How sharply a partly-visible probe is disbelieved. One is the\nstatistical answer and it leaks; higher distrusts a partial verdict\nmore, at the cost of darkening the creases the test is least\ncertain about.");
   }
   if (probes && field::Fold("Trace")) {
-    ImGui::TextDisabled("Changes what the probes store. Settles over a few dozen frames.");
     field::SliderFloat("Depth Sharpness", &edited.probeDepthSharpness, 4.f, 64.f);
     ImGui::SetItemTooltip("How tightly a ray must line up with a visibility texel to count\ntowards it. Tied to the map's width rather than free: 28 puts the\nlobe's half-width at the angle one texel subtends, and sharpening\nmuch past it leaves texels that no ray feeds.");
     field::SliderFloat("Depth Range", &edited.probeDepthRange, .05f, 2.f);
@@ -879,7 +1118,6 @@ inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::Indirect
     ImGui::SetItemTooltip("Estimates the running mean is worth, so a fresh one is folded in at\none over n plus this. Lower converges faster and holds more of the\nray set's noise; higher is steadier and slower to notice that the\nlight changed.");
   }
   if (probes && field::Fold("Probe Placement")) {
-    ImGui::TextDisabled("Where probes stand. Settles over a few dozen frames.");
     field::SliderFloat("Relocation Margin", &edited.relocationMargin, .0f, 1.f);
     ImGui::SetItemTooltip("How far a probe steps towards open space each trace, as a fraction\nof its allowance.");
     field::SliderFloat("Relocation Damping", &edited.relocationDamping, .0f, 1.f);
@@ -888,8 +1126,6 @@ inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::Indirect
     ImGui::SetItemTooltip("How much the rays coming back off a far side must agree before\ntheir mean is taken for a direction rather than the residue of a\nray set. A probe just outside a surface scores about a half; one\nsealed inside solid geometry, about 0.0016.");
     field::SliderFloat("Buried Limit", &edited.buriedLimit, .01f, 1.f);
     ImGui::SetItemTooltip("What share of a probe's rays may come back off the far side of a\nsurface before it is disbelieved and filled in from its neighbours.\nThe Probe View's Trust and Classification entries show the verdict.");
-    ImGui::TextDisabled("Their allowance is fixed when the volume is built.");
-    ImGui::SetItemTooltip("PROBE_RELOCATION_LIMIT, baked into each probe's anchor. Changing it\nmeans rebuilding the volume rather than retracing, which is a\ndifferent tier of cost and is not exposed here.");
   }
   ImGui::Separator();
   ImGui::BeginDisabled(std::memcmp(&edited, &defaults, sizeof(edited)) == 0);
@@ -936,10 +1172,6 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
   auto intensity = light->intensity;
   if (field::DragFloat(ICON_LC_SUN " Intensity", &intensity, .05f, .0f, MAX_FLOAT, "%.2f"))
     light->intensity = intensity;
-  ImGui::SameLine();
-  ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("Brightness multiplier applied on top of the diffuse/specular colors above.\nRaise this instead of pushing color channels past 1.0 to make a light brighter.");
   if (light->type == kuki::LightType::Directional) {
     auto angularDiameter = light->angularDiameter;
     if (field::DragFloat("Angular Diameter", &angularDiameter, .01f, .0f, 30.f, "%.2f deg"))
@@ -963,10 +1195,6 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
       light->linear = 4.5f / range;
       light->quadratic = 75.f / (range * range);
     }
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Approximate distance the light reaches before fading out.\nReplaces manually tuning constant/linear/quadratic attenuation terms.");
     // The three terms Range drives, shown alongside it rather than behind a fold. Editing one by
     // hand puts the falloff somewhere Range cannot express, and the next drag of Range overwrites
     // all three; that is the intended relationship, and it is easier to see when both are visible.
@@ -1004,10 +1232,6 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
     auto orthoSize = light->orthoSize;
     if (field::DragFloat("Shadow Coverage Size", &orthoSize, .1f, .0f, MAX_FLOAT))
       light->orthoSize = orthoSize;
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Half-width of the area around this light that the shadow map covers.\nIncrease if shadows clip or disappear near the edges of the scene.");
   }
 }
 template <>
@@ -1042,11 +1266,24 @@ inline auto PropertyDisplayer::operator()<kuki::ModelMeshHandle>(kuki::ModelMesh
   auto meshIndex = handle->meshIndex;
   field::InputScalar("Mesh Index", ImGuiDataType_U64, &meshIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
+/// @brief What the running backend resolved the entity's handles to: its own material and mesh.
+///
+/// They were components of their own, one per backend, and had panels of their own. They are one
+/// component now, of which only the running backend's half is ever filled in, so that half is what
+/// is shown -- with the same panels.
 template <>
-inline auto PropertyDisplayer::operator()<kuki::Script>(kuki::Script *script) -> void {
-  if (!script)
+inline auto PropertyDisplayer::operator()<kuki::RenderBinding>(kuki::RenderBinding *binding) -> void {
+  if (!binding)
     return;
-  script->Display();
+  if (binding->glMaterialBound || binding->glMesh) {
+    if (binding->glMaterialBound && field::Fold("Material", true))
+      (*this)(&binding->glMaterial);
+    if (binding->glMesh && field::Fold("Mesh", false))
+      (*this)(&binding->glMesh);
+  } else if (binding->dxMaterialBound)
+    (*this)(&binding->dxMaterial);
+  else
+    ImGui::TextDisabled("Not resolved by the running backend yet.");
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Skeleton>(kuki::Skeleton *skeleton) -> void {
@@ -1054,15 +1291,6 @@ inline auto PropertyDisplayer::operator()<kuki::Skeleton>(kuki::Skeleton *skelet
     return;
   auto nodeCount = static_cast<int>(skeleton->nodeEntities.size());
   field::InputInt("Node Count", &nodeCount, 0, 0, ImGuiInputTextFlags_ReadOnly);
-  // A skeleton is a flat array indexed by the animation channels, and a hole in it means a channel
-  // that will animate nothing. Counting the holes is the part worth surfacing: the array's length
-  // alone looks healthy right up until the moment a clip drives a bone that was never bound.
-  const auto bound = std::count_if(skeleton->nodeEntities.begin(), skeleton->nodeEntities.end(), [](const kuki::EntityID id) { return static_cast<bool>(id); });
-  const auto missing = static_cast<int>(skeleton->nodeEntities.size()) - static_cast<int>(bound);
-  if (missing > 0)
-    ImGui::TextColored(ImVec4(1.f, .8f, .2f, 1.f), "%d node(s) not bound to an entity", missing);
-  else if (nodeCount > 0)
-    ImGui::TextDisabled("Every node is bound.");
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::SkyboxHandle>(kuki::SkyboxHandle *handle) -> void {

@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdint>
 #include <light_limits.hpp>
+#include <particle_emitter.hpp>
+#include <particle_limits.hpp>
 #include <probe_limits.hpp>
 namespace kuki {
 /// @brief One preprocessor definition handed to a shader at compile time.
@@ -38,5 +40,8 @@ inline constexpr ShaderDefinition SHADER_DEFINITIONS[]{
   {"KUKI_MAX_SPOT_SHADOW_LIGHTS", MAX_SPOT_SHADOW_LIGHTS},
   {"KUKI_PROBE_OCTREE_MAX_DEPTH", PROBE_OCTREE_MAX_DEPTH},
   {"KUKI_PROBE_MEASURE_LINES_PER_THREAD", PROBE_MEASURE_LINES_PER_THREAD},
+  {"KUKI_PARTICLE_GROUP_SIZE", PARTICLE_GROUP_SIZE},
+  // An enumerator and not a count, but the shader compares a `uint` against it all the same.
+  {"KUKI_PARTICLE_SHAPE_MESH", static_cast<uint32_t>(ParticleShape::Mesh)},
 };
 } // namespace kuki

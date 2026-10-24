@@ -1,32 +1,19 @@
 #pragma once
-#include <animator.hpp>
+#include <archetype.hpp>
 #include <archetype_registry.hpp>
 #include <camera.hpp>
 #include <component.hpp>
+#include <component_traits.hpp>
 #include <component_type.hpp>
 #include <concepts.hpp>
 #include <cstdint>
-#include <event.hpp>
 #include <functional>
-#include <gl_material.hpp>
-#include <gl_mesh.hpp>
-#include <gl_skybox.hpp>
-#include <gl_texture.hpp>
 #include <id.hpp>
-#include <light.hpp>
-#include <material_handle.hpp>
-#include <memory>
-#include <mesh_handle.hpp>
-#include <particle_emitter.hpp>
-#include <script.hpp>
-#include <script_store.hpp>
-#include <skeleton.hpp>
-#include <skybox_handle.hpp>
+#include <kuki_engine_export.h>
+#include <string>
 #include <transform.hpp>
-#include <volumetric_clouds.hpp>
-#include <volumetric_fog.hpp>
-#include <trie.hpp>
-#include <typeindex>
+#include <tuple>
+#include <type_list.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -43,26 +30,66 @@ namespace kuki {
 /// out of its column, which is the whole reason the storage is laid out in columns.
 template <typename T>
 struct Optional {};
-/// @brief Splits a query parameter into the component it names and whether it was optional.
+/// @brief Marks a component a query skips the archetypes of. The callback is handed nothing for it.
+///
+/// `ForEach<Transform, Without<Camera>>` is every transform that is not a camera's.
+template <typename T>
+struct Without {};
+/// @brief Splits a query parameter into the component it names and what the query does with it.
 template <typename T>
 struct QueryTraits {
   using Type = T;
   static constexpr auto optional = false;
+  static constexpr auto excluded = false;
 };
 template <typename T>
 struct QueryTraits<Optional<T>> {
   using Type = T;
   static constexpr auto optional = true;
+  static constexpr auto excluded = false;
 };
-/// @brief Sets a query parameter's bit in the mask that selects archetypes, unless it is optional.
 template <typename T>
-auto SetRequiredBit(ComponentMask &mask) -> void {
-  if constexpr (!QueryTraits<T>::optional)
-    mask.set(Component::GetBit(typeid(typename QueryTraits<T>::Type)));
+struct QueryTraits<Without<T>> {
+  using Type = T;
+  static constexpr auto optional = false;
+  static constexpr auto excluded = true;
+};
+template <typename Q>
+inline constexpr uint64_t QueryBit = uint64_t{1} << ComponentIdOf<typename QueryTraits<Q>::Type>;
+/// @brief The components an archetype must have for a query to visit it.
+template <typename... Qs>
+inline constexpr uint64_t RequiredBits = (((QueryTraits<Qs>::optional || QueryTraits<Qs>::excluded) ? uint64_t{0} : QueryBit<Qs>) | ... | uint64_t{0});
+/// @brief The components an archetype must not have for a query to visit it.
+template <typename... Qs>
+inline constexpr uint64_t ExcludedBits = ((QueryTraits<Qs>::excluded ? QueryBit<Qs> : uint64_t{0}) | ... | uint64_t{0});
+/// @brief Whether an archetype with these component bits is one a query visits.
+template <typename... Qs>
+constexpr auto QueryMatches(const uint64_t bits) -> bool {
+  return (bits & RequiredBits<Qs...>) == RequiredBits<Qs...> && (bits & ExcludedBits<Qs...>) == 0;
 }
+template <typename... Qs>
+concept IsQuery = (IsComponent<typename QueryTraits<Qs>::Type> && ...) && RequiredBits<Qs...> != 0 && (RequiredBits<Qs...> & ExcludedBits<Qs...>) == 0;
+/// @brief The entities of one scene, or of one asset manager's prefabs: their names and hierarchy,
+/// and their components, stored by archetype.
+///
+/// Holds entities of the archetypes it was told about with `Declare`, and no others. An entity is
+/// made of one (`Create<A>`) and keeps it: there is no adding a component to an entity and no
+/// taking one away. See `Archetype` for why.
 class KUKI_ENGINE_API EntityManager {
 public:
+  /// @brief Tells this manager about an archetype, so that entities can be made of it.
+  ///
+  /// Declaring one twice does nothing. A scene is given every archetype of its application's
+  /// `World` when it is made (`SceneManager::Create`), so this is seldom called by hand.
+  auto Declare(const ArchetypeSpec &) -> void;
+  template <IsArchetype A>
+  auto Declare() -> void;
+  auto IsDeclared(const ComponentMask &) const -> bool;
   /// @brief Parents one entity to another, optionally preserving the child's world transform.
+  ///
+  /// Both must have a `Transform`: the hierarchy is the transforms' hierarchy, and an entity with
+  /// none has nothing to inherit. It used to add one to whichever lacked it, which changed the
+  /// entity's archetype as a side effect of parenting it.
   ///
   /// Only marks the update order stale rather than rebuilding it. Instantiating a model calls this
   /// once per node, and a rebuild walks the whole scene, so rebuilding eagerly made importing cost
@@ -71,10 +98,31 @@ public:
   ///
   /// @return True when the link was established.
   auto AddChild(const EntityID, const EntityID, bool = false) -> bool;
+  /// @brief Deletes every entity, and keeps every archetype that was declared.
   auto Clear() -> void;
+  /// @brief Makes a copy of an entity of another manager, and of its children, here.
+  ///
+  /// Of the same archetype, which this manager must have been told about. Invalid if not.
   auto CopyFrom(const EntityManager &, const EntityID) -> EntityID;
   auto CopyTo(const EntityID, EntityManager &) const -> EntityID;
+  /// @brief Copies the components two entities share, from one of another manager to one here.
+  ///
+  /// @return The components the source had and the destination did not, which were left behind.
+  auto CopyComponents(const EntityManager &, const EntityID from, const EntityID to) -> ComponentMask;
+  /// @brief Makes an entity of an archetype, its components at their defaults.
+  ///
+  /// Allowed while a query is running, unlike `Delete`, which waits for it to finish. The new
+  /// entity is not visited by the query that made it. But a component the query handed its callback
+  /// can move when a row is added to the same archetype, so a callback that makes an entity of the
+  /// archetype it is visiting must not use what it was handed for the entity it is on afterwards.
+  ///
+  /// Invalid, with an error in the log, if the archetype was never declared here.
+  template <IsArchetype A>
   auto Create(std::string = "") -> EntityID;
+  /// @brief Makes an entity of the archetype with exactly these components, if one was declared.
+  ///
+  /// For what learns the components at run time: a scene file, a copy from another manager.
+  auto Create(const ComponentMask &, std::string = "") -> EntityID;
   auto Delete(const EntityID) -> bool;
   auto ForEachChild(this const auto &, const EntityID, auto &&) -> void;
   auto ForEachComponent(this const auto &, const EntityID, auto &&) -> void;
@@ -84,9 +132,10 @@ public:
   auto GetCount() const -> size_t;
   auto GetID(const std::string &) const -> EntityID;
   auto GetStructuralGeneration() const -> size_t;
-  auto GetMissingComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetName(const EntityID) const -> std::string;
   auto GetParent(const EntityID) const -> EntityID;
+  /// @brief The components of an entity's archetype. Empty for an id that is not an entity here.
+  auto GetSignature(const EntityID) const -> ComponentMask;
   auto HasChildren(const EntityID) const -> bool;
   auto IsEntity(const EntityID) const -> bool;
   auto IsEntity(const std::string &) const -> bool;
@@ -95,7 +144,6 @@ public:
   /// Reads the archetype signatures rather than fetching the component, because the question is
   /// whether one exists and not what is in it, and every entity's signature is already to hand.
   auto HasComponentAnywhere(const ComponentType) const -> bool;
-  auto RemoveAllComponents(const EntityID) -> bool;
   auto RemoveChild(const EntityID, const EntityID) -> bool;
   /// @brief Flags an entity's transform, and with it everything below it, for recomputation.
   ///
@@ -107,31 +155,40 @@ public:
   /// packed flags exist to make: a scene writes to far fewer transforms than it owns.
   ///
   /// Does nothing when the cache is already stale, because whatever invalidated it will have the
-  /// next update rebuild and mark everything anyway. Adding or removing a component does that, so
-  /// a freshly added transform needs no call here.
+  /// next update rebuild and mark everything anyway. Making or deleting an entity does that, so a
+  /// new entity's transform needs no call here.
   auto MarkTransformDirty(const EntityID) -> void;
-  auto RemoveScript(const EntityID, const std::type_index) -> bool;
   auto Rename(const EntityID, std::string) -> bool;
-  template <typename... T>
-  auto AddComponent(const EntityID) -> decltype(auto);
-  template <typename... T>
+  /// @brief Calls `func(id, components...)` for every entity of every archetype the query matches.
+  ///
+  /// A parameter is a component the archetype must have, `Optional<T>` for one read where it exists
+  /// (null where it does not), or `Without<T>` for one it must not have, which hands the callback
+  /// nothing. A query that names something that is not a component, requires nothing, or requires
+  /// and excludes the same component does not compile. `World::ForEach` goes further and refuses a
+  /// query that no archetype of the game could ever match.
+  template <typename... Q>
   auto ForEach(this auto &, auto &&) -> void;
-  template <typename T>
+  /// @brief `ForEach` over the entities of one archetype, which the compiler has found the query
+  /// matches.
+  ///
+  /// What `World::ForEach` runs once for each archetype of its game that the query matches, so the
+  /// archetypes it would skip are never looked at, and a component the query reads where it exists
+  /// is known to be there or not before the loop starts rather than tested for on every row.
+  template <IsArchetype A, typename... Q>
+  auto ForEachOf(this auto &, auto &&) -> void;
+  template <IsComponent T>
   auto GetAny(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
-  template <typename... T>
+  template <IsComponent... T>
   auto GetComponent(this auto &, const EntityID) -> decltype(auto);
-  template <typename... T>
+  template <IsComponent... T>
   auto GetComponent(this auto &, const std::string &) -> decltype(auto);
-  template <typename... T>
+  template <IsComponent... T>
   auto HasComponent(const EntityID) const -> bool;
-  template <typename... T>
-  auto RemoveComponent(const EntityID) -> bool;
   template <typename... T>
   auto UpdateComponents() -> void;
 private:
   EntityID nextId{0};
   ArchetypeRegistry archetypeRegistry;
-  ScriptStore scriptStore;
   std::unordered_map<EntityID, EntityLocation> idToLocation;
   std::unordered_map<EntityID, EntityID> idToParent;
   std::unordered_map<EntityID, std::string> idToName;
@@ -160,8 +217,9 @@ private:
   /// into `idToLocation` and then indexing an archetype column, and the pass used to do that
   /// three times an entity to answer a question about one bit.
   ///
-  /// Pointers into archetype columns, so anything that moves an entity between archetypes
-  /// invalidates them; `transformCacheGeneration` is what notices.
+  /// Pointers into archetype columns, so anything that adds a row to a table or takes one out of it
+  /// can invalidate them -- a column may move when it grows, and swapping the last row into a gap
+  /// moves that one; `transformCacheGeneration` is what notices.
   std::vector<Transform *> transformCache;
   /// @brief Each entry's parent as an index into `transformCache`, or -1 for a root.
   ///
@@ -191,17 +249,54 @@ private:
   size_t structuralGeneration{};
   mutable size_t forEachDepth{};
   mutable std::vector<std::function<void()>> pendingStructuralChanges;
-  template <typename F>
-  auto AddComponentImmediate(const EntityID) -> F *;
   void DeleteRecords(const EntityID);
   auto DrainPendingStructuralChanges() const -> void;
-  auto MoveToArchetype(const EntityID, const ComponentMask &) -> void;
   auto RebuildTransformOrder() -> void;
   auto RebuildTransformCache() -> void;
   auto IsTransformCacheStale() const -> bool;
   void AppendTransformOrder(const EntityID);
   auto UpdateTransforms() -> void;
+  /// @brief Where a query's component comes from in one table: a column, or nothing for `Without`.
+  template <typename Q, typename Table>
+  static auto QueryColumn(Table &table) {
+    if constexpr (QueryTraits<Q>::excluded)
+      return std::tuple<>{};
+    else
+      return std::tuple(table.template GetColumn<typename QueryTraits<Q>::Type>());
+  }
+  /// @brief An optional component an archetype is known not to have, as the null it hands over.
+  template <typename Pointer>
+  struct NoColumn {};
+  /// @brief `QueryColumn` for an archetype known at compile time.
+  template <IsArchetype A, typename Q, typename Table>
+  static auto KnownColumn(Table &table) {
+    using C = typename QueryTraits<Q>::Type;
+    if constexpr (QueryTraits<Q>::excluded)
+      return std::tuple<>{};
+    else if constexpr (A::template Has<C>)
+      return std::tuple(table.template GetColumn<C>());
+    else
+      return std::tuple(NoColumn<ConstCorrectPointer<Table, C>>{});
+  }
+  template <typename Column>
+  static auto RowOf(Column *column, const size_t row) {
+    return &column->components[row];
+  }
+  template <typename Pointer>
+  static auto RowOf(NoColumn<Pointer>, const size_t) -> Pointer {
+    return nullptr;
+  }
 };
+template <IsArchetype A>
+auto EntityManager::Declare() -> void {
+  // Made once per archetype type and kept: the columns in it are only templates to copy.
+  static const auto spec = MakeArchetypeSpec<A>();
+  Declare(spec);
+}
+template <IsArchetype A>
+auto EntityManager::Create(std::string name) -> EntityID {
+  return Create(A::Mask(), std::move(name));
+}
 auto EntityManager::ForEachChild(this const auto &self, const EntityID parent, auto &&func) -> void {
   if (auto it = self.idToChildren.find(parent); it != self.idToChildren.end()) {
     const auto children = it->second;
@@ -210,13 +305,10 @@ auto EntityManager::ForEachChild(this const auto &self, const EntityID parent, a
   }
 }
 auto EntityManager::ForEachComponent(this const auto &self, const EntityID id, auto &&func) -> void {
-  if (auto it = self.idToLocation.find(id); it != self.idToLocation.end()) {
-    const auto &mask = it->second.signature;
-    Component::ForEachSetType(mask, [&](const ComponentType type) {
-      auto component = self.GetComponent(id, type);
-      func(component);
-    });
-  }
+  Component::ForEachSetType(self.GetSignature(id), [&](const ComponentType type) {
+    auto component = self.GetComponent(id, type);
+    func(component);
+  });
 }
 auto EntityManager::ForEachRoot(this const auto &self, auto &&func) -> void {
   const auto roots = self.rootEntities;
@@ -224,144 +316,36 @@ auto EntityManager::ForEachRoot(this const auto &self, auto &&func) -> void {
     func(id);
 }
 auto EntityManager::GetComponent(this auto &self, const EntityID id, const ComponentType type) -> ConstBasedValue<decltype(self), ConstComponentVariant, ComponentVariant> {
-  switch (type) {
-  case ComponentType::Animator:
-    return self.template GetComponent<Animator>(id);
-  case ComponentType::AntiAliasing:
-    return self.template GetComponent<AntiAliasing>(id);
-  case ComponentType::AtmosphereSky:
-    return self.template GetComponent<AtmosphereSky>(id);
-  case ComponentType::BoundingBox:
-    return self.template GetComponent<BoundingBox>(id);
-  case ComponentType::Camera:
-    return self.template GetComponent<Camera>(id);
-  case ComponentType::DXMaterial:
-    return self.template GetComponent<DXMaterial>(id);
-  case ComponentType::GLBuffer:
-    return self.template GetComponent<GLBuffer>(id);
-  case ComponentType::GLComputeShader:
-    return self.template GetComponent<GLComputeShader>(id);
-  case ComponentType::GLLitShader:
-    return self.template GetComponent<GLLitShader>(id);
-  case ComponentType::GLMaterial:
-    return self.template GetComponent<GLMaterial>(id);
-  case ComponentType::GLMesh:
-    return self.template GetComponent<GLMesh>(id);
-  case ComponentType::GLRenderTarget:
-    return self.template GetComponent<GLRenderTarget>(id);
-  case ComponentType::GLSkybox:
-    return self.template GetComponent<GLSkybox>(id);
-  case ComponentType::GLTexture:
-    return self.template GetComponent<GLTexture>(id);
-  case ComponentType::GLUnlitShader:
-    return self.template GetComponent<GLUnlitShader>(id);
-  case ComponentType::IndirectLighting:
-    return self.template GetComponent<IndirectLighting>(id);
-  case ComponentType::Light:
-    return self.template GetComponent<Light>(id);
-  case ComponentType::MaterialHandle:
-    return self.template GetComponent<MaterialHandle>(id);
-  case ComponentType::MeshHandle:
-    return self.template GetComponent<MeshHandle>(id);
-  case ComponentType::ModelMaterialHandle:
-    return self.template GetComponent<ModelMaterialHandle>(id);
-  case ComponentType::ModelMeshHandle:
-    return self.template GetComponent<ModelMeshHandle>(id);
-  case ComponentType::ParticleEmitter:
-    return self.template GetComponent<ParticleEmitter>(id);
-  case ComponentType::Script: {
-    auto scripts = self.template GetComponent<Script>(id);
-    if (scripts.empty())
-      return {};
-    else // TODO: decide what to return here
-      return scripts[0];
-  }
-  case ComponentType::Skeleton:
-    return self.template GetComponent<Skeleton>(id);
-  case ComponentType::SkyboxHandle:
-    return self.template GetComponent<SkyboxHandle>(id);
-  case ComponentType::TextureHandle:
-    return self.template GetComponent<TextureHandle>(id);
-  case ComponentType::VolumetricClouds:
-    return self.template GetComponent<VolumetricClouds>(id);
-  case ComponentType::VolumetricFog:
-    return self.template GetComponent<VolumetricFog>(id);
-  default:
-    return self.template GetComponent<Transform>(id);
-  }
+  // Generated from the list of components rather than written out as a switch. The switch had a
+  // `default` that handed back the entity's transform, so a component someone forgot to add to it
+  // came back as the wrong component and not as nothing.
+  using Result = ConstBasedValue<decltype(self), ConstComponentVariant, ComponentVariant>;
+  Result result{};
+  ForEachType(EngineComponents{}, [&]<typename C>() {
+    if (ComponentIdOf<C> == static_cast<ComponentId>(type))
+      result = Result(self.template GetComponent<C>(id));
+  });
+  return result;
 }
-template <typename F>
-auto EntityManager::AddComponentImmediate(const EntityID id) -> F * {
-  if constexpr (std::is_base_of_v<Script, F>) {
-    static_assert(!std::is_same_v<F, Script>, "AddComponent<Script> is invalid; pass a concrete derived script type");
-    if (!id)
-      return nullptr;
-    if (scriptStore.Has<F>(id))
-      return scriptStore.Get<F>(id);
-    auto it = idToLocation.find(id);
-    if (it == idToLocation.end())
-      return nullptr;
-    auto component = scriptStore.Add<F>(id);
-    if (component && !it->second.signature.test(static_cast<size_t>(ComponentType::Script))) {
-      auto newMask = it->second.signature;
-      newMask.set(static_cast<size_t>(ComponentType::Script));
-      MoveToArchetype(id, newMask);
-    }
-    return component;
-  } else {
-    if (!id)
-      return nullptr;
-    auto it = idToLocation.find(id);
-    if (it == idToLocation.end())
-      return nullptr;
-    const auto bit = Component::GetBit(typeid(F));
-    if (!it->second.signature.test(bit)) {
-      auto newMask = it->second.signature;
-      newMask.set(bit);
-      MoveToArchetype(id, newMask);
-    }
-    return GetComponent<F>(id);
-  }
-}
-template <typename... T>
-auto EntityManager::AddComponent(const EntityID id) -> decltype(auto) {
-  static_assert(sizeof...(T) > 0, "`AddComponent` requires at least one type parameter.");
-  if constexpr (sizeof...(T) == 1) {
-    using F = std::tuple_element_t<0, std::tuple<T...>>;
-    if (forEachDepth > 0) {
-      pendingStructuralChanges.push_back([this, id] { AddComponentImmediate<F>(id); });
-      return static_cast<F *>(nullptr);
-    }
-    return AddComponentImmediate<F>(id);
-  } else
-    return std::make_tuple(AddComponent<T>(id)...);
-}
-template <typename... T>
+template <typename... Q>
 auto EntityManager::ForEach(this auto &self, auto &&func) -> void {
-  static_assert(sizeof...(T) <= 1 || !(std::is_same_v<typename QueryTraits<T>::Type, Script> || ...), "ForEach: `Script` cannot be combined with other component types in one query");
-  // an all-optional query would match every archetype, which is a whole-scene sweep by accident
-  static_assert(sizeof...(T) == 0 || !(QueryTraits<T>::optional && ...), "ForEach: a query needs at least one required component to select archetypes with");
   ++self.forEachDepth;
-  if constexpr (sizeof...(T) == 0) {
+  if constexpr (sizeof...(Q) == 0) {
     for (const auto &[id, location] : self.idToLocation)
       func(id);
-  } else if constexpr (sizeof...(T) == 1 && std::is_same_v<std::tuple_element_t<0, std::tuple<T...>>, Script>) {
-    self.scriptStore.ForEach([&](const EntityID id, auto *script) {
-      func(id, script);
-    });
   } else {
-    // only the required types narrow the archetype set; an optional one is read where present
-    ComponentMask mask;
-    (SetRequiredBit<T>(mask), ...);
-    self.archetypeRegistry.ForEachArchetype([&](auto &archetype) {
-      if ((mask & archetype.signature) != mask)
+    static_assert(IsQuery<Q...>, "ForEach: every parameter must be a component, Optional<component> or Without<component>; at least one must be required; and none may be both required and excluded");
+    const ComponentMask required(RequiredBits<Q...>);
+    const ComponentMask excluded(ExcludedBits<Q...>);
+    self.archetypeRegistry.ForEachTable([&](auto &table) {
+      if ((table.signature & required) != required || (table.signature & excluded).any())
         return;
       // null for an optional type this archetype lacks, and hoisted out of the row loop either way
-      auto columns = std::make_tuple(archetype.template GetColumn<typename QueryTraits<T>::Type>()...);
-      const auto rowCount = archetype.entities.size();
+      auto columns = std::tuple_cat(QueryColumn<Q>(table)...);
+      const auto rowCount = table.entities.size();
       for (size_t row = 0; row < rowCount; ++row) {
-        const auto id = archetype.entities[row];
-        std::apply([&](auto *...col) { func(id, (col ? &col->components[row] : nullptr)...); }, columns);
+        const auto id = table.entities[row];
+        std::apply([&](auto *...column) { func(id, (column ? &column->components[row] : nullptr)...); }, columns);
       }
     });
   }
@@ -369,44 +353,52 @@ auto EntityManager::ForEach(this auto &self, auto &&func) -> void {
   if (self.forEachDepth == 0)
     self.DrainPendingStructuralChanges();
 }
-template <typename T>
+template <IsArchetype A, typename... Q>
+auto EntityManager::ForEachOf(this auto &self, auto &&func) -> void {
+  static_assert(IsQuery<Q...>, "ForEachOf: every parameter must be a component, Optional<component> or Without<component>; at least one must be required; and none may be both required and excluded");
+  static_assert(QueryMatches<Q...>(A::bits), "ForEachOf: the archetype is not one the query visits");
+  const auto index = self.archetypeRegistry.Find(A::Mask());
+  if (!index)
+    return;
+  ++self.forEachDepth;
+  auto &table = *self.archetypeRegistry.GetTable(*index);
+  auto columns = std::tuple_cat(KnownColumn<A, Q>(table)...);
+  const auto rowCount = table.entities.size();
+  for (size_t row = 0; row < rowCount; ++row) {
+    const auto id = table.entities[row];
+    std::apply([&](auto... column) { func(id, RowOf(column, row)...); }, columns);
+  }
+  --self.forEachDepth;
+  if (self.forEachDepth == 0)
+    self.DrainPendingStructuralChanges();
+}
+template <IsComponent T>
 auto EntityManager::GetAny(this auto &self) -> ConstCorrectPointer<decltype(self), T> {
   ConstCorrectPointer<decltype(self), T> result = nullptr;
-  if constexpr (std::is_base_of_v<Script, T>)
-    return result;
-  else {
-    self.archetypeRegistry.ForEachArchetype([&](auto &archetype) {
-      if (result)
-        return;
-      if (auto *column = archetype.template GetColumn<T>(); column && column->Size() > 0)
-        result = &column->components[0];
-    });
-    return result;
-  }
+  self.archetypeRegistry.ForEachTable([&](auto &table) {
+    if (result)
+      return;
+    if (auto *column = table.template GetColumn<T>(); column && column->Size() > 0)
+      result = &column->components[0];
+  });
+  return result;
 }
-template <typename... T>
+template <IsComponent... T>
 auto EntityManager::GetComponent(this auto &self, const EntityID id) -> decltype(auto) {
   if constexpr (sizeof...(T) == 1) {
     using C = std::tuple_element_t<0, std::tuple<T...>>;
-    if constexpr (std::is_same_v<Script, C>)
-      return self.scriptStore.GetAll(id);
-    else if constexpr (std::is_base_of_v<Script, C>)
-      return self.scriptStore.template Get<C>(id);
-    else {
-      using PointerType = ConstCorrectPointer<decltype(self), C>;
-      auto it = self.idToLocation.find(id);
-      if (it == self.idToLocation.end())
-        return PointerType(nullptr);
-      auto *archetype = self.archetypeRegistry.GetArchetype(it->second.signature);
-      auto *column = archetype ? archetype->template GetColumn<C>() : nullptr;
-      if (!column)
-        return PointerType(nullptr);
-      return PointerType(&column->components[it->second.row]);
-    }
+    using PointerType = ConstCorrectPointer<decltype(self), C>;
+    auto it = self.idToLocation.find(id);
+    if (it == self.idToLocation.end())
+      return PointerType(nullptr);
+    auto *column = self.archetypeRegistry.GetTable(it->second.table)->template GetColumn<C>();
+    if (!column)
+      return PointerType(nullptr);
+    return PointerType(&column->components[it->second.row]);
   } else
     return std::make_tuple(self.template GetComponent<T>(id)...);
 }
-template <typename... T>
+template <IsComponent... T>
 auto EntityManager::GetComponent(this auto &self, const std::string &name) -> decltype(auto) {
   EntityID id{};
   auto ids = self.nameToId.equal_range(name);
@@ -414,51 +406,10 @@ auto EntityManager::GetComponent(this auto &self, const std::string &name) -> de
     id = it->second;
   return self.template GetComponent<T...>(id);
 }
-template <typename... T>
+template <IsComponent... T>
 auto EntityManager::HasComponent(const EntityID id) const -> bool {
-  auto it = idToLocation.find(id);
-  if (it == idToLocation.end())
-    return false;
-  ComponentMask mask;
-  (mask.set(Component::GetBit(typeid(T))), ...);
-  return (it->second.signature & mask) == mask;
-}
-template <typename... T>
-auto EntityManager::RemoveComponent(const EntityID id) -> bool {
-  static_assert(sizeof...(T) > 0, "`RemoveComponent` requires at least one type parameter.");
-  if constexpr (sizeof...(T) == 1) {
-    using C = std::tuple_element_t<0, std::tuple<T...>>;
-    if (forEachDepth > 0) {
-      pendingStructuralChanges.push_back([this, id] { RemoveComponent<C>(id); });
-      return false;
-    }
-    if constexpr (IsScript<C>) {
-      if (!scriptStore.template Has<C>(id))
-        return false;
-      const auto removed = scriptStore.template Remove<C>(id);
-      if (!scriptStore.Has<Script>(id)) {
-        auto it = idToLocation.find(id);
-        if (it != idToLocation.end() && it->second.signature.test(static_cast<size_t>(ComponentType::Script))) {
-          auto newMask = it->second.signature;
-          newMask.reset(static_cast<size_t>(ComponentType::Script));
-          MoveToArchetype(id, newMask);
-        }
-      }
-      return removed;
-    } else {
-      auto it = idToLocation.find(id);
-      if (it == idToLocation.end())
-        return false;
-      const auto bit = Component::GetBit(typeid(C));
-      if (!it->second.signature.test(bit))
-        return false;
-      auto newMask = it->second.signature;
-      newMask.reset(bit);
-      MoveToArchetype(id, newMask);
-      return true;
-    }
-  } else
-    return (RemoveComponent<T>(id) && ...);
+  const auto mask = MaskOf<T...>();
+  return (GetSignature(id) & mask) == mask;
 }
 template <typename... T>
 auto EntityManager::UpdateComponents() -> void {

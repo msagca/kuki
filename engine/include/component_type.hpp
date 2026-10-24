@@ -1,22 +1,20 @@
 #pragma once
-#include <bitset>
+#include <cstdint>
 namespace kuki {
+/// @brief The engine's own components, one enumerator each, whose value is the component's id.
+///
+/// Only what an entity can carry. The backends' per-entity state is one `RenderBinding` rather
+/// than a component per backend, and the GPU resources a backend keeps for itself (`GLBuffer`,
+/// `GLTexture` and the like) are its own business and live in its own pools.
+///
+/// A game's components are not here: they take ids from `FIRST_GAME_COMPONENT` up, through
+/// `KUKI_COMPONENT` (`component_traits.hpp`), so a game never edits the engine to add one.
 enum class ComponentType : uint8_t {
   Animator,
   AntiAliasing,
   AtmosphereSky,
   BoundingBox,
   Camera,
-  DXMaterial,
-  GLBuffer,
-  GLComputeShader,
-  GLLitShader,
-  GLMaterial,
-  GLMesh,
-  GLSkybox,
-  GLRenderTarget,
-  GLTexture,
-  GLUnlitShader,
   IndirectLighting,
   Light,
   MaterialHandle,
@@ -24,7 +22,7 @@ enum class ComponentType : uint8_t {
   ModelMaterialHandle,
   ModelMeshHandle,
   ParticleEmitter,
-  Script,
+  RenderBinding,
   Skeleton,
   SkyboxHandle,
   TextureHandle,
@@ -32,6 +30,6 @@ enum class ComponentType : uint8_t {
   VolumetricClouds,
   VolumetricFog
 };
-using ComponentMask = std::bitset<static_cast<uint8_t>(ComponentType::VolumetricFog) + 1>;
-static_assert(static_cast<uint8_t>(ComponentType::GLUnlitShader) - static_cast<uint8_t>(ComponentType::GLBuffer) == 8, "GL component types (GLBuffer..GLUnlitShader) must stay contiguous -- Component::IsGL relies on this range");
+/// @brief How many engine components there are, from the last enumerator.
+inline constexpr auto ENGINE_COMPONENT_COUNT = static_cast<uint8_t>(ComponentType::VolumetricFog) + 1;
 } // namespace kuki

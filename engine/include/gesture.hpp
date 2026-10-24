@@ -117,6 +117,18 @@ public:
   auto GetHeldTicks(const ButtonMask) const -> int;
   /// @brief Forgets the masks seen so far and keeps the gestures. For the start of a round.
   auto Reset() -> void;
+  /// @brief Everything the recognizer remembers, apart from the gestures it was given.
+  ///
+  /// What a tick has to be taken back to: a game that is put back to an earlier tick and run on with
+  /// the same masks must find the same gestures, and the masks it has seen are all the recognizer
+  /// has to forget. The gestures themselves are set up once and never change, so they are not part
+  /// of it.
+  struct Memory {
+    std::array<ButtonMask, HISTORY> history{};
+    int64_t count{};
+  };
+  auto GetMemory() const -> Memory;
+  auto SetMemory(const Memory &) -> void;
 private:
   std::vector<Gesture> gestures;
   std::vector<GestureID> order;

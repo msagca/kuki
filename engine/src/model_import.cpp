@@ -1,4 +1,3 @@
-#define GLM_ENABLE_EXPERIMENTAL
 #include <algorithm>
 #include <animator.hpp>
 #include <assimp/GltfMaterial.h>

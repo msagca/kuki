@@ -1,36 +1,36 @@
 #pragma once
 #ifdef KUKI_HAS_DIRECTX
 #include <array>
+#include <atmosphere_sky.hpp>
 #include <bounding_box.hpp>
 #include <desktop_size.hpp>
 #include <dx_acceleration_structure.hpp>
 #include <dx_common.hpp>
-#include <atmosphere_sky.hpp>
-#include <volumetric_clouds.hpp>
-#include <volumetric_fog.hpp>
 #include <dx_compute_texture.hpp>
-#include <glm/ext/matrix_float4x4.hpp>
-#include <material_asset.hpp>
-#include <overlay.hpp>
-#include <particle_emitter.hpp>
 #include <dx_context.hpp>
+#include <dx_material.hpp>
 #include <dx_mesh.hpp>
 #include <dx_pipeline.hpp>
 #include <dx_probe_volume.hpp>
 #include <dx_render_target.hpp>
-#include <dx_material.hpp>
 #include <dx_texture.hpp>
 #include <dx_texture_view.hpp>
-#include <mesh.hpp>
-#include <texture.hpp>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <id.hpp>
 #include <kuki_engine_export.h>
+#include <material_asset.hpp>
+#include <mesh.hpp>
+#include <overlay.hpp>
+#include <particle_emitter.hpp>
 #include <renderer.hpp>
 #include <span>
 #include <string>
+#include <texture.hpp>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <volumetric_clouds.hpp>
+#include <volumetric_fog.hpp>
 namespace kuki {
 /// @brief One draw call's worth of work: a mesh, a material, and every instance of the pair.
 ///
@@ -206,7 +206,7 @@ public:
   auto GetTarget(const std::string &) -> RenderTarget * override;
   auto LoadAsset(const AssetID) -> void override;
   auto LoadAssets(const AssetType) -> void override;
-  /// @brief Resolves scene handles into `DXMaterial` components and uploads what they reference.
+  /// @brief Resolves scene handles into the `DXMaterial` of each entity's `RenderBinding`, and uploads what they reference.
   ///
   /// Collects first and mutates afterwards. Adding a component moves the entity to a different
   /// archetype, which invalidates both the component pointers and the iteration in progress, so
@@ -395,7 +395,7 @@ private:
   /// @brief Every emitter's pool, by the entity that carries the emitter.
   ///
   /// Keyed on the entity rather than held on the component, because the component is plain data a
-  /// scene file round-trips and a script copies, and a GPU buffer is neither. A pool whose entity
+  /// scene file round-trips and a game copies, and a GPU buffer is neither. A pool whose entity
   /// stops turning up -- deleted, or its emitter removed -- is retired by the pass that notices.
   std::unordered_map<EntityID, DXParticlePool> particlePools;
   /// @brief The frame's particle draws, kept so that its capacity survives. See `DXParticleDraw`.

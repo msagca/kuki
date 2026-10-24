@@ -68,7 +68,7 @@ struct ParticleEmitter {
   float rate{600.f};
   /// @brief Whether new particles are being spawned. The ones already in flight are unaffected.
   ///
-  /// Separate from a rate of zero so that a script can stop and start an emitter without having to
+  /// Separate from a rate of zero so that a game can stop and start an emitter without having to
   /// remember what the rate was.
   bool emitting{true};
   /// @brief Particles spawned at once, in a single frame, each time `fired` is raised.

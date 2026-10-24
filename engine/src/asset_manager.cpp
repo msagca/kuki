@@ -1,4 +1,3 @@
-#define GLM_ENABLE_EXPERIMENTAL
 #include <algorithm>
 #include <animator.hpp>
 #include <application.hpp>
@@ -7,6 +6,7 @@
 #include <asset_type.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/color4.h>
+#include <assimp/config.h>
 #include <assimp/material.h>
 #include <assimp/matrix4x4.h>
 #include <assimp/mesh.h>
@@ -62,7 +62,13 @@ const std::unordered_map<std::type_index, AssetType> AssetManager::typeIndexToAs
   {typeid(ShaderAsset), AssetType::Shader},
   {typeid(TextureAsset), AssetType::Texture}};
 AssetManager::AssetManager(Application &app)
-  : Manager(app) {}
+  : Manager(app) {
+  prefabManager.Declare<MaterialPrefab>();
+  prefabManager.Declare<TexturePrefab>();
+  prefabManager.Declare<MeshObject>();
+  prefabManager.Declare<ModelNodeObject>();
+  prefabManager.Declare<ModelMeshObject>();
+}
 auto AssetManager::Add(std::unique_ptr<Asset> asset, std::string name) -> bool {
   if (!asset || !asset->id)
     return false;
@@ -162,13 +168,35 @@ auto AssetManager::Rename(const AssetID id, std::string nameNew) -> bool {
   }
   return false;
 }
-auto AssetManager::Instantiate(const AssetID assetId, Scene &scene) -> EntityID {
+auto AssetManager::Instantiate(const AssetID assetId, Scene &scene, const ComponentMask &root) -> EntityID {
   const auto prefabId = CreatePrefab(assetId);
   if (!prefabId)
     return EntityID::Invalid;
-  auto entityId = scene.CopyEntityFrom(prefabManager, prefabId);
-  if (auto modelAsset = Get<ModelAsset>(assetId); modelAsset)
-    ResolveModelInstance(scene, entityId, *modelAsset, assetId);
+  const auto *modelAsset = Get<ModelAsset>(assetId);
+  if (!modelAsset)
+    return scene.CopyEntityFrom(prefabManager, prefabId);
+  if (!root[ComponentIdOf<Transform>]) {
+    spdlog::error("[AssetManager] A model is placed by its root, and the root asked for has no transform to place it with");
+    return EntityID::Invalid;
+  }
+  const auto name = prefabManager.GetName(prefabId);
+  const auto entityId = scene.CreateEntity(root, name);
+  if (!entityId)
+    return EntityID::Invalid;
+  const auto leftBehind = scene.CopyEntityComponents(prefabManager, prefabId, entityId);
+  if (leftBehind[ComponentIdOf<ModelMeshHandle>])
+    if (const auto meshId = scene.CreateEntity<ModelMeshObject>(name + " mesh"); meshId) {
+      scene.CopyEntityComponents(prefabManager, prefabId, meshId);
+      // Where the root is, rather than where the top node was relative to its parent: the root has
+      // already taken that, and the mesh hangs from the root.
+      *scene.GetEntityComponent<Transform>(meshId) = Transform{};
+      scene.AddChildEntity(entityId, meshId);
+    }
+  prefabManager.ForEachChild(prefabId, [&](const EntityID childPrefabId) {
+    if (const auto childId = scene.CopyEntityFrom(prefabManager, childPrefabId); childId)
+      scene.AddChildEntity(entityId, childId);
+  });
+  ResolveModelInstance(scene, entityId, *modelAsset, assetId);
   return entityId;
 }
 auto AssetManager::ResolveModelInstance(Scene &scene, const EntityID root, const ModelAsset &modelAsset, const AssetID modelAssetId) -> void {
@@ -186,21 +214,22 @@ auto AssetManager::ResolveModelInstance(Scene &scene, const EntityID root, const
   for (auto i = 0u; i < modelAsset.nodes.size(); ++i)
     if (auto it = nameToEntityId.find(modelAsset.nodes[i].name); it != nameToEntityId.end())
       nodeEntities[i] = it->second;
-  auto *skeleton = scene.AddEntityComponent<Skeleton>(root);
-  if (skeleton)
-    skeleton->nodeEntities = std::move(nodeEntities);
-  auto *animator = scene.AddEntityComponent<Animator>(root);
-  if (animator) {
-    animator->modelAssetId = modelAssetId;
-    animator->clipIndex = 0;
-    animator->time = 0.f;
-    animator->playing = true;
-    animator->loop = true;
+  auto *skeleton = scene.GetEntityComponent<Skeleton>(root);
+  auto *animator = scene.GetEntityComponent<Animator>(root);
+  if (!skeleton || !animator) {
+    spdlog::warn("[AssetManager] {} has clips, but was placed as an entity with no skeleton and animator to play them with -- place it as an archetype with `Animated`", scene.GetEntityName(root));
+    return;
   }
+  skeleton->nodeEntities = std::move(nodeEntities);
+  animator->modelAssetId = modelAssetId;
+  animator->clipIndex = 0;
+  animator->time = 0.f;
+  animator->playing = true;
+  animator->loop = true;
 }
-auto AssetManager::Instantiate(const std::string &name, Scene &scene) -> EntityID {
+auto AssetManager::Instantiate(const std::string &name, Scene &scene, const ComponentMask &root) -> EntityID {
   if (auto ids = nameToId.equal_range(name); ids.first != ids.second)
-    return Instantiate(ids.first->second, scene);
+    return Instantiate(ids.first->second, scene, root);
   return EntityID::Invalid;
 }
 auto AssetManager::LoadComputeFromSource(const std::string_view source, std::string name) -> AssetID {
@@ -254,26 +283,28 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const ModelAsset &mod
   if (nodeIndex >= modelAsset.nodes.size())
     return EntityID::Invalid;
   const auto &node = modelAsset.nodes[nodeIndex];
-  const auto prefabId = prefabManager.Create(node.name);
-  auto transform = prefabManager.AddComponent<Transform>(prefabId);
+  const auto IsMesh = [&](const int meshIndex) {
+    return meshIndex >= 0 && meshIndex < modelAsset.meshes.size();
+  };
+  // A node with one mesh is that mesh; one with none, or with several, is a node, and the several
+  // are its children. Which one is decided before the entity is made, since it cannot change after.
+  const auto single = node.meshes.size() == 1 && IsMesh(node.meshes[0]);
+  const auto prefabId = single ? prefabManager.Create<ModelMeshObject>(node.name) : prefabManager.Create<ModelNodeObject>(node.name);
+  auto transform = prefabManager.GetComponent<Transform>(prefabId);
   transform->local = node.transform;
   glm::vec3 skew;
   glm::vec4 perspective;
   glm::decompose(node.transform, transform->scale, transform->rotation, transform->position, skew, perspective);
-  if (node.bounds) {
-    auto bounds = prefabManager.AddComponent<BoundingBox>(prefabId);
-    *bounds = node.bounds;
-  }
-  const auto AddComponentHandles = [&](const EntityID nodeId, const int meshIndex) {
-    if (meshIndex < 0 || meshIndex >= modelAsset.meshes.size())
-      return;
-    auto meshHandle = prefabManager.AddComponent<ModelMeshHandle>(nodeId);
+  if (node.bounds)
+    *prefabManager.GetComponent<BoundingBox>(prefabId) = node.bounds;
+  const auto SetHandles = [&](const EntityID nodeId, const int meshIndex) {
+    auto meshHandle = prefabManager.GetComponent<ModelMeshHandle>(nodeId);
     meshHandle->modelAssetId = assetId;
     meshHandle->meshIndex = meshIndex;
     const auto materialIndex = modelAsset.meshes[meshIndex].material;
     if (materialIndex < 0 || materialIndex >= modelAsset.materials.size())
       return;
-    auto materialHandle = prefabManager.AddComponent<ModelMaterialHandle>(nodeId);
+    auto materialHandle = prefabManager.GetComponent<ModelMaterialHandle>(nodeId);
     materialHandle->modelAssetId = assetId;
     materialHandle->materialIndex = materialIndex;
     const auto &material = modelAsset.materials[materialIndex];
@@ -282,19 +313,19 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const ModelAsset &mod
       materialHandle->textureIndices.push_back(textureIndex);
     }
   };
-  if (node.meshes.size() > 1)
-    for (auto i = 0; i < node.meshes.size(); ++i) {
-      const auto childId = prefabManager.Create();
-      auto childTransform = prefabManager.AddComponent<Transform>(childId);
+  if (single)
+    SetHandles(prefabId, node.meshes[0]);
+  else
+    for (const auto meshIndex : node.meshes) {
+      // One that names no mesh is a node and not a mesh with nothing in it, which a renderer would
+      // draw as the placeholder it shows for a mesh still loading.
+      const auto childId = IsMesh(meshIndex) ? prefabManager.Create<ModelMeshObject>() : prefabManager.Create<ModelNodeObject>();
+      auto childTransform = prefabManager.GetComponent<Transform>(childId);
       childTransform->world = node.transform;
       prefabManager.AddChild(prefabId, childId);
-      const auto meshIndex = node.meshes[i];
-      AddComponentHandles(childId, meshIndex);
+      if (IsMesh(meshIndex))
+        SetHandles(childId, meshIndex);
     }
-  else if (node.meshes.size() == 1) {
-    const auto meshIndex = node.meshes[0];
-    AddComponentHandles(prefabId, meshIndex);
-  }
   for (auto i = 0; i < node.children.size(); ++i) {
     const auto childIndex = node.children[i];
     const auto childId = CreateNodePrefab(assetId, modelAsset, childIndex);
@@ -350,6 +381,14 @@ template <>
 auto AssetManager::Load<ModelAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
   const auto pathNormStr = path.lexically_normal().string();
   Assimp::Importer importer;
+  // One node a bone, as the file's author made it. Left to itself the FBX importer splits a bone
+  // into as many as five nodes -- its translation, pre-rotation, rotation and so on, each named
+  // after the bone with `$AssimpFbx$` in it -- and only the ones a given file happens to need, so
+  // two files with the same skeleton come in as two different sets of nodes. A clip in one file
+  // then names nodes the character in another does not have, and playing one on the other, which
+  // is how a character and its clips are usually delivered, moves nothing. Two Mixamo clips came in
+  // as 204 nodes, 134 of them these, for a skeleton of 69 bones.
+  importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
   const auto aiScene = importer.ReadFile(pathNormStr, aiProcess_CalcTangentSpace | aiProcess_GlobalScale | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_Triangulate);
   if (!aiScene) {
     spdlog::error("[AssetManager] {}", importer.GetErrorString());

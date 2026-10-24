@@ -7,7 +7,6 @@
 #include <id.hpp>
 #include <kuki_engine_export.h>
 #include <string>
-#include <typeindex>
 namespace kuki {
 class KUKI_ENGINE_API Scene {
 public:
@@ -17,7 +16,16 @@ public:
   auto AlignView(const EntityID) -> void;
   auto CopyEntityFrom(const EntityManager &, const EntityID) -> EntityID;
   auto CopyEntityTo(const EntityID, EntityManager &) const -> EntityID;
+  /// @brief Tells the scene about an archetype. Done for every archetype of the application's
+  /// `World` when the scene is made, so seldom by hand.
+  auto Declare(const ArchetypeSpec &) -> void;
+  auto IsDeclared(const ComponentMask &) const -> bool;
+  /// @brief Makes an entity of the archetype with these components. See `EntityManager::Create`.
+  auto CreateEntity(const ComponentMask &, std::string) -> EntityID;
+  template <IsArchetype A>
   auto CreateEntity(std::string) -> EntityID;
+  /// @brief Copies the components two entities share, from one of another manager to one here.
+  auto CopyEntityComponents(const EntityManager &, const EntityID from, const EntityID to) -> ComponentMask;
   auto DeleteEntities() -> void;
   auto DeleteEntity(const EntityID) -> bool;
   auto EntityHasChildren(const EntityID) const -> bool;
@@ -29,8 +37,8 @@ public:
   auto GetEntityComponentTypes(const EntityID) const -> std::vector<ComponentType>;
   auto GetEntityCount() const -> size_t;
   auto GetEntityName(const EntityID) const -> std::string;
-  auto GetMissingEntityComponents(const EntityID) const -> std::vector<ComponentType>;
   auto GetParent(const EntityID) const -> EntityID;
+  auto GetEntitySignature(const EntityID) const -> ComponentMask;
   auto GetStructuralGeneration() const -> size_t;
   auto HasComponentAnywhere(const ComponentType) const -> bool;
   auto IsEntity(const EntityID) const -> bool;
@@ -39,23 +47,20 @@ public:
   /// Call after writing to a transform's position, rotation or scale; the component carries no
   /// dirty bit of its own, so an unannounced change goes unapplied.
   auto MarkTransformDirty(const EntityID) -> void;
-  auto RemoveEntityScript(const EntityID, const std::type_index) -> bool;
   auto RenameEntity(const EntityID, std::string) -> bool;
   auto SetActiveCamera(const EntityID) -> bool;
-  template <typename... T>
-  auto AddEntityComponent(const EntityID) -> decltype(auto);
   template <typename... T>
   auto EntityHasComponent(const EntityID) const -> bool;
   template <typename... T>
   auto ForEachEntity(this auto &, auto &&) -> void;
+  template <IsArchetype A, typename... T>
+  auto ForEachEntityOf(this auto &, auto &&) -> void;
   template <typename T>
   auto GetAnyComponent(this auto &) -> decltype(auto);
   template <typename... T>
   auto GetEntityComponent(this auto &, const EntityID) -> decltype(auto);
   template <typename... T>
   auto UpdateComponents() -> void;
-  template <typename... T>
-  auto RemoveEntityComponent(const EntityID) -> bool;
 private:
   EntityManager entityManager{};
   EntityID activeCameraId{};
@@ -77,9 +82,9 @@ auto Scene::GetCamera(this auto &self, const std::string &name) -> decltype(auto
     return self.GetActiveCamera();
   return self.entityManager.template GetComponent<Camera>(name);
 }
-template <typename... T>
-auto Scene::AddEntityComponent(const EntityID id) -> decltype(auto) {
-  return entityManager.AddComponent<T...>(id);
+template <IsArchetype A>
+auto Scene::CreateEntity(std::string name) -> EntityID {
+  return entityManager.Create<A>(std::move(name));
 }
 template <typename... T>
 auto Scene::EntityHasComponent(const EntityID id) const -> bool {
@@ -88,6 +93,10 @@ auto Scene::EntityHasComponent(const EntityID id) const -> bool {
 template <typename... T>
 auto Scene::ForEachEntity(this auto &self, auto &&func) -> void {
   self.entityManager.template ForEach<T...>(std::forward<decltype(func)>(func));
+}
+template <IsArchetype A, typename... T>
+auto Scene::ForEachEntityOf(this auto &self, auto &&func) -> void {
+  self.entityManager.template ForEachOf<A, T...>(std::forward<decltype(func)>(func));
 }
 template <typename T>
 auto Scene::GetAnyComponent(this auto &self) -> decltype(auto) {
@@ -100,9 +109,5 @@ auto Scene::GetEntityComponent(this auto &self, const EntityID id) -> decltype(a
 template <typename... T>
 auto Scene::UpdateComponents() -> void {
   entityManager.UpdateComponents<T...>();
-}
-template <typename... T>
-auto Scene::RemoveEntityComponent(const EntityID id) -> bool {
-  return entityManager.RemoveComponent<T...>(id);
 }
 } // namespace kuki

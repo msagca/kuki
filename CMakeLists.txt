@@ -91,8 +91,9 @@ endfunction()
 # A static build has no such library. The engine would be linked into the game and into the editor
 # separately, and a game loaded into the editor would bring a second engine with it; so there the
 # sources are compiled straight into the executable, as they always were, and the editor cannot
-# host the game. Straight in rather than through a static library, because the scripts register
-# themselves from static initialisers and a linker drops an archive member nothing refers to.
+# host the game. Straight in rather than through a static library, because the scripts once
+# registered themselves from static initialisers and a linker drops an archive member nothing refers
+# to. Nothing registers itself that way now, but the module entry points are still found by name.
 #
 # `KUKI_GAME_CODE` is set for the caller to the target the game's sources are compiled in, which is
 # where its include directories and anything else about its code belong.
@@ -122,13 +123,20 @@ endfunction()
 # build that leaves the engine in `build/engine` produces executables that do not start. Nothing to
 # do in a static build, where the list is empty, and the generator expression is why this needs no
 # condition of its own.
+#
+# A target of its own that runs on every build, and not a step after the executable links. That is
+# what this was first, and it was wrong in a way that is hard to see: a change to the engine alone
+# rebuilds the engine's DLL and relinks nothing that loads it, so the step never ran and the
+# executable went on loading the engine from before the change -- built against the new headers,
+# run against the old code. `copy_if_different` makes running it every time cost nothing when
+# nothing has changed.
 function(kuki_stage_runtime target)
   if(NOT WIN32)
     return()
   endif()
-  add_custom_command(
-    TARGET ${target}
-    POST_BUILD
+  add_custom_target(
+    ${target}Runtime
+    ALL
     COMMAND
       "${CMAKE_COMMAND}" -E
       "$<IF:$<BOOL:$<TARGET_RUNTIME_DLLS:${target}>>,copy_if_different,true>"
@@ -136,6 +144,7 @@ function(kuki_stage_runtime target)
     COMMAND_EXPAND_LISTS
     VERBATIM
   )
+  add_dependencies(${target}Runtime ${target})
 endfunction()
 # Prints where a built executable ended up, so whoever ran the build does not have to go looking.
 #

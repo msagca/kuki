@@ -1,17 +1,15 @@
+#include <command_line.hpp>
 #include <editor.hpp>
-#include <string_view>
-/// `--game <name>` opens a game as the editor starts, by any part of its library's name, and
-/// `--play` starts it playing. Together they are how a game is launched in the editor from a
-/// shortcut or an IDE's run button, without a visit to the play bar first.
-auto main(int argc, char **argv) -> int {
+#include <spdlog/spdlog.h>
+/// `--play` starts the scene playing as the editor opens. `--game` used to open a game's library
+/// first, and no longer can: see the note on `Editor`. It is still one of the engine's flags, so
+/// that no game can take the name, and is answered here rather than ignored.
+auto main() -> int {
   Editor editor;
-  for (auto i = 1; i < argc; ++i) {
-    const std::string_view argument = argv[i];
-    if (argument == "--game" && i + 1 < argc)
-      editor.startGame = argv[++i];
-    else if (argument == "--play")
-      editor.startPlaying = true;
-  }
+  const auto arguments = kuki::GetCommandLineArguments();
+  if (kuki::HasFlag(arguments, kuki::GAME_FLAG))
+    spdlog::warn("[Editor] {} was given, but the editor cannot host a game while a game's behaviour is its own systems; opening the editor's scene instead", kuki::GAME_FLAG.name);
+  editor.startPlaying = kuki::HasFlag(arguments, kuki::PLAY_FLAG);
   editor.Run();
   return 0;
 }

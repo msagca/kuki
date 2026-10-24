@@ -1,11 +1,5 @@
 #pragma once
 #ifdef KUKI_HAS_DIRECTX
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
 /// @file
 /// @brief Single entry point for every Direct3D 12 header, because inclusion order is load-bearing.
 ///

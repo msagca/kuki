@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <kuki_engine_export.h>
+#include <macros.hpp>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -146,15 +147,3 @@ struct ProfileScope {
   auto operator=(ProfileScope &&) -> ProfileScope & = delete;
 };
 } // namespace kuki
-#ifdef KUKI_DISABLE_PROFILING
-#define KUKI_PROFILE_SCOPE(name) ((void)0)
-#define KUKI_PROFILE_FUNCTION() ((void)0)
-#define KUKI_PROFILE_MARK(name) ((void)0)
-#else
-#define KUKI_PROFILE_CONCAT_IMPL(a, b) a##b
-#define KUKI_PROFILE_CONCAT(a, b) KUKI_PROFILE_CONCAT_IMPL(a, b)
-/// @brief Times the enclosing block under `name`, which must outlive the block if it is a pointer.
-#define KUKI_PROFILE_SCOPE(name) const kuki::ProfileScope KUKI_PROFILE_CONCAT(profileScope, __LINE__)(name)
-#define KUKI_PROFILE_FUNCTION() KUKI_PROFILE_SCOPE(__func__)
-#define KUKI_PROFILE_MARK(name) kuki::Profiler::Get().Mark(name)
-#endif

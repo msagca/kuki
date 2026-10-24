@@ -12,7 +12,7 @@ public:
   ///
   /// This system used to keep an accumulator of its own, at a hundred steps a second, with nothing
   /// inside the loop. The application's tick replaces it: one fixed step for everything that has
-  /// rules, so that a script and the simulation it pushes on cannot be stepping at different rates.
+  /// rules, so that a game and the simulation it pushes on cannot be stepping at different rates.
   auto Tick() -> void override;
   auto Shutdown() -> void override;
 };
