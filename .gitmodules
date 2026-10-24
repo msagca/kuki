@@ -41,3 +41,6 @@
 [submodule "external/DirectX-Headers"]
 	path = external/DirectX-Headers
 	url = https://github.com/microsoft/DirectX-Headers
+[submodule "external/stb_image_resize"]
+	path = external/stb_image_resize
+	url = https://github.com/nothings/stb_image_resize

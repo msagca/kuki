@@ -483,10 +483,17 @@ kuki_static_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/kaitai-image")
 set(SPDLOG_INSTALL ON CACHE BOOL "")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog")
 ## stb
+#
+# stb_image_resize2.h left the stb repository for one of its own in October 2026; stb keeps a
+# frozen copy under `deprecated/` that will not be updated. Its repository has no LICENSE file of
+# its own, and the header carries the same dual MIT/public-domain text as stb's, so the stb entry
+# in the licences below stands for both.
 add_library(stb INTERFACE)
 target_include_directories(
   stb
-  INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/stb"
+  INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/stb"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/stb_image_resize"
 )
 ## tinyexr
 add_library(
