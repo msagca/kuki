@@ -1,7 +1,10 @@
 name: CMake
+# Every branch but main: work is pushed on a branch, built and tested here, and reaches main only by
+# a pull request, which main's protection lets through once this job has passed on the branch's head.
+# Not on main itself, because nothing arrives there that has not already run.
 on:
   push:
-    branches: ["dev"]
+    branches-ignore: ["main"]
 jobs:
   cmake:
     runs-on: ${{ matrix.os }}
