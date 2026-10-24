@@ -1,4 +1,5 @@
 #pragma once
+#include <animator.hpp>
 #include <anti_aliasing.hpp>
 #include <camera_type.hpp>
 #include <debug_view.hpp>
@@ -14,6 +15,13 @@ template <typename T>
 struct EnumTraits {
   static_assert(sizeof(T) == 0, "EnumTraits must be specialized for this type.");
   static const std::vector<const char *> &GetNames() {}
+};
+template <>
+struct EnumTraits<IKKind> {
+  static const std::vector<const char *> &GetNames() {
+    static const std::vector<const char *> names = {"Reach", "Aim"};
+    return names;
+  }
 };
 template <>
 struct EnumTraits<CameraType> {

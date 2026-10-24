@@ -13,6 +13,11 @@ public:
   /// Called for every system in order, once for each tick a frame owes and before that frame's
   /// `Update`. Unlike `Update` it is told no duration, because there is only one it could be.
   virtual auto Tick() -> void {};
+  /// @brief After every system's `Update` and before anything is drawn.
+  ///
+  /// For what has to see the frame as the others have left it: where scripts have put things,
+  /// especially, which is where the animation system's goals are reached for.
+  virtual auto LateUpdate(const float) -> void {};
   virtual auto Shutdown() -> void {};
 protected:
   template <typename T>

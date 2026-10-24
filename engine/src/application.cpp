@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <application.hpp>
 #include <application_description.hpp>
+#include <algorithm>
 #include <array>
 #include <asset_type.hpp>
 #include <bounding_box.hpp>
@@ -140,7 +141,7 @@ auto Application::PreUpdate() -> void {
     // the last, and any further ticks the frame owes see the keyboard as it now stands.
     KUKI_PROFILE_SCOPE("Ticks");
     // Time owed is only counted while playing, so a pause is not a debt to be run off afterwards.
-    auto due = playState == PlayState::Playing ? tickClock.Advance(deltaTime) : 0;
+    auto due = playState == PlayState::Playing ? tickClock.Advance(deltaTime * tickScale) : 0;
     if (stepRequested && playState == PlayState::Paused)
       due = 1;
     stepRequested = false;
@@ -331,6 +332,18 @@ auto Application::TickRate() const -> int {
 }
 auto Application::TickTime() const -> float {
   return static_cast<float>(tickClock.Step());
+}
+auto Application::GetNetwork() const -> NetworkSystem * {
+  return network;
+}
+auto Application::SetNetwork(NetworkSystem *value) -> void {
+  network = value;
+}
+auto Application::GetTickScale() const -> double {
+  return tickScale;
+}
+auto Application::SetTickScale(const double scale) -> void {
+  tickScale = std::clamp(scale, .1, 1.);
 }
 auto Application::SetTickRate(const int rate) -> void {
   tickClock.SetRate(rate);

@@ -122,13 +122,20 @@ endfunction()
 # build that leaves the engine in `build/engine` produces executables that do not start. Nothing to
 # do in a static build, where the list is empty, and the generator expression is why this needs no
 # condition of its own.
+#
+# A target of its own that runs on every build, and not a step after the executable links. That is
+# what this was first, and it was wrong in a way that is hard to see: a change to the engine alone
+# rebuilds the engine's DLL and relinks nothing that loads it, so the step never ran and the
+# executable went on loading the engine from before the change -- built against the new headers,
+# run against the old code. `copy_if_different` makes running it every time cost nothing when
+# nothing has changed.
 function(kuki_stage_runtime target)
   if(NOT WIN32)
     return()
   endif()
-  add_custom_command(
-    TARGET ${target}
-    POST_BUILD
+  add_custom_target(
+    ${target}Runtime
+    ALL
     COMMAND
       "${CMAKE_COMMAND}" -E
       "$<IF:$<BOOL:$<TARGET_RUNTIME_DLLS:${target}>>,copy_if_different,true>"
@@ -136,6 +143,7 @@ function(kuki_stage_runtime target)
     COMMAND_EXPAND_LISTS
     VERBATIM
   )
+  add_dependencies(${target}Runtime ${target})
 endfunction()
 # Prints where a built executable ended up, so whoever ran the build does not have to go looking.
 #

@@ -1,6 +1,7 @@
 #pragma once
 #include <animation_system.hpp>
 #include <application_description.hpp>
+#include <network_system.hpp>
 #include <rendering_system.hpp>
 #include <scripting_system.hpp>
 #include <system_application.hpp>
@@ -19,10 +20,10 @@ auto SetupDuel(kuki::Application &) -> void;
 /// Small on purpose. It is here to put the fixed tick, the gesture recognizer and the animator's
 /// states to work together on something with rules, and it has only as much game as that takes.
 ///
-/// Animation is listed ahead of scripting. Both are stepped by the tick, and in this order a script
-/// sees the events a tick fired -- the moment a punch lands -- during that same tick rather than
-/// the one after.
-class Duel final : public kuki::SystemApplication<kuki::AnimationSystem, kuki::ScriptingSystem, kuki::RenderingSystem> {
+/// The network system plays the rules, alone or against another machine, so it is listed ahead of
+/// scripting: a script that draws the game finds the rules where this tick left them. The scene's
+/// animators are listed ahead of it only because they always were; the rules step their own.
+class Duel final : public kuki::SystemApplication<kuki::AnimationSystem, kuki::NetworkSystem, kuki::ScriptingSystem, kuki::RenderingSystem> {
 public:
   Duel();
 private:

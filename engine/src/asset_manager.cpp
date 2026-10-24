@@ -5,6 +5,7 @@
 #include <asset.hpp>
 #include <asset_manager.hpp>
 #include <asset_type.hpp>
+#include <assimp/config.h>
 #include <assimp/Importer.hpp>
 #include <assimp/color4.h>
 #include <assimp/material.h>
@@ -350,6 +351,14 @@ template <>
 auto AssetManager::Load<ModelAsset>(const AssetID id, const std::filesystem::path &path) -> std::unique_ptr<Asset> {
   const auto pathNormStr = path.lexically_normal().string();
   Assimp::Importer importer;
+  // One node a bone, as the file's author made it. Left to itself the FBX importer splits a bone
+  // into as many as five nodes -- its translation, pre-rotation, rotation and so on, each named
+  // after the bone with `$AssimpFbx$` in it -- and only the ones a given file happens to need, so
+  // two files with the same skeleton come in as two different sets of nodes. A clip in one file
+  // then names nodes the character in another does not have, and playing one on the other, which
+  // is how a character and its clips are usually delivered, moves nothing. Two Mixamo clips came in
+  // as 204 nodes, 134 of them these, for a skeleton of 69 bones.
+  importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
   const auto aiScene = importer.ReadFile(pathNormStr, aiProcess_CalcTangentSpace | aiProcess_GlobalScale | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_Triangulate);
   if (!aiScene) {
     spdlog::error("[AssetManager] {}", importer.GetErrorString());

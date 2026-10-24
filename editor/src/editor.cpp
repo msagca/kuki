@@ -319,6 +319,8 @@ auto PanelDockId(const int slot) -> ImGuiID {
 /// alpha where they are used; only the hue is said here.
 constexpr ImVec4 RUNNING_TINT(.16f, .42f, .22f, 1.f);
 constexpr ImVec4 PAUSED_TINT(.5f, .38f, .1f, 1.f);
+/// @brief The header of a component the running backend can do nothing with.
+constexpr ImVec4 UNSUPPORTED_TINT(.72f, .36f, .08f, 1.f);
 /// @brief The background a panel should have for a running/paused state, at the panels' own alpha.
 auto StateTint(const bool running, const bool paused) -> ImVec4 {
   const auto &panel = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
@@ -445,7 +447,7 @@ auto EndWindow() -> void {
 }
 } // namespace
 Editor::Editor()
-  : SystemApplication<AnimationSystem, ScriptingSystem, PhysicsSystem, RenderingSystem>({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api}) {
+  : SystemApplication<AnimationSystem, NetworkSystem, ScriptingSystem, PhysicsSystem, RenderingSystem>({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api}) {
   context.pendingApi = GetDescription().api;
   // Before anything starts, so that no game script is started by the scene merely being open. An
   // application is playing unless told otherwise, which is right for a game and wrong for this.
@@ -1122,6 +1124,14 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
     ImGui::OpenPopup("##EntityContextMenu");
     entityContextMenuTriggered = true;
   }
+  // Dragged, the row is the entity, to be dropped on a field that takes one: an inverse kinematics
+  // goal's target. After everything above that asks about the row, since a drag's tooltip is a
+  // window of its own and the row would no longer be the last thing drawn.
+  if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+    ImGui::SetDragDropPayload("##EntityPayload", &id, sizeof(EntityID));
+    ImGui::Text("%s %s", EntityIcon(GetEntityComponentTypes(id)), entityNameCStr);
+    ImGui::EndDragDropSource();
+  }
   if (ImGui::BeginPopup("##EntityContextMenu")) {
     if (ImGui::MenuItem("Copy"))
       CopySelectedEntities();
@@ -1523,6 +1533,19 @@ auto Editor::DisplayHelp() -> void {
   }
   EndWindow();
 }
+auto Editor::IsSupported(const ComponentType type) const -> bool {
+  switch (type) {
+  case ComponentType::AtmosphereSky:
+    return context.capabilities.proceduralSky;
+  case ComponentType::VolumetricClouds:
+  case ComponentType::VolumetricFog:
+    return context.capabilities.volumetrics;
+  case ComponentType::ParticleEmitter:
+    return context.capabilities.particles;
+  default:
+    return true;
+  }
+}
 auto Editor::RemoveComponent(const EntityID id, const ComponentType type) -> bool {
   // A backend's material is not something an entity has in its own right. The renderer makes it,
   // every frame, for whatever carries a material handle, and puts back one that has gone missing --
@@ -1689,7 +1712,22 @@ auto Editor::DisplayProperties() -> void {
       continue;
     }
     const auto name = Component::GetTypeName(componentType);
+    // A component the running backend cannot act on is headed in orange. Its section is empty --
+    // there is nothing to edit that would reach anything -- and without a colour that would look
+    // like a component with no properties, or one that had failed to draw. The add-component menu
+    // does not offer these, but a scene file carries them onto whichever backend opens it.
+    const auto unsupported = !IsSupported(componentType);
+    if (unsupported) {
+      const auto alpha = ImGui::GetStyleColorVec4(ImGuiCol_Header).w;
+      ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(UNSUPPORTED_TINT.x, UNSUPPORTED_TINT.y, UNSUPPORTED_TINT.z, alpha));
+      ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(UNSUPPORTED_TINT.x * 1.15f, UNSUPPORTED_TINT.y * 1.15f, UNSUPPORTED_TINT.z * 1.15f, alpha));
+      ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(UNSUPPORTED_TINT.x * 1.3f, UNSUPPORTED_TINT.y * 1.3f, UNSUPPORTED_TINT.z * 1.3f, alpha));
+    }
     const auto open = field::Fold(IconLabel(ComponentIcon(componentType), name).c_str(), true);
+    if (unsupported) {
+      ImGui::PopStyleColor(3);
+      ImGui::SetItemTooltip("The graphics backend that is running cannot act on this component.");
+    }
     auto removed = false;
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Remove"))

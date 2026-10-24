@@ -122,6 +122,14 @@ auto GestureRecognizer::Reset() -> void {
   history.fill(0);
   count = 0;
 }
+auto GestureRecognizer::GetMemory() const -> Memory {
+  return {history, count};
+}
+auto GestureRecognizer::SetMemory(const Memory &memory) -> void {
+  history = memory.history;
+  count = memory.count;
+  matched.clear();
+}
 auto GestureRecognizer::At(const int64_t tick) const -> ButtonMask {
   // Nothing was down before the first tick, and nothing is remembered from further back than the
   // ring goes. Answering nought for both is what lets every caller walk backwards without checking.

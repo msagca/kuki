@@ -30,9 +30,18 @@ protected:
   auto PostStartSystems() -> void override {
     std::apply([](auto &...system) { (StartIfScripting(system), ...); }, systemsTuple);
   }
+  /// @brief Every system's `Update`, then every `LateUpdate`, then the drawing.
+  ///
+  /// Drawing is `RenderingSystem::Update`, and it is held back to the end wherever the system stands
+  /// in the list, so that a late update is never too late to be seen. The list puts it last anyway.
   auto UpdateSystems(const float deltaTime) -> void override {
+    auto *rendering = static_cast<System *>(GetRenderingSystem());
     for (auto *system : systems)
-      system->Update(deltaTime);
+      if (system != rendering)
+        system->Update(deltaTime);
+    for (auto *system : systems)
+      system->LateUpdate(deltaTime);
+    rendering->Update(deltaTime);
   }
   auto TickSystems() -> void override {
     for (auto *system : systems)

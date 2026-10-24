@@ -7,6 +7,7 @@
 #include <glm/geometric.hpp>
 #include <glm/matrix.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <inverse_kinematics.hpp>
 #include <model_asset.hpp>
 #include <profiler.hpp>
 #include <skeleton.hpp>
@@ -76,19 +77,49 @@ namespace {
   auto Blend(const BonePose &from, const BonePose &to, const float weight) -> BonePose {
     return {glm::mix(from.position, to.position, weight), glm::slerp(from.rotation, to.rotation, weight), glm::mix(from.scale, to.scale, weight), true};
   }
-  /// @brief The clip a state plays, found by name the first time and by index after that.
-  auto StateClip(AnimationState &state, const ModelAsset &model) -> const AnimationClip * {
-    if (state.clipIndex < 0)
-      for (size_t i = 0; i < model.animations.size() && state.clipIndex < 0; ++i) {
-        const std::string_view name = model.animations[i].name;
-        const auto bar = name.rfind('|');
-        if (name == state.clip || (bar != std::string_view::npos && name.substr(bar + 1) == state.clip))
-          state.clipIndex = static_cast<int>(i);
+  /// @brief A clip named by where it is and what it is called, found the first time and kept by index.
+  ///
+  /// From the animator's own model unless a source is named, which `lookup` is asked for. The first
+  /// time, the clip's channels are also matched to this model's nodes: by the index each channel
+  /// carries for a clip of the model's own, and by name for one that came from elsewhere, where a
+  /// channel's index counts nodes in a different file.
+  auto ResolveClip(const AssetID source, const std::string &name, int &clipIndex, std::vector<int> &nodes, const ModelAsset &model, const ModelLookup &lookup) -> const AnimationClip * {
+    const auto *from = &model;
+    if (source) {
+      from = lookup ? lookup(source) : nullptr;
+      if (!from)
+        return nullptr;
+    }
+    if (clipIndex < 0) {
+      for (size_t i = 0; i < from->animations.size() && clipIndex < 0; ++i) {
+        const std::string_view candidate = from->animations[i].name;
+        const auto bar = candidate.rfind('|');
+        if (name.empty() || candidate == name || (bar != std::string_view::npos && candidate.substr(bar + 1) == name))
+          clipIndex = static_cast<int>(i);
       }
-    if (state.clipIndex < 0 || state.clipIndex >= static_cast<int>(model.animations.size()))
+      nodes.clear();
+    }
+    if (clipIndex < 0 || clipIndex >= static_cast<int>(from->animations.size()))
       return nullptr;
-    const auto &clip = model.animations[state.clipIndex];
-    return clip.duration > .0f && clip.ticksPerSecond > .0f ? &clip : nullptr;
+    const auto &clip = from->animations[clipIndex];
+    if (clip.duration <= .0f || clip.ticksPerSecond <= .0f)
+      return nullptr;
+    if (nodes.size() != clip.channels.size()) {
+      nodes.assign(clip.channels.size(), -1);
+      for (size_t channel = 0; channel < clip.channels.size(); ++channel) {
+        if (from == &model) {
+          nodes[channel] = static_cast<int>(clip.channels[channel].nodeIndex);
+          continue;
+        }
+        for (size_t node = 0; node < model.nodes.size() && nodes[channel] < 0; ++node)
+          if (model.nodes[node].name == clip.channels[channel].nodeName)
+            nodes[channel] = static_cast<int>(node);
+      }
+    }
+    return &clip;
+  }
+  auto StateClip(AnimationState &state, const ModelAsset &model, const ModelLookup &lookup) -> const AnimationClip * {
+    return ResolveClip(state.source, state.clip, state.clipIndex, state.nodes, model, lookup);
   }
   auto Speed(const AnimationState &state) -> float {
     return state.speed > .0f ? state.speed : 1.f;
@@ -109,8 +140,92 @@ namespace {
         return &channel;
     return nullptr;
   }
+  auto Seconds(const AnimationClip &clip) -> float {
+    return clip.duration / clip.ticksPerSecond;
+  }
+  /// @brief Writes a clip's pose at a time into the slots of the nodes its channels move.
+  auto SampleInto(std::vector<BonePose> &pose, const AnimationClip &clip, const std::vector<int> &nodes, const float time, const ModelAsset &model, const std::string &rootNode) -> void {
+    for (size_t index = 0; index < clip.channels.size() && index < nodes.size(); ++index) {
+      const auto &channel = clip.channels[index];
+      const auto node = nodes[index];
+      if (node < 0 || node >= static_cast<int>(pose.size()))
+        continue;
+      // From the bind pose, so a channel that keys only a rotation leaves the bone where the model
+      // put it rather than at the origin.
+      auto bone = BindPose(model.nodes[node]);
+      if (!channel.positions.empty())
+        bone.position = SamplePosition(channel.positions, time);
+      if (!channel.rotations.empty())
+        bone.rotation = SampleRotation(channel.rotations, time);
+      if (!channel.scales.empty())
+        bone.scale = SampleScale(channel.scales, time);
+      if (!rootNode.empty() && channel.nodeName == rootNode && !channel.positions.empty()) {
+        const auto start = SamplePosition(channel.positions, .0f);
+        bone.position.x = start.x;
+        bone.position.z = start.z;
+      }
+      pose[node] = bone;
+    }
+  }
+  /// @brief The two clips of a blend that the state's value lies between, and how far towards the second.
+  ///
+  /// The nearest at or below the value and the nearest at or above it. Outside the range of them
+  /// all, both are the one at that end, which holds the blend there rather than carrying on past it.
+  struct Bracket {
+    const AnimationClip *low{};
+    const AnimationClip *high{};
+    const std::vector<int> *lowNodes{};
+    const std::vector<int> *highNodes{};
+    float weight{};
+  };
+  auto BlendBracket(AnimationState &state, const ModelAsset &model, const ModelLookup &lookup) -> Bracket {
+    Bracket bracket;
+    const BlendClip *below{};
+    const BlendClip *above{};
+    for (auto &entry : state.blend) {
+      const auto *clip = ResolveClip(entry.source, entry.clip, entry.clipIndex, entry.nodes, model, lookup);
+      if (!clip)
+        continue;
+      if (entry.at <= state.value && (!below || entry.at >= below->at)) {
+        below = &entry;
+        bracket.low = clip;
+      }
+      if (entry.at >= state.value && (!above || entry.at <= above->at)) {
+        above = &entry;
+        bracket.high = clip;
+      }
+    }
+    if (!below) {
+      below = above;
+      bracket.low = bracket.high;
+    }
+    if (!above) {
+      above = below;
+      bracket.high = bracket.low;
+    }
+    if (!below)
+      return {};
+    bracket.lowNodes = &below->nodes;
+    bracket.highNodes = &above->nodes;
+    bracket.weight = above->at > below->at ? (state.value - below->at) / (above->at - below->at) : .0f;
+    return bracket;
+  }
+  /// @brief How far a clip carries the root along the ground between two points of its cycle.
+  ///
+  /// The points are fractions of the clip, and the second may be past the end: the cycle has then
+  /// come round, and the travel is what was left of this time through added to the start of the
+  /// next. That is the difference from a clip played on its own, which stops counting at its end --
+  /// a blend is only ever a loop, and a stride that lost its last step every cycle would fall short.
+  auto RootTravel(const AnimationClip &clip, const std::string &rootNode, const float from, const float to) -> glm::vec3 {
+    const auto *root = RootChannel(clip, rootNode);
+    if (!root)
+      return {};
+    const auto at = [&](const float phase) { return SamplePosition(root->positions, phase * clip.duration); };
+    const auto travelled = to <= 1.f ? at(to) - at(from) : (at(1.f) - at(from)) + (at(to - 1.f) - at(.0f));
+    return {travelled.x, .0f, travelled.z};
+  }
 } // namespace
-auto StepAnimator(Animator &animator, const ModelAsset &model, const int tickRate) -> void {
+auto StepAnimator(Animator &animator, const ModelAsset &model, const int tickRate, const ModelLookup &lookup) -> void {
   animator.events.clear();
   animator.rootDelta = {};
   if (animator.states.empty())
@@ -118,7 +233,42 @@ auto StepAnimator(Animator &animator, const ModelAsset &model, const int tickRat
   if (animator.state < 0 || animator.state >= static_cast<int>(animator.states.size()))
     animator.Enter(0);
   auto &state = animator.states[animator.state];
-  const auto *clip = StateClip(state, model);
+  if (!state.blend.empty()) {
+    const auto bracket = BlendBracket(state, model, lookup);
+    if (!bracket.low)
+      return;
+    for (const auto &event : state.events)
+      if (event.tick == animator.stateTicks)
+        animator.events.push_back(event.name);
+    // One cycle of the blend lasts as long as the two clips' cycles mixed by the same weight as
+    // their poses, and both are played at that one rate. So a walk and a run stay in step with one
+    // another -- left foot down in both at the same fraction of the cycle -- however unlike their
+    // own lengths are, which is the whole of what keeps a blend of two gaits from sliding.
+    const auto seconds = glm::mix(Seconds(*bracket.low), Seconds(*bracket.high), bracket.weight) / Speed(state);
+    const auto from = animator.phase;
+    auto to = from + 1.f / (static_cast<float>(tickRate) * seconds);
+    animator.rootDelta = glm::mix(RootTravel(*bracket.low, animator.rootNode, from, to), RootTravel(*bracket.high, animator.rootNode, from, to), bracket.weight);
+    animator.previousPhase = from;
+    ++animator.stateTicks;
+    if (to >= 1.f) {
+      if (state.loop) {
+        // Both ends moved back by a cycle together, so that drawing between them still runs
+        // forwards across the join.
+        to -= 1.f;
+        animator.previousPhase -= 1.f;
+      } else {
+        to = 1.f;
+        if (const auto next = animator.FindState(state.next); next >= 0) {
+          animator.Enter(next);
+          return;
+        }
+        animator.finished = true;
+      }
+    }
+    animator.phase = to;
+    return;
+  }
+  const auto *clip = StateClip(state, model, lookup);
   if (!clip)
     return;
   const auto length = LengthTicks(state, *clip, tickRate);
@@ -142,37 +292,37 @@ auto StepAnimator(Animator &animator, const ModelAsset &model, const int tickRat
   else
     animator.finished = true;
 }
-auto PoseAnimator(Animator &animator, const ModelAsset &model, const int tickRate, const float alpha) -> void {
+auto PoseAnimator(Animator &animator, const ModelAsset &model, const int tickRate, const float alpha, const ModelLookup &lookup) -> void {
   if (animator.state < 0 || animator.state >= static_cast<int>(animator.states.size()))
     return;
   auto &state = animator.states[animator.state];
-  const auto *clip = StateClip(state, model);
-  if (!clip)
-    return;
   // One tick behind the newest and `alpha` of the way on from there: between the last two states
   // the rules have reached, which is the only stretch of time both ends of are known.
   const auto shown = std::max(.0f, static_cast<float>(animator.stateTicks) - 1.f + alpha);
-  const auto length = static_cast<float>(LengthTicks(state, *clip, tickRate));
-  const auto time = ClipTime(state, *clip, tickRate, state.loop ? std::fmod(shown, length) : shown);
   std::vector<BonePose> pose(model.nodes.size());
-  for (const auto &channel : clip->channels) {
-    if (channel.nodeIndex >= pose.size())
-      continue;
-    // From the bind pose, so a channel that keys only a rotation leaves the bone where the model
-    // put it rather than at the origin.
-    auto bone = BindPose(model.nodes[channel.nodeIndex]);
-    if (!channel.positions.empty())
-      bone.position = SamplePosition(channel.positions, time);
-    if (!channel.rotations.empty())
-      bone.rotation = SampleRotation(channel.rotations, time);
-    if (!channel.scales.empty())
-      bone.scale = SampleScale(channel.scales, time);
-    if (!animator.rootNode.empty() && channel.nodeName == animator.rootNode && !channel.positions.empty()) {
-      const auto start = SamplePosition(channel.positions, .0f);
-      bone.position.x = start.x;
-      bone.position.z = start.z;
+  if (!state.blend.empty()) {
+    const auto bracket = BlendBracket(state, model, lookup);
+    if (!bracket.low)
+      return;
+    auto phase = animator.previousPhase + alpha * (animator.phase - animator.previousPhase);
+    phase -= std::floor(phase);
+    SampleInto(pose, *bracket.low, *bracket.lowNodes, phase * bracket.low->duration, model, animator.rootNode);
+    if (bracket.high != bracket.low && bracket.weight > .0f) {
+      std::vector<BonePose> other(model.nodes.size());
+      SampleInto(other, *bracket.high, *bracket.highNodes, phase * bracket.high->duration, model, animator.rootNode);
+      for (size_t node = 0; node < pose.size(); ++node) {
+        // A bone only one of the two moves is blended with where the model has it, which is where
+        // the other leaves it.
+        if (pose[node].set || other[node].set)
+          pose[node] = Blend(pose[node].set ? pose[node] : BindPose(model.nodes[node]), other[node].set ? other[node] : BindPose(model.nodes[node]), bracket.weight);
+      }
     }
-    pose[channel.nodeIndex] = bone;
+  } else {
+    const auto *clip = StateClip(state, model, lookup);
+    if (!clip)
+      return;
+    const auto length = static_cast<float>(LengthTicks(state, *clip, tickRate));
+    SampleInto(pose, *clip, state.nodes, ClipTime(state, *clip, tickRate, state.loop ? std::fmod(shown, length) : shown), model, animator.rootNode);
   }
   const auto progress = animator.fadeTicks > 0 ? std::clamp(shown / static_cast<float>(animator.fadeTicks), .0f, 1.f) : 1.f;
   const auto weight = progress * progress * (3.f - 2.f * progress);
@@ -197,7 +347,7 @@ auto AnimationSystem::Tick() -> void {
     const auto *model = app.GetAsset<ModelAsset>(animator->modelAssetId);
     if (!model)
       return;
-    StepAnimator(*animator, *model, app.TickRate());
+    StepAnimator(*animator, *model, app.TickRate(), [this](const AssetID id) -> const ModelAsset * { return app.GetAsset<ModelAsset>(id); });
     if (animator->rootDelta == glm::vec3(.0f))
       return;
     // The clip moves the root in the space of whatever the root hangs from, which an importer is
@@ -220,6 +370,10 @@ auto AnimationSystem::Tick() -> void {
 }
 void AnimationSystem::Update(const float deltaTime) {
   KUKI_PROFILE_SCOPE("Animation");
+  const auto stopped = app.GetPlayState() == PlayState::Stopped;
+  const ModelLookup lookup = [this](const AssetID id) -> const ModelAsset * { return app.GetAsset<ModelAsset>(id); };
+  preview.SetRate(app.TickRate());
+  const auto previewTicks = stopped ? preview.Advance(deltaTime) : 0;
   app.ForEachEntity<Animator, Skeleton>([&](const EntityID, Animator *animator, Skeleton *skeleton) {
     if (!animator || !skeleton)
       return;
@@ -227,8 +381,13 @@ void AnimationSystem::Update(const float deltaTime) {
     if (!modelAsset)
       return;
     if (!animator->states.empty()) {
-      // Stepped by `Tick`; all that is left for a frame to do is draw where that has got to.
-      PoseAnimator(*animator, *modelAsset, app.TickRate(), app.TickAlpha());
+      // Stepped by `Tick` while the game plays, and from here while it is stopped -- see `preview`.
+      // Either way all that is left for the frame to do is draw where that has got to. A stopped
+      // animator that is not playing is drawn at the tick it stands on rather than between two.
+      const auto previewing = stopped && animator->playing;
+      for (auto tick = 0; previewing && tick < previewTicks; ++tick)
+        StepAnimator(*animator, *modelAsset, app.TickRate(), lookup);
+      PoseAnimator(*animator, *modelAsset, app.TickRate(), stopped ? (previewing ? preview.Alpha() : 1.f) : app.TickAlpha(), lookup);
       if (animator->state >= 0 && animator->state < static_cast<int>(animator->states.size()))
         animator->clipIndex = animator->states[animator->state].clipIndex;
       for (size_t node = 0; node < animator->pose.size() && node < skeleton->nodeEntities.size(); ++node) {
@@ -276,6 +435,16 @@ void AnimationSystem::Update(const float deltaTime) {
         transform->scale = SampleScale(channel.scales, animator->time);
       app.MarkTransformDirty(boneEntityId);
     }
+  });
+}
+auto AnimationSystem::LateUpdate(const float) -> void {
+  KUKI_PROFILE_SCOPE("Inverse Kinematics");
+  app.ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *skeleton) {
+    // Not only where there are goals: one removed since the last frame leaves bones to be put back.
+    if (!animator || !skeleton || (animator->ik.empty() && animator->ikHeld.empty()))
+      return;
+    if (const auto *model = app.GetAsset<ModelAsset>(animator->modelAssetId); model)
+      ApplyInverseKinematics(app, id, *animator, *skeleton, *model);
   });
 }
 void AnimationSystem::Shutdown() {}

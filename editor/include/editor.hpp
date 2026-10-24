@@ -11,6 +11,7 @@
 #include <imgui.h>
 #include <imgui_file_browser.hpp>
 #include <material_type.hpp>
+#include <network_system.hpp>
 #include <physics_system.hpp>
 #include <renderer_capabilities.hpp>
 #include <rendering_api.hpp>
@@ -106,7 +107,7 @@ struct EditorContext {
 /// Animation ahead of scripting, which is the order a game that uses both lists them in: a script
 /// then sees the events a tick fired during that same tick. A game played in here is stepped by
 /// these systems and not its own, so the order has to be the one it was written against.
-class Editor final : public SystemApplication<AnimationSystem, ScriptingSystem, PhysicsSystem, RenderingSystem> {
+class Editor final : public SystemApplication<AnimationSystem, NetworkSystem, ScriptingSystem, PhysicsSystem, RenderingSystem> {
 public:
   Editor();
   EditorContext context{};
@@ -207,6 +208,9 @@ private:
   /// @brief Removes a component the way the Properties panel means it, which for a backend's
   /// material includes the handle it is made from.
   auto RemoveComponent(const kuki::EntityID, const kuki::ComponentType) -> bool;
+  /// @brief Whether the running backend can act on a kind of component. The same question the
+  /// component's own panel asks before showing its fields, asked here for the colour of its header.
+  auto IsSupported(const kuki::ComponentType) const -> bool;
   /// @brief What this is and whose work is in it: the version and build, then every library and
   /// font that ships, each with the licence it is used under folded beneath it.
   auto DisplayHelp() -> void;

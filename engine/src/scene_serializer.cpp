@@ -1,4 +1,5 @@
 #include <animator.hpp>
+#include <inverse_kinematics.hpp>
 #include <atmosphere_sky.hpp>
 #include <application.hpp>
 #include <bounding_box.hpp>
@@ -299,7 +300,13 @@ namespace {
     if (j.contains("assetId"))
       j.at("assetId").get_to(h.assetId);
   }
-  auto ToJson(const Animator &a) -> json {
+  /// @brief Where each entity comes in the file, counting down through the tree as it is written.
+  ///
+  /// What a component that points at another entity saves in place of its id. An id is only the
+  /// number this run happened to give the entity, and loading makes every entity afresh with
+  /// numbers of its own; its place in the file is the same on the way out and on the way in.
+  using EntityOrder = std::unordered_map<EntityID, int>;
+  auto ToJson(const Animator &a, const EntityOrder &order) -> json {
     json j{{"modelAssetId", a.modelAssetId}, {"clipIndex", a.clipIndex}, {"time", a.time}, {"playing", a.playing}, {"loop", a.loop}};
     // What the states are, and not which one is playing or how far in: a scene is saved as it was
     // set up, and one that came back half way through a punch would be a surprise to load.
@@ -311,9 +318,20 @@ namespace {
         auto events = json::array();
         for (const auto &event : state.events)
           events.push_back({{"tick", event.tick}, {"name", event.name}});
-        states.push_back({{"name", state.name}, {"clip", state.clip}, {"loop", state.loop}, {"speed", state.speed}, {"fade", state.fade}, {"next", state.next}, {"events", std::move(events)}});
+        auto blend = json::array();
+        for (const auto &entry : state.blend)
+          blend.push_back({{"source", entry.source}, {"clip", entry.clip}, {"at", entry.at}});
+        states.push_back({{"name", state.name}, {"blend", std::move(blend)}, {"source", state.source}, {"clip", state.clip}, {"loop", state.loop}, {"speed", state.speed}, {"fade", state.fade}, {"next", state.next}, {"events", std::move(events)}});
       }
       j["states"] = std::move(states);
+    }
+    if (!a.ik.empty()) {
+      auto goals = json::array();
+      for (const auto &goal : a.ik) {
+        const auto target = order.find(goal.target);
+        goals.push_back({{"name", goal.name}, {"kind", static_cast<int>(goal.kind)}, {"bone", goal.bone}, {"target", target != order.end() ? target->second : -1}, {"offset", {goal.offset.x, goal.offset.y, goal.offset.z}}, {"weight", goal.weight}, {"bend", {goal.bend.x, goal.bend.y, goal.bend.z}}, {"holdRotation", goal.holdRotation}, {"axis", {goal.axis.x, goal.axis.y, goal.axis.z}}, {"chain", goal.chain}, {"limit", goal.limit}});
+      }
+      j["ik"] = std::move(goals);
     }
     return j;
   }
@@ -335,6 +353,17 @@ namespace {
         AnimationState state;
         state.name = entry.value("name", std::string{});
         state.clip = entry.value("clip", std::string{});
+        if (entry.contains("source"))
+          entry.at("source").get_to(state.source);
+        if (entry.contains("blend") && entry.at("blend").is_array())
+          for (const auto &mixed : entry.at("blend")) {
+            BlendClip clip;
+            if (mixed.contains("source"))
+              mixed.at("source").get_to(clip.source);
+            clip.clip = mixed.value("clip", std::string{});
+            clip.at = mixed.value("at", .0f);
+            state.blend.push_back(std::move(clip));
+          }
         state.loop = entry.value("loop", false);
         state.speed = entry.value("speed", 1.f);
         state.fade = entry.value("fade", state.fade);
@@ -343,6 +372,28 @@ namespace {
           for (const auto &event : entry.at("events"))
             state.events.push_back({event.value("tick", 0), event.value("name", std::string{})});
         a.states.push_back(std::move(state));
+      }
+    // The target is read as the place in the file it was saved as, and left that way until every
+    // entity has been made and there is an id to give it. See `ResolveTargets`.
+    if (j.contains("ik") && j.at("ik").is_array())
+      for (const auto &entry : j.at("ik")) {
+        IKGoal goal;
+        const auto Vector = [&](const char *key, glm::vec3 &value) {
+          if (entry.contains(key) && entry.at(key).is_array() && entry.at(key).size() == 3)
+            value = {entry.at(key)[0].get<float>(), entry.at(key)[1].get<float>(), entry.at(key)[2].get<float>()};
+        };
+        goal.name = entry.value("name", std::string{});
+        goal.kind = entry.value("kind", 0) == static_cast<int>(IKKind::Aim) ? IKKind::Aim : IKKind::Reach;
+        goal.bone = entry.value("bone", std::string{});
+        goal.target = EntityID{entry.value("target", -1LL)};
+        Vector("offset", goal.offset);
+        goal.weight = entry.value("weight", goal.weight);
+        Vector("bend", goal.bend);
+        goal.holdRotation = entry.value("holdRotation", goal.holdRotation);
+        Vector("axis", goal.axis);
+        goal.chain = entry.value("chain", goal.chain);
+        goal.limit = entry.value("limit", goal.limit);
+        a.ik.push_back(std::move(goal));
       }
   }
   auto ToJson(const ModelMeshHandle &h) -> json {
@@ -498,6 +549,7 @@ namespace {
   }
   struct ToJsonVisitor {
     std::unordered_set<AssetID> &referenced;
+    const EntityOrder &order;
     auto operator()(Transform *t) const -> json {
       return ToJson(*t);
     }
@@ -527,7 +579,14 @@ namespace {
     auto operator()(Animator *a) const -> json {
       if (a->modelAssetId)
         referenced.insert(a->modelAssetId);
-      return ToJson(*a);
+      for (const auto &state : a->states) {
+        if (state.source)
+          referenced.insert(state.source);
+        for (const auto &entry : state.blend)
+          if (entry.source)
+            referenced.insert(entry.source);
+      }
+      return ToJson(*a, order);
     }
     auto operator()(MeshHandle *h) const -> json {
       if (h->assetId)
@@ -564,7 +623,7 @@ namespace {
       return {};
     }
   };
-  auto SerializeEntity(Application &app, const EntityID id, std::unordered_set<AssetID> &referenced) -> json {
+  auto SerializeEntity(Application &app, const EntityID id, std::unordered_set<AssetID> &referenced, const EntityOrder &order) -> json {
     json entity;
     const auto name = app.GetEntityName(id);
     entity["name"] = name;
@@ -575,7 +634,7 @@ namespace {
       if (!IsSerialized(type))
         continue;
       if (auto variant = app.GetEntityComponent(id, type); variant.has_value())
-        components[Component::GetTypeName(type)] = std::visit(ToJsonVisitor{referenced}, *variant);
+        components[Component::GetTypeName(type)] = std::visit(ToJsonVisitor{referenced, order}, *variant);
     }
     entity["components"] = std::move(components);
     // Attachment only: which scripts are on the entity, not what any of them currently holds. A
@@ -590,13 +649,30 @@ namespace {
       entity["scripts"] = std::move(scripts);
     auto children = json::array();
     app.ForEachChildEntity(id, [&](const EntityID childId) {
-      children.push_back(SerializeEntity(app, childId, referenced));
+      children.push_back(SerializeEntity(app, childId, referenced, order));
     });
     entity["children"] = std::move(children);
     return entity;
   }
-  auto DeserializeEntity(Application &app, const json &entityJson, const EntityID parent, const std::unordered_map<AssetID, AssetID> &remap) -> void {
+  /// @brief Numbers every entity in the order `SerializeEntity` will write them: each one, then its children.
+  auto Order(Application &app, const EntityID id, EntityOrder &order) -> void {
+    order.emplace(id, static_cast<int>(order.size()));
+    app.ForEachChildEntity(id, [&](const EntityID childId) {
+      Order(app, childId, order);
+    });
+  }
+  /// @brief Swaps the places in the file the goals were loaded with for the entities made from them.
+  auto ResolveTargets(Application &app, const std::vector<EntityID> &created) -> void {
+    app.ForEachEntity<Animator>([&](const EntityID, Animator *animator) {
+      for (auto &goal : animator->ik) {
+        const auto place = static_cast<long long>(goal.target);
+        goal.target = place >= 0 && place < static_cast<long long>(created.size()) ? created[place] : EntityID::Invalid;
+      }
+    });
+  }
+  auto DeserializeEntity(Application &app, const json &entityJson, const EntityID parent, const std::unordered_map<AssetID, AssetID> &remap, std::vector<EntityID> &created) -> void {
     const auto id = app.CreateEntity(entityJson.value("name", std::string{}));
+    created.push_back(id);
     if (parent)
       app.AddChildEntity(parent, id);
     if (entityJson.contains("scripts"))
@@ -645,6 +721,13 @@ namespace {
           auto a = app.AddEntityComponent<Animator>(id);
           FromJson(componentJson, *a);
           a->modelAssetId = Remap(remap, a->modelAssetId);
+          for (auto &state : a->states) {
+            if (state.source)
+              state.source = Remap(remap, state.source);
+            for (auto &entry : state.blend)
+              if (entry.source)
+                entry.source = Remap(remap, entry.source);
+          }
           break;
         }
         case ComponentType::MeshHandle: {
@@ -690,7 +773,7 @@ namespace {
       }
     if (entityJson.contains("children"))
       for (const auto &childJson : entityJson.at("children"))
-        DeserializeEntity(app, childJson, id, remap);
+        DeserializeEntity(app, childJson, id, remap, created);
   }
 } // namespace
 auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) -> bool {
@@ -701,8 +784,19 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
   const auto scenePath = ResolvePath(path);
   std::unordered_set<AssetID> referenced;
   auto entities = json::array();
+  // The pose, and not the pose with the goals solved on it. A bone a clip moves is written over
+  // on every frame and would forget the goals' turn anyway; one no clip moves would keep it, and
+  // the next goal would start from there -- a hand reached out once, saved, and reaching from
+  // wherever it was left ever after. Solved again on the next frame, before anything is drawn.
+  app.ForEachEntity<Animator>([&](const EntityID, Animator *animator) {
+    UndoInverseKinematics(app, *animator);
+  });
+  EntityOrder order;
   app.ForEachRootEntity([&](const EntityID id) {
-    entities.push_back(SerializeEntity(app, id, referenced));
+    Order(app, id, order);
+  });
+  app.ForEachRootEntity([&](const EntityID id) {
+    entities.push_back(SerializeEntity(app, id, referenced, order));
   });
   json sceneJson;
   sceneJson["name"] = scenePath.stem().string();
@@ -789,12 +883,22 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) 
   } else
     spdlog::warn("[SceneSerializer] No asset manifest found: {}", manifestPath.string());
   app.DeleteEntities();
+  std::vector<EntityID> created;
   if (sceneJson.contains("entities"))
     for (const auto &entityJson : sceneJson.at("entities"))
-      DeserializeEntity(app, entityJson, EntityID::Invalid, remap);
+      DeserializeEntity(app, entityJson, EntityID::Invalid, remap, created);
+  ResolveTargets(app, created);
+  // Gathered first and resolved after, not from inside the walk over the animators. Resolving adds
+  // a `Skeleton`, and a component added while a `ForEach` is under way is put off until it ends
+  // and handed back as null in the meantime -- so the skeleton arrived empty, the list of the
+  // entities standing for its bones dropped on the floor, and every model in a loaded scene stood
+  // still. In the editor that was every model after Stop.
+  std::vector<std::pair<EntityID, AssetID>> instances;
   app.ForEachEntity<Animator>([&](const EntityID id, Animator *animator) {
-    app.ResolveModelInstance(id, animator->modelAssetId);
+    instances.emplace_back(id, animator->modelAssetId);
   });
+  for (const auto &[id, model] : instances)
+    app.ResolveModelInstance(id, model);
   spdlog::info("[SceneSerializer] Loaded scene: {}", scenePath.string());
   return true;
 }

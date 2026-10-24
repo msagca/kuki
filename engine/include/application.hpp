@@ -21,6 +21,7 @@
 #include <vector>
 namespace kuki {
 class GameBuilder;
+class NetworkSystem;
 class RenderingSystem;
 /// @brief Whether the game in an application is running, as opposed to the application.
 ///
@@ -119,6 +120,22 @@ public:
   auto TickRate() const -> int;
   auto TickTime() const -> float;
   auto SetTickRate(const int) -> void;
+  /// @brief How fast the tick clock runs against the wall clock, from just above nothing up to one.
+  ///
+  /// For a game played against another machine, which has to keep to the other's pace: one that
+  /// runs ahead can only wait for the other to catch up, and waiting is felt as a stall. Running
+  /// a little slow until the other has caught up is not. It does not change what a tick is, only
+  /// how often one is due, so the rules and everything counted in ticks are unaffected. Never above
+  /// one: a clock that ran fast would be a way to get further ahead of the other.
+  auto GetTickScale() const -> double;
+  auto SetTickScale(const double) -> void;
+  /// @brief The network system, if this application has one, and null if it does not.
+  ///
+  /// Set by the system when it starts and cleared when it shuts down. A game that wants to be played
+  /// over a network asks for it and falls back on running its own rules when there is none, which is
+  /// the case in an editor that hosts the game without listing the system.
+  auto GetNetwork() const -> NetworkSystem *;
+  auto SetNetwork(NetworkSystem *) -> void;
   auto EntityHasChildren(const EntityID) const -> bool;
   auto ForEachAsset(this auto &, const AssetType, auto &&) -> void;
   auto ForEachAssetType(this auto &, auto &&) -> void;
@@ -322,6 +339,8 @@ private:
   SceneManager sceneManager;
   float deltaTime{};
   TickClock tickClock;
+  double tickScale{1.};
+  NetworkSystem *network{};
   PlayState playState{PlayState::Playing};
   bool hosting{};
   bool stopRequested{};

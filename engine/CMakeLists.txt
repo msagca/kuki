@@ -87,6 +87,8 @@ if(WIN32)
   # the editor does -- links `kuki_d3d12` itself.
   target_link_libraries(${PROJECT_NAME} PRIVATE kuki_d3d12)
   target_compile_definitions(${PROJECT_NAME} PUBLIC KUKI_HAS_DIRECTX=1)
+  # Winsock, for `UdpTransport`. Private: no header names a socket type.
+  target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
 endif()
 # Listed so they show up in an IDE, and marked so nothing tries to compile them. Every one of
 # these is embedded as text by the custom command below and handed to a compiler at run time -- dxc
