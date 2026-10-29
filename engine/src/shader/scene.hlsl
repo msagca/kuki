@@ -1015,11 +1015,15 @@ PSOutput PSMain(PSInput input) {
     float3 ambientDiffuse = ambient - ambientSpecular;
     float3 toonAmbient = ambientDiffuse * lerp(u_toonShade.rgb, 1.0, sunCel) + ambientSpecular * 0.2;
     // The rim: a band of light along the silhouette, lit by the sun where there is one and by the
-    // sky where there is not, stronger on the side the light comes from.
+    // sky where there is not. A back light, as a drawing has it: strongest with the sun behind the
+    // figure, faint with it behind the camera. On a figure made of boxes a whole face can be at the
+    // grazing angle the rim lives at, so it is kept to a share of the light and not added at full.
     float rimWidth = u_toonRim.x;
     float rimEdge = smoothstep(1.0 - rimWidth - u_toon.y, 1.0 - rimWidth + u_toon.y, 1.0 - NdotV);
-    float3 rimLight = any(sunRadiance > 0.0) ? sunRadiance : max(ambientDiffuse, 0.0);
-    float3 rim = u_toonShade.w * rimEdge * (0.35 + 0.65 * sunCel) * rimLight * lerp(A.rgb, 1.0, 0.5);
+    bool hasSun = any(sunRadiance > 0.0);
+    float3 rimLight = hasSun ? sunRadiance : max(ambientDiffuse, 0.0);
+    float behind = hasSun ? saturate(-dot(V, normalize(-u_directionalDirection.xyz))) : 0.5;
+    float3 rim = u_toonShade.w * rimEdge * (0.2 + 0.8 * behind) * 0.45 * rimLight * lerp(A.rgb, 1.0, 0.5);
     shaded = lerp(shaded, toonAmbient + LoToon + rim, toon);
   }
   output.color = float4(shaded + transmitted + E.rgb, alpha);

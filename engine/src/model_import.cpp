@@ -17,6 +17,7 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/ext/vector_int4.hpp>
+#include <glm/geometric.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <limits>
 #include <model_asset.hpp>
@@ -190,11 +191,48 @@ auto LoadMesh(const aiMesh &aiMesh, ModelAsset &model, BoundingBox &bounds, unsi
         }
     }
   }
-  if (aiMesh.mNumBones > 0)
+  // A vertex of a skinned mesh that arrives with no weight at all is drawn by the figure's own
+  // matrix and nothing else -- standing where the bind pose had it while the rest of its box moves
+  // with the bone, which stretches a sliver of a triangle from the limb to wherever the limb was at
+  // rest. Assimp hands back such a vertex from a glTF whose every vertex is weighted (one corner of
+  // a glove on the duel's fighter, named for a bone at a weight of nought), so it is repaired here
+  // rather than trusted: it takes the weights
+  // of the nearest vertex that has any, which for a box of one bone is the bone it belongs to.
+  if (aiMesh.mNumBones > 0) {
+    // By the weights and not by the bone ids: the vertex this is for arrives with a bone named and a
+    // weight of nought for it.
+    const auto Weighted = [](const Vertex &vertex) {
+      auto total = .0f;
+      for (auto k = 0; k < 4; ++k)
+        if (vertex.boneIds[k] >= 0)
+          total += vertex.boneWeights[k];
+      return total > .0f;
+    };
+    auto repaired = 0;
+    for (auto &vertex : modelMesh.mesh.vertices) {
+      if (Weighted(vertex))
+        continue;
+      const Vertex *nearest{};
+      auto best = std::numeric_limits<float>::max();
+      for (const auto &other : modelMesh.mesh.vertices)
+        if (Weighted(other))
+          if (const auto distance = glm::distance(vertex.position, other.position); distance < best) {
+            best = distance;
+            nearest = &other;
+          }
+      if (!nearest)
+        break;
+      vertex.boneIds = nearest->boneIds;
+      vertex.boneWeights = nearest->boneWeights;
+      ++repaired;
+    }
+    if (repaired > 0)
+      spdlog::warn("[ModelImport] {} vertices of {} had no bone weights and took their nearest neighbour's", repaired, modelMesh.name);
     for (auto &vertex : modelMesh.mesh.vertices)
       for (auto k = 0; k < 4; ++k)
         if (vertex.boneIds[k] < 0)
           vertex.boneIds[k] = 0;
+  }
   return index;
 }
 auto LoadNode(std::unordered_map<std::string, unsigned int> &visited, const aiNode &aiNode, const aiScene &aiScene, ModelAsset &model, const std::filesystem::path &path, const std::string &fallbackName, int parent) -> unsigned int {
