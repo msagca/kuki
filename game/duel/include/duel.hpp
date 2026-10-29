@@ -8,10 +8,6 @@
 #include <stage_system.hpp>
 #include <system_application.hpp>
 inline constexpr const char *DUEL_FONT = "font/Inter-VariableFont_opsz,wght.ttf";
-inline constexpr const char *FIGHTER_MODEL = "fighter.glb";
-/// The second player's figure: the same model, rig and clips as the first, dressed in other colours.
-/// Not a file -- a copy the game makes of the first once it has loaded.
-inline constexpr const char *RIVAL_MODEL = "fighter_rival";
 namespace kuki {
 class Application;
 } // namespace kuki
@@ -20,7 +16,8 @@ class Application;
 /// The game's own, below, or the editor. The scene is all it builds: what plays the game is
 /// `DuelSystem`, which a host that wants the game played lists among its systems.
 auto SetupDuel(kuki::Application &) -> void;
-/// @brief Two figures on a strip of floor, one of them played from the keyboard.
+/// @brief A fighter picked from a roster, and a match against another, one of them played from the
+/// keyboard.
 ///
 /// Small on purpose. It is here to put the fixed tick, the gesture recognizer and the animator's
 /// states to work together on something with rules, and it has only as much game as that takes.

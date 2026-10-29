@@ -18,7 +18,8 @@
 #include <glm/matrix.hpp>
 #include <glm/trigonometric.hpp>
 #include <graphics_context.hpp>
-#include <initializer_list>
+#include <light.hpp>
+#include <light_type.hpp>
 #include <model_asset.hpp>
 #include <network_system.hpp>
 #include <overlay.hpp>
@@ -34,13 +35,11 @@
 using namespace kuki;
 using duel::DuelWorld;
 namespace {
-/// Where the column of key hints starts, how big its text is and how far apart its lines are.
-constexpr float HINT_LEFT = 24.f;
-constexpr float HINT_TOP = 120.f;
-constexpr float HINT_SIZE = 18.f;
-constexpr float HINT_SPACING = 26.f;
-/// How far right of the keys the column saying what they do begins.
-constexpr float HINT_ACTION = 56.f;
+/// How far apart the roster stands on the select screen, how far forward the one chosen steps, and
+/// how quickly it gets there -- a share of the way each second.
+constexpr float LINEUP_SPACING = 1.45f;
+constexpr float LINEUP_STEP = 1.1f;
+constexpr float LINEUP_EASE = 7.f;
 /// How far each figure's head and chest turn to keep the other's head in view, at most, and how
 /// quickly that comes and goes -- a share of the way each second.
 constexpr float WATCH_LIMIT = 60.f;
@@ -62,8 +61,6 @@ constexpr float HIT_SHAKE = .07f;
 /// Blows a bar lasts before it fills again. The rules keep no health and end no match, so the bars
 /// are a way of reading the count of blows and nothing the game decides by.
 constexpr int BAR_HITS = 10;
-/// What the two players are called on screen.
-constexpr const char *NAMES[]{"AOI", "KAEDE"};
 /// What a linear colour in the picture's light becomes as an overlay colour, which is written onto
 /// the finished picture as it stands.
 auto Display(const glm::vec3 &linear, const float alpha) -> glm::vec4 {
@@ -79,36 +76,14 @@ auto DuelSystem::PostStart() -> void {
   app.RegisterButton("Duel.Right", InputManager::Trigger{GLFW_KEY_D, 0}, "Step right");
   app.RegisterButton("Duel.Punch", InputManager::Trigger{GLFW_KEY_J, 0}, "Punch");
   app.RegisterButton("Duel.Kick", InputManager::Trigger{GLFW_KEY_K, 0}, "Kick");
-  for (auto index = 0; index < duel::DuelSim::PLAYERS; ++index)
-    Spawn(index);
-  // The rules take their clip lengths and the root's travel from the model, so they cannot be made
-  // before there is one. Without a fighter there is nobody to play and nothing to run.
-  const auto *animator = GetAnimator(0);
-  if (const auto *model = animator ? app.GetAsset<ModelAsset>(animator->modelAssetId) : nullptr; model)
-    sim = std::make_shared<duel::DuelSim>(*model, app.TickRate(), duel::RootSpace(*model, ROOT_NODE));
-  else
-    spdlog::warn("[Duel] The fighter has no model, so the rules will not run");
-  // Handed to the network system, which plays them from here on: alone, with the other figure
-  // played by `Think`, or against another machine, as the command line says. An application without
-  // the system has none to hand them to, and Tick plays them itself.
-  if (auto *network = app.GetNetwork(); network && sim) {
-    network->SetProtocol(duel::PROTOCOL);
-    network->SetSeat(1, [rules = sim](const int64_t) { return rules->Think(1); });
-    network->SetBot(duel::ScriptedButtons);
-    network->Begin(sim);
-  }
-  // `--no-ik` leaves the figures as their clips pose them, so that this and the network can each be
-  // tried with and without the other. It is presentation only: the rules never read a goal, so what
-  // it changes is what is seen and not what happens, which a match over a network can check by two
-  // machines agreeing whether or not they both have it.
-  const auto watching = !HasFlag(GetCommandLineArguments(), NO_IK_FLAG);
+  // Presentation only, so read once here and carried into every match. See `StartFight`.
+  watching = !HasFlag(GetCommandLineArguments(), NO_IK_FLAG);
   flashing = !HasFlag(GetCommandLineArguments(), NO_FLASH_FLAG);
   spdlog::info("[Duel] Inverse kinematics {}", watching ? "on" : "off");
-  // Each keeps its eyes on the other: the head and the chest share a turn towards the other's
-  // head, so that the face follows a duck or a lunge and does not stare at where it was.
-  for (auto index = 0; watching && index < duel::DuelSim::PLAYERS; ++index)
-    if (auto *scene = GetAnimator(index); scene)
-      scene->ik.push_back({.name = "watch", .kind = IKKind::Aim, .bone = "Head", .target = FindBone(1 - index, "Head"), .chain = 2, .limit = WATCH_LIMIT});
+  if (auto *network = app.GetNetwork(); network) {
+    network->SetProtocol(duel::PROTOCOL);
+    network->SetBot(duel::ScriptedButtons);
+  }
   sparks = DuelWorld::Game(app)
              .Scene("Main")
              .Entity<ParticleObject>("Sparks")
@@ -176,27 +151,39 @@ auto DuelSystem::PostStart() -> void {
              puff.intensity = 1.f;
            })
            .Id();
-  quitAction = app.RegisterInputAction(GLFW_KEY_ESCAPE, [this]() {
-    app.Quit();
+  // Escape backs out a step at a time: from a match to the select screen, and from there out of the
+  // game. Enter on the keyboard or the keypad starts a match.
+  escapeAction = app.RegisterInputAction(GLFW_KEY_ESCAPE, [this]() {
+    if (screen == Screen::Fight)
+      backPending = true;
+    else
+      app.Quit();
   });
-  spdlog::info("[Duel] A and D step, J punches, K kicks, D twice lunges, Escape quits");
-  for (auto index = 0; index < duel::DuelSim::PLAYERS; ++index)
-    shownState[index] = sim ? sim->GetAnimator(index).state : 0;
+  startAction = app.RegisterInputAction(GLFW_KEY_ENTER, [this]() {
+    startPending = screen == Screen::Select;
+  });
+  startPadAction = app.RegisterInputAction(GLFW_KEY_KP_ENTER, [this]() {
+    startPending = screen == Screen::Select;
+  });
+  spdlog::info("[Duel] A and D choose, Enter fights, Escape goes back; in a match A and D step, J punches, K kicks, D twice lunges");
+  EnterSelect();
 }
 auto DuelSystem::Shutdown() -> void {
   if (auto *network = app.GetNetwork(); network)
     network->End();
-  app.UnregisterInputAction(quitAction);
+  app.UnregisterInputAction(escapeAction);
+  app.UnregisterInputAction(startAction);
+  app.UnregisterInputAction(startPadAction);
 }
-auto DuelSystem::Spawn(const int index) -> EntityID {
+auto DuelSystem::Spawn(const int index, const size_t character, const bool alternate) -> EntityID {
   // As a figure and not as a plain model: the seat is what the rest of this finds it by, and it is
   // part of what the entity is made of rather than something added once it is placed.
-  const auto entity = DuelWorld::Instantiate<duel::Figure>(app, index == 0 ? FIGHTER_MODEL : RIVAL_MODEL);
+  const auto entity = DuelWorld::Instantiate<duel::Figure>(app, duel::ModelName(duel::ROSTER[character], alternate));
   if (auto *seat = DuelWorld::Get<duel::Seat>(app, entity); seat)
     seat->player = index;
   auto *animator = DuelWorld::Get<Animator>(app, entity);
   if (!animator || !animator->modelAssetId) {
-    spdlog::warn("[Duel] Fighter {} has no animator, so it will stand still", index);
+    spdlog::warn("[Duel] {} has no animator, so they will stand still", duel::ROSTER[character].name);
     return entity;
   }
   // The scene's animator is stepped by the animation system and then made to agree with the rules
@@ -205,6 +192,155 @@ auto DuelSystem::Spawn(const int index) -> EntityID {
   animator->states = duel::DuelStates();
   animator->rootNode = ROOT_NODE;
   return entity;
+}
+auto DuelSystem::ClearFigures() -> void {
+  std::vector<EntityID> figures;
+  DuelWorld::ForEach<duel::Seat>(app, [&](const EntityID id, duel::Seat *) {
+    figures.push_back(id);
+  });
+  for (const auto id : figures)
+    app.DeleteEntity(id);
+  lineup.clear();
+  if (spotlight) {
+    app.DeleteEntity(spotlight);
+    spotlight = {};
+  }
+}
+auto DuelSystem::EnterSelect() -> void {
+  screen = Screen::Select;
+  if (auto *network = app.GetNetwork(); network)
+    network->End();
+  sim.reset();
+  ClearFigures();
+  hitAge = -1.f;
+  cameraPlaced = false;
+  for (size_t index = 0; index < duel::ROSTER.size(); ++index) {
+    lineup.push_back(Spawn(-1 - static_cast<int>(index), index));
+    stepped[index] = index == picks[0] ? 1.f : .0f;
+  }
+  // From above and in front of the row, aimed at the one chosen; moved along with the choice in
+  // `UpdateSelect`.
+  spotlight = DuelWorld::Game(app)
+                .Scene("Main")
+                .Entity<LightObject>("Pick")
+                .With<Light>([](Light &light) {
+                  light.type = LightType::Spot;
+                  light.diffuse = {1.f, .92f, .82f};
+                  light.specular = light.diffuse;
+                  light.intensity = 22.f;
+                  light.constant = 1.f;
+                  light.linear = .25f;
+                  light.quadratic = .06f;
+                  light.innerCutoff = std::cos(glm::radians(16.f));
+                  light.outerCutoff = std::cos(glm::radians(26.f));
+                })
+                .Id();
+}
+auto DuelSystem::StartFight() -> void {
+  const auto count = duel::ROSTER.size();
+  // Anyone but the one chosen, from a generator of the screen's own.
+  seed ^= seed << 13;
+  seed ^= seed >> 17;
+  seed ^= seed << 5;
+  picks[1] = (picks[0] + 1 + seed % (count - 1)) % count;
+  ClearFigures();
+  screen = Screen::Fight;
+  Spawn(0, picks[0]);
+  // In the other colours if both play the same fighter.
+  Spawn(1, picks[1], picks[1] == picks[0]);
+  // The rules take their clip lengths and the root's travel from the model, so they cannot be made
+  // before there is one. Every fighter shares one rig and one set of clips, so whichever the first
+  // player chose gives the same rules -- which is what lets two machines whose players chose
+  // differently play each other.
+  const auto *animator = GetAnimator(0);
+  if (const auto *model = animator ? app.GetAsset<ModelAsset>(animator->modelAssetId) : nullptr; model)
+    sim = std::make_shared<duel::DuelSim>(*model, app.TickRate(), duel::RootSpace(*model, ROOT_NODE));
+  else {
+    spdlog::warn("[Duel] The fighter has no model, so the rules will not run");
+    sim.reset();
+  }
+  // Handed to the network system, which plays them from here on: alone, with the other figure
+  // played by `Think`, or against another machine, as the command line says. An application without
+  // the system has none to hand them to, and Tick plays them itself.
+  if (auto *network = app.GetNetwork(); network && sim) {
+    network->SetSeat(1, [rules = sim](const int64_t) { return rules->Think(1); });
+    network->Begin(sim);
+  }
+  // `--no-ik` leaves the figures as their clips pose them, so that this and the network can each be
+  // tried with and without the other. It is presentation only: the rules never read a goal, so what
+  // it changes is what is seen and not what happens, which a match over a network can check by two
+  // machines agreeing whether or not they both have it.
+  //
+  // Each keeps its eyes on the other: the head and the chest share a turn towards the other's
+  // head, so that the face follows a duck or a lunge and does not stare at where it was.
+  for (auto index = 0; watching && index < duel::DuelSim::PLAYERS; ++index)
+    if (auto *scene = GetAnimator(index); scene)
+      scene->ik.push_back({.name = "watch", .kind = IKKind::Aim, .bone = "Head", .target = FindBone(1 - index, "Head"), .chain = 2, .limit = WATCH_LIMIT});
+  for (auto index = 0; index < duel::DuelSim::PLAYERS; ++index) {
+    shownState[index] = sim ? sim->GetAnimator(index).state : 0;
+    shownHealth[index] = 1.f;
+    trailHealth[index] = 1.f;
+  }
+  hitAge = -1.f;
+  frames = 0;
+  cameraPlaced = false;
+}
+auto DuelSystem::UpdateSelect(const float deltaTime) -> void {
+  const auto count = lineup.size();
+  const auto ease = 1.f - std::exp(-LINEUP_EASE * deltaTime);
+  for (size_t index = 0; index < count; ++index) {
+    auto *transform = DuelWorld::Get<Transform>(app, lineup[index]);
+    if (!transform)
+      continue;
+    stepped[index] += ((index == picks[0] ? 1.f : .0f) - stepped[index]) * ease;
+    const auto x = (static_cast<float>(index) - static_cast<float>(count - 1) * .5f) * LINEUP_SPACING;
+    // Facing the camera, the ones at the ends turned a little in towards the middle, and the one
+    // chosen square on.
+    transform->position = {x, .0f, -.6f + LINEUP_STEP * stepped[index]};
+    transform->rotation = glm::angleAxis(glm::radians(-x * 9.f * (1.f - stepped[index])), glm::vec3(.0f, 1.f, .0f));
+    app.MarkTransformDirty(lineup[index]);
+  }
+  const auto chosenX = (static_cast<float>(picks[0]) - static_cast<float>(count - 1) * .5f) * LINEUP_SPACING;
+  if (auto *light = spotlight ? DuelWorld::Get<Light>(app, spotlight) : nullptr) {
+    light->position = {chosenX, 4.2f, 2.4f};
+    light->forward = glm::normalize(glm::vec3(chosenX, 1.f, -.6f + LINEUP_STEP) - light->position);
+  }
+  // Nothing on the picture but what the stage lays over it.
+  ShowImpact(deltaTime);
+  AimCamera({chosenX * .35f, 1.05f, .0f}, 6.4f, deltaTime);
+  DrawSelect();
+}
+auto DuelSystem::DrawSelect() -> void {
+  const auto *context = app.GetGraphicsContext();
+  auto scene = app.GetScene();
+  const auto *camera = scene ? scene->GetCamera() : nullptr;
+  if (!context || !camera)
+    return;
+  const auto [surfaceWidth, surfaceHeight] = context->GetSurfaceSize();
+  if (surfaceWidth <= 0 || surfaceHeight <= 0)
+    return;
+  const auto width = static_cast<float>(surfaceWidth);
+  const auto height = static_cast<float>(surfaceHeight);
+  const auto unit = height / 1080.f;
+  auto &overlay = app.GetOverlay();
+  // A `Top` anchor is the middle of the window's top edge, and the offset is measured from there.
+  overlay.DrawText("CHOOSE YOUR FIGHTER", {.0f, 54.f * unit}, 54.f * unit, {1.f, 1.f, 1.f, .95f}, TextAnchor::Top);
+  // Each name under the feet of the one it names, as the picture has them.
+  const auto viewProjection = camera->transform.projection * camera->transform.view;
+  for (size_t index = 0; index < lineup.size(); ++index) {
+    const auto *transform = DuelWorld::Get<Transform>(app, lineup[index]);
+    if (!transform)
+      continue;
+    const auto clip = viewProjection * glm::vec4(transform->position, 1.f);
+    if (clip.w <= .0f)
+      continue;
+    const auto x = (clip.x / clip.w * .5f + .5f) * width - width * .5f;
+    const auto y = (.5f - clip.y / clip.w * .5f) * height + 14.f * unit;
+    const auto chosen = index == picks[0];
+    overlay.DrawText(duel::ROSTER[index].name, {x, y}, (chosen ? 40.f : 26.f) * unit, {1.f, 1.f, 1.f, chosen ? 1.f : .55f}, TextAnchor::Top);
+    if (chosen)
+      overlay.DrawText(duel::ROSTER[index].title, {x, y + 46.f * unit}, 22.f * unit, Display({1.f, .62f, .08f}, 1.f), TextAnchor::Top);
+  }
 }
 auto DuelSystem::ForEachFigure(auto &&func) -> void {
   DuelWorld::ForEach<duel::Seat, Animator, Transform>(app, [&](const EntityID id, duel::Seat *seat, Animator *animator, Transform *transform) {
@@ -234,6 +370,28 @@ auto DuelSystem::FindBone(const int player, const std::string &name) -> EntityID
   return bone;
 }
 auto DuelSystem::Tick() -> void {
+  // On the select screen the buttons choose: a press of left or right, seen as it goes down so that
+  // holding one moves a single place. The rules are not running, so nothing else reads them.
+  if (screen == Screen::Select) {
+    const auto buttons = app.GetButtons();
+    const auto pressed = buttons & ~previousButtons;
+    previousButtons = buttons;
+    const auto count = duel::ROSTER.size();
+    auto moved = false;
+    if (pressed & (1u << duel::Left)) {
+      picks[0] = (picks[0] + count - 1) % count;
+      moved = true;
+    }
+    if (pressed & (1u << duel::Right)) {
+      picks[0] = (picks[0] + 1) % count;
+      moved = true;
+    }
+    // The one chosen throws a punch as it steps forward, which is how a fighter says it is ready.
+    if (auto *animator = moved && picks[0] < lineup.size() ? DuelWorld::Get<Animator>(app, lineup[picks[0]]) : nullptr)
+      animator->Enter(duel::Punching);
+    return;
+  }
+  previousButtons = app.GetButtons();
   if (!sim)
     return;
   // With a network system the rules have already been played by the time this runs, however many
@@ -289,6 +447,21 @@ auto DuelSystem::CheckRootSpace() -> void {
   });
 }
 auto DuelSystem::Update(const float) -> void {
+  if (startPending) {
+    startPending = false;
+    if (screen == Screen::Select)
+      StartFight();
+  }
+  if (backPending) {
+    backPending = false;
+    if (screen == Screen::Fight)
+      EnterSelect();
+  }
+  clock += app.DeltaTime();
+  if (screen == Screen::Select) {
+    UpdateSelect(app.DeltaTime());
+    return;
+  }
   if (!sim)
     return;
   if (++frames == 10)
@@ -339,7 +512,6 @@ auto DuelSystem::Update(const float) -> void {
       }
     shownState[index] = state;
   }
-  clock += app.DeltaTime();
   ShowImpact(app.DeltaTime());
   MoveCamera(app.DeltaTime());
   DrawHud();
@@ -383,19 +555,21 @@ auto DuelSystem::ShowImpact(const float deltaTime) -> void {
     hitAge = -1.f;
 }
 auto DuelSystem::MoveCamera(const float deltaTime) -> void {
-  auto scene = app.GetScene();
-  auto *camera = scene ? scene->GetCamera() : nullptr;
-  if (!camera)
-    return;
   const auto alpha = app.TickAlpha();
   const auto &first = sim->GetFighter(0);
   const auto &second = sim->GetFighter(1);
   const auto a = glm::mix(first.previous, first.position, alpha);
   const auto b = glm::mix(second.previous, second.position, alpha);
   const auto distance = std::clamp(CAMERA_BASE + std::abs(a - b) * CAMERA_SPREAD, CAMERA_NEAREST, CAMERA_FURTHEST);
-  const glm::vec3 focus{(a + b) * .5f, 1.05f, .0f};
+  AimCamera({(a + b) * .5f, 1.05f, .0f}, distance, deltaTime);
+}
+auto DuelSystem::AimCamera(const glm::vec3 &focus, const float distance, const float deltaTime) -> void {
+  auto scene = app.GetScene();
+  auto *camera = scene ? scene->GetCamera() : nullptr;
+  if (!camera)
+    return;
   // Placed where it belongs on the first frame rather than eased there from wherever the scene was
-  // built with it, which would open every match with a swoop.
+  // built with it, which would open every match, and the select screen, with a swoop.
   const auto ease = cameraPlaced ? 1.f - std::exp(-CAMERA_EASE * deltaTime) : 1.f;
   cameraPlaced = true;
   cameraFocus += (focus - cameraFocus) * ease;
@@ -448,17 +622,6 @@ auto DuelSystem::DrawHud() -> void {
     Fill(trailHealth[index], {1.f, .92f, .8f, .9f});
     const auto health = shownHealth[index];
     Fill(health, health > .3f ? Display({1.f, .62f, .08f}, 1.f) : Display({1.f, .12f, .05f}, 1.f));
-    overlay.DrawText(NAMES[index], {right ? edge + barWidth - width : edge - barWidth, top + barHeight + 8.f * unit}, 26.f * unit, {1.f, 1.f, 1.f, .95f}, right ? TextAnchor::TopRight : TextAnchor::TopLeft);
-  }
-  // The keys, one to a line down the left, below the bars. Below the top by more than a line as
-  // well so that the column clears the bar the editor lays over that corner when the game is played
-  // in it.
-  auto line = 0;
-  // The key and what it does are drawn apart, each at its own left edge. Written as one string they
-  // would not line up: the font's letters are not all one width, so no run of spaces is a column.
-  for (const auto &[key, action] : std::initializer_list<std::pair<const char *, const char *>>{{"A  D", "step"}, {"J", "punch"}, {"K", "kick"}, {"D  D", "lunge"}, {"Tab", "stage"}, {"Esc", "quit"}}) {
-    const auto y = HINT_TOP + HINT_SPACING * static_cast<float>(line++);
-    overlay.DrawText(key, {HINT_LEFT, y}, HINT_SIZE, {1.f, 1.f, 1.f, .9f});
-    overlay.DrawText(action, {HINT_LEFT + HINT_ACTION, y}, HINT_SIZE, {1.f, 1.f, 1.f, .65f});
+    overlay.DrawText(duel::ROSTER[picks[index]].name, {right ? edge + barWidth - width : edge - barWidth, top + barHeight + 8.f * unit}, 26.f * unit, {1.f, 1.f, 1.f, .95f}, right ? TextAnchor::TopRight : TextAnchor::TopLeft);
   }
 }

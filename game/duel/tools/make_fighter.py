@@ -1,12 +1,18 @@
-# Builds `src/model/fighter.blend`: a jointed mannequin of boxes with the handful of clips the game
-# plays. Run by hand, by Blender itself, whenever the figure or a clip is to change:
+# Builds `src/model/fighter.blend`: the roster of fighters a player picks from, each a low-poly figure
+# on one shared rig, with the handful of clips the game plays. Run by hand, by Blender itself,
+# whenever a figure or a clip is to change:
 #
 #   blender --background --factory-startup --python make_fighter.py -- ../src/model/fighter.blend
 #
-# A script rather than a file somebody modelled because this is a stand-in. It is here so that the
-# animation code has a skeleton, a walk that travels and a punch with a moment of impact to work
-# on, and it is meant to be thrown away for a character an artist made. Until then, a clip is a
-# dozen lines below and changing one is a matter of changing numbers.
+# A script rather than a file somebody modelled because these are stand-ins. They are here so that
+# the animation code has a skeleton, a walk that travels and a punch with a moment of impact to work
+# on, and a player has someone to choose, and they are meant to be thrown away for characters an
+# artist made. Until then, a clip is a dozen lines below and a hat is three.
+#
+# Every fighter has the same skeleton and the same clips -- the clips are made once and handed to
+# every rig -- and only the mesh over the bones differs. That is what lets any two of them fight:
+# the rules time every move from the clips, so fighters that shared none would be playing different
+# games. Each rig is exported to a file of its own, named after it: `aoi.glb` and so on.
 #
 # The figure stands on the origin facing -Y, which is the front in Blender and comes out of the
 # glTF export as +Z. `Root` is a bone on the ground that nothing is skinned to: it is what the
@@ -19,7 +25,7 @@ import bpy
 from mathutils import Euler, Matrix, Vector
 
 FPS = 30
-# name, parent, head, tail, box width and depth (nought for a bone with no box)
+# name, parent, head, tail, and whether anything is skinned to it (a width of nought for none)
 BONES = [
     ("Root", None, (0, 0, 0), (0, 0, 0.2), 0, 0),
     ("Hips", "Root", (0, 0, 1.0), (0, 0, 1.2), 0.36, 0.22),
@@ -83,14 +89,14 @@ CLIPS = {
 }
 
 
-def build_armature():
-    data = bpy.data.armatures.new("Fighter")
-    armature = bpy.data.objects.new("Fighter", data)
+def build_armature(name):
+    data = bpy.data.armatures.new(name)
+    armature = bpy.data.objects.new(name, data)
     bpy.context.scene.collection.objects.link(armature)
     bpy.context.view_layer.objects.active = armature
     bpy.ops.object.mode_set(mode="EDIT")
-    for name, parent, head, tail, width, depth in BONES:
-        bone = data.edit_bones.new(name)
+    for bone_name, parent, head, tail, width, depth in BONES:
+        bone = data.edit_bones.new(bone_name)
         bone.head, bone.tail = head, tail
         bone.roll = 0
         bone.use_deform = width > 0
@@ -100,101 +106,214 @@ def build_armature():
     return armature
 
 
-# What each bone's box is made of. The game recolours the jacket, the trousers, the band and the
-# gloves for each player by these names, so they are names the game knows and not only labels.
-DRESS = {
-    "Hips": "Trousers",
-    "Spine": "Jacket",
-    "Head": "Skin",
-    "UpperArm.L": "Jacket",
-    "UpperArm.R": "Jacket",
-    "ForeArm.L": "Skin",
-    "ForeArm.R": "Skin",
-    "Thigh.L": "Trousers",
-    "Shin.L": "Trousers",
-    "Thigh.R": "Trousers",
-    "Shin.R": "Trousers",
-}
-# Linear base colours, the first player's. The second player's are the game's to set.
-COLOURS = {
-    "Skin": (0.72, 0.45, 0.32),
-    "Jacket": (0.06, 0.24, 0.5),
-    "Trousers": (0.05, 0.06, 0.12),
-    "Belt": (0.02, 0.02, 0.02),
-    "Band": (0.85, 0.85, 0.82),
-    "Hair": (0.025, 0.02, 0.02),
-    "Gloves": (0.03, 0.03, 0.035),
-}
-# The rest of the costume, each piece on a bone and in a material: (bone, material, centre, size,
-# rotation in degrees). Small boxes on the big ones, so the ink has something to draw a costume with.
-TRIM = [
-    ("Hips", "Belt", (0, 0, 1.175), (0.385, 0.245, 0.07), (0, 0, 0)),
-    ("Hips", "Belt", (0.06, -0.135, 1.1), (0.05, 0.02, 0.16), (0, 0, 8)),
-    ("Hips", "Belt", (0.1, -0.135, 1.08), (0.05, 0.02, 0.18), (0, 0, -10)),
-    ("Spine", "Skin", (0, -0.121, 1.52), (0.11, 0.01, 0.13), (0, 0, 0)),
-    ("Spine", "Jacket", (0.07, -0.124, 1.4), (0.09, 0.012, 0.32), (0, -18, 0)),
-    ("Spine", "Jacket", (-0.07, -0.124, 1.4), (0.09, 0.012, 0.32), (0, 18, 0)),
-    ("Spine", "Skin", (0, 0, 1.62), (0.1, 0.1, 0.06), (0, 0, 0)),
-    ("Head", "Hair", (0, 0.01, 1.915), (0.245, 0.245, 0.07), (0, 0, 0)),
-    ("Head", "Hair", (0, 0.115, 1.81), (0.245, 0.03, 0.2), (0, 0, 0)),
-    ("Head", "Hair", (0.05, 0.02, 1.96), (0.07, 0.12, 0.08), (20, 15, 30)),
-    ("Head", "Hair", (-0.05, -0.03, 1.955), (0.08, 0.1, 0.07), (-15, -10, -20)),
-    ("Head", "Hair", (0.0, 0.07, 1.97), (0.06, 0.1, 0.07), (35, 0, 0)),
-    ("Head", "Band", (0, 0, 1.85), (0.235, 0.235, 0.04), (0, 0, 0)),
-    ("Head", "Band", (0.035, 0.17, 1.82), (0.03, 0.14, 0.02), (35, 0, 12)),
-    ("Head", "Band", (-0.02, 0.17, 1.815), (0.03, 0.14, 0.02), (40, 0, -10)),
-    ("ForeArm.L", "Gloves", (0.27, 0, 0.92), (0.125, 0.135, 0.13), (0, 0, 0)),
-    ("ForeArm.R", "Gloves", (-0.27, 0, 0.92), (0.125, 0.135, 0.13), (0, 0, 0)),
-    ("ForeArm.L", "Band", (0.27, 0, 1.0), (0.11, 0.11, 0.05), (0, 0, 0)),
-    ("ForeArm.R", "Band", (-0.27, 0, 1.0), (0.11, 0.11, 0.05), (0, 0, 0)),
-    ("UpperArm.L", "Jacket", (0.27, 0, 1.3), (0.13, 0.13, 0.08), (0, 0, 0)),
-    ("UpperArm.R", "Jacket", (-0.27, 0, 1.3), (0.13, 0.13, 0.08), (0, 0, 0)),
-    ("Shin.L", "Skin", (0.1, -0.04, 0.03), (0.11, 0.22, 0.06), (0, 0, 0)),
-    ("Shin.R", "Skin", (-0.1, -0.04, 0.03), (0.11, 0.22, 0.06), (0, 0, 0)),
-    ("Shin.L", "Trousers", (0.1, 0, 0.13), (0.14, 0.14, 0.1), (0, 0, 0)),
-    ("Shin.R", "Trousers", (-0.1, 0, 0.13), (0.14, 0.14, 0.1), (0, 0, 0)),
-]
+# The parts of a costume the game knows by name: it recolours the jacket, the trousers, the band,
+# the gloves and the hair of a second player who picks the same fighter as the first. A material is
+# called `<Fighter>_<Part>`, and the game reads the part after the last underscore.
+PARTS = ("Skin", "Jacket", "Trousers", "Belt", "Band", "Hair", "Gloves", "Eyes")
 
 
-def build_mesh(armature):
-    mesh = bpy.data.meshes.new("FighterBody")
-    body = bpy.data.objects.new("FighterBody", mesh)
-    bpy.context.scene.collection.objects.link(body)
-    names = list(COLOURS)
-    for name in names:
-        material = bpy.data.materials.new(name)
-        shader = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-        shader.inputs["Base Color"].default_value = (*COLOURS[name], 1)
-        shader.inputs["Roughness"].default_value = 0.6
-        mesh.materials.append(material)
-    bm = bmesh.new()
-    deform = bm.verts.layers.deform.verify()
-    groups = {}
+class Figure:
+    """A fighter's mesh: low-poly pieces, each rigid on one bone and in one material.
 
-    def add(bone, material, matrix):
-        if bone not in groups:
-            groups[bone] = body.vertex_groups.new(name=bone)
-        made = bmesh.ops.create_cube(bm, size=1, matrix=matrix)
+    Rigid because every piece is a part of a body that does not bend -- a forearm, a shin, a hat --
+    and a joint is where two pieces meet. It is how a figure of a few hundred faces was built when
+    that was all a machine could draw, and it reads, under the ink, as a drawing of one.
+    """
+
+    def __init__(self, name, colours):
+        self.name = name
+        self.colours = colours
+        self.bm = bmesh.new()
+        self.deform = self.bm.verts.layers.deform.verify()
+        self.groups = []
+
+    def _add(self, bone, material, made):
+        if bone not in self.groups:
+            self.groups.append(bone)
+        group = self.groups.index(bone)
         for vert in made["verts"]:
-            vert[deform][groups[bone].index] = 1
+            vert[self.deform][group] = 1
         for face in {f for v in made["verts"] for f in v.link_faces}:
-            face.material_index = names.index(material)
+            face.material_index = PARTS.index(material)
 
-    for name, _, head, tail, width, depth in BONES:
-        if not width:
-            continue
-        head, tail = Vector(head), Vector(tail)
-        centre = (head + tail) / 2
-        add(name, DRESS[name], Matrix.Translation(centre) @ Matrix.Diagonal((width, depth, abs(tail.z - head.z) * 0.96, 1)))
-    for bone, material, centre, size, rotation in TRIM:
+    def box(self, bone, material, centre, size, rotation=(0, 0, 0)):
         turn = Euler(tuple(math.radians(a) for a in rotation)).to_matrix().to_4x4()
-        add(bone, material, Matrix.Translation(Vector(centre)) @ turn @ Matrix.Diagonal((*size, 1)))
-    bm.normal_update()
-    bm.to_mesh(mesh)
-    bm.free()
-    body.parent = armature
-    body.modifiers.new("Armature", "ARMATURE").object = armature
-    return body
+        self._add(bone, material, bmesh.ops.create_cube(self.bm, size=1, matrix=Matrix.Translation(Vector(centre)) @ turn @ Matrix.Diagonal((*size, 1))))
+
+    def prism(self, bone, material, start, end, radius, end_radius=None, sides=6, squash=(1, 1)):
+        """A tapered prism from one point to another: a limb, a torso, a spike, a hat."""
+        start, end = Vector(start), Vector(end)
+        along = end - start
+        rotation = along.to_track_quat("Z", "Y").to_matrix().to_4x4()
+        matrix = Matrix.Translation((start + end) / 2) @ rotation @ Matrix.Diagonal((squash[0], squash[1], 1, 1))
+        made = bmesh.ops.create_cone(
+            self.bm,
+            cap_ends=True,
+            segments=sides,
+            radius1=radius,
+            radius2=radius if end_radius is None else end_radius,
+            depth=along.length,
+            matrix=matrix,
+        )
+        self._add(bone, material, made)
+
+    def blob(self, bone, material, centre, radius, scale=(1, 1, 1), subdivisions=1):
+        made = bmesh.ops.create_icosphere(self.bm, subdivisions=subdivisions, radius=radius, matrix=Matrix.Translation(Vector(centre)) @ Matrix.Diagonal((*scale, 1)))
+        self._add(bone, material, made)
+
+    def both(self, method, bone, *args, **kwargs):
+        """The same piece on both sides, the right one mirrored across the figure's middle."""
+
+        def mirror(value):
+            return (-value[0], *value[1:]) if isinstance(value, tuple) and len(value) == 3 else value
+
+        getattr(self, method)(bone + ".L", *args, **kwargs)
+        getattr(self, method)(bone + ".R", *(mirror(a) for a in args), **{k: mirror(v) for k, v in kwargs.items()})
+
+    def build(self, armature):
+        mesh = bpy.data.meshes.new(self.name + "Body")
+        body = bpy.data.objects.new(self.name + "Body", mesh)
+        bpy.context.scene.collection.objects.link(body)
+        for part in PARTS:
+            material = bpy.data.materials.new(f"{self.name}_{part}")
+            shader = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+            shader.inputs["Base Color"].default_value = (*self.colours[part], 1)
+            shader.inputs["Roughness"].default_value = 0.6
+            mesh.materials.append(material)
+        self.bm.normal_update()
+        self.bm.to_mesh(mesh)
+        self.bm.free()
+        for bone in self.groups:
+            body.vertex_groups.new(name=bone)
+        body.parent = armature
+        body.modifiers.new("Armature", "ARMATURE").object = armature
+        return body
+
+
+def body(f, chest, waist, hip, arm, fore, fist, thigh, shin, foot, shoulder, jacket_arms=True, fists="Gloves", feet="Skin"):
+    """The figure every fighter is built on: a pelvis, a torso, a neck, a head with eyes, and limbs
+    tapering towards the hands and feet. What a fighter wears is laid over this."""
+    f.prism("Hips", "Trousers", (0, 0, 0.95), (0, 0, 1.22), hip, waist, sides=8, squash=(1, 0.64))
+    f.prism("Spine", "Jacket", (0, 0, 1.2), (0, 0, 1.6), waist, chest, sides=8, squash=(1, 0.6))
+    f.prism("Spine", "Skin", (0, 0, 1.57), (0, 0, 1.7), 0.055, 0.05, sides=6)
+    f.blob("Head", "Skin", (0, -0.005, 1.785), 0.115, (1.0, 1.05, 1.15), subdivisions=2)
+    f.box("Head", "Eyes", (0.045, -0.118, 1.795), (0.034, 0.02, 0.024))
+    f.box("Head", "Eyes", (-0.045, -0.118, 1.795), (0.034, 0.02, 0.024))
+    f.both("blob", "UpperArm", "Jacket" if jacket_arms else "Skin", (0.25, 0, 1.53), shoulder, (1, 0.9, 0.9))
+    f.both("prism", "UpperArm", "Jacket" if jacket_arms else "Skin", (0.27, 0, 1.54), (0.27, 0, 1.26), arm, arm * 0.85)
+    f.both("prism", "ForeArm", "Skin", (0.27, 0, 1.27), (0.27, 0, 0.97), fore, fore * 0.78)
+    f.both("box", "ForeArm", fists, (0.27, 0, 0.915), (fist, fist * 1.05, fist * 1.1))
+    f.both("prism", "Thigh", "Trousers", (0.1, 0, 1.02), (0.1, 0, 0.54), thigh, thigh * 0.75)
+    f.both("prism", "Shin", "Trousers", (0.1, 0, 0.55), (0.1, 0, 0.1), shin, shin * 0.72)
+    f.both("box", "Shin", feet, (0.1, -0.045, 0.045), (foot * 0.5, foot, 0.09))
+
+
+def hair_spikes(f, spikes, material="Hair"):
+    for start, end, radius in spikes:
+        f.prism("Head", material, start, end, radius, 0.0, sides=4)
+
+
+def build_aoi():
+    """The steady one: a short jacket over a belt, a headband, black hair swept up and back."""
+    f = Figure("Aoi", {
+        "Skin": (0.72, 0.45, 0.32), "Jacket": (0.06, 0.24, 0.5), "Trousers": (0.05, 0.06, 0.12),
+        "Belt": (0.02, 0.02, 0.02), "Band": (0.85, 0.85, 0.82), "Hair": (0.025, 0.02, 0.02),
+        "Gloves": (0.03, 0.03, 0.035), "Eyes": (0.01, 0.01, 0.015)})
+    body(f, chest=0.215, waist=0.165, hip=0.18, arm=0.06, fore=0.05, fist=0.12, thigh=0.09, shin=0.068, foot=0.22, shoulder=0.085)
+    # The jacket's skirt over the hips, open in a V at the chest, and tied with a belt.
+    f.prism("Hips", "Jacket", (0, 0, 1.22), (0, 0, 1.02), 0.17, 0.195, sides=8, squash=(1, 0.66))
+    f.box("Spine", "Skin", (0, -0.116, 1.52), (0.1, 0.02, 0.14), (0, 0, 0))
+    f.prism("Hips", "Belt", (0, 0, 1.15), (0, 0, 1.2), 0.178, 0.178, sides=8, squash=(1, 0.68))
+    f.box("Hips", "Belt", (0.06, -0.13, 1.09), (0.045, 0.02, 0.15), (0, 8, 0))
+    f.box("Hips", "Belt", (0.1, -0.13, 1.07), (0.045, 0.02, 0.17), (0, -10, 0))
+    # Hair: a cap and spikes swept up and back, a band round the brow with its ends flying.
+    f.blob("Head", "Hair", (0, 0.02, 1.85), 0.122, (1.03, 1.05, 0.78), subdivisions=1)
+    hair_spikes(f, [
+        ((0.0, -0.04, 1.9), (0.02, 0.15, 2.02), 0.065),
+        ((0.07, 0.0, 1.88), (0.16, 0.16, 1.96), 0.05),
+        ((-0.07, 0.0, 1.88), (-0.16, 0.16, 1.96), 0.05),
+        ((0.0, 0.08, 1.86), (0.0, 0.26, 1.89), 0.06),
+        ((0.07, -0.08, 1.88), (0.1, -0.13, 1.95), 0.035),
+        ((-0.05, -0.09, 1.88), (-0.08, -0.14, 1.93), 0.035),
+    ])
+    f.prism("Head", "Band", (0, 0, 1.82), (0, 0, 1.86), 0.122, 0.122, sides=8, squash=(1, 1.06))
+    f.box("Head", "Band", (0.035, 0.18, 1.82), (0.03, 0.16, 0.02), (35, 0, 12))
+    f.box("Head", "Band", (-0.02, 0.18, 1.815), (0.03, 0.16, 0.02), (40, 0, -10))
+    return f
+
+
+def build_kaede():
+    """The quick one: slight, sleeveless, legs in guards, a long ponytail and a sash with tails."""
+    f = Figure("Kaede", {
+        "Skin": (0.8, 0.55, 0.42), "Jacket": (0.6, 0.05, 0.05), "Trousers": (0.04, 0.035, 0.05),
+        "Belt": (0.9, 0.6, 0.08), "Band": (0.9, 0.88, 0.84), "Hair": (0.12, 0.05, 0.03),
+        "Gloves": (0.55, 0.4, 0.08), "Eyes": (0.02, 0.01, 0.015)})
+    body(f, chest=0.18, waist=0.13, hip=0.165, arm=0.045, fore=0.042, fist=0.1, thigh=0.08, shin=0.06, foot=0.2, shoulder=0.06, jacket_arms=False, feet="Trousers")
+    # A high collar, the arms bound white from wrist to elbow, guards down the front of the shins.
+    f.prism("Spine", "Jacket", (0, 0, 1.57), (0, 0, 1.64), 0.075, 0.065, sides=6)
+    f.both("prism", "ForeArm", "Band", (0.27, 0, 1.2), (0.27, 0, 0.99), 0.05, 0.043)
+    f.both("box", "Shin", "Gloves", (0.1, -0.05, 0.33), (0.1, 0.03, 0.38), (4, 0, 0))
+    # A sash, its two ends hanging to the knee.
+    f.prism("Hips", "Belt", (0, 0, 1.14), (0, 0, 1.21), 0.16, 0.16, sides=8, squash=(1, 0.66))
+    f.box("Hips", "Belt", (0.15, -0.04, 0.92), (0.03, 0.06, 0.4), (0, 6, 0))
+    f.box("Hips", "Belt", (0.17, 0.0, 0.95), (0.03, 0.06, 0.34), (0, -4, 0))
+    # Hair: a cap with a fringe, and a ponytail tied high that falls down the back in segments.
+    f.blob("Head", "Hair", (0, 0.015, 1.85), 0.122, (1.03, 1.05, 0.8), subdivisions=1)
+    f.box("Head", "Hair", (0.0, -0.105, 1.87), (0.2, 0.03, 0.07), (-15, 0, 0))
+    f.prism("Head", "Hair", (0.0, 0.1, 1.9), (0.0, 0.18, 1.74), 0.05, 0.045, sides=5)
+    f.prism("Head", "Hair", (0.0, 0.18, 1.74), (0.0, 0.22, 1.52), 0.045, 0.035, sides=5)
+    f.prism("Head", "Hair", (0.0, 0.22, 1.52), (0.0, 0.21, 1.36), 0.035, 0.0, sides=5)
+    f.prism("Head", "Band", (0.0, 0.08, 1.89), (0.0, 0.12, 1.86), 0.055, 0.055, sides=6)
+    return f
+
+
+def build_goro():
+    """The heavy one: a barrel of a chest, bare arms in iron gauntlets, a beard and a topknot."""
+    f = Figure("Goro", {
+        "Skin": (0.5, 0.3, 0.2), "Jacket": (0.18, 0.25, 0.08), "Trousers": (0.12, 0.09, 0.06),
+        "Belt": (0.08, 0.05, 0.03), "Band": (0.75, 0.55, 0.1), "Hair": (0.03, 0.025, 0.02),
+        "Gloves": (0.35, 0.35, 0.38), "Eyes": (0.01, 0.01, 0.01)})
+    body(f, chest=0.29, waist=0.215, hip=0.2, arm=0.085, fore=0.078, fist=0.165, thigh=0.11, shin=0.088, foot=0.27, shoulder=0.12, jacket_arms=False, feet="Belt")
+    # A vest open down the front, a broad belt with a gold buckle.
+    f.box("Spine", "Skin", (0, -0.17, 1.42), (0.14, 0.03, 0.34))
+    f.prism("Hips", "Belt", (0, 0, 1.12), (0, 0, 1.22), 0.205, 0.205, sides=8, squash=(1, 0.68))
+    f.box("Hips", "Band", (0, -0.145, 1.17), (0.1, 0.02, 0.08))
+    # Iron over the forearms and the fists, and cloth bound round the calves.
+    f.both("prism", "ForeArm", "Gloves", (0.27, 0, 1.18), (0.27, 0, 0.98), 0.092, 0.088, sides=8)
+    f.both("prism", "Shin", "Band", (0.1, 0, 0.38), (0.1, 0, 0.16), 0.085, 0.07, sides=6)
+    # Bald, with a beard square under the jaw and a knot of hair on top.
+    f.blob("Head", "Hair", (0, -0.07, 1.705), 0.085, (1.15, 0.75, 0.95), subdivisions=1)
+    f.box("Head", "Hair", (0, -0.112, 1.835), (0.15, 0.025, 0.025), (0, 0, 0))
+    f.blob("Head", "Hair", (0, 0.03, 1.93), 0.045, (1, 1, 0.8), subdivisions=1)
+    f.prism("Head", "Hair", (0, 0.03, 1.95), (0, 0.06, 2.03), 0.025, 0.0, sides=5)
+    f.prism("Head", "Band", (0, 0.03, 1.93), (0, 0.03, 1.95), 0.03, 0.03, sides=6)
+    return f
+
+
+def build_rin():
+    """The quiet one: a wide straw hat, a scarf over the mouth, robe flaps that swing with the legs."""
+    f = Figure("Rin", {
+        "Skin": (0.75, 0.55, 0.45), "Jacket": (0.2, 0.06, 0.3), "Trousers": (0.03, 0.03, 0.04),
+        "Belt": (0.5, 0.05, 0.06), "Band": (0.55, 0.04, 0.06), "Hair": (0.62, 0.5, 0.28),
+        "Gloves": (0.02, 0.02, 0.02), "Eyes": (0.01, 0.01, 0.015)})
+    body(f, chest=0.2, waist=0.15, hip=0.17, arm=0.055, fore=0.048, fist=0.11, thigh=0.085, shin=0.062, foot=0.21, shoulder=0.075, feet="Trousers")
+    # A robe crossed at the chest, belted, its flaps hanging from the thighs front and back so that
+    # they lift with a kick.
+    f.box("Spine", "Belt", (0.03, -0.115, 1.42), (0.05, 0.02, 0.32), (0, -22, 0))
+    f.prism("Hips", "Belt", (0, 0, 1.13), (0, 0, 1.2), 0.17, 0.17, sides=8, squash=(1, 0.66))
+    f.both("box", "Thigh", "Jacket", (0.1, -0.085, 0.8), (0.16, 0.02, 0.48), (-4, 0, 0))
+    f.both("box", "Thigh", "Jacket", (0.1, 0.085, 0.8), (0.16, 0.02, 0.48), (4, 0, 0))
+    f.both("prism", "ForeArm", "Gloves", (0.27, 0, 1.12), (0.27, 0, 0.98), 0.052, 0.046)
+    # The scarf over the nose and mouth, its end blowing out behind; the hat over everything.
+    f.prism("Head", "Band", (0, -0.005, 1.68), (0, -0.005, 1.775), 0.125, 0.122, sides=8, squash=(1, 1.08))
+    f.prism("Spine", "Band", (0.04, 0.08, 1.64), (0.1, 0.38, 1.46), 0.045, 0.02, sides=4)
+    f.blob("Head", "Gloves", (0, 0.02, 1.86), 0.12, (1.02, 1.05, 0.7), subdivisions=1)
+    f.prism("Head", "Hair", (0, 0, 1.9), (0, 0, 2.06), 0.33, 0.0, sides=10)
+    f.prism("Head", "Belt", (0, 0, 1.895), (0, 0, 1.915), 0.125, 0.125, sides=10)
+    return f
+
+
+ROSTER = (build_aoi, build_kaede, build_goro, build_rin)
 
 
 def about(bone, axis, degrees):
@@ -244,6 +363,18 @@ def build_clips(armature):
         bone.location = (0, 0, 0)
 
 
+def share_clips(source, target):
+    """Hands the clips made on one rig to another with the same bones, track for track."""
+    animation = target.animation_data_create()
+    for bone in target.pose.bones:
+        bone.rotation_mode = "QUATERNION"
+    for track in source.animation_data.nla_tracks:
+        for strip in track.strips:
+            shared = animation.nla_tracks.new().strips.new(strip.name, int(strip.frame_start), strip.action)
+            shared.action_slot = strip.action_slot
+            shared.name = strip.name
+
+
 def main():
     args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     if len(args) != 1:
@@ -251,16 +382,25 @@ def main():
     for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj)
     bpy.context.scene.render.fps = FPS
-    armature = build_armature()
-    body = build_mesh(armature)
-    build_clips(armature)
     export = bpy.data.collections.new("Export")
     bpy.context.scene.collection.children.link(export)
-    for obj in (armature, body):
-        bpy.context.scene.collection.objects.unlink(obj)
-        export.objects.link(obj)
+    first = None
+    for x, build in enumerate(ROSTER):
+        figure = build()
+        armature = build_armature(figure.name)
+        body_object = figure.build(armature)
+        if first is None:
+            build_clips(armature)
+            first = armature
+        else:
+            share_clips(first, armature)
+        # Side by side in the file, to be looked at together; the export puts each back on the origin.
+        armature.location.x = x * 1.2
+        for obj in (armature, body_object):
+            bpy.context.scene.collection.objects.unlink(obj)
+            export.objects.link(obj)
     bpy.ops.wm.save_as_mainfile(filepath=bpy.path.abspath(args[0]))
-    print(f"Saved {args[0]} with clips {', '.join(CLIPS)}")
+    print(f"Saved {args[0]} with fighters {', '.join(b.__name__[6:] for b in ROSTER)} and clips {', '.join(CLIPS)}")
 
 
 main()
