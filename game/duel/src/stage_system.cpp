@@ -3,6 +3,7 @@
 #include <application.hpp>
 #include <cmath>
 #include <command_line.hpp>
+#include <duel_system.hpp>
 #include <duel_world.hpp>
 #include <light.hpp>
 #include <particle_emitter.hpp>
@@ -45,6 +46,9 @@ auto StageSystem::PostStart() -> void {
       spdlog::warn("[Duel] There is no stage called {}, so the fight is in the alley", *name);
   }
   Build(chosen);
+  // The lightning lights the street either way; it is only the white over the whole screen that
+  // the duel's `--no-flash` takes away.
+  flashing = !HasFlag(GetCommandLineArguments(), DuelSystem::NO_FLASH_FLAG);
   // Asked for here and carried out in `Update`: the stage is taken down entity by entity, and the
   // middle of the input manager's dispatch is no place to be deleting things from the scene.
   nextAction = app.RegisterInputAction(GLFW_KEY_TAB, [this]() {
@@ -143,7 +147,7 @@ auto StageSystem::Storm(const float deltaTime) -> void {
     sun->specular = sun->diffuse;
   }
   // Over what the fight has put there this frame, never under it.
-  if (auto scene = app.GetScene(); scene && brightness > .0f)
+  if (auto scene = app.GetScene(); scene && flashing && brightness > .0f)
     if (auto *effects = scene->GetAnyComponent<ScreenEffects>()) {
       effects->flash = std::max(effects->flash, STRIKE_FLASH * brightness);
       effects->flashColor = {.85f, .9f, 1.f};

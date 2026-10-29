@@ -34,6 +34,8 @@ private:
   bool switchPending{};
   /// Whether the blinking lights were lit last frame, so their glow goes off once as they come on.
   bool blinkWasOn{};
+  /// Whether lightning may whiten the screen as well as the street. Off with `--no-flash`.
+  bool flashing{true};
   /// Seconds since the stage was built, which every flicker is a function of.
   float clock{};
   /// When the next bolt falls, and how far into the one falling now the clock is; below nought

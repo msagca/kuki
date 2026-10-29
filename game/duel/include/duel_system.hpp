@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <glm/ext/vector_float3.hpp>
 #include <command_line.hpp>
 #include <duel_sim.hpp>
 #include <duel_world.hpp>
@@ -31,7 +32,9 @@ class DuelSystem final : public kuki::System {
 public:
   /// @brief Leaves the figures as their clips pose them. See `PostStart`.
   static constexpr kuki::Flag NO_IK_FLAG{"--no-ik", kuki::FlagKind::Switch, "", "leave the figures as their clips pose them, without turning their heads to each other"};
-  static constexpr std::array FLAGS{NO_IK_FLAG};
+  /// @brief Keeps blows from flashing the whole screen. See `ShowImpact`.
+  static constexpr kuki::Flag NO_FLASH_FLAG{"--no-flash", kuki::FlagKind::Switch, "", "show blows without the impact frames and flashes, for anyone the flashing troubles"};
+  static constexpr std::array FLAGS{NO_IK_FLAG, NO_FLASH_FLAG};
   explicit DuelSystem(kuki::Application &);
   /// @brief Registers the buttons, places the figures and hands the rules to the network system.
   ///
@@ -44,6 +47,26 @@ private:
   /// Shared and not unique because the network system holds the rules too, for as long as the match.
   std::shared_ptr<duel::DuelSim> sim;
   kuki::EntityID sparks{};
+  /// A ring thrown out from where a blow lands, and the dust a lunge or a knock kicks up.
+  kuki::EntityID shockwave{};
+  kuki::EntityID dust{};
+  /// The last blow to land, for as long as the picture is still showing it: how long ago, how hard
+  /// -- a kick harder than a punch -- and where. Below nought when none is.
+  float hitAge{-1.f};
+  float hitStrength{};
+  glm::vec3 hitPoint{};
+  /// Each figure's state as last drawn, to see a lunge or a knock begin.
+  std::array<int, duel::DuelSim::PLAYERS> shownState{};
+  /// Where the camera is looking and how far back it stands, eased towards where the fight wants it.
+  glm::vec3 cameraFocus{.0f, 1.f, .0f};
+  float cameraDistance{6.5f};
+  bool cameraPlaced{};
+  float clock{};
+  /// Whether a blow may invert or whiten the whole screen. Off with `--no-flash`.
+  bool flashing{true};
+  /// The health each bar shows, and the pale trail that follows it down, as a share of a bar.
+  std::array<float, duel::DuelSim::PLAYERS> shownHealth{1.f, 1.f};
+  std::array<float, duel::DuelSim::PLAYERS> trailHealth{1.f, 1.f};
   kuki::InputManager::ActionID quitAction{kuki::InputManager::InvalidActionID};
   int frames{};
   auto Spawn(const int) -> kuki::EntityID;
@@ -61,4 +84,11 @@ private:
   /// ever exported in a way that makes them differ, the figures would walk at the wrong speed with
   /// nothing to say why.
   auto CheckRootSpace() -> void;
+  /// @brief Follows the fight: centred between the figures, further back the further apart they
+  /// are, shaken for a moment by a blow.
+  auto MoveCamera(const float) -> void;
+  /// @brief What a blow does to the whole picture for the moments after it lands.
+  auto ShowImpact(const float) -> void;
+  /// @brief The bars along the top, the names under them and the keys down the side.
+  auto DrawHud() -> void;
 };
