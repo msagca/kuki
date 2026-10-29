@@ -33,6 +33,16 @@ target_include_directories(
   ${PROJECT_NAME}
   PRIVATE "${CMAKE_SOURCE_DIR}/game/duel/include"
 )
+# The frontier's map, for the same reason: generating it needs no window, and what it promises --
+# the rules kept everywhere, the layers agreeing with the ground -- is worth a test of its own.
+target_sources(
+  ${PROJECT_NAME}
+  PRIVATE "${CMAKE_SOURCE_DIR}/game/frontier/src/terrain.cpp"
+)
+target_include_directories(
+  ${PROJECT_NAME}
+  PRIVATE "${CMAKE_SOURCE_DIR}/game/frontier/include"
+)
 kuki_stage_runtime(${PROJECT_NAME})
 # Mistakes the engine promises to refuse at compile time: an archetype a world never declared, a
 # query no archetype answers, a component an entity was not made with, two flags of one name. A
