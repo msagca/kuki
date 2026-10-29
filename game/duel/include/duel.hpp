@@ -5,9 +5,13 @@
 #include <duel_world.hpp>
 #include <network_system.hpp>
 #include <rendering_system.hpp>
+#include <stage_system.hpp>
 #include <system_application.hpp>
 inline constexpr const char *DUEL_FONT = "font/Inter-VariableFont_opsz,wght.ttf";
 inline constexpr const char *FIGHTER_MODEL = "fighter.glb";
+/// The second player's figure: the same model, rig and clips as the first, dressed in other colours.
+/// Not a file -- a copy the game makes of the first once it has loaded.
+inline constexpr const char *RIVAL_MODEL = "fighter_rival";
 namespace kuki {
 class Application;
 } // namespace kuki
@@ -24,8 +28,8 @@ auto SetupDuel(kuki::Application &) -> void;
 /// The network system plays the rules, alone or against another machine, so it is listed ahead of
 /// the duel's own system: that draws the game, and finds the rules where this tick left them. The
 /// scene's animators are listed ahead of both only because they always were; the rules step their
-/// own.
-class Duel final : public kuki::SystemApplication<duel::DuelWorld, kuki::AnimationSystem, kuki::NetworkSystem, DuelSystem, kuki::RenderingSystem> {
+/// own. The stage comes after the fight, so its lightning is laid over the fight's own flashes.
+class Duel final : public kuki::SystemApplication<duel::DuelWorld, kuki::AnimationSystem, kuki::NetworkSystem, DuelSystem, StageSystem, kuki::RenderingSystem> {
 public:
   Duel();
 private:

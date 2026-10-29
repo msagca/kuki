@@ -16,7 +16,7 @@ import sys
 
 import bmesh
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Euler, Matrix, Vector
 
 FPS = 30
 # name, parent, head, tail, box width and depth (nought for a bone with no box)
@@ -100,29 +100,98 @@ def build_armature():
     return armature
 
 
+# What each bone's box is made of. The game recolours the jacket, the trousers, the band and the
+# gloves for each player by these names, so they are names the game knows and not only labels.
+DRESS = {
+    "Hips": "Trousers",
+    "Spine": "Jacket",
+    "Head": "Skin",
+    "UpperArm.L": "Jacket",
+    "UpperArm.R": "Jacket",
+    "ForeArm.L": "Skin",
+    "ForeArm.R": "Skin",
+    "Thigh.L": "Trousers",
+    "Shin.L": "Trousers",
+    "Thigh.R": "Trousers",
+    "Shin.R": "Trousers",
+}
+# Linear base colours, the first player's. The second player's are the game's to set.
+COLOURS = {
+    "Skin": (0.72, 0.45, 0.32),
+    "Jacket": (0.06, 0.24, 0.5),
+    "Trousers": (0.05, 0.06, 0.12),
+    "Belt": (0.02, 0.02, 0.02),
+    "Band": (0.85, 0.85, 0.82),
+    "Hair": (0.025, 0.02, 0.02),
+    "Gloves": (0.03, 0.03, 0.035),
+}
+# The rest of the costume, each piece on a bone and in a material: (bone, material, centre, size,
+# rotation in degrees). Small boxes on the big ones, so the ink has something to draw a costume with.
+TRIM = [
+    ("Hips", "Belt", (0, 0, 1.175), (0.385, 0.245, 0.07), (0, 0, 0)),
+    ("Hips", "Belt", (0.06, -0.135, 1.1), (0.05, 0.02, 0.16), (0, 0, 8)),
+    ("Hips", "Belt", (0.1, -0.135, 1.08), (0.05, 0.02, 0.18), (0, 0, -10)),
+    ("Spine", "Skin", (0, -0.121, 1.52), (0.11, 0.01, 0.13), (0, 0, 0)),
+    ("Spine", "Jacket", (0.07, -0.124, 1.4), (0.09, 0.012, 0.32), (0, -18, 0)),
+    ("Spine", "Jacket", (-0.07, -0.124, 1.4), (0.09, 0.012, 0.32), (0, 18, 0)),
+    ("Spine", "Skin", (0, 0, 1.62), (0.1, 0.1, 0.06), (0, 0, 0)),
+    ("Head", "Hair", (0, 0.01, 1.915), (0.245, 0.245, 0.07), (0, 0, 0)),
+    ("Head", "Hair", (0, 0.115, 1.81), (0.245, 0.03, 0.2), (0, 0, 0)),
+    ("Head", "Hair", (0.05, 0.02, 1.96), (0.07, 0.12, 0.08), (20, 15, 30)),
+    ("Head", "Hair", (-0.05, -0.03, 1.955), (0.08, 0.1, 0.07), (-15, -10, -20)),
+    ("Head", "Hair", (0.0, 0.07, 1.97), (0.06, 0.1, 0.07), (35, 0, 0)),
+    ("Head", "Band", (0, 0, 1.85), (0.235, 0.235, 0.04), (0, 0, 0)),
+    ("Head", "Band", (0.035, 0.17, 1.82), (0.03, 0.14, 0.02), (35, 0, 12)),
+    ("Head", "Band", (-0.02, 0.17, 1.815), (0.03, 0.14, 0.02), (40, 0, -10)),
+    ("ForeArm.L", "Gloves", (0.27, 0, 0.92), (0.125, 0.135, 0.13), (0, 0, 0)),
+    ("ForeArm.R", "Gloves", (-0.27, 0, 0.92), (0.125, 0.135, 0.13), (0, 0, 0)),
+    ("ForeArm.L", "Band", (0.27, 0, 1.0), (0.11, 0.11, 0.05), (0, 0, 0)),
+    ("ForeArm.R", "Band", (-0.27, 0, 1.0), (0.11, 0.11, 0.05), (0, 0, 0)),
+    ("UpperArm.L", "Jacket", (0.27, 0, 1.3), (0.13, 0.13, 0.08), (0, 0, 0)),
+    ("UpperArm.R", "Jacket", (-0.27, 0, 1.3), (0.13, 0.13, 0.08), (0, 0, 0)),
+    ("Shin.L", "Skin", (0.1, -0.04, 0.03), (0.11, 0.22, 0.06), (0, 0, 0)),
+    ("Shin.R", "Skin", (-0.1, -0.04, 0.03), (0.11, 0.22, 0.06), (0, 0, 0)),
+    ("Shin.L", "Trousers", (0.1, 0, 0.13), (0.14, 0.14, 0.1), (0, 0, 0)),
+    ("Shin.R", "Trousers", (-0.1, 0, 0.13), (0.14, 0.14, 0.1), (0, 0, 0)),
+]
+
+
 def build_mesh(armature):
     mesh = bpy.data.meshes.new("FighterBody")
     body = bpy.data.objects.new("FighterBody", mesh)
     bpy.context.scene.collection.objects.link(body)
+    names = list(COLOURS)
+    for name in names:
+        material = bpy.data.materials.new(name)
+        shader = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+        shader.inputs["Base Color"].default_value = (*COLOURS[name], 1)
+        shader.inputs["Roughness"].default_value = 0.6
+        mesh.materials.append(material)
     bm = bmesh.new()
     deform = bm.verts.layers.deform.verify()
+    groups = {}
+
+    def add(bone, material, matrix):
+        if bone not in groups:
+            groups[bone] = body.vertex_groups.new(name=bone)
+        made = bmesh.ops.create_cube(bm, size=1, matrix=matrix)
+        for vert in made["verts"]:
+            vert[deform][groups[bone].index] = 1
+        for face in {f for v in made["verts"] for f in v.link_faces}:
+            face.material_index = names.index(material)
+
     for name, _, head, tail, width, depth in BONES:
         if not width:
             continue
-        group = body.vertex_groups.new(name=name)
         head, tail = Vector(head), Vector(tail)
         centre = (head + tail) / 2
-        made = bmesh.ops.create_cube(bm, size=1, matrix=Matrix.Translation(centre) @ Matrix.Diagonal((width, depth, abs(tail.z - head.z) * 0.96, 1)))
-        for vert in made["verts"]:
-            vert[deform][group.index] = 1
+        add(name, DRESS[name], Matrix.Translation(centre) @ Matrix.Diagonal((width, depth, abs(tail.z - head.z) * 0.96, 1)))
+    for bone, material, centre, size, rotation in TRIM:
+        turn = Euler(tuple(math.radians(a) for a in rotation)).to_matrix().to_4x4()
+        add(bone, material, Matrix.Translation(Vector(centre)) @ turn @ Matrix.Diagonal((*size, 1)))
     bm.normal_update()
     bm.to_mesh(mesh)
     bm.free()
-    material = bpy.data.materials.new("FighterBody")
-    shader = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-    shader.inputs["Base Color"].default_value = (0.62, 0.6, 0.56, 1)
-    shader.inputs["Roughness"].default_value = 0.6
-    mesh.materials.append(material)
     body.parent = armature
     body.modifiers.new("Armature", "ARMATURE").object = armature
     return body

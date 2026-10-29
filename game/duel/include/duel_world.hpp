@@ -19,8 +19,9 @@ using Figure = kuki::Archetype<kuki::Transform, kuki::BoundingBox, kuki::Animate
 /// @brief The sky, which is both the atmosphere and the light it throws back on the scene.
 using Sky = kuki::Archetype<kuki::Transform, kuki::AtmosphereSky, kuki::IndirectLighting>;
 /// @brief How the picture is drawn -- cel bands, ink, a grade -- and what the fight is doing to it
-/// this instant: the flash and the speed lines of a blow landing.
-using Look = kuki::Archetype<kuki::Transform, kuki::Stylization, kuki::ScreenEffects>;
+/// this instant: the flash and the speed lines of a blow landing. And how wet the ground is, which
+/// is a matter of how the picture is drawn too: the street mirrors what the camera sees of it.
+using Look = kuki::Archetype<kuki::Transform, kuki::Stylization, kuki::ScreenEffects, kuki::PlanarReflection>;
 /// @brief Everything a scene of the duel can be made of: the engine's archetypes, and these.
 using DuelWorld = kuki::World<Figure, Sky, Look>;
 } // namespace duel

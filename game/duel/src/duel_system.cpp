@@ -105,7 +105,7 @@ auto DuelSystem::Shutdown() -> void {
 auto DuelSystem::Spawn(const int index) -> EntityID {
   // As a figure and not as a plain model: the seat is what the rest of this finds it by, and it is
   // part of what the entity is made of rather than something added once it is placed.
-  const auto entity = DuelWorld::Instantiate<duel::Figure>(app, FIGHTER_MODEL);
+  const auto entity = DuelWorld::Instantiate<duel::Figure>(app, index == 0 ? FIGHTER_MODEL : RIVAL_MODEL);
   if (auto *seat = DuelWorld::Get<duel::Seat>(app, entity); seat)
     seat->player = index;
   auto *animator = DuelWorld::Get<Animator>(app, entity);
