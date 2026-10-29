@@ -2,7 +2,7 @@
 
 A game engine written in C++23, made up of:
 
-- **KukiEngine**, the engine library: an archetype-based ECS fixed at compile time, a fixed-tick game loop with rebindable buttons and a gesture recognizer, skeletal animation with state machines and inverse kinematics, rollback networking, and a render graph with Direct3D 12 and OpenGL backends (physically based lighting, image-based lighting, shadows, bloom, a computed sky with clouds and fog, anti-aliasing).
+- **KukiEngine**, the engine library: an archetype-based ECS fixed at compile time, a fixed-tick game loop with rebindable buttons and a gesture recognizer, skeletal animation with state machines and inverse kinematics, rollback networking, procedural generation (irregular grids, wave function collapse over any graph, noise), navigation meshes, flocking, and a render graph with Direct3D 12 and OpenGL backends (physically based lighting, image-based lighting, shadows, bloom, a computed sky with clouds and fog, anti-aliasing).
 - **KukiEditor**, a [Dear ImGui](https://github.com/ocornut/imgui) editor for building, saving and playing scenes.
 
 ## Installation
