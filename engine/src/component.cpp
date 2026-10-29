@@ -17,8 +17,10 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::ModelMeshHandle, "ModelMeshHandle"},
   {ComponentType::ParticleEmitter, "Particle Emitter"},
   {ComponentType::RenderBinding, "RenderBinding"},
+  {ComponentType::ScreenEffects, "Screen Effects"},
   {ComponentType::Skeleton, "Skeleton"},
   {ComponentType::SkyboxHandle, "SkyboxHandle"},
+  {ComponentType::Stylization, "Stylization"},
   {ComponentType::TextureHandle, "TextureHandle"},
   {ComponentType::Transform, "Transform"},
   {ComponentType::VolumetricClouds, "Volumetric Clouds"},
@@ -29,6 +31,6 @@ auto Component::GetTypeName(const ComponentType type) -> std::string {
   return {};
 }
 auto Component::IsSceneSingleton(const ComponentType type) -> bool {
-  return type == ComponentType::AntiAliasing || type == ComponentType::AtmosphereSky || type == ComponentType::IndirectLighting || type == ComponentType::VolumetricClouds || type == ComponentType::VolumetricFog;
+  return type == ComponentType::AntiAliasing || type == ComponentType::AtmosphereSky || type == ComponentType::IndirectLighting || type == ComponentType::ScreenEffects || type == ComponentType::Stylization || type == ComponentType::VolumetricClouds || type == ComponentType::VolumetricFog;
 }
 } // namespace kuki

@@ -274,6 +274,8 @@ public:
   auto MarchClouds(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyVolumetricFog(std::span<std::string>, std::span<std::string>) -> void override;
   auto DrawParticles(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyInk(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyStylize(std::span<std::string>, std::span<std::string>) -> void override;
   auto UpdateTarget(const std::string &, const TargetDescription &) -> void override;
 private:
   DXPipelineCache pipelines;
@@ -415,6 +417,9 @@ private:
   const Scene *particleScene{};
   /// @brief Counts the particle pass's runs, to date the pools and to turn the spawn seed over.
   uint64_t particleFrame{};
+  /// @brief Seconds the stylize pass has run for, which is what turns the speed lines over. Its own
+  /// clock rather than the application's, so the lines keep streaming while a game holds a frame.
+  float stylizeTime{};
   /// @brief What is bound where the surface samples go for an emitter that has none.
   ///
   /// The step's shader names the samples whether or not a given emitter reads them, and a root
@@ -748,6 +753,12 @@ private:
   /// a skinned mesh is never placed in the acceleration structure. The bounds are the bind pose's,
   /// so a pose reaching well outside them can be culled early; `GLRenderer` accepts the same.
   auto CollectSkinnedDraws(Scene &, const Camera * = nullptr) -> std::vector<DXSkinnedDraw>;
+  /// @brief Draws one of `stylize.hlsl`'s passes from the first resolved colour input to the output.
+  ///
+  /// The depth input is the full-sized depth buffer among the inputs, where the pass has one, and the
+  /// dummy texture where it does not -- the grade reads none. False when nothing was drawn, so the
+  /// caller can copy the picture through instead.
+  auto DrawStylizePass(std::span<std::string>, std::span<std::string>, const char *entryPoint, DXStylizeConstants &) -> bool;
   /// @brief Uploads every skinned mesh's instance and bones for the depth-only passes.
   ///
   /// Not culled by any camera: a figure out of shot still casts a shadow into it.

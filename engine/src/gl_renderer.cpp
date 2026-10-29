@@ -1397,6 +1397,15 @@ auto GLRenderer::ApplyVolumetricFog(std::span<std::string> inputs, std::span<std
 auto GLRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   BypassCopy(inputs, outputs);
 }
+/// The picture through, unaltered, for the reason the particles above are: nothing is missing but the
+/// pass. Neither the lines nor the grade need more than a depth buffer and a fullscreen draw.
+/// `RendererCapabilities::stylization` says so.
+auto GLRenderer::ApplyInk(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  BypassCopy(inputs, outputs);
+}
+auto GLRenderer::ApplyStylize(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  BypassCopy(inputs, outputs);
+}
 auto GLRenderer::UpdateTarget(const std::string &name, const TargetDescription &desc) -> void {
   const auto id = resourceRegistry.GetID(name);
   if (!id)

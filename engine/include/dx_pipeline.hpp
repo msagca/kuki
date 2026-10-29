@@ -76,6 +76,14 @@ struct DXFrameConstants {
   /// back. Keeping them out of `HashLighting` and hashing them on their own is what lets the trace
   /// react to these while the scale above passes through it without disturbing anything.
   float probeTuning[4]{};
+  /// @brief The shape of the cel bands, for the surfaces whose material asks for them: how many
+  /// tones, how soft the step between them, where the terminator falls, and how large the hard
+  /// highlight is. From the scene's `Stylization`, or its defaults where the scene has none.
+  float toon[4]{};
+  /// @brief The tint of the shaded side in the first three, the rim's strength in the fourth.
+  float toonShade[4]{};
+  /// @brief The rim's width, and three floats kept for whatever the bands need next.
+  float toonRim[4]{};
 };
 /// @brief One drawn instance, read out of a structured buffer by `SV_InstanceID`.
 ///
@@ -113,6 +121,9 @@ struct DXSceneConstants {
   uint32_t unlit{};
   float alphaCutoff{};
   uint32_t alphaMode{};
+  /// @brief How far the surface is cel shaded, then three floats free. A row of its own so the
+  /// block stays whole float4 rows, as the HLSL side packs it.
+  float style[4]{};
 };
 /// @brief Root constants for the fullscreen post-processing pipelines.
 ///
@@ -155,6 +166,35 @@ struct DXOverlayConstants {
   float projection[16]{};
   float color[4]{};
 };
+/// @brief Root constants for the ink and stylize passes, read by `stylize.hlsl`. Nine float4 rows, with
+/// every three-float colour at the start of one so HLSL inserts no padding this side does not have.
+struct DXStylizeConstants {
+  float texelSize[2]{};
+  float projectionZ{};
+  float projectionW{};
+  float inkThickness{};
+  float inkDepthThreshold{};
+  float inkCreaseThreshold{};
+  float inkFadeDistance{};
+  float inkColor[3]{};
+  float inkTint{};
+  float saturation{1.f};
+  float contrast{1.f};
+  float vignette{};
+  float time{};
+  float shadowColor[3]{.5f, .5f, .5f};
+  float flash{};
+  float highlightColor[3]{.5f, .5f, .5f};
+  float impact{};
+  float flashColor[3]{1.f, 1.f, 1.f};
+  float speedLines{};
+  float focus[2]{.5f, .5f};
+  float radialBlur{};
+  float aberration{};
+  float aspect{1.f};
+  float padding[3]{};
+};
+static_assert(sizeof(DXStylizeConstants) == 144, "DXStylizeConstants must stay nine float4 rows to match the HLSL cbuffer");
 struct DXOutlineConstants {
   float color[4]{};
   float texelSize[4]{};
@@ -560,6 +600,11 @@ public:
   /// Distinct from the generic post pipeline because it binds a second resource: the multisampled
   /// entity id buffer, read with `Load` so ids are never filtered.
   auto GetOutlinePipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
+  /// @brief Returns the ink or stylize pipeline for a target format, building it once.
+  ///
+  /// Apart from the generic post pipeline because its constants are larger and it binds a depth
+  /// buffer beside the picture. `entryPoint` is `PSInk` or `PSStylize`.
+  auto GetStylizePipeline(ID3D12Device *, const DXGI_FORMAT, const char *entryPoint) -> const DXPipeline *;
   /// @brief Returns the overlay text pipeline for a target format, building it once.
   ///
   /// The only raster pipeline here that blends and does not test depth. Both follow from where it
@@ -671,6 +716,7 @@ private:
   ComPtr<ID3D12RootSignature> sceneRootSignature;
   ComPtr<ID3D12RootSignature> postRootSignature;
   ComPtr<ID3D12RootSignature> outlineRootSignature;
+  ComPtr<ID3D12RootSignature> stylizeRootSignature;
   ComPtr<ID3D12RootSignature> overlayRootSignature;
   ComPtr<ID3D12RootSignature> shadowRootSignature;
   ComPtr<ID3D12RootSignature> skyboxRootSignature;
@@ -702,6 +748,7 @@ private:
   auto GetPostRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the outline pass: source colour, entity ids, and the selected set.
   auto GetOutlineRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  auto GetStylizeRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the overlay pass: the projection and colour, and the glyph atlas.
   auto GetOverlayRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the shadow pass: a single light-space matrix.

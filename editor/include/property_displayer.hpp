@@ -38,6 +38,7 @@
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <string>
+#include <stylization.hpp>
 #include <texture_handle.hpp>
 struct PropertyDisplayer {
   EditorContext &context;
@@ -50,7 +51,9 @@ struct PropertyDisplayer {
 /// `GLMaterial` and `DXMaterial` differ in how they reach their textures and in nothing else: the
 /// surface values underneath are one `MaterialFallback` in both. Shared rather than ported, because
 /// two copies of a panel this long is how the two backends end up offering different materials.
-inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallback &fallback) -> void {
+///
+/// `toon` offers the cel shading slider, which only a backend that draws the bands should.
+inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallback &fallback, const bool toon = false) -> void {
   static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
   auto typeIndex = static_cast<int>(type);
   if (field::Combo("Type", &typeIndex, types.data(), types.size()))
@@ -89,6 +92,12 @@ inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallb
   auto transmission = fallback.transmission;
   if (field::SliderFloat("Transmission", &transmission, .0f, 1.f))
     fallback.transmission = transmission;
+  if (toon) {
+    auto amount = fallback.toon;
+    if (field::SliderFloat("Toon", &amount, .0f, 1.f))
+      fallback.toon = amount;
+    ImGui::SetItemTooltip("How far the surface is drawn in the scene's cel bands rather than shaded\nphysically. The bands themselves are the scene's Stylization.");
+  }
   if (fallback.transmission > .0f) {
     auto thickness = fallback.thickness;
     if (field::SliderFloat("Thickness", &thickness, .0f, 10.f))
@@ -618,7 +627,7 @@ inline auto PropertyDisplayer::operator()<kuki::DXMaterial>(kuki::DXMaterial *ma
   field::Toggle(ICON_LC_DATABASE, "Table Resident", &bound);
   ImGui::EndDisabled();
   ImGui::SetItemTooltip("Whether the table has been built and uploaded yet.");
-  DisplayMaterialSurface(material->type, material->fallback);
+  DisplayMaterialSurface(material->type, material->fallback, context.capabilities.stylization);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLBuffer>(kuki::GLBuffer *buffer) -> void {
@@ -930,6 +939,46 @@ inline auto PropertyDisplayer::operator()<kuki::VolumetricClouds>(kuki::Volumetr
   }
   if (edited != *clouds)
     *clouds = edited;
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::Stylization>(kuki::Stylization *style) -> void {
+  if (!style || !context.capabilities.stylization)
+    return;
+  auto edited = *style;
+  if (field::Fold("Bands", true)) {
+    auto bands = static_cast<int>(edited.bands);
+    if (field::SliderInt("Bands", &bands, 1, 6))
+      edited.bands = static_cast<uint32_t>(std::max(1, bands));
+    ImGui::SetItemTooltip("Tones a lit surface is drawn in, for the materials whose Toon is above zero.");
+    field::SliderFloat("Softness", &edited.bandSoftness, .0f, .2f);
+    field::SliderFloat("Terminator", &edited.terminator, -.5f, .5f);
+    ImGui::SetItemTooltip("Where the shaded side begins. Above zero pushes it towards the light, which\nmakes a form read rounder than its geometry.");
+    field::ColorEdit3("Shadow Tint", &edited.shadowTint.x);
+    field::SliderFloat("Highlight", &edited.highlightSize, .0f, .5f);
+    field::SliderFloat("Rim", &edited.rimIntensity, .0f, 4.f);
+    field::SliderFloat("Rim Width", &edited.rimWidth, .0f, 1.f);
+  }
+  if (field::Fold("Ink", true)) {
+    field::SliderFloat("Thickness", &edited.inkThickness, .0f, 6.f);
+    ImGui::SetItemTooltip("In pixels of a picture 1080 high. Zero draws no lines.");
+    field::SliderFloat("Outline Threshold", &edited.inkDepthThreshold, .005f, .5f);
+    field::SliderFloat("Crease Threshold", &edited.inkCreaseThreshold, .0f, 4.f);
+    ImGui::SetItemTooltip("How sharply a surface must fold to be inked. A right angle seen corner on\nmeasures about one.");
+    field::ColorEdit3("Ink", &edited.inkColor.x);
+    field::SliderFloat("Ink Tint", &edited.inkTint, .0f, 1.f);
+    ImGui::SetItemTooltip("How much of the colour beneath it the ink takes on.");
+    field::DragFloat("Fade Distance", &edited.inkFadeDistance, .5f, 1.f, 1000.f, "%.0f");
+  }
+  if (field::Fold("Grade", true)) {
+    field::SliderFloat("Saturation", &edited.saturation, .0f, 2.f);
+    field::SliderFloat("Contrast", &edited.contrast, .5f, 2.f);
+    field::ColorEdit3("Shadows", &edited.shadowColor.x);
+    field::ColorEdit3("Highlights", &edited.highlightColor.x);
+    ImGui::SetItemTooltip("Grey is no push. The darks and the lights are each pushed towards their colour\nby as much as they are dark or light.");
+    field::SliderFloat("Vignette", &edited.vignette, .0f, 1.f);
+  }
+  if (edited != *style)
+    *style = edited;
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::VolumetricFog>(kuki::VolumetricFog *fog) -> void {

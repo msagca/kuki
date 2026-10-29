@@ -35,5 +35,12 @@ struct MaterialFallback {
   float transmission{.0f};
   float thickness{.0f};
   float ior{1.5f};
+  /// @brief How far the surface is cel shaded rather than shaded physically, from nought to one.
+  ///
+  /// The shape of the bands is the scene's -- see `Stylization` -- and this is how much of them a
+  /// surface takes. A figure drawn in flat tones in front of a backdrop shaded as a painting is
+  /// the commonest reason to want both in one frame. Read by the Direct3D 12 backend; the OpenGL one
+  /// shades every surface physically.
+  float toon{.0f};
 };
 } // namespace kuki

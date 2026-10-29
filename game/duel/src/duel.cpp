@@ -20,8 +20,12 @@ auto Duel::Start() -> void {
   SetupDuel(*this);
 }
 auto SetupDuel(Application &app) -> void {
-  if (!app.LoadAsset<ModelAsset>(ResolvePath(std::string("model/") + FIGHTER_MODEL), FIGHTER_MODEL))
+  if (const auto fighter = app.LoadAsset<ModelAsset>(ResolvePath(std::string("model/") + FIGHTER_MODEL), FIGHTER_MODEL); !fighter)
     spdlog::warn("[Duel] The fighter did not load, so there is nobody to play");
+  else if (auto *model = app.GetAsset<ModelAsset>(fighter))
+    // Drawn as a cel, in the bands the scene's `Stylization` gives, whatever the stage behind is.
+    for (auto &material : model->materials)
+      material.fallback.toon = 1.f;
   if (!app.SetOverlayFont(ResolvePath(DUEL_FONT)))
     spdlog::warn("[Duel] No font, so nothing will be written on screen");
   duel::DuelWorld::Game(app, "Kuki Duel")
@@ -51,6 +55,8 @@ auto SetupDuel(Application &app) -> void {
     .With<IndirectLighting>([](IndirectLighting &lighting) {
       lighting.ambientFallback = .18f;
     })
+    .Entity<duel::Look>("Look")
+    .With<Stylization>([](Stylization &) {})
     .Entity<MeshObject>("Floor")
     .Mesh("Cube")
     .At({.0f, -.1f, .0f})

@@ -31,6 +31,8 @@
 #include <skybox_handle.hpp>
 #include <transform.hpp>
 #include <spdlog/spdlog.h>
+#include <screen_effects.hpp>
+#include <stylization.hpp>
 #include <string>
 #include <utility>
 namespace kuki {
@@ -1966,6 +1968,111 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
   // most of them say so themselves, and this is for the one that some day does not.
   commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
+auto DXRenderer::DrawStylizePass(std::span<std::string> inputs, std::span<std::string> outputs, const char *entryPoint, DXStylizeConstants &constants) -> bool {
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  if (!commandList || outputs.empty())
+    return false;
+  auto destinationIt = nameToTarget.find(outputs[0]);
+  if (destinationIt == nameToTarget.end() || !destinationIt->second.resource || destinationIt->second.rtvIndex == DXDescriptorHeap::InvalidIndex || destinationIt->second.desc.samples > 1)
+    return false;
+  auto &destination = destinationIt->second;
+  DXRenderTarget *source{};
+  DXRenderTarget *depth{};
+  for (const auto &name : inputs) {
+    auto it = nameToTarget.find(name);
+    if (it == nameToTarget.end() || !it->second.resource || it->second.srvIndex == DXDescriptorHeap::InvalidIndex || it->second.desc.samples > 1)
+      continue;
+    if (IsDepthFormat(it->second.desc.format)) {
+      if (!depth && it->second.desc.type != TargetType::Texture2DArray && it->second.desc.width == destination.desc.width && it->second.desc.height == destination.desc.height)
+        depth = &it->second;
+    } else if (!source)
+      source = &it->second;
+  }
+  if (!source || source->desc.width != destination.desc.width || source->desc.height != destination.desc.height)
+    return false;
+  auto *fallback = EnsureDummyTexture();
+  const auto pipeline = pipelines.GetStylizePipeline(context->GetDevice(), TargetFormatToRTVDXGI(destination.desc.format), entryPoint);
+  if (!fallback || !pipeline || !*pipeline)
+    return false;
+  Transition(*source, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  if (depth)
+    Transition(*depth, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  Transition(destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  const auto rtv = context->GetRTVHeap().GetCPUHandle(destination.rtvIndex);
+  commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+  const auto viewport = CD3DX12_VIEWPORT(.0f, .0f, static_cast<float>(destination.desc.width), static_cast<float>(destination.desc.height));
+  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination.desc.width), static_cast<LONG>(destination.desc.height));
+  commandList->RSSetViewports(1, &viewport);
+  commandList->RSSetScissorRects(1, &scissor);
+  constants.texelSize[0] = destination.desc.width > 0 ? 1.f / static_cast<float>(destination.desc.width) : .0f;
+  constants.texelSize[1] = destination.desc.height > 0 ? 1.f / static_cast<float>(destination.desc.height) : .0f;
+  constants.aspect = destination.desc.height > 0 ? static_cast<float>(destination.desc.width) / static_cast<float>(destination.desc.height) : 1.f;
+  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXStylizeConstants) / sizeof(uint32_t), &constants, 0);
+  commandList->SetGraphicsRootDescriptorTable(1, source->srvGPU);
+  commandList->SetGraphicsRootDescriptorTable(2, depth ? depth->srvGPU : fallback->srvGPU);
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  commandList->IASetVertexBuffers(0, 0, nullptr);
+  commandList->DrawInstanced(3, 1, 0, 0);
+  return true;
+}
+auto DXRenderer::ApplyInk(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  auto scene = app.GetScene();
+  const auto *style = scene ? scene->GetAnyComponent<Stylization>() : nullptr;
+  const auto *camera = scene ? scene->GetCamera() : nullptr;
+  // No lines over a debug view, which is a picture of a number: a line across it would be a second
+  // number nobody asked for. Nor with no camera to say what the depth means, or nothing to draw.
+  if (!style || !camera || style->inkThickness <= .0f || lightingDebugView != LightingDebugView::None || camera->type != CameraType::Perspective) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  DXStylizeConstants constants{};
+  constants.projectionZ = camera->transform.projection[2][2];
+  constants.projectionW = camera->transform.projection[3][2];
+  constants.inkThickness = style->inkThickness;
+  constants.inkDepthThreshold = std::max(style->inkDepthThreshold, 1.0e-3f);
+  constants.inkCreaseThreshold = std::max(style->inkCreaseThreshold, .0f);
+  constants.inkFadeDistance = std::max(style->inkFadeDistance, 1.0e-3f);
+  memcpy(constants.inkColor, glm::value_ptr(style->inkColor), sizeof(constants.inkColor));
+  constants.inkTint = std::clamp(style->inkTint, .0f, 1.f);
+  if (!DrawStylizePass(inputs, outputs, "PSInk", constants))
+    BypassCopy(inputs, outputs);
+}
+auto DXRenderer::ApplyStylize(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  auto scene = app.GetScene();
+  const auto *style = scene ? scene->GetAnyComponent<Stylization>() : nullptr;
+  const auto *effects = scene ? scene->GetAnyComponent<ScreenEffects>() : nullptr;
+  stylizeTime += std::clamp(app.DeltaTime(), .0f, .25f);
+  if ((!style && !effects) || lightingDebugView != LightingDebugView::None) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  // A scene with effects and no look is graded by nothing: the defaults of the constants are the
+  // identity, not the defaults of the component.
+  DXStylizeConstants constants{};
+  constants.time = stylizeTime;
+  if (style) {
+    constants.saturation = std::max(style->saturation, .0f);
+    constants.contrast = std::max(style->contrast, .0f);
+    constants.vignette = std::clamp(style->vignette, .0f, 1.f);
+    memcpy(constants.shadowColor, glm::value_ptr(style->shadowColor), sizeof(constants.shadowColor));
+    memcpy(constants.highlightColor, glm::value_ptr(style->highlightColor), sizeof(constants.highlightColor));
+  }
+  if (effects) {
+    constants.flash = std::clamp(effects->flash, .0f, 1.f);
+    memcpy(constants.flashColor, glm::value_ptr(effects->flashColor), sizeof(constants.flashColor));
+    constants.impact = std::clamp(effects->impact, .0f, 1.f);
+    constants.speedLines = std::clamp(effects->speedLines, .0f, 1.f);
+    constants.radialBlur = std::clamp(effects->radialBlur, .0f, 1.f);
+    constants.aberration = std::max(effects->aberration, .0f);
+    constants.focus[0] = effects->focus.x;
+    constants.focus[1] = effects->focus.y;
+  }
+  if (!DrawStylizePass(inputs, outputs, "PSStylize", constants))
+    BypassCopy(inputs, outputs);
+}
 auto DXRenderer::BindAtmosphereResources(const std::array<uint32_t, ATMOSPHERE_SRV_SLOTS> &sources, const uint32_t table, const uint32_t cubemap) -> bool {
   auto context = GetContext();
   if (!context)
@@ -2742,6 +2849,20 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
   constants.probeTuning[0] = indirect.probeSurfaceBias;
   constants.probeTuning[1] = indirect.probeWeightFloor;
   constants.probeTuning[2] = indirect.probeVisibilitySharpness;
+  // Before the early return too: a scene with no probe field can still be drawn in cel bands. A
+  // scene with no `Stylization` gets its defaults, so a material that asks for bands still has them.
+  {
+    static constexpr Stylization fallback{};
+    const auto *style = scene.GetAnyComponent<Stylization>();
+    const auto &look = style ? *style : fallback;
+    constants.toon[0] = static_cast<float>(std::clamp(look.bands, 1u, 8u));
+    constants.toon[1] = std::max(look.bandSoftness, 1.0e-4f);
+    constants.toon[2] = look.terminator;
+    constants.toon[3] = std::clamp(look.highlightSize, .0f, 1.f);
+    memcpy(constants.toonShade, glm::value_ptr(look.shadowTint), sizeof(float) * 3);
+    constants.toonShade[3] = std::max(look.rimIntensity, .0f);
+    constants.toonRim[0] = std::clamp(look.rimWidth, .0f, 1.f);
+  }
   if (!probeVolume.IsReady())
     return;
   probeVolume.GetBounds(constants.probeVolume, constants.probeVolume + 3);
@@ -2928,7 +3049,7 @@ auto DXRenderer::GetCapabilities() const -> RendererCapabilities {
   // The debug views are not conditional on the same thing. They are branches in `scene.hlsl`, which
   // compiles and runs whatever the hardware can trace, and a field that never filled is worth
   // looking at through them more than a full one is.
-  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true, .particles = true};
+  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true, .particles = true, .stylization = true};
 }
 auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> void {
   auto context = GetContext();
@@ -3074,6 +3195,7 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
     constants.unlit = material && material->type == MaterialType::Unlit ? 1u : 0u;
     constants.alphaCutoff = fallback.alphaCutoff;
     constants.alphaMode = static_cast<uint32_t>(fallback.alphaMode);
+    constants.style[0] = std::clamp(fallback.toon, .0f, 1.f);
     commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXSceneConstants) / sizeof(uint32_t), &constants, 0);
     D3D12_GPU_DESCRIPTOR_HANDLE materialTable{hasTable ? material->textureTableGPU : fallbackMaterialTable.ptr};
     commandList->SetGraphicsRootDescriptorTable(2, materialTable);

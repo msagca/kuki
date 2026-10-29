@@ -96,7 +96,7 @@ struct EnumTraits<ParticleBlend> {
 template <>
 struct EnumTraits<RenderPass> {
   static const std::vector<const char *> &GetNames() {
-    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Outline", "Overlay", "Particles", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "ToneMapping", "Volumetric Clouds", "Volumetric Fog"};
+    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Ink", "Outline", "Overlay", "Particles", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "Stylize", "ToneMapping", "Volumetric Clouds", "Volumetric Fog"};
     return names;
   }
 };

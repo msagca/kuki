@@ -25,6 +25,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <volumetric_clouds.hpp>
+#include <stylization.hpp>
 #include <volumetric_fog.hpp>
 using json = nlohmann::json;
 namespace kuki {
@@ -48,6 +49,10 @@ namespace {
     // GPU that nothing reads back -- a loaded scene starts its emitters from empty.
     ComponentType::ParticleEmitter,
     ComponentType::SkyboxHandle,
+    // Travels, as the atmosphere does: whether a scene is drawn in cel bands and ink is a decision
+    // about the work. `ScreenEffects` does not -- it is what a game is doing to the picture this
+    // instant, and a save that caught a flash would open on a white screen.
+    ComponentType::Stylization,
     ComponentType::TextureHandle,
     ComponentType::Transform,
     // Both travel, on the same terms as the atmosphere above and for the same reason. How thick a
@@ -530,6 +535,51 @@ namespace {
     Read("kilometresPerUnit", f.kilometresPerUnit);
     Read("steps", f.steps);
   }
+  auto ToJson(const Stylization &s) -> json {
+    return {
+      {"bands", s.bands},
+      {"bandSoftness", s.bandSoftness},
+      {"terminator", s.terminator},
+      {"shadowTint", s.shadowTint},
+      {"highlightSize", s.highlightSize},
+      {"rimIntensity", s.rimIntensity},
+      {"rimWidth", s.rimWidth},
+      {"inkThickness", s.inkThickness},
+      {"inkDepthThreshold", s.inkDepthThreshold},
+      {"inkCreaseThreshold", s.inkCreaseThreshold},
+      {"inkColor", s.inkColor},
+      {"inkTint", s.inkTint},
+      {"inkFadeDistance", s.inkFadeDistance},
+      {"saturation", s.saturation},
+      {"contrast", s.contrast},
+      {"shadowColor", s.shadowColor},
+      {"highlightColor", s.highlightColor},
+      {"vignette", s.vignette}};
+  }
+  auto FromJson(const json &j, Stylization &s) -> void {
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("bands", s.bands);
+    Read("bandSoftness", s.bandSoftness);
+    Read("terminator", s.terminator);
+    Read("shadowTint", s.shadowTint);
+    Read("highlightSize", s.highlightSize);
+    Read("rimIntensity", s.rimIntensity);
+    Read("rimWidth", s.rimWidth);
+    Read("inkThickness", s.inkThickness);
+    Read("inkDepthThreshold", s.inkDepthThreshold);
+    Read("inkCreaseThreshold", s.inkCreaseThreshold);
+    Read("inkColor", s.inkColor);
+    Read("inkTint", s.inkTint);
+    Read("inkFadeDistance", s.inkFadeDistance);
+    Read("saturation", s.saturation);
+    Read("contrast", s.contrast);
+    Read("shadowColor", s.shadowColor);
+    Read("highlightColor", s.highlightColor);
+    Read("vignette", s.vignette);
+  }
   auto ToJson(const ParticleEmitter &p) -> json {
     return {
       {"capacity", p.capacity},
@@ -601,6 +651,9 @@ namespace {
     }
     auto operator()(VolumetricFog *f) const -> json {
       return ToJson(*f);
+    }
+    auto operator()(Stylization *s) const -> json {
+      return ToJson(*s);
     }
     auto operator()(ParticleEmitter *p) const -> json {
       if (p->mesh)
@@ -762,6 +815,10 @@ namespace {
           break;
         case ComponentType::VolumetricFog:
           if (auto *c = app.GetEntityComponent<VolumetricFog>(id))
+            FromJson(componentJson, *c);
+          break;
+        case ComponentType::Stylization:
+          if (auto *c = app.GetEntityComponent<Stylization>(id))
             FromJson(componentJson, *c);
           break;
         case ComponentType::ParticleEmitter: {
