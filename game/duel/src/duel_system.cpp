@@ -3,6 +3,7 @@
 #include <animator.hpp>
 #include <application.hpp>
 #include <array>
+#include <camera.hpp>
 #include <cmath>
 #include <command_line.hpp>
 #include <duel.hpp>
@@ -12,12 +13,11 @@
 #include <game_builder.hpp>
 #include <glm/common.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <graphics_context.hpp>
-#include <camera.hpp>
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/matrix.hpp>
 #include <glm/trigonometric.hpp>
+#include <graphics_context.hpp>
 #include <initializer_list>
 #include <model_asset.hpp>
 #include <network_system.hpp>

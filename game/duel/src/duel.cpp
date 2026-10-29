@@ -18,8 +18,8 @@
 #include <spdlog/spdlog.h>
 #include <stage.hpp>
 #include <stylization.hpp>
-#include <volumetric_clouds.hpp>
 #include <unordered_map>
+#include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
 using namespace kuki;
 namespace {

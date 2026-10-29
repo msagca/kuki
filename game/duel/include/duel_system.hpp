@@ -1,9 +1,9 @@
 #pragma once
 #include <array>
-#include <glm/ext/vector_float3.hpp>
 #include <command_line.hpp>
 #include <duel_sim.hpp>
 #include <duel_world.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <id.hpp>
 #include <input_manager.hpp>
 #include <memory>
