@@ -323,11 +323,14 @@ auto DXPipelineCache::GetOverlayPipeline(ID3D12Device *device, const DXGI_FORMAT
 auto DXPipelineCache::GetShadowRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (shadowRootSignature)
     return shadowRootSignature.Get();
-  CD3DX12_ROOT_PARAMETER parameters[2]{};
+  // The bones are a root view of their own, read only by the skinned variant. One signature for
+  // both, so a pass drawing the two kinds switches the pipeline and nothing else.
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
   parameters[0].InitAsConstants(sizeof(DXShadowConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
   parameters[1].InitAsShaderResourceView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+  parameters[2].InitAsShaderResourceView(1, 0, D3D12_SHADER_VISIBILITY_VERTEX);
   CD3DX12_ROOT_SIGNATURE_DESC desc{};
-  desc.Init(2, parameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+  desc.Init(_countof(parameters), parameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
   ComPtr<ID3DBlob> serialized;
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
@@ -339,10 +342,10 @@ auto DXPipelineCache::GetShadowRootSignature(ID3D12Device *device) -> ID3D12Root
     return nullptr;
   return shadowRootSignature.Get();
 }
-auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipeline * {
+auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device, const bool skinned) -> const DXPipeline * {
   if (!device)
     return nullptr;
-  const auto key = std::hash<std::string>{}("shadow");
+  const auto key = std::hash<std::string>{}(skinned ? "shadowSkinned" : "shadow");
   if (auto it = pipelines.find(key); it != pipelines.end())
     return it->second ? &it->second : nullptr;
   auto &pipeline = pipelines[key];
@@ -350,7 +353,7 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipelin
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = shadowRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::shadow_hlsl, "VSMain", "vs_6_0", "shadow");
+  const auto vertexShader = shaderCompiler.Compile(embedded_shader::shadow_hlsl, skinned ? "VSSkinned" : "VSMain", "vs_6_0", "shadow");
   if (!vertexShader)
     return nullptr;
   const D3D12_INPUT_ELEMENT_DESC inputLayout[]{
@@ -358,9 +361,11 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipelin
     {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, normal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(Vertex, texture), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
     {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, tangent), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+    {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_SINT, 0, offsetof(Vertex, boneIds), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+    {"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, boneWeights), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
   };
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
-  desc.InputLayout = {inputLayout, _countof(inputLayout)};
+  desc.InputLayout = {inputLayout, static_cast<UINT>(skinned ? _countof(inputLayout) : _countof(inputLayout) - 2)};
   desc.pRootSignature = rootSignature;
   desc.VS = ToBytecode(vertexShader);
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -376,7 +381,7 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipelin
   desc.SampleDesc.Count = 1;
   if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
     return nullptr;
-  spdlog::info("[DX12] Created shadow pipeline");
+  spdlog::info("[DX12] Created {} shadow pipeline", skinned ? "skinned" : "static");
   return &pipeline;
 }
 auto DXPipelineCache::GetSkyboxRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {

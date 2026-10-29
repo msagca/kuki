@@ -592,8 +592,9 @@ public:
   /// @brief Returns the depth-only pipeline the shadow pass renders with, building it once.
   ///
   /// Bound with no render target and no pixel shader: the pass exists purely to populate a depth
-  /// buffer from the light's point of view, so rasterising colour would be wasted work.
-  auto GetShadowPipeline(ID3D12Device *) -> const DXPipeline *;
+  /// buffer from the light's point of view, so rasterising colour would be wasted work. `skinned`
+  /// is the variant that poses a figure by its bones first, for the same passes.
+  auto GetShadowPipeline(ID3D12Device *, const bool = false) -> const DXPipeline *;
   /// @brief Returns the compute pipeline that traces rays against the scene, building it once.
   ///
   /// The one pipeline here built above Shader Model 6.0: `RayQuery` entered the language at 6.5, so

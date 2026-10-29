@@ -2386,6 +2386,50 @@ auto DXRenderer::CollectSkinnedDraws(Scene &scene, const Camera *camera) -> std:
   });
   return draws;
 }
+auto DXRenderer::UploadSkinnedDepth(Scene &scene) -> std::vector<DXSkinnedDepthDraw> {
+  const auto skinned = CollectSkinnedDraws(scene);
+  std::vector<DXSkinnedDepthDraw> draws;
+  if (skinned.empty())
+    return draws;
+  auto required = instanceCursor;
+  for (const auto &draw : skinned)
+    required += sizeof(DXInstanceData) + draw.bones.size() * sizeof(glm::mat4) + 2 * D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
+  EnsureInstanceCapacity(required);
+  draws.reserve(skinned.size());
+  for (const auto &draw : skinned) {
+    // A see-through figure casts no shadow and hides nothing behind it, as a blended rigid mesh
+    // does not either: `CollectBatches` leaves those out of the same passes.
+    if (draw.material && draw.material->fallback.alphaMode == AlphaMode::Blend)
+      continue;
+    const auto instance = AllocateInstances(std::span(&draw.instance, 1));
+    const auto bones = draw.bones.empty() ? instance : AllocateBones(draw.bones);
+    if (instance && bones)
+      draws.push_back({draw.mesh, instance, bones});
+  }
+  return draws;
+}
+auto DXRenderer::DrawSkinnedDepth(std::span<const DXSkinnedDepthDraw> draws, const DXPipeline *restore) -> void {
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  if (!commandList || draws.empty())
+    return;
+  const auto pipeline = pipelines.GetShadowPipeline(context->GetDevice(), true);
+  if (!pipeline || !*pipeline)
+    return;
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  for (const auto &draw : draws) {
+    commandList->SetGraphicsRootShaderResourceView(1, draw.instance);
+    commandList->SetGraphicsRootShaderResourceView(2, draw.bones);
+    commandList->IASetVertexBuffers(0, 1, &draw.mesh->vertexBufferView);
+    if (draw.mesh->indexCount > 0) {
+      commandList->IASetIndexBuffer(&draw.mesh->indexBufferView);
+      commandList->DrawIndexedInstanced(draw.mesh->indexCount, 1, 0, 0, 0);
+    } else
+      commandList->DrawInstanced(draw.mesh->vertexCount, 1, 0, 0);
+  }
+  if (restore && *restore)
+    commandList->SetPipelineState(restore->pipelineState.Get());
+}
 auto DXBatchKeyHash::operator()(const DXBatchKey &key) const noexcept -> size_t {
   auto seed = std::hash<const DXMesh *>{}(key.mesh);
   hash_combine(seed, std::hash<uint64_t>{}(key.textureTable));
@@ -3279,7 +3323,7 @@ auto DXRenderer::CreateDepthPrepass(std::span<std::string>, std::span<std::strin
       commandList->DrawIndexedInstanced(batch.mesh->indexCount, instances, 0, 0, 0);
     } else
       commandList->DrawInstanced(batch.mesh->vertexCount, instances, 0, 0);
-  }
+  }  DrawSkinnedDepth(UploadSkinnedDepth(*scene), nullptr);
 }
 auto DXRenderer::ApplyAntiAliasing(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   BlitOrResolve(inputs, outputs);
@@ -3501,7 +3545,7 @@ auto DXRenderer::CreateShadowMap(std::span<std::string>, std::span<std::string> 
       commandList->DrawIndexedInstanced(batch.mesh->indexCount, instances, 0, 0, 0);
     } else
       commandList->DrawInstanced(batch.mesh->vertexCount, instances, 0, 0);
-  }
+  }  DrawSkinnedDepth(UploadSkinnedDepth(*scene), nullptr);
 }
 auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::string> outputs) -> void {
   ClearOutputs(outputs);
@@ -3543,6 +3587,7 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
   addresses.reserve(batches.size());
   for (const auto &batch : batches)
     addresses.push_back(AllocateInstances(batch.instances));
+  const auto figures = UploadSkinnedDepth(*scene);
   for (size_t layer = 0; layer < layers; ++layer) {
     glm::mat4 view{1.f};
     glm::mat4 projection{1.f};
@@ -3566,6 +3611,7 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
       } else
         commandList->DrawInstanced(batches[index].mesh->vertexCount, instances, 0, 0);
     }
+    DrawSkinnedDepth(figures, pipeline);
   }
   spotShadowCount = static_cast<uint32_t>(layers);
 }

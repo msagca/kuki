@@ -107,6 +107,14 @@ struct DXSkinnedDraw {
   DXInstanceData instance{};
   std::vector<glm::mat4> bones;
 };
+/// @brief A skinned mesh already uploaded for a depth-only pass: what to draw and where its instance
+/// and bones went. Uploaded once and drawn as many times as a pass has views -- a spot light's
+/// shadow map draws the same figures into every layer.
+struct DXSkinnedDepthDraw {
+  const DXMesh *mesh{};
+  D3D12_GPU_VIRTUAL_ADDRESS instance{};
+  D3D12_GPU_VIRTUAL_ADDRESS bones{};
+};
 /// @brief One emitter's particles on the GPU, and the little the processor keeps about them.
 ///
 /// The buffer is the particles. Everything else here is what has to be remembered between frames to
@@ -740,6 +748,13 @@ private:
   /// a skinned mesh is never placed in the acceleration structure. The bounds are the bind pose's,
   /// so a pose reaching well outside them can be culled early; `GLRenderer` accepts the same.
   auto CollectSkinnedDraws(Scene &, const Camera * = nullptr) -> std::vector<DXSkinnedDraw>;
+  /// @brief Uploads every skinned mesh's instance and bones for the depth-only passes.
+  ///
+  /// Not culled by any camera: a figure out of shot still casts a shadow into it.
+  auto UploadSkinnedDepth(Scene &) -> std::vector<DXSkinnedDepthDraw>;
+  /// @brief Draws the uploaded figures into whatever depth target is bound, under the constants
+  /// already set, then puts `restore` back for the rigid draws that follow.
+  auto DrawSkinnedDepth(std::span<const DXSkinnedDepthDraw>, const DXPipeline *restore) -> void;
   /// @brief Places the frame's batches into the acceleration structures a ray is traced against.
   ///
   /// Flattens the batches back into one placement each, because instancing is a property of the
