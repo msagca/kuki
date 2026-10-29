@@ -343,6 +343,14 @@ auto DXAccelerationStructure::GetInstanceCount() const -> uint32_t {
 auto DXAccelerationStructure::IsReady() const -> bool {
   return ready;
 }
+auto DXAccelerationStructure::Forget(const DXMesh *mesh) -> std::optional<Released> {
+  const auto it = meshStructures.find(mesh);
+  if (it == meshStructures.end())
+    return std::nullopt;
+  Released released{std::move(it->second.structure), it->second.vertexBuffer, it->second.indexBuffer};
+  meshStructures.erase(it);
+  return released;
+}
 auto DXAccelerationStructure::Clear() -> void {
   if (owner) {
     owner->WaitForGPU();

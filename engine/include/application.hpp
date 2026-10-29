@@ -167,6 +167,9 @@ public:
   auto GetEntityParent(const EntityID) const -> EntityID;
   auto GetEntitySignature(const EntityID) const -> ComponentMask;
   auto GetMousePosition() const -> glm::vec2;
+  /// @brief The window's size in the units `GetMousePosition` reports the cursor in, which is what a
+  /// cursor position is divided by to say where on the picture it is. Zeroes before there is a window.
+  auto GetWindowSize() const -> glm::ivec2;
   /// @brief Named values this application keeps between runs. See `Preferences`.
   ///
   /// Loaded before `Start` and written back after the systems have shut down, so a system may read

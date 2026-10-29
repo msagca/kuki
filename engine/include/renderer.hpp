@@ -3,6 +3,7 @@
 #include <buffer_object.hpp>
 #include <debug_view.hpp>
 #include <exposure.hpp>
+#include <filesystem>
 #include <indirect_lighting.hpp>
 #include <kuki_engine_export.h>
 #include <material_type.hpp>
@@ -106,6 +107,11 @@ public:
   /// Defaults to doing nothing so that a backend without a route to its own surface degrades to a
   /// blank window rather than failing to build. Both implemented backends override it.
   virtual auto PresentTarget(const std::string &) -> void {}
+  /// @brief Writes a target as it stands to a PNG file, waiting for the frame so far to be drawn.
+  /// False where the backend cannot, which by default is every one. See `CAPTURE_FLAG`.
+  virtual auto CaptureTarget(const std::string &, const std::filesystem::path &) -> bool {
+    return false;
+  }
   virtual auto Reset() -> void = 0;
   virtual auto SetResolution(const int = 1920, const int = 1080) -> void = 0;
   virtual auto UpdateTarget(const std::string &, const TargetDescription &) -> void = 0;

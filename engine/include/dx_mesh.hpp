@@ -22,6 +22,8 @@ struct DXMesh final : public BufferObject {
   /// A skinned mesh needs a different pipeline, a different vertex layout and a per-draw bone
   /// buffer, so it cannot share a batch with a static one even when the geometry is identical.
   bool skinned{};
+  /// @brief The `MeshAsset::revision` this copy was uploaded from.
+  uint32_t revision{};
   explicit operator bool() const {
     return vertexBuffer && vertexCount > 0;
   }

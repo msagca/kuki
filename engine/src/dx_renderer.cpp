@@ -13,6 +13,7 @@
 #include <profiler.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <material_asset.hpp>
 #include <mesh_asset.hpp>
@@ -33,11 +34,35 @@
 #include <spdlog/spdlog.h>
 #include <planar_reflection.hpp>
 #include <screen_effects.hpp>
+#include <stb_image_write.h>
 #include <stylization.hpp>
 #include <string>
 #include <utility>
+#include <vector>
+#include <wind.hpp>
 namespace kuki {
 namespace {
+  /// @brief The scene's wind as the scene shader and the depth shader both read it. See
+  /// `DXFrameConstants::wind`.
+  auto PackWind(Scene &scene, const float time, float (&wind)[4], float (&gust)[4], float (&waves)[4]) -> void {
+    const auto *source = scene.GetAnyComponent<Wind>();
+    if (!source)
+      return;
+    const auto length = glm::length(source->direction);
+    const auto direction = length > 1e-5f ? source->direction / length : glm::vec2(1.f, .0f);
+    wind[0] = direction.x;
+    wind[1] = direction.y;
+    wind[2] = std::max(source->strength, .0f);
+    wind[3] = time;
+    gust[0] = std::max(source->gustStrength, .0f);
+    gust[1] = std::max(source->gustScale, .1f);
+    gust[2] = source->gustSpeed;
+    gust[3] = std::max(source->flutter, .0f);
+    waves[0] = std::max(source->flutterAmount, .0f);
+    waves[1] = std::max(source->waveHeight, .0f);
+    waves[2] = std::max(source->waveLength, .1f);
+    waves[3] = source->waveSpeed;
+  }
   /// @brief The material this backend resolved an entity's handles to, or null if it has not.
   auto BoundMaterial(Scene &scene, const EntityID id) -> const DXMaterial * {
     const auto *binding = scene.GetEntityComponent<RenderBinding>(id);
@@ -559,13 +584,25 @@ auto DXRenderer::UploadMeshData(const Mesh &source, const std::string &name) -> 
   return mesh;
 }
 auto DXRenderer::EnsureMesh(const AssetID assetId) -> DXMesh * {
-  if (auto it = assetToMesh.find(assetId); it != assetToMesh.end())
-    return it->second ? &it->second : nullptr;
   auto meshAsset = app.GetAsset<MeshAsset>(assetId);
+  auto it = assetToMesh.find(assetId);
+  if (it != assetToMesh.end() && (!meshAsset || it->second.revision == meshAsset->revision))
+    return it->second ? &it->second : nullptr;
   if (!meshAsset)
     return nullptr;
   auto &mesh = assetToMesh[assetId];
+  // A mesh rebuilt since it was uploaded. The batches this frame are collected after this and find
+  // the new copy in the same slot; the old one may still be read by a frame in flight, and goes
+  // the way a spent upload buffer does, once that frame is done.
+  if (auto released = rayScene.Forget(&mesh)) {
+    RetireUploadBuffer(std::move(released->structure));
+    RetireDescriptorRange(released->vertexBuffer, 1);
+    RetireDescriptorRange(released->indexBuffer, 1);
+  }
+  RetireUploadBuffer(std::move(mesh.vertexBuffer));
+  RetireUploadBuffer(std::move(mesh.indexBuffer));
   mesh = UploadMeshData(meshAsset->mesh, app.GetAssetName(assetId));
+  mesh.revision = meshAsset->revision;
   return mesh ? &mesh : nullptr;
 }
 auto DXRenderer::EnsureModelMesh(const AssetID modelAssetId, const size_t meshIndex) -> DXMesh * {
@@ -2657,6 +2694,10 @@ auto DXRenderer::CollectBatches(Scene &scene, const bool shadowCastersOnly, cons
     DXInstanceData instance{};
     memcpy(instance.model, glm::value_ptr(transform->world), sizeof(instance.model));
     instance.entityId = static_cast<uint32_t>(static_cast<long long>(entityId)) & 0xFFFFFFu;
+    if (material) {
+      instance.sway = std::max(material->fallback.sway, .0f);
+      instance.waves = std::clamp(material->fallback.waves, .0f, 1.f);
+    }
     // an entity with no bounds cannot be tested, so it is drawn; over-drawing is the safe way to be wrong
     const auto visible = !camera || !bounds || !*bounds || camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world));
     if (visible)
@@ -2943,6 +2984,8 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
     constants.toonShade[3] = std::max(look.rimIntensity, .0f);
     constants.toonRim[0] = std::clamp(look.rimWidth, .0f, 1.f);
   }
+  // Before the early return as well: a field of grass moves whether or not there are probes.
+  PackWind(scene, windTime, constants.wind, constants.gust, constants.waves);
   if (!probeVolume.IsReady())
     return;
   probeVolume.GetBounds(constants.probeVolume, constants.probeVolume + 3);
@@ -3129,7 +3172,7 @@ auto DXRenderer::GetCapabilities() const -> RendererCapabilities {
   // The debug views are not conditional on the same thing. They are branches in `scene.hlsl`, which
   // compiles and runs whatever the hardware can trace, and a field that never filled is worth
   // looking at through them more than a full one is.
-  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true, .particles = true, .stylization = true};
+  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true, .particles = true, .stylization = true, .wind = true};
 }
 auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> void {
   auto context = GetContext();
@@ -3501,6 +3544,7 @@ auto DXRenderer::CreateDepthPrepass(std::span<std::string>, std::span<std::strin
   DXShadowConstants constants{};
   const auto viewProjection = camera->transform.projection * camera->transform.view;
   memcpy(constants.lightViewProjection, glm::value_ptr(viewProjection), sizeof(constants.lightViewProjection));
+  PackWind(*scene, windTime, constants.wind, constants.gust, constants.waves);
   Transition(target, D3D12_RESOURCE_STATE_DEPTH_WRITE);
   const auto dsv = context->GetDSVHeap().GetCPUHandle(target.dsvIndex);
   commandList->OMSetRenderTargets(0, nullptr, FALSE, &dsv);
@@ -3720,6 +3764,7 @@ auto DXRenderer::CreateShadowMap(std::span<std::string>, std::span<std::string> 
   DXShadowConstants constants{};
   if (!BuildShadowMatrix(*scene, constants.lightViewProjection))
     return;
+  PackWind(*scene, windTime, constants.wind, constants.gust, constants.waves);
   const auto pipeline = pipelines.GetShadowPipeline(context->GetDevice());
   if (!pipeline || !*pipeline)
     return;
@@ -3797,6 +3842,7 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
     spotShadowViewProjection[layer] = projection * view;
     DXShadowConstants constants{};
     memcpy(constants.lightViewProjection, glm::value_ptr(spotShadowViewProjection[layer]), sizeof(constants.lightViewProjection));
+    PackWind(*scene, windTime, constants.wind, constants.gust, constants.waves);
     const auto dsv = context->GetDSVHeap().GetCPUHandle(target.layerDsvIndices[layer]);
     commandList->OMSetRenderTargets(0, nullptr, FALSE, &dsv);
     commandList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
@@ -4004,6 +4050,8 @@ auto DXRenderer::LoadScene(Scene &scene) -> void {
   // which is the same thing it draws with.
   if (const auto camera = scene.GetCamera(); camera)
     exposure = camera->GetExposureStops();
+  // Once a frame, here, because every pass that moves a surface by the wind has to see one clock.
+  windTime += std::clamp(app.DeltaTime(), .0f, .25f);
   EnsureSceneResources(scene);
   std::vector<std::pair<EntityID, DXMaterial>> pending;
   const auto Resolve = [&](const AssetID assetId, const size_t index, const MaterialFallback &fallback, const MaterialType type, const std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> &textures) -> DXMaterial {
@@ -4439,6 +4487,64 @@ auto DXRenderer::ReleaseAllTargets() -> void {
     ReleaseTarget(target);
   nameToTarget.clear();
   nameToId.clear();
+}
+auto DXRenderer::CaptureTarget(const std::string &name, const std::filesystem::path &path) -> bool {
+  auto *context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  auto *device = context ? context->GetDevice() : nullptr;
+  auto it = nameToTarget.find(name);
+  if (!commandList || !device || it == nameToTarget.end() || !it->second.resource || it->second.desc.samples > 1)
+    return false;
+  auto &source = it->second;
+  const auto description = source.resource->GetDesc();
+  // Read as the two formats the graph's final target is ever given: eight bits a channel, or half
+  // floats, which hold the finished picture already encoded for the display the back buffer is.
+  const auto half = description.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
+  if (!half && description.Format != DXGI_FORMAT_R8G8B8A8_UNORM && description.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+    return false;
+  D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+  UINT rows{};
+  UINT64 rowBytes{};
+  UINT64 total{};
+  device->GetCopyableFootprints(&description, 0, 1, 0, &footprint, &rows, &rowBytes, &total);
+  ComPtr<ID3D12Resource> readback;
+  const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_READBACK);
+  const auto bufferDescription = CD3DX12_RESOURCE_DESC::Buffer(total);
+  if (DXFailed(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &bufferDescription, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readback)), "CreateCommittedResource for capture"))
+    return false;
+  Transition(source, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  const CD3DX12_TEXTURE_COPY_LOCATION destination(readback.Get(), footprint);
+  const CD3DX12_TEXTURE_COPY_LOCATION from(source.resource.Get(), 0);
+  commandList->CopyTextureRegion(&destination, 0, 0, 0, &from, nullptr);
+  // Run what the frame has recorded so far, as a pick does, so the copy has something in it to read.
+  context->FlushCommandList();
+  void *mapped{};
+  const CD3DX12_RANGE readRange(0, static_cast<SIZE_T>(total));
+  if (DXFailed(readback->Map(0, &readRange, &mapped), "Map capture readback"))
+    return false;
+  const auto width = static_cast<int>(description.Width);
+  const auto height = static_cast<int>(description.Height);
+  std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4);
+  const auto *bytes = static_cast<const uint8_t *>(mapped);
+  for (auto y = 0; y < height; ++y) {
+    const auto *row = bytes + footprint.Offset + static_cast<size_t>(y) * footprint.Footprint.RowPitch;
+    for (auto x = 0; x < width; ++x) {
+      auto *out = &pixels[(static_cast<size_t>(y) * width + x) * 4];
+      if (half) {
+        const auto *channels = reinterpret_cast<const uint16_t *>(row) + static_cast<size_t>(x) * 4;
+        for (auto c = 0; c < 4; ++c) {
+          const auto value = c == 3 ? 1.f : glm::unpackHalf1x16(channels[c]);
+          out[c] = static_cast<uint8_t>(std::clamp(value, .0f, 1.f) * 255.f + .5f);
+        }
+      } else {
+        memcpy(out, row + static_cast<size_t>(x) * 4, 4);
+        out[3] = 255;
+      }
+    }
+  }
+  const CD3DX12_RANGE writeRange(0, 0);
+  readback->Unmap(0, &writeRange);
+  return stbi_write_png(path.string().c_str(), width, height, 4, pixels.data(), width * 4) != 0;
 }
 } // namespace kuki
 #endif

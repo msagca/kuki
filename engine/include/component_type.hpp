@@ -31,8 +31,9 @@ enum class ComponentType : uint8_t {
   TextureHandle,
   Transform,
   VolumetricClouds,
-  VolumetricFog
+  VolumetricFog,
+  Wind
 };
 /// @brief How many engine components there are, from the last enumerator.
-inline constexpr auto ENGINE_COMPONENT_COUNT = static_cast<uint8_t>(ComponentType::VolumetricFog) + 1;
+inline constexpr auto ENGINE_COMPONENT_COUNT = static_cast<uint8_t>(ComponentType::Wind) + 1;
 } // namespace kuki

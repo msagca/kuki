@@ -4,6 +4,7 @@
 #include <asset_manager.hpp>
 #include <debug_view.hpp>
 #include <desktop_size.hpp>
+#include <filesystem>
 #include <kuki_engine_export.h>
 #include <indirect_lighting.hpp>
 #include <material_type.hpp>
@@ -136,6 +137,10 @@ private:
   int pendingHeight{};
   bool hasPending{};
   bool presentEnabled{true};
+  /// @brief Where `--capture` wants the frame saved, and the frame it wants; empty when it was not given.
+  std::filesystem::path capturePath;
+  size_t captureFrame{300};
+  size_t capturedFrames{};
   /// @brief The size every viewport-sized target in the graph is built at, before the window has
   /// said anything about its own.
   ///
