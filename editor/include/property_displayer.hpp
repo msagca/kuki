@@ -38,6 +38,7 @@
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <string>
+#include <planar_reflection.hpp>
 #include <stylization.hpp>
 #include <texture_handle.hpp>
 struct PropertyDisplayer {
@@ -981,6 +982,31 @@ inline auto PropertyDisplayer::operator()<kuki::Stylization>(kuki::Stylization *
     *style = edited;
 }
 template <>
+inline auto PropertyDisplayer::operator()<kuki::PlanarReflection>(kuki::PlanarReflection *surface) -> void {
+  if (!surface || !context.capabilities.stylization)
+    return;
+  auto edited = *surface;
+  if (field::Fold("Surface", true)) {
+    field::DragFloat("Height", &edited.height, .01f, -100.f, 100.f, "%.2f");
+    field::DragFloat("Tolerance", &edited.tolerance, .001f, .0001f, 1.f, "%.3f");
+    ImGui::SetItemTooltip("How far from the height a pixel may be and still be taken for the surface.");
+    field::SliderFloat("Strength", &edited.strength, .0f, 1.f);
+    ImGui::SetItemTooltip("Zero switches the reflection off.");
+    field::SliderFloat("Dry Reflectance", &edited.dryReflectance, .0f, 1.f);
+    field::SliderFloat("Blur", &edited.blur, .0f, 1.f);
+    field::DragFloat("Max Distance", &edited.maxDistance, .5f, 1.f, 500.f, "%.0f");
+  }
+  if (field::Fold("Puddles", true)) {
+    field::SliderFloat("Coverage", &edited.puddleCoverage, .0f, 1.f);
+    field::SliderFloat("Scale", &edited.puddleScale, .01f, 4.f);
+    field::SliderFloat("Ripples", &edited.ripples, .0f, 4.f);
+    ImGui::SetItemTooltip("How hard rain disturbs the puddles. Zero is still water.");
+    field::SliderFloat("Ripple Density", &edited.rippleDensity, .1f, 10.f);
+  }
+  if (edited != *surface)
+    *surface = edited;
+}
+template <>
 inline auto PropertyDisplayer::operator()<kuki::VolumetricFog>(kuki::VolumetricFog *fog) -> void {
   if (!fog)
     return;
@@ -1076,6 +1102,10 @@ inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleE
       field::DragFloat("Radius", &edited.radius, .005f, .0f, 100.f, "%.3f");
       ImGui::SetItemTooltip("Particles appear somewhere inside a sphere this size around the emitter.");
     }
+    if (edited.shape == kuki::ParticleShape::Box) {
+      field::DragFloat3("Extent", &edited.extent.x, .05f, .0f, 1000.f, "%.2f");
+      ImGui::SetItemTooltip("Half the size of the box particles appear in, along the emitter's own axes.\nA box with no height covers a floor.");
+    }
   }
   if (field::Fold("Motion", true)) {
     field::DragFloat(ICON_LC_TIMER " Lifetime", &edited.lifetime, .01f, .01f, 600.f, "%.2f s");
@@ -1093,13 +1123,29 @@ inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleE
     ImGui::SetItemTooltip("Any constant acceleration. Point it upwards and a little weaker for embers\ncarried by their own heat.");
     field::SliderFloat("Drag", &edited.drag, .0f, 10.f);
     ImGui::SetItemTooltip("How quickly the air takes a particle's speed away. Without it every particle\nfollows a clean parabola, and a spray of clean parabolas is water.");
+    field::SliderFloat("Turbulence", &edited.turbulence, .0f, 20.f);
+    ImGui::SetItemTooltip("How hard a gust pushes each particle about, each to a rhythm of its own. What\nmakes snow drift and petals wander.");
   }
   if (field::Fold("Appearance", true)) {
     static auto &blends = kuki::EnumTraits<kuki::ParticleBlend>::GetNames();
     auto blend = static_cast<int>(edited.blend);
     if (field::Combo("Blend", &blend, blends.data(), static_cast<int>(blends.size())))
       edited.blend = static_cast<kuki::ParticleBlend>(blend);
-    ImGui::SetItemTooltip("Additive particles brighten what is behind them and can do nothing else.\nOpaque ones are solid discs, which is the one way to draw a dark particle;\nborn on a mesh they are shaded once by the sun and keep that shade.");
+    ImGui::SetItemTooltip("Additive particles brighten what is behind them and can do nothing else.\nOpaque ones are solid discs, which is the one way to draw a dark particle;\nborn on a mesh they are shaded once by the sun and keep that shade. Alpha ones\nare a faint veil, for mist and steam.");
+    static auto &facings = kuki::EnumTraits<kuki::ParticleFacing>::GetNames();
+    auto facing = static_cast<int>(edited.facing);
+    if (field::Combo("Facing", &facing, facings.data(), static_cast<int>(facings.size())))
+      edited.facing = static_cast<kuki::ParticleFacing>(facing);
+    static auto &sprites = kuki::EnumTraits<kuki::ParticleSprite>::GetNames();
+    auto sprite = static_cast<int>(edited.sprite);
+    if (field::Combo("Sprite", &sprite, sprites.data(), static_cast<int>(sprites.size())))
+      edited.sprite = static_cast<kuki::ParticleSprite>(sprite);
+    if (edited.facing == kuki::ParticleFacing::Velocity) {
+      field::DragFloat("Stretch", &edited.stretch, .001f, .0f, 1.f, "%.3f s");
+      ImGui::SetItemTooltip("How many seconds of its own travel a streak is long. A raindrop is about a\nsixtieth: what a shutter would smear it over.");
+    }
+    if (edited.blend == kuki::ParticleBlend::Alpha)
+      field::SliderFloat("Opacity", &edited.opacity, .0f, 1.f);
     field::DragFloat("Start Size", &edited.startSize, .002f, .0f, 100.f, "%.3f");
     field::DragFloat("End Size", &edited.endSize, .002f, .0f, 100.f, "%.3f");
     field::ColorEdit3(ICON_LC_PALETTE " Start Colour", &edited.startColor.x);

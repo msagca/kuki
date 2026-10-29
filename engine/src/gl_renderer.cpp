@@ -1406,6 +1406,9 @@ auto GLRenderer::ApplyInk(std::span<std::string> inputs, std::span<std::string> 
 auto GLRenderer::ApplyStylize(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   BypassCopy(inputs, outputs);
 }
+auto GLRenderer::ApplyPlanarReflection(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  BypassCopy(inputs, outputs);
+}
 auto GLRenderer::UpdateTarget(const std::string &name, const TargetDescription &desc) -> void {
   const auto id = resourceRegistry.GetID(name);
   if (!id)

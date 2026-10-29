@@ -31,6 +31,7 @@
 #include <skybox_handle.hpp>
 #include <transform.hpp>
 #include <spdlog/spdlog.h>
+#include <planar_reflection.hpp>
 #include <screen_effects.hpp>
 #include <stylization.hpp>
 #include <string>
@@ -1720,8 +1721,9 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
     return;
   const auto updatePipeline = pipelines.GetParticleUpdatePipeline(device);
   const auto drawPipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format));
-  const auto opaquePipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format), true);
-  if (!updatePipeline || !*updatePipeline || !drawPipeline || !*drawPipeline || !opaquePipeline || !*opaquePipeline)
+  const auto opaquePipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format), ParticleBlend::Opaque);
+  const auto alphaPipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format), ParticleBlend::Alpha);
+  if (!updatePipeline || !*updatePipeline || !drawPipeline || !*drawPipeline || !opaquePipeline || !*opaquePipeline || !alphaPipeline || !*alphaPipeline)
     return;
   if (!particleNoSamples) {
     const auto properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -1871,7 +1873,10 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
     // two emitters sharing one would throw identical sprays.
     constants.seed = static_cast<uint32_t>(particleFrame) * 0x9e3779b9u ^ static_cast<uint32_t>(static_cast<long long>(id)) * 0x85ebca6bu;
     constants.reset = pool.fresh ? 1u : 0u;
-    constants.shape = static_cast<uint32_t>(onMesh ? ParticleShape::Mesh : ParticleShape::Sphere);
+    // A mesh that gave no samples falls back to the sphere; a box needs nothing but its extent.
+    constants.shape = static_cast<uint32_t>(onMesh ? ParticleShape::Mesh : emitter->shape == ParticleShape::Box ? ParticleShape::Box : ParticleShape::Sphere);
+    memcpy(constants.extent, glm::value_ptr(glm::max(emitter->extent, glm::vec3(.0f))), sizeof(constants.extent));
+    constants.turbulence = std::max(.0f, emitter->turbulence);
     constants.hold = hold;
     constants.holdVariance = std::clamp(emitter->holdVariance, .0f, 1.f);
     for (auto row = 0; row < 3; ++row)
@@ -1908,8 +1913,12 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
     auto &draw = particleDraws.emplace_back();
     draw.address = pool.buffer->GetGPUVirtualAddress();
     draw.capacity = capacity;
-    draw.opaque = emitter->blend == ParticleBlend::Opaque;
-    draw.constants.fade = draw.opaque ? .0f : 1.f;
+    draw.blend = emitter->blend;
+    draw.constants.fade = draw.blend == ParticleBlend::Opaque ? .0f : 1.f;
+    draw.constants.facing = static_cast<uint32_t>(emitter->facing);
+    draw.constants.sprite = static_cast<uint32_t>(emitter->sprite);
+    draw.constants.stretch = std::max(.0f, emitter->stretch);
+    draw.constants.opacity = std::clamp(emitter->opacity, .0f, 1.f);
     memcpy(draw.constants.viewProjection, glm::value_ptr(viewProjection), sizeof(draw.constants.viewProjection));
     memcpy(draw.constants.cameraRight, glm::value_ptr(cameraRight), sizeof(draw.constants.cameraRight));
     draw.constants.startSize = std::max(.0f, emitter->startSize);
@@ -1948,13 +1957,16 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
   // The solid ones first, so that their depth is there for the additive ones to be tested against:
   // a spark behind a cloud of dust is hidden by it, and one in front is not. Two passes over a list
   // this short rather than a sort of it.
-  for (const auto opaque : {true, false}) {
+  //
+  // The veils between the two: tested against the solid ones and laid under the additive ones, so a
+  // spark in a cloud of steam shines through it rather than being dimmed by mist drawn after it.
+  for (const auto blend : {ParticleBlend::Opaque, ParticleBlend::Alpha, ParticleBlend::Additive}) {
     auto bound = false;
     for (const auto &draw : particleDraws) {
-      if (draw.opaque != opaque)
+      if (draw.blend != blend)
         continue;
       if (!bound) {
-        commandList->SetPipelineState((opaque ? opaquePipeline : drawPipeline)->pipelineState.Get());
+        commandList->SetPipelineState((blend == ParticleBlend::Opaque ? opaquePipeline : blend == ParticleBlend::Alpha ? alphaPipeline : drawPipeline)->pipelineState.Get());
         bound = true;
       }
       commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXParticleDrawConstants) / sizeof(uint32_t), &draw.constants, 0);
@@ -1968,7 +1980,7 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
   // most of them say so themselves, and this is for the one that some day does not.
   commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
-auto DXRenderer::DrawStylizePass(std::span<std::string> inputs, std::span<std::string> outputs, const char *entryPoint, DXStylizeConstants &constants) -> bool {
+auto DXRenderer::BindFullscreenInputs(std::span<std::string> inputs, std::span<std::string> outputs, DXRenderTarget *&source, DXRenderTarget *&depth, DXRenderTarget *&destination) -> bool {
   auto context = GetContext();
   auto *commandList = context ? context->GetCommandList() : nullptr;
   if (!commandList || outputs.empty())
@@ -1976,38 +1988,53 @@ auto DXRenderer::DrawStylizePass(std::span<std::string> inputs, std::span<std::s
   auto destinationIt = nameToTarget.find(outputs[0]);
   if (destinationIt == nameToTarget.end() || !destinationIt->second.resource || destinationIt->second.rtvIndex == DXDescriptorHeap::InvalidIndex || destinationIt->second.desc.samples > 1)
     return false;
-  auto &destination = destinationIt->second;
-  DXRenderTarget *source{};
-  DXRenderTarget *depth{};
+  destination = &destinationIt->second;
+  source = nullptr;
+  depth = nullptr;
   for (const auto &name : inputs) {
     auto it = nameToTarget.find(name);
     if (it == nameToTarget.end() || !it->second.resource || it->second.srvIndex == DXDescriptorHeap::InvalidIndex || it->second.desc.samples > 1)
       continue;
     if (IsDepthFormat(it->second.desc.format)) {
-      if (!depth && it->second.desc.type != TargetType::Texture2DArray && it->second.desc.width == destination.desc.width && it->second.desc.height == destination.desc.height)
+      if (!depth && it->second.desc.type != TargetType::Texture2DArray && it->second.desc.width == destination->desc.width && it->second.desc.height == destination->desc.height)
         depth = &it->second;
     } else if (!source)
       source = &it->second;
   }
-  if (!source || source->desc.width != destination.desc.width || source->desc.height != destination.desc.height)
-    return false;
-  auto *fallback = EnsureDummyTexture();
-  const auto pipeline = pipelines.GetStylizePipeline(context->GetDevice(), TargetFormatToRTVDXGI(destination.desc.format), entryPoint);
-  if (!fallback || !pipeline || !*pipeline)
+  if (!source || source->desc.width != destination->desc.width || source->desc.height != destination->desc.height)
     return false;
   Transition(*source, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
   if (depth)
     Transition(*depth, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-  Transition(destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
-  const auto rtv = context->GetRTVHeap().GetCPUHandle(destination.rtvIndex);
+  Transition(*destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  const auto rtv = context->GetRTVHeap().GetCPUHandle(destination->rtvIndex);
   commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-  const auto viewport = CD3DX12_VIEWPORT(.0f, .0f, static_cast<float>(destination.desc.width), static_cast<float>(destination.desc.height));
-  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination.desc.width), static_cast<LONG>(destination.desc.height));
+  const auto viewport = CD3DX12_VIEWPORT(.0f, .0f, static_cast<float>(destination->desc.width), static_cast<float>(destination->desc.height));
+  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination->desc.width), static_cast<LONG>(destination->desc.height));
   commandList->RSSetViewports(1, &viewport);
   commandList->RSSetScissorRects(1, &scissor);
-  constants.texelSize[0] = destination.desc.width > 0 ? 1.f / static_cast<float>(destination.desc.width) : .0f;
-  constants.texelSize[1] = destination.desc.height > 0 ? 1.f / static_cast<float>(destination.desc.height) : .0f;
-  constants.aspect = destination.desc.height > 0 ? static_cast<float>(destination.desc.width) / static_cast<float>(destination.desc.height) : 1.f;
+  return true;
+}
+auto DXRenderer::DrawStylizePass(std::span<std::string> inputs, std::span<std::string> outputs, const char *entryPoint, DXStylizeConstants &constants) -> bool {
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  if (!commandList || outputs.empty())
+    return false;
+  auto destinationIt = nameToTarget.find(outputs[0]);
+  if (destinationIt == nameToTarget.end())
+    return false;
+  auto *fallback = EnsureDummyTexture();
+  const auto pipeline = pipelines.GetStylizePipeline(context->GetDevice(), TargetFormatToRTVDXGI(destinationIt->second.desc.format), entryPoint);
+  if (!fallback || !pipeline || !*pipeline)
+    return false;
+  DXRenderTarget *source{};
+  DXRenderTarget *depth{};
+  DXRenderTarget *destination{};
+  if (!BindFullscreenInputs(inputs, outputs, source, depth, destination))
+    return false;
+  constants.texelSize[0] = destination->desc.width > 0 ? 1.f / static_cast<float>(destination->desc.width) : .0f;
+  constants.texelSize[1] = destination->desc.height > 0 ? 1.f / static_cast<float>(destination->desc.height) : .0f;
+  constants.aspect = destination->desc.height > 0 ? static_cast<float>(destination->desc.width) / static_cast<float>(destination->desc.height) : 1.f;
   commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
   commandList->SetPipelineState(pipeline->pipelineState.Get());
   commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXStylizeConstants) / sizeof(uint32_t), &constants, 0);
@@ -2017,6 +2044,59 @@ auto DXRenderer::DrawStylizePass(std::span<std::string> inputs, std::span<std::s
   commandList->IASetVertexBuffers(0, 0, nullptr);
   commandList->DrawInstanced(3, 1, 0, 0);
   return true;
+}
+auto DXRenderer::ApplyPlanarReflection(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  auto scene = app.GetScene();
+  const auto *surface = scene ? scene->GetAnyComponent<PlanarReflection>() : nullptr;
+  const auto *camera = scene ? scene->GetCamera() : nullptr;
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  if (!surface || !camera || !commandList || surface->strength <= .0f || lightingDebugView != LightingDebugView::None) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  // The colour, the depth and the output, found as the stylize passes find theirs. The depth is
+  // required here: without it there is no telling which pixels are on the plane.
+  DXRenderTarget *source{};
+  DXRenderTarget *depth{};
+  DXRenderTarget *destination{};
+  const auto pipeline = pipelines.GetReflectionPipeline(context->GetDevice(), outputs.empty() ? DXGI_FORMAT_UNKNOWN : [&] {
+    auto it = nameToTarget.find(outputs[0]);
+    return it == nameToTarget.end() ? DXGI_FORMAT_UNKNOWN : TargetFormatToRTVDXGI(it->second.desc.format);
+  }());
+  if (!pipeline || !*pipeline || !BindFullscreenInputs(inputs, outputs, source, depth, destination) || !depth) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  DXReflectionConstants constants{};
+  const auto viewProjection = camera->transform.projection * camera->transform.view;
+  const auto inverse = glm::inverse(viewProjection);
+  memcpy(constants.viewProjection, glm::value_ptr(viewProjection), sizeof(constants.viewProjection));
+  memcpy(constants.inverseViewProjection, glm::value_ptr(inverse), sizeof(constants.inverseViewProjection));
+  memcpy(constants.cameraPosition, glm::value_ptr(camera->position), sizeof(constants.cameraPosition));
+  constants.height = surface->height;
+  constants.tolerance = std::max(surface->tolerance, 1.0e-4f);
+  constants.strength = std::clamp(surface->strength, .0f, 1.f);
+  constants.dryReflectance = std::clamp(surface->dryReflectance, .0f, 1.f);
+  constants.puddleCoverage = std::clamp(surface->puddleCoverage, .0f, 1.f);
+  constants.puddleScale = std::max(surface->puddleScale, 1.0e-3f);
+  constants.blur = std::clamp(surface->blur, .0f, 1.f);
+  constants.ripples = std::max(surface->ripples, .0f);
+  constants.rippleDensity = std::max(surface->rippleDensity, 1.0e-3f);
+  constants.maxDistance = std::max(surface->maxDistance, .1f);
+  // The stylize pass's clock, which this runs ahead of in the same frame and so reads a frame late:
+  // a ripple a sixtieth of a second behind is not one anybody can see.
+  constants.time = stylizeTime;
+  constants.texelSize[0] = 1.f / static_cast<float>(std::max(destination->desc.width, 1));
+  constants.texelSize[1] = 1.f / static_cast<float>(std::max(destination->desc.height, 1));
+  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXReflectionConstants) / sizeof(uint32_t), &constants, 0);
+  commandList->SetGraphicsRootDescriptorTable(1, source->srvGPU);
+  commandList->SetGraphicsRootDescriptorTable(2, depth->srvGPU);
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  commandList->IASetVertexBuffers(0, 0, nullptr);
+  commandList->DrawInstanced(3, 1, 0, 0);
 }
 auto DXRenderer::ApplyInk(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   auto scene = app.GetScene();

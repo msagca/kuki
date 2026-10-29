@@ -39,6 +39,8 @@ auto Renderer::ExecutePass(const RenderPass pass, std::span<std::string> inputs,
     return ApplyInk(inputs, outputs);
   case RenderPass::Stylize:
     return ApplyStylize(inputs, outputs);
+  case RenderPass::PlanarReflection:
+    return ApplyPlanarReflection(inputs, outputs);
   default:
     return RenderScene(inputs, outputs);
   }

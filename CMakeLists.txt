@@ -191,6 +191,10 @@ unset(_kuki_blender_dirs)
 # relinks, and a model edited on its own would never reach a binary that had not changed. The
 # install takes the exported directory as it stands.
 #
+# A game with more than one .blend calls this once for each, with a different destination: each
+# export clears its own directory of models before writing, so two sharing one would leave only the
+# second's.
+#
 # Without Blender the target still builds, with a warning and no models, rather than the configure
 # failing: a missing model is something a game can report and carry on past, and a build machine
 # with no use for the game should not need Blender to build the engine.
@@ -217,8 +221,11 @@ function(kuki_add_blender_models target blend destination)
     COMMENT "Exporting ${blend} to glTF"
     VERBATIM
   )
-  add_custom_target(${target}Models DEPENDS "${stamp}")
-  add_dependencies(${target} ${target}Models)
+  # Named for the destination as well as the target, so a game can export more than one .blend --
+  # each to a directory of its own -- without the second call redefining the first one's target.
+  string(MAKE_C_IDENTIFIER "${destination}" suffix)
+  add_custom_target(${target}Models_${suffix} DEPENDS "${stamp}")
+  add_dependencies(${target} ${target}Models_${suffix})
   # Listed on the target so the .blend shows up beside the sources in an IDE.
   target_sources(${target} PRIVATE "${blend}")
   set_source_files_properties(

@@ -67,6 +67,7 @@ KUKI_ENGINE_COMPONENT(MeshHandle)
 KUKI_ENGINE_COMPONENT(ModelMaterialHandle)
 KUKI_ENGINE_COMPONENT(ModelMeshHandle)
 KUKI_ENGINE_COMPONENT(ParticleEmitter)
+KUKI_ENGINE_COMPONENT(PlanarReflection)
 KUKI_ENGINE_COMPONENT(RenderBinding)
 KUKI_ENGINE_COMPONENT(ScreenEffects)
 KUKI_ENGINE_COMPONENT(Skeleton)
@@ -81,7 +82,7 @@ KUKI_ENGINE_COMPONENT(VolumetricFog)
 /// What the run-time questions about a component -- its name, a pointer to it as a variant -- are
 /// generated from, so that a component added to the enum and declared above is found everywhere
 /// those are asked without a switch to extend. `component.hpp` checks this list against the enum.
-using EngineComponents = TypeList<Animator, AntiAliasing, AtmosphereSky, BoundingBox, Camera, IndirectLighting, Light, MaterialHandle, MeshHandle, ModelMaterialHandle, ModelMeshHandle, ParticleEmitter, RenderBinding, ScreenEffects, Skeleton, SkyboxHandle, Stylization, TextureHandle, Transform, VolumetricClouds, VolumetricFog>;
+using EngineComponents = TypeList<Animator, AntiAliasing, AtmosphereSky, BoundingBox, Camera, IndirectLighting, Light, MaterialHandle, MeshHandle, ModelMaterialHandle, ModelMeshHandle, ParticleEmitter, PlanarReflection, RenderBinding, ScreenEffects, Skeleton, SkyboxHandle, Stylization, TextureHandle, Transform, VolumetricClouds, VolumetricFog>;
 static_assert(EngineComponents::size == ENGINE_COMPONENT_COUNT, "a component is in ComponentType but not in EngineComponents, or the other way round");
 template <typename List>
 inline constexpr bool InIdOrder = false;

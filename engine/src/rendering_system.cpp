@@ -139,8 +139,15 @@ auto RenderingSystem::Start() -> void {
                   .AddInput("SceneDepth")
                   .AddOutput("SceneInked", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
-                  .BeginPass(RenderPass::Particles)
+                  // A wet street or a polished floor, mirrored by walking rays through the same
+                  // depth the ink was found in.
+                  .BeginPass(RenderPass::PlanarReflection)
                   .AddInput("SceneInked")
+                  .AddInput("SceneDepth")
+                  .AddOutput("SceneReflected", {.width = screenWidth, .height = screenHeight, .samples = 1})
+                  .EndPass()
+                  .BeginPass(RenderPass::Particles)
+                  .AddInput("SceneReflected")
                   .AddInput("SceneDepth")
                   .AddOutput("SceneParticles", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()

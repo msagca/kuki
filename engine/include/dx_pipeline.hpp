@@ -4,6 +4,7 @@
 #include <dx_shader_compiler.hpp>
 #include <kuki_engine_export.h>
 #include <light_limits.hpp>
+#include <particle_emitter.hpp>
 #include <unordered_map>
 namespace kuki {
 /// @brief Number of texture slots a material's descriptor table holds, one per `TextureContent`.
@@ -195,6 +196,25 @@ struct DXStylizeConstants {
   float padding[3]{};
 };
 static_assert(sizeof(DXStylizeConstants) == 144, "DXStylizeConstants must stay nine float4 rows to match the HLSL cbuffer");
+/// @brief Root constants for the planar reflection pass, read by `reflect.hlsl`. Twelve float4 rows.
+struct DXReflectionConstants {
+  float viewProjection[16]{};
+  float inverseViewProjection[16]{};
+  float cameraPosition[3]{};
+  float height{};
+  float tolerance{};
+  float strength{};
+  float dryReflectance{};
+  float puddleCoverage{};
+  float puddleScale{};
+  float blur{};
+  float ripples{};
+  float rippleDensity{};
+  float maxDistance{};
+  float time{};
+  float texelSize[2]{};
+};
+static_assert(sizeof(DXReflectionConstants) == 192, "DXReflectionConstants must stay twelve float4 rows to match the HLSL cbuffer");
 struct DXOutlineConstants {
   float color[4]{};
   float texelSize[4]{};
@@ -408,8 +428,11 @@ struct DXParticleUpdateConstants {
   float padding1{};
   float ambient[3]{};
   float padding2{};
+  /// @brief Half the box a particle is born in, and how hard the gusts push. See `ParticleEmitter`.
+  float extent[3]{};
+  float turbulence{};
 };
-static_assert(sizeof(DXParticleUpdateConstants) == 208, "DXParticleUpdateConstants must stay thirteen float4 rows to match the HLSL cbuffer");
+static_assert(sizeof(DXParticleUpdateConstants) == 224, "DXParticleUpdateConstants must stay fourteen float4 rows to match the HLSL cbuffer");
 /// @brief Root constants for the draw that turns one emitter's particles into quads.
 ///
 /// A mirror of `DrawConstants` in `particles.hlsl`. Eight rows, thirty-two dwords.
@@ -428,8 +451,14 @@ struct DXParticleDrawConstants {
   float endColor[3]{};
   /// @brief One for an additive emitter and nought for an opaque one. See `u_fade`.
   float fade{};
+  /// @brief `ParticleFacing` and `ParticleSprite` as numbers, the streak's length in seconds of
+  /// travel, and the alpha kind's coverage.
+  uint32_t facing{};
+  uint32_t sprite{};
+  float stretch{};
+  float opacity{};
 };
-static_assert(sizeof(DXParticleDrawConstants) == 128, "DXParticleDrawConstants must stay eight float4 rows to match the HLSL cbuffer");
+static_assert(sizeof(DXParticleDrawConstants) == 144, "DXParticleDrawConstants must stay nine float4 rows to match the HLSL cbuffer");
 /// @brief Root constants for the skybox pass.
 ///
 /// The inverse view-projection turns a screen-space position back into a world-space view ray.
@@ -605,6 +634,10 @@ public:
   /// Apart from the generic post pipeline because its constants are larger and it binds a depth
   /// buffer beside the picture. `entryPoint` is `PSInk` or `PSStylize`.
   auto GetStylizePipeline(ID3D12Device *, const DXGI_FORMAT, const char *entryPoint) -> const DXPipeline *;
+  /// @brief Returns the planar reflection pipeline for a target format, building it once. The stylize
+  /// passes' bindings -- a picture and a depth -- with a larger block of constants, which is the
+  /// only reason it is not one of them: two matrices do not fit beside the ink's settings.
+  auto GetReflectionPipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
   /// @brief Returns the overlay text pipeline for a target format, building it once.
   ///
   /// The only raster pipeline here that blends and does not test depth. Both follow from where it
@@ -708,7 +741,7 @@ public:
   ///
   /// The opaque one is the same draw with the blend off and the depth write on, and needs no sort
   /// for the opposite reason: the depth buffer decides.
-  auto GetParticleDrawPipeline(ID3D12Device *, const DXGI_FORMAT, const bool opaque = false) -> const DXPipeline *;
+  auto GetParticleDrawPipeline(ID3D12Device *, const DXGI_FORMAT, const ParticleBlend = ParticleBlend::Additive) -> const DXPipeline *;
   auto Clear() -> void;
 private:
   std::unordered_map<uint64_t, DXPipeline> pipelines;
@@ -717,6 +750,7 @@ private:
   ComPtr<ID3D12RootSignature> postRootSignature;
   ComPtr<ID3D12RootSignature> outlineRootSignature;
   ComPtr<ID3D12RootSignature> stylizeRootSignature;
+  ComPtr<ID3D12RootSignature> reflectionRootSignature;
   ComPtr<ID3D12RootSignature> overlayRootSignature;
   ComPtr<ID3D12RootSignature> shadowRootSignature;
   ComPtr<ID3D12RootSignature> skyboxRootSignature;
@@ -749,6 +783,7 @@ private:
   /// @brief Root signature for the outline pass: source colour, entity ids, and the selected set.
   auto GetOutlineRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   auto GetStylizeRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  auto GetReflectionRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the overlay pass: the projection and colour, and the glyph atlas.
   auto GetOverlayRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the shadow pass: a single light-space matrix.

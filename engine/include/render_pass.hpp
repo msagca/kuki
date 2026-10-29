@@ -31,6 +31,13 @@ enum class RenderPass : uint8_t {
   /// what makes a spark look like one: the haze dims it with distance and the bloom chain gives it
   /// the glow that says it is bright rather than merely orange.
   Particles,
+  /// @brief A level surface mirrored in screen space, where the scene has one. See
+  /// `PlanarReflection`.
+  ///
+  /// After the ink, so a figure's reflection is inked as the figure is, and before the particles,
+  /// whose depth is not in the buffer the rays walk: a raindrop is not reflected, and drawn after
+  /// this, it falls over the reflection rather than being smeared into it.
+  PlanarReflection,
   ProbeTrace,
   Scene,
   ShadowMap,

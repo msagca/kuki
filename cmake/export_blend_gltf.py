@@ -55,7 +55,9 @@ def main() -> None:
     )
     if not objects and not rigs:
         raise SystemExit(f"{bpy.data.filepath}: collection {COLLECTION!r} holds no meshes")
-    for obj in collection.all_objects:
+    # Over a copy: showing an object invalidates the collection's cached list of them, and an
+    # iterator still walking that list goes on to hand out None.
+    for obj in list(collection.all_objects):
         obj.hide_set(False)
         obj.hide_viewport = False
     names = set()

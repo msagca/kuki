@@ -34,7 +34,7 @@ struct SurfaceSample {
   float3 position;
   float3 normal;
 };
-// Mirrors DXParticleUpdateConstants in dx_pipeline.hpp. Thirteen float4 rows, with every float3 at
+// Mirrors DXParticleUpdateConstants in dx_pipeline.hpp. Fourteen float4 rows, with every float3 at
 // the start of one so that HLSL inserts no padding the C++ side does not also have.
 cbuffer UpdateConstants : register(b0) {
   float3 u_emitterPosition;
@@ -75,8 +75,11 @@ cbuffer UpdateConstants : register(b0) {
   float u_updatePadding1;
   float3 u_ambient;
   float u_updatePadding2;
+  // Half the box a particle is born in, along the emitter's axes, and how hard the gusts push.
+  float3 u_extent;
+  float u_turbulence;
 };
-// Mirrors DXParticleDrawConstants in dx_pipeline.hpp. Eight rows, on the same terms.
+// Mirrors DXParticleDrawConstants in dx_pipeline.hpp. Nine rows, on the same terms.
 //
 // At `b1` rather than sharing `b0` with the block above. No entry point reads both, so the two could
 // overlap, but two blocks at one register in one file is a thing that works until somebody adds a
@@ -94,6 +97,12 @@ cbuffer DrawConstants : register(b1) {
   // the fade: an additive particle dims to nothing as it ends, and a solid one that dimmed would
   // only turn black, so it is left its colour and goes by shrinking.
   float u_fade;
+  // How the quad is turned and what it carries -- see `ParticleFacing` and `ParticleSprite` -- how
+  // many seconds of travel a streak is long, and how much the alpha kind covers at its thickest.
+  uint u_facing;
+  uint u_sprite;
+  float u_stretch;
+  float u_opacity;
 };
 RWStructuredBuffer<Particle> g_particles : register(u0);
 StructuredBuffer<Particle> g_drawn : register(t0);
@@ -160,6 +169,11 @@ Particle Spawn(uint index) {
     float3 normal = float3(dot(u_world[0].xyz, surface.normal), dot(u_world[1].xyz, surface.normal), dot(u_world[2].xyz, surface.normal));
     axis = dot(normal, normal) > 1.0e-12 ? normalize(normal) : u_axis;
     particle.tint = u_ambient + u_sunRadiance * saturate(dot(axis, u_sunDirection));
+  } else if (u_shape == KUKI_PARTICLE_SHAPE_BOX) {
+    // Anywhere in the box, placed by the whole of the emitter's matrix, so a box can be turned and
+    // set anywhere the entity is. Not spread along the emitter's path: weather does not trail.
+    float4 local = float4((float3(Random(state), Random(state), Random(state)) * 2.0 - 1.0) * u_extent, 1.0);
+    origin = float3(dot(u_world[0], local), dot(u_world[1], local), dot(u_world[2], local));
   } else
     origin = lerp(u_previousPosition, u_emitterPosition, moment) + SpherePoint(state) * u_radius;
   particle.velocity = ConeDirection(axis, state) * (u_speed * (1.0 - u_speedVariance * Random(state)));
@@ -202,6 +216,16 @@ void CSSimulate(uint3 thread : SV_DispatchThreadID) {
     // costs nothing over the explicit order and does not gain energy, which over a few seconds of
     // flight is the difference between an arc and an arc that lands somewhere it should not.
     particle.velocity += u_gravity * u_deltaTime;
+    // The gust: two slow waves across the floor, at rates and phases drawn from the slot so that
+    // no two particles sway together. A little of it lifts as well, which is what keeps snow from
+    // reading as falling on rails.
+    if (u_turbulence > 0.0) {
+      uint gust = Hash(index * 7919u + 17u);
+      float phase = float(gust & 1023u) * (6.28318530718 / 1024.0);
+      float rate = 0.6 + float((gust >> 10) & 255u) / 255.0;
+      float t = particle.age * rate + phase;
+      particle.velocity += u_turbulence * float3(sin(t * 1.3), 0.35 * sin(t * 2.1 + 1.7), cos(t * 0.9 + 0.6)) * u_deltaTime;
+    }
     // The exact decay for a force proportional to speed, rather than a multiply by one minus the
     // product. That one goes negative when a long frame meets a high drag and throws the particle
     // backwards; this one only ever approaches rest.
@@ -215,6 +239,10 @@ struct PSInput {
   float4 position : SV_POSITION;
   float2 corner : TEXCOORD0;
   float3 color : COLOR0;
+  // How much the alpha kind covers, already faded by age. The draw's block is the vertex stage's
+  // alone, so what the pixel stage needs of it is handed down here.
+  float alpha : TEXCOORD1;
+  nointerpolation uint sprite : TEXCOORD2;
 };
 // Four vertices to a particle and no vertex buffer: the quad's corner comes out of the vertex index
 // and the particle out of the instance index. Drawn as a strip, so the two bits of the index are the
@@ -224,6 +252,8 @@ PSInput VSMain(uint vertex : SV_VertexID, uint instance : SV_InstanceID) {
   Particle particle = g_drawn[instance];
   output.corner = float2(float(vertex & 1u), float(vertex >> 1u)) * 2.0 - 1.0;
   output.color = float3(0.0, 0.0, 0.0);
+  output.alpha = 0.0;
+  output.sprite = u_sprite;
   // An empty slot, drawn as every vertex at one point so it covers no pixel at all. The instance
   // count is the whole pool because which slots hold a particle is decided on the GPU, and the
   // alternative to collapsing the dead ones here is telling the processor how many are alive.
@@ -236,25 +266,75 @@ PSInput VSMain(uint vertex : SV_VertexID, uint instance : SV_InstanceID) {
   // Spanned by the camera's own axes, which is what keeps the quad facing it. Every quad in the
   // frame is parallel to the image plane rather than turned towards the eye, and at the size of a
   // spark the two cannot be told apart.
-  float3 world = particle.position + (u_cameraRight * output.corner.x + u_cameraUp * output.corner.y) * (size * 0.5);
+  float3 across = u_cameraRight;
+  float3 along = u_cameraUp;
+  float reach = size;
+  if (u_facing == KUKI_PARTICLE_FACING_VELOCITY) {
+    // Along the way it is going, and turned about that line to face the camera as nearly as a line
+    // can: the width runs across both the travel and the view.
+    float speed = sqrt(dot(particle.velocity, particle.velocity));
+    float3 forward = cross(u_cameraUp, u_cameraRight);
+    if (speed > 1.0e-4) {
+      along = particle.velocity / speed;
+      float3 side = cross(along, forward);
+      float sideLength = sqrt(dot(side, side));
+      across = sideLength > 1.0e-4 ? side / sideLength : u_cameraRight;
+    }
+    reach = size + speed * u_stretch;
+  } else if (u_facing == KUKI_PARTICLE_FACING_FLAT) {
+    across = float3(1.0, 0.0, 0.0);
+    along = float3(0.0, 0.0, 1.0);
+  }
+  if (u_sprite == KUKI_PARTICLE_SPRITE_PETAL) {
+    // Spinning in its own plane and tumbling end over end, each at a rate drawn from the slot. The
+    // tumble is the quad narrowing to an edge and opening again, never quite to nothing.
+    uint spin = Hash(instance * 2654435761u + 7u);
+    float rate = 2.0 + float(spin & 255u) / 255.0 * 4.0;
+    float angle = particle.age * rate + float((spin >> 8) & 255u) * 0.0245;
+    float c = cos(angle);
+    float n = sin(angle);
+    float3 turnedAcross = across * c + along * n;
+    along = along * c - across * n;
+    across = turnedAcross * max(abs(cos(angle * 0.7 + 1.3)), 0.2);
+    along *= 0.6;
+  }
+  float3 world = particle.position + (across * (output.corner.x * size) + along * (output.corner.y * reach)) * 0.5;
   output.position = mul(u_viewProjection, float4(world, 1.0));
   // Fades out as well as changing colour, and faster towards the end. Without it a particle whose
   // end size is not nought is at full brightness in one frame and gone in the next, and the eye
   // catches a hundred of those a second as flicker.
   output.color = lerp(u_startColor, u_endColor, life) * particle.tint * (u_intensity * (1.0 - u_fade * life * life));
+  output.alpha = u_opacity * (1.0 - life * life);
   return output;
+}
+// What the sprite covers at a point of the quad, from nought to one, with the corners at a length of
+// one and a half and outside every shape.
+float Coverage(PSInput input) {
+  float distance = dot(input.corner, input.corner);
+  if (input.sprite == KUKI_PARTICLE_SPRITE_RING) {
+    float radius = sqrt(distance);
+    return smoothstep(0.7, 0.82, radius) * (1.0 - smoothstep(0.88, 1.0, radius));
+  }
+  float falloff = saturate(1.0 - distance);
+  return falloff * falloff;
 }
 // A soft disc with no texture behind it: bright at the centre, nothing at the quad's inscribed
 // circle, and squared in between so the edge arrives gently. The corners of the quad are outside the
 // circle and add nought, which under an additive blend is the same as not having been drawn.
 float4 PSMain(PSInput input) : SV_TARGET {
-  float falloff = saturate(1.0 - dot(input.corner, input.corner));
-  return float4(input.color * (falloff * falloff), 0.0);
+  return float4(input.color * Coverage(input), 0.0);
+}
+// A veil: premultiplied, so the blend is the colour plus what is behind scaled by what is let through.
+float4 PSAlpha(PSInput input) : SV_TARGET {
+  float coverage = Coverage(input) * input.alpha;
+  return float4(input.color * coverage, coverage);
 }
 // The solid kind: the same disc with a hard edge, in one flat colour. The corners are thrown away
 // rather than blended to nothing, because this one writes depth and a corner that wrote depth would
 // hide whatever was behind a part of the quad nobody can see.
 float4 PSOpaque(PSInput input) : SV_TARGET {
+  if (input.sprite == KUKI_PARTICLE_SPRITE_RING)
+    clip(Coverage(input) - 0.5);
   clip(1.0 - dot(input.corner, input.corner));
   return float4(input.color, 0.0);
 }

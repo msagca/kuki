@@ -164,8 +164,9 @@ struct DXParticlePool {
 struct DXParticleDraw {
   D3D12_GPU_VIRTUAL_ADDRESS address{};
   uint32_t capacity{};
-  /// @brief Whether this is drawn solid, and so ahead of every additive pool. See `ParticleBlend`.
-  bool opaque{};
+  /// @brief How it is put onto the picture, which decides when it is drawn: the solid pools first so
+  /// their depth is there for the rest, then the veils, then what is added. See `ParticleBlend`.
+  ParticleBlend blend{ParticleBlend::Additive};
   DXParticleDrawConstants constants{};
 };
 /// @brief Direct3D 12 implementation of the engine renderer.
@@ -276,6 +277,7 @@ public:
   auto DrawParticles(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyInk(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyStylize(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyPlanarReflection(std::span<std::string>, std::span<std::string>) -> void override;
   auto UpdateTarget(const std::string &, const TargetDescription &) -> void override;
 private:
   DXPipelineCache pipelines;
@@ -759,6 +761,9 @@ private:
   /// dummy texture where it does not -- the grade reads none. False when nothing was drawn, so the
   /// caller can copy the picture through instead.
   auto DrawStylizePass(std::span<std::string>, std::span<std::string>, const char *entryPoint, DXStylizeConstants &) -> bool;
+  /// @brief Finds a pass's colour and depth inputs and binds them, with its output, for a fullscreen
+  /// draw. The colour is the first resolved input; the depth the full-sized one.
+  auto BindFullscreenInputs(std::span<std::string>, std::span<std::string>, DXRenderTarget *&, DXRenderTarget *&, DXRenderTarget *&) -> bool;
   /// @brief Uploads every skinned mesh's instance and bones for the depth-only passes.
   ///
   /// Not culled by any camera: a figure out of shot still casts a shadow into it.

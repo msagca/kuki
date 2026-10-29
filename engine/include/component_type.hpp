@@ -22,6 +22,7 @@ enum class ComponentType : uint8_t {
   ModelMaterialHandle,
   ModelMeshHandle,
   ParticleEmitter,
+  PlanarReflection,
   RenderBinding,
   ScreenEffects,
   Skeleton,
