@@ -82,21 +82,35 @@ struct EnumTraits<AntiAliasingMode> {
 template <>
 struct EnumTraits<ParticleShape> {
   static const std::vector<const char *> &GetNames() {
-    static const std::vector<const char *> names = {"Sphere", "Mesh"};
+    static const std::vector<const char *> names = {"Sphere", "Mesh", "Box"};
     return names;
   }
 };
 template <>
 struct EnumTraits<ParticleBlend> {
   static const std::vector<const char *> &GetNames() {
-    static const std::vector<const char *> names = {"Additive", "Opaque"};
+    static const std::vector<const char *> names = {"Additive", "Opaque", "Alpha"};
+    return names;
+  }
+};
+template <>
+struct EnumTraits<ParticleFacing> {
+  static const std::vector<const char *> &GetNames() {
+    static const std::vector<const char *> names = {"Camera", "Velocity", "Flat"};
+    return names;
+  }
+};
+template <>
+struct EnumTraits<ParticleSprite> {
+  static const std::vector<const char *> &GetNames() {
+    static const std::vector<const char *> names = {"Soft", "Ring", "Petal"};
     return names;
   }
 };
 template <>
 struct EnumTraits<RenderPass> {
   static const std::vector<const char *> &GetNames() {
-    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Outline", "Overlay", "Particles", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "ToneMapping", "Volumetric Clouds", "Volumetric Fog"};
+    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Ink", "Outline", "Overlay", "Particles", "PlanarReflection", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "Stylize", "ToneMapping", "Volumetric Clouds", "Volumetric Fog"};
     return names;
   }
 };

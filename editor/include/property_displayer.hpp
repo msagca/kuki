@@ -38,6 +38,8 @@
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <string>
+#include <planar_reflection.hpp>
+#include <stylization.hpp>
 #include <texture_handle.hpp>
 struct PropertyDisplayer {
   EditorContext &context;
@@ -50,7 +52,9 @@ struct PropertyDisplayer {
 /// `GLMaterial` and `DXMaterial` differ in how they reach their textures and in nothing else: the
 /// surface values underneath are one `MaterialFallback` in both. Shared rather than ported, because
 /// two copies of a panel this long is how the two backends end up offering different materials.
-inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallback &fallback) -> void {
+///
+/// `toon` offers the cel shading slider, which only a backend that draws the bands should.
+inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallback &fallback, const bool toon = false) -> void {
   static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
   auto typeIndex = static_cast<int>(type);
   if (field::Combo("Type", &typeIndex, types.data(), types.size()))
@@ -89,6 +93,12 @@ inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallb
   auto transmission = fallback.transmission;
   if (field::SliderFloat("Transmission", &transmission, .0f, 1.f))
     fallback.transmission = transmission;
+  if (toon) {
+    auto amount = fallback.toon;
+    if (field::SliderFloat("Toon", &amount, .0f, 1.f))
+      fallback.toon = amount;
+    ImGui::SetItemTooltip("How far the surface is drawn in the scene's cel bands rather than shaded\nphysically. The bands themselves are the scene's Stylization.");
+  }
   if (fallback.transmission > .0f) {
     auto thickness = fallback.thickness;
     if (field::SliderFloat("Thickness", &thickness, .0f, 10.f))
@@ -618,7 +628,7 @@ inline auto PropertyDisplayer::operator()<kuki::DXMaterial>(kuki::DXMaterial *ma
   field::Toggle(ICON_LC_DATABASE, "Table Resident", &bound);
   ImGui::EndDisabled();
   ImGui::SetItemTooltip("Whether the table has been built and uploaded yet.");
-  DisplayMaterialSurface(material->type, material->fallback);
+  DisplayMaterialSurface(material->type, material->fallback, context.capabilities.stylization);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::GLBuffer>(kuki::GLBuffer *buffer) -> void {
@@ -932,6 +942,71 @@ inline auto PropertyDisplayer::operator()<kuki::VolumetricClouds>(kuki::Volumetr
     *clouds = edited;
 }
 template <>
+inline auto PropertyDisplayer::operator()<kuki::Stylization>(kuki::Stylization *style) -> void {
+  if (!style || !context.capabilities.stylization)
+    return;
+  auto edited = *style;
+  if (field::Fold("Bands", true)) {
+    auto bands = static_cast<int>(edited.bands);
+    if (field::SliderInt("Bands", &bands, 1, 6))
+      edited.bands = static_cast<uint32_t>(std::max(1, bands));
+    ImGui::SetItemTooltip("Tones a lit surface is drawn in, for the materials whose Toon is above zero.");
+    field::SliderFloat("Softness", &edited.bandSoftness, .0f, .2f);
+    field::SliderFloat("Terminator", &edited.terminator, -.5f, .5f);
+    ImGui::SetItemTooltip("Where the shaded side begins. Above zero pushes it towards the light, which\nmakes a form read rounder than its geometry.");
+    field::ColorEdit3("Shadow Tint", &edited.shadowTint.x);
+    field::SliderFloat("Highlight", &edited.highlightSize, .0f, .5f);
+    field::SliderFloat("Rim", &edited.rimIntensity, .0f, 4.f);
+    field::SliderFloat("Rim Width", &edited.rimWidth, .0f, 1.f);
+  }
+  if (field::Fold("Ink", true)) {
+    field::SliderFloat("Thickness", &edited.inkThickness, .0f, 6.f);
+    ImGui::SetItemTooltip("In pixels of a picture 1080 high. Zero draws no lines.");
+    field::SliderFloat("Outline Threshold", &edited.inkDepthThreshold, .005f, .5f);
+    field::SliderFloat("Crease Threshold", &edited.inkCreaseThreshold, .0f, 4.f);
+    ImGui::SetItemTooltip("How sharply a surface must fold to be inked. A right angle seen corner on\nmeasures about one.");
+    field::ColorEdit3("Ink", &edited.inkColor.x);
+    field::SliderFloat("Ink Tint", &edited.inkTint, .0f, 1.f);
+    ImGui::SetItemTooltip("How much of the colour beneath it the ink takes on.");
+    field::DragFloat("Fade Distance", &edited.inkFadeDistance, .5f, 1.f, 1000.f, "%.0f");
+  }
+  if (field::Fold("Grade", true)) {
+    field::SliderFloat("Saturation", &edited.saturation, .0f, 2.f);
+    field::SliderFloat("Contrast", &edited.contrast, .5f, 2.f);
+    field::ColorEdit3("Shadows", &edited.shadowColor.x);
+    field::ColorEdit3("Highlights", &edited.highlightColor.x);
+    ImGui::SetItemTooltip("Grey is no push. The darks and the lights are each pushed towards their colour\nby as much as they are dark or light.");
+    field::SliderFloat("Vignette", &edited.vignette, .0f, 1.f);
+  }
+  if (edited != *style)
+    *style = edited;
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::PlanarReflection>(kuki::PlanarReflection *surface) -> void {
+  if (!surface || !context.capabilities.stylization)
+    return;
+  auto edited = *surface;
+  if (field::Fold("Surface", true)) {
+    field::DragFloat("Height", &edited.height, .01f, -100.f, 100.f, "%.2f");
+    field::DragFloat("Tolerance", &edited.tolerance, .001f, .0001f, 1.f, "%.3f");
+    ImGui::SetItemTooltip("How far from the height a pixel may be and still be taken for the surface.");
+    field::SliderFloat("Strength", &edited.strength, .0f, 1.f);
+    ImGui::SetItemTooltip("Zero switches the reflection off.");
+    field::SliderFloat("Dry Reflectance", &edited.dryReflectance, .0f, 1.f);
+    field::SliderFloat("Blur", &edited.blur, .0f, 1.f);
+    field::DragFloat("Max Distance", &edited.maxDistance, .5f, 1.f, 500.f, "%.0f");
+  }
+  if (field::Fold("Puddles", true)) {
+    field::SliderFloat("Coverage", &edited.puddleCoverage, .0f, 1.f);
+    field::SliderFloat("Scale", &edited.puddleScale, .01f, 4.f);
+    field::SliderFloat("Ripples", &edited.ripples, .0f, 4.f);
+    ImGui::SetItemTooltip("How hard rain disturbs the puddles. Zero is still water.");
+    field::SliderFloat("Ripple Density", &edited.rippleDensity, .1f, 10.f);
+  }
+  if (edited != *surface)
+    *surface = edited;
+}
+template <>
 inline auto PropertyDisplayer::operator()<kuki::VolumetricFog>(kuki::VolumetricFog *fog) -> void {
   if (!fog)
     return;
@@ -1027,6 +1102,10 @@ inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleE
       field::DragFloat("Radius", &edited.radius, .005f, .0f, 100.f, "%.3f");
       ImGui::SetItemTooltip("Particles appear somewhere inside a sphere this size around the emitter.");
     }
+    if (edited.shape == kuki::ParticleShape::Box) {
+      field::DragFloat3("Extent", &edited.extent.x, .05f, .0f, 1000.f, "%.2f");
+      ImGui::SetItemTooltip("Half the size of the box particles appear in, along the emitter's own axes.\nA box with no height covers a floor.");
+    }
   }
   if (field::Fold("Motion", true)) {
     field::DragFloat(ICON_LC_TIMER " Lifetime", &edited.lifetime, .01f, .01f, 600.f, "%.2f s");
@@ -1044,13 +1123,29 @@ inline auto PropertyDisplayer::operator()<kuki::ParticleEmitter>(kuki::ParticleE
     ImGui::SetItemTooltip("Any constant acceleration. Point it upwards and a little weaker for embers\ncarried by their own heat.");
     field::SliderFloat("Drag", &edited.drag, .0f, 10.f);
     ImGui::SetItemTooltip("How quickly the air takes a particle's speed away. Without it every particle\nfollows a clean parabola, and a spray of clean parabolas is water.");
+    field::SliderFloat("Turbulence", &edited.turbulence, .0f, 20.f);
+    ImGui::SetItemTooltip("How hard a gust pushes each particle about, each to a rhythm of its own. What\nmakes snow drift and petals wander.");
   }
   if (field::Fold("Appearance", true)) {
     static auto &blends = kuki::EnumTraits<kuki::ParticleBlend>::GetNames();
     auto blend = static_cast<int>(edited.blend);
     if (field::Combo("Blend", &blend, blends.data(), static_cast<int>(blends.size())))
       edited.blend = static_cast<kuki::ParticleBlend>(blend);
-    ImGui::SetItemTooltip("Additive particles brighten what is behind them and can do nothing else.\nOpaque ones are solid discs, which is the one way to draw a dark particle;\nborn on a mesh they are shaded once by the sun and keep that shade.");
+    ImGui::SetItemTooltip("Additive particles brighten what is behind them and can do nothing else.\nOpaque ones are solid discs, which is the one way to draw a dark particle;\nborn on a mesh they are shaded once by the sun and keep that shade. Alpha ones\nare a faint veil, for mist and steam.");
+    static auto &facings = kuki::EnumTraits<kuki::ParticleFacing>::GetNames();
+    auto facing = static_cast<int>(edited.facing);
+    if (field::Combo("Facing", &facing, facings.data(), static_cast<int>(facings.size())))
+      edited.facing = static_cast<kuki::ParticleFacing>(facing);
+    static auto &sprites = kuki::EnumTraits<kuki::ParticleSprite>::GetNames();
+    auto sprite = static_cast<int>(edited.sprite);
+    if (field::Combo("Sprite", &sprite, sprites.data(), static_cast<int>(sprites.size())))
+      edited.sprite = static_cast<kuki::ParticleSprite>(sprite);
+    if (edited.facing == kuki::ParticleFacing::Velocity) {
+      field::DragFloat("Stretch", &edited.stretch, .001f, .0f, 1.f, "%.3f s");
+      ImGui::SetItemTooltip("How many seconds of its own travel a streak is long. A raindrop is about a\nsixtieth: what a shutter would smear it over.");
+    }
+    if (edited.blend == kuki::ParticleBlend::Alpha)
+      field::SliderFloat("Opacity", &edited.opacity, .0f, 1.f);
     field::DragFloat("Start Size", &edited.startSize, .002f, .0f, 100.f, "%.3f");
     field::DragFloat("End Size", &edited.endSize, .002f, .0f, 100.f, "%.3f");
     field::ColorEdit3(ICON_LC_PALETTE " Start Colour", &edited.startColor.x);

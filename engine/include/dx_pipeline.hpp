@@ -4,6 +4,7 @@
 #include <dx_shader_compiler.hpp>
 #include <kuki_engine_export.h>
 #include <light_limits.hpp>
+#include <particle_emitter.hpp>
 #include <unordered_map>
 namespace kuki {
 /// @brief Number of texture slots a material's descriptor table holds, one per `TextureContent`.
@@ -76,6 +77,14 @@ struct DXFrameConstants {
   /// back. Keeping them out of `HashLighting` and hashing them on their own is what lets the trace
   /// react to these while the scale above passes through it without disturbing anything.
   float probeTuning[4]{};
+  /// @brief The shape of the cel bands, for the surfaces whose material asks for them: how many
+  /// tones, how soft the step between them, where the terminator falls, and how large the hard
+  /// highlight is. From the scene's `Stylization`, or its defaults where the scene has none.
+  float toon[4]{};
+  /// @brief The tint of the shaded side in the first three, the rim's strength in the fourth.
+  float toonShade[4]{};
+  /// @brief The rim's width, and three floats kept for whatever the bands need next.
+  float toonRim[4]{};
 };
 /// @brief One drawn instance, read out of a structured buffer by `SV_InstanceID`.
 ///
@@ -113,6 +122,9 @@ struct DXSceneConstants {
   uint32_t unlit{};
   float alphaCutoff{};
   uint32_t alphaMode{};
+  /// @brief How far the surface is cel shaded, then three floats free. A row of its own so the
+  /// block stays whole float4 rows, as the HLSL side packs it.
+  float style[4]{};
 };
 /// @brief Root constants for the fullscreen post-processing pipelines.
 ///
@@ -155,6 +167,54 @@ struct DXOverlayConstants {
   float projection[16]{};
   float color[4]{};
 };
+/// @brief Root constants for the ink and stylize passes, read by `stylize.hlsl`. Nine float4 rows, with
+/// every three-float colour at the start of one so HLSL inserts no padding this side does not have.
+struct DXStylizeConstants {
+  float texelSize[2]{};
+  float projectionZ{};
+  float projectionW{};
+  float inkThickness{};
+  float inkDepthThreshold{};
+  float inkCreaseThreshold{};
+  float inkFadeDistance{};
+  float inkColor[3]{};
+  float inkTint{};
+  float saturation{1.f};
+  float contrast{1.f};
+  float vignette{};
+  float time{};
+  float shadowColor[3]{.5f, .5f, .5f};
+  float flash{};
+  float highlightColor[3]{.5f, .5f, .5f};
+  float impact{};
+  float flashColor[3]{1.f, 1.f, 1.f};
+  float speedLines{};
+  float focus[2]{.5f, .5f};
+  float radialBlur{};
+  float aberration{};
+  float aspect{1.f};
+  float padding[3]{};
+};
+static_assert(sizeof(DXStylizeConstants) == 144, "DXStylizeConstants must stay nine float4 rows to match the HLSL cbuffer");
+/// @brief Root constants for the planar reflection pass, read by `reflect.hlsl`. Twelve float4 rows.
+struct DXReflectionConstants {
+  float viewProjection[16]{};
+  float inverseViewProjection[16]{};
+  float cameraPosition[3]{};
+  float height{};
+  float tolerance{};
+  float strength{};
+  float dryReflectance{};
+  float puddleCoverage{};
+  float puddleScale{};
+  float blur{};
+  float ripples{};
+  float rippleDensity{};
+  float maxDistance{};
+  float time{};
+  float texelSize[2]{};
+};
+static_assert(sizeof(DXReflectionConstants) == 192, "DXReflectionConstants must stay twelve float4 rows to match the HLSL cbuffer");
 struct DXOutlineConstants {
   float color[4]{};
   float texelSize[4]{};
@@ -368,8 +428,11 @@ struct DXParticleUpdateConstants {
   float padding1{};
   float ambient[3]{};
   float padding2{};
+  /// @brief Half the box a particle is born in, and how hard the gusts push. See `ParticleEmitter`.
+  float extent[3]{};
+  float turbulence{};
 };
-static_assert(sizeof(DXParticleUpdateConstants) == 208, "DXParticleUpdateConstants must stay thirteen float4 rows to match the HLSL cbuffer");
+static_assert(sizeof(DXParticleUpdateConstants) == 224, "DXParticleUpdateConstants must stay fourteen float4 rows to match the HLSL cbuffer");
 /// @brief Root constants for the draw that turns one emitter's particles into quads.
 ///
 /// A mirror of `DrawConstants` in `particles.hlsl`. Eight rows, thirty-two dwords.
@@ -388,8 +451,14 @@ struct DXParticleDrawConstants {
   float endColor[3]{};
   /// @brief One for an additive emitter and nought for an opaque one. See `u_fade`.
   float fade{};
+  /// @brief `ParticleFacing` and `ParticleSprite` as numbers, the streak's length in seconds of
+  /// travel, and the alpha kind's coverage.
+  uint32_t facing{};
+  uint32_t sprite{};
+  float stretch{};
+  float opacity{};
 };
-static_assert(sizeof(DXParticleDrawConstants) == 128, "DXParticleDrawConstants must stay eight float4 rows to match the HLSL cbuffer");
+static_assert(sizeof(DXParticleDrawConstants) == 144, "DXParticleDrawConstants must stay nine float4 rows to match the HLSL cbuffer");
 /// @brief Root constants for the skybox pass.
 ///
 /// The inverse view-projection turns a screen-space position back into a world-space view ray.
@@ -560,6 +629,15 @@ public:
   /// Distinct from the generic post pipeline because it binds a second resource: the multisampled
   /// entity id buffer, read with `Load` so ids are never filtered.
   auto GetOutlinePipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
+  /// @brief Returns the ink or stylize pipeline for a target format, building it once.
+  ///
+  /// Apart from the generic post pipeline because its constants are larger and it binds a depth
+  /// buffer beside the picture. `entryPoint` is `PSInk` or `PSStylize`.
+  auto GetStylizePipeline(ID3D12Device *, const DXGI_FORMAT, const char *entryPoint) -> const DXPipeline *;
+  /// @brief Returns the planar reflection pipeline for a target format, building it once. The stylize
+  /// passes' bindings -- a picture and a depth -- with a larger block of constants, which is the
+  /// only reason it is not one of them: two matrices do not fit beside the ink's settings.
+  auto GetReflectionPipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
   /// @brief Returns the overlay text pipeline for a target format, building it once.
   ///
   /// The only raster pipeline here that blends and does not test depth. Both follow from where it
@@ -592,8 +670,9 @@ public:
   /// @brief Returns the depth-only pipeline the shadow pass renders with, building it once.
   ///
   /// Bound with no render target and no pixel shader: the pass exists purely to populate a depth
-  /// buffer from the light's point of view, so rasterising colour would be wasted work.
-  auto GetShadowPipeline(ID3D12Device *) -> const DXPipeline *;
+  /// buffer from the light's point of view, so rasterising colour would be wasted work. `skinned`
+  /// is the variant that poses a figure by its bones first, for the same passes.
+  auto GetShadowPipeline(ID3D12Device *, const bool = false) -> const DXPipeline *;
   /// @brief Returns the compute pipeline that traces rays against the scene, building it once.
   ///
   /// The one pipeline here built above Shader Model 6.0: `RayQuery` entered the language at 6.5, so
@@ -662,7 +741,7 @@ public:
   ///
   /// The opaque one is the same draw with the blend off and the depth write on, and needs no sort
   /// for the opposite reason: the depth buffer decides.
-  auto GetParticleDrawPipeline(ID3D12Device *, const DXGI_FORMAT, const bool opaque = false) -> const DXPipeline *;
+  auto GetParticleDrawPipeline(ID3D12Device *, const DXGI_FORMAT, const ParticleBlend = ParticleBlend::Additive) -> const DXPipeline *;
   auto Clear() -> void;
 private:
   std::unordered_map<uint64_t, DXPipeline> pipelines;
@@ -670,6 +749,8 @@ private:
   ComPtr<ID3D12RootSignature> sceneRootSignature;
   ComPtr<ID3D12RootSignature> postRootSignature;
   ComPtr<ID3D12RootSignature> outlineRootSignature;
+  ComPtr<ID3D12RootSignature> stylizeRootSignature;
+  ComPtr<ID3D12RootSignature> reflectionRootSignature;
   ComPtr<ID3D12RootSignature> overlayRootSignature;
   ComPtr<ID3D12RootSignature> shadowRootSignature;
   ComPtr<ID3D12RootSignature> skyboxRootSignature;
@@ -701,6 +782,8 @@ private:
   auto GetPostRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the outline pass: source colour, entity ids, and the selected set.
   auto GetOutlineRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  auto GetStylizeRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  auto GetReflectionRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the overlay pass: the projection and colour, and the glyph atlas.
   auto GetOverlayRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the shadow pass: a single light-space matrix.

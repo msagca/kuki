@@ -373,6 +373,12 @@ auto ComponentIcon(const ComponentType type) -> const char * {
     return ICON_LC_CLOUDY;
   case ComponentType::VolumetricFog:
     return ICON_LC_CLOUD_FOG;
+  case ComponentType::Stylization:
+    return ICON_LC_BRUSH;
+  case ComponentType::PlanarReflection:
+    return ICON_LC_DROPLETS;
+  case ComponentType::ScreenEffects:
+    return ICON_LC_ZAP;
   }
   return ICON_LC_CIRCLE_DASHED;
 }
@@ -404,6 +410,8 @@ inline constexpr CreatableKind CREATABLE[]{
   {"Atmosphere Sky", ICON_LC_SUNRISE, ComponentType::AtmosphereSky, &AtmosphereSkyObject::Mask},
   {"Volumetric Clouds", ICON_LC_CLOUDY, ComponentType::VolumetricClouds, &VolumetricCloudsObject::Mask},
   {"Volumetric Fog", ICON_LC_CLOUD_FOG, ComponentType::VolumetricFog, &VolumetricFogObject::Mask},
+  {"Stylization", ICON_LC_BRUSH, ComponentType::Stylization, &StylizationObject::Mask},
+  {"Planar Reflection", ICON_LC_DROPLETS, ComponentType::PlanarReflection, &PlanarReflectionObject::Mask},
 };
 /// @brief The picture that stands for an entity in the Hierarchy: that of the most telling thing it has.
 ///
@@ -412,7 +420,7 @@ inline constexpr CreatableKind CREATABLE[]{
 /// the first one found is the answer. Something with none of them is a plain node -- an empty
 /// parent, or a bone.
 auto EntityIcon(const std::vector<ComponentType> &types) -> const char * {
-  static constexpr ComponentType TELLING[]{ComponentType::Camera, ComponentType::Light, ComponentType::ParticleEmitter, ComponentType::Animator, ComponentType::AtmosphereSky, ComponentType::VolumetricClouds, ComponentType::VolumetricFog, ComponentType::SkyboxHandle, ComponentType::IndirectLighting, ComponentType::AntiAliasing, ComponentType::ModelMeshHandle, ComponentType::MeshHandle};
+  static constexpr ComponentType TELLING[]{ComponentType::Camera, ComponentType::Light, ComponentType::ParticleEmitter, ComponentType::Animator, ComponentType::AtmosphereSky, ComponentType::VolumetricClouds, ComponentType::VolumetricFog, ComponentType::Stylization, ComponentType::PlanarReflection, ComponentType::SkyboxHandle, ComponentType::IndirectLighting, ComponentType::AntiAliasing, ComponentType::ModelMeshHandle, ComponentType::MeshHandle};
   for (const auto telling : TELLING)
     if (std::ranges::find(types, telling) != types.end())
       return ComponentIcon(telling);
@@ -1526,6 +1534,10 @@ auto Editor::IsSupported(const ComponentType type) const -> bool {
     return context.capabilities.volumetrics;
   case ComponentType::ParticleEmitter:
     return context.capabilities.particles;
+  case ComponentType::Stylization:
+  case ComponentType::ScreenEffects:
+  case ComponentType::PlanarReflection:
+    return context.capabilities.stylization;
   default:
     return true;
   }

@@ -43,5 +43,10 @@ inline constexpr ShaderDefinition SHADER_DEFINITIONS[]{
   {"KUKI_PARTICLE_GROUP_SIZE", PARTICLE_GROUP_SIZE},
   // An enumerator and not a count, but the shader compares a `uint` against it all the same.
   {"KUKI_PARTICLE_SHAPE_MESH", static_cast<uint32_t>(ParticleShape::Mesh)},
+  {"KUKI_PARTICLE_SHAPE_BOX", static_cast<uint32_t>(ParticleShape::Box)},
+  {"KUKI_PARTICLE_FACING_VELOCITY", static_cast<uint32_t>(ParticleFacing::Velocity)},
+  {"KUKI_PARTICLE_FACING_FLAT", static_cast<uint32_t>(ParticleFacing::Flat)},
+  {"KUKI_PARTICLE_SPRITE_RING", static_cast<uint32_t>(ParticleSprite::Ring)},
+  {"KUKI_PARTICLE_SPRITE_PETAL", static_cast<uint32_t>(ParticleSprite::Petal)},
 };
 } // namespace kuki

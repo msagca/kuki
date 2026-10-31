@@ -107,6 +107,14 @@ struct DXSkinnedDraw {
   DXInstanceData instance{};
   std::vector<glm::mat4> bones;
 };
+/// @brief A skinned mesh already uploaded for a depth-only pass: what to draw and where its instance
+/// and bones went. Uploaded once and drawn as many times as a pass has views -- a spot light's
+/// shadow map draws the same figures into every layer.
+struct DXSkinnedDepthDraw {
+  const DXMesh *mesh{};
+  D3D12_GPU_VIRTUAL_ADDRESS instance{};
+  D3D12_GPU_VIRTUAL_ADDRESS bones{};
+};
 /// @brief One emitter's particles on the GPU, and the little the processor keeps about them.
 ///
 /// The buffer is the particles. Everything else here is what has to be remembered between frames to
@@ -156,8 +164,9 @@ struct DXParticlePool {
 struct DXParticleDraw {
   D3D12_GPU_VIRTUAL_ADDRESS address{};
   uint32_t capacity{};
-  /// @brief Whether this is drawn solid, and so ahead of every additive pool. See `ParticleBlend`.
-  bool opaque{};
+  /// @brief How it is put onto the picture, which decides when it is drawn: the solid pools first so
+  /// their depth is there for the rest, then the veils, then what is added. See `ParticleBlend`.
+  ParticleBlend blend{ParticleBlend::Additive};
   DXParticleDrawConstants constants{};
 };
 /// @brief Direct3D 12 implementation of the engine renderer.
@@ -266,6 +275,9 @@ public:
   auto MarchClouds(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyVolumetricFog(std::span<std::string>, std::span<std::string>) -> void override;
   auto DrawParticles(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyInk(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyStylize(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyPlanarReflection(std::span<std::string>, std::span<std::string>) -> void override;
   auto UpdateTarget(const std::string &, const TargetDescription &) -> void override;
 private:
   DXPipelineCache pipelines;
@@ -407,6 +419,9 @@ private:
   const Scene *particleScene{};
   /// @brief Counts the particle pass's runs, to date the pools and to turn the spawn seed over.
   uint64_t particleFrame{};
+  /// @brief Seconds the stylize pass has run for, which is what turns the speed lines over. Its own
+  /// clock rather than the application's, so the lines keep streaming while a game holds a frame.
+  float stylizeTime{};
   /// @brief What is bound where the surface samples go for an emitter that has none.
   ///
   /// The step's shader names the samples whether or not a given emitter reads them, and a root
@@ -740,6 +755,22 @@ private:
   /// a skinned mesh is never placed in the acceleration structure. The bounds are the bind pose's,
   /// so a pose reaching well outside them can be culled early; `GLRenderer` accepts the same.
   auto CollectSkinnedDraws(Scene &, const Camera * = nullptr) -> std::vector<DXSkinnedDraw>;
+  /// @brief Draws one of `stylize.hlsl`'s passes from the first resolved colour input to the output.
+  ///
+  /// The depth input is the full-sized depth buffer among the inputs, where the pass has one, and the
+  /// dummy texture where it does not -- the grade reads none. False when nothing was drawn, so the
+  /// caller can copy the picture through instead.
+  auto DrawStylizePass(std::span<std::string>, std::span<std::string>, const char *entryPoint, DXStylizeConstants &) -> bool;
+  /// @brief Finds a pass's colour and depth inputs and binds them, with its output, for a fullscreen
+  /// draw. The colour is the first resolved input; the depth the full-sized one.
+  auto BindFullscreenInputs(std::span<std::string>, std::span<std::string>, DXRenderTarget *&, DXRenderTarget *&, DXRenderTarget *&) -> bool;
+  /// @brief Uploads every skinned mesh's instance and bones for the depth-only passes.
+  ///
+  /// Not culled by any camera: a figure out of shot still casts a shadow into it.
+  auto UploadSkinnedDepth(Scene &) -> std::vector<DXSkinnedDepthDraw>;
+  /// @brief Draws the uploaded figures into whatever depth target is bound, under the constants
+  /// already set, then puts `restore` back for the rigid draws that follow.
+  auto DrawSkinnedDepth(std::span<const DXSkinnedDepthDraw>, const DXPipeline *restore) -> void;
   /// @brief Places the frame's batches into the acceleration structures a ray is traced against.
   ///
   /// Flattens the batches back into one placement each, because instancing is a property of the

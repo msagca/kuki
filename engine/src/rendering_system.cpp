@@ -130,8 +130,24 @@ auto RenderingSystem::Start() -> void {
                   // carries, and a view of that cannot be bound beside a single-sampled colour
                   // target. The prepass draws what casts a shadow, so a particle is hidden by
                   // exactly that -- a skinned mesh does not occlude one yet.
-                  .BeginPass(RenderPass::Particles)
+                  // The lines of a cel, found in the prepass's depth -- which since the figures were
+                  // added to it is the depth of everything solid -- and drawn over the resolved scene.
+                  // Here rather than at the end, so that rain in front of a figure is not crossed by
+                  // the figure's outline and the fog hazes a far line as it hazes the wall behind it.
+                  .BeginPass(RenderPass::Ink)
                   .AddInput("Scene")
+                  .AddInput("SceneDepth")
+                  .AddOutput("SceneInked", {.width = screenWidth, .height = screenHeight, .samples = 1})
+                  .EndPass()
+                  // A wet street or a polished floor, mirrored by walking rays through the same
+                  // depth the ink was found in.
+                  .BeginPass(RenderPass::PlanarReflection)
+                  .AddInput("SceneInked")
+                  .AddInput("SceneDepth")
+                  .AddOutput("SceneReflected", {.width = screenWidth, .height = screenHeight, .samples = 1})
+                  .EndPass()
+                  .BeginPass(RenderPass::Particles)
+                  .AddInput("SceneReflected")
                   .AddInput("SceneDepth")
                   .AddOutput("SceneParticles", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
@@ -185,8 +201,13 @@ auto RenderingSystem::Start() -> void {
                   // more full-screen blit in a chain that already has several, and the alternative
                   // -- a pass writing over its own input -- is the one thing the graph cannot
                   // order safely.
-                  .BeginPass(RenderPass::Overlay)
+                  // The grade and the game's screen effects, on the picture as it will be seen.
+                  .BeginPass(RenderPass::Stylize)
                   .AddInput("SceneSRGB")
+                  .AddOutput("SceneStylized", {.width = screenWidth, .height = screenHeight, .samples = 1})
+                  .EndPass()
+                  .BeginPass(RenderPass::Overlay)
+                  .AddInput("SceneStylized")
                   .AddOutput("SceneOverlay", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
                   .EndGraph();

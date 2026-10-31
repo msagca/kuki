@@ -35,6 +35,12 @@ auto Renderer::ExecutePass(const RenderPass pass, std::span<std::string> inputs,
     return ApplyVolumetricFog(inputs, outputs);
   case RenderPass::Particles:
     return DrawParticles(inputs, outputs);
+  case RenderPass::Ink:
+    return ApplyInk(inputs, outputs);
+  case RenderPass::Stylize:
+    return ApplyStylize(inputs, outputs);
+  case RenderPass::PlanarReflection:
+    return ApplyPlanarReflection(inputs, outputs);
   default:
     return RenderScene(inputs, outputs);
   }

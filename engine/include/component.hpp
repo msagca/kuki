@@ -12,10 +12,13 @@
 #include <material_handle.hpp>
 #include <mesh_handle.hpp>
 #include <particle_emitter.hpp>
+#include <planar_reflection.hpp>
 #include <render_binding.hpp>
+#include <screen_effects.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <string>
+#include <stylization.hpp>
 #include <texture_handle.hpp>
 #include <transform.hpp>
 #include <type_list.hpp>

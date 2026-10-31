@@ -8,6 +8,14 @@ enum class RenderPass : uint8_t {
   BlurEffect,
   BrightPassFilter,
   DepthPrepass,
+  /// @brief The lines a cel is inked with, found in the depth buffer and drawn over the resolved scene.
+  ///
+  /// Ahead of the particles and the air rather than at the end of the chain, both on purpose. The
+  /// lines come from the depth of solid things, and a particle has none to give: drawn after the
+  /// particles, every raindrop in front of a figure would be crossed by the figure's outline. And the
+  /// fog that follows hazes a distant line as it hazes the wall the line is drawn on, which is what
+  /// keeps a far backdrop from being drawn with the same weight of ink as the figures in front of it.
+  Ink,
   Outline,
   /// @brief Text drawn over the finished picture, in the window's own pixels.
   ///
@@ -23,10 +31,25 @@ enum class RenderPass : uint8_t {
   /// what makes a spark look like one: the haze dims it with distance and the bloom chain gives it
   /// the glow that says it is bright rather than merely orange.
   Particles,
+  /// @brief A level surface mirrored in screen space, where the scene has one. See
+  /// `PlanarReflection`.
+  ///
+  /// After the ink, so a figure's reflection is inked as the figure is, and before the particles,
+  /// whose depth is not in the buffer the rays walk: a raindrop is not reflected, and drawn after
+  /// this, it falls over the reflection rather than being smeared into it.
+  PlanarReflection,
   ProbeTrace,
   Scene,
   ShadowMap,
   SpotShadowMap,
+  /// @brief The grade and whatever the game is doing to the whole picture: a flash, an impact frame,
+  /// speed lines, a smear from the centre.
+  ///
+  /// After tone mapping, in display space, because every one of these is a statement about the
+  /// picture rather than about the light in the scene. A grade that pushes the darks towards blue
+  /// means the darks as they are seen, and a white flash is white on the screen whatever the
+  /// exposure was.
+  Stylize,
   ToneMapping,
   /// @brief A cloud layer marched through the atmosphere, where a scene has one of each.
   ///

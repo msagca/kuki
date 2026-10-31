@@ -31,6 +31,9 @@
 #include <skybox_handle.hpp>
 #include <transform.hpp>
 #include <spdlog/spdlog.h>
+#include <planar_reflection.hpp>
+#include <screen_effects.hpp>
+#include <stylization.hpp>
 #include <string>
 #include <utility>
 namespace kuki {
@@ -1718,8 +1721,9 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
     return;
   const auto updatePipeline = pipelines.GetParticleUpdatePipeline(device);
   const auto drawPipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format));
-  const auto opaquePipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format), true);
-  if (!updatePipeline || !*updatePipeline || !drawPipeline || !*drawPipeline || !opaquePipeline || !*opaquePipeline)
+  const auto opaquePipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format), ParticleBlend::Opaque);
+  const auto alphaPipeline = pipelines.GetParticleDrawPipeline(device, TargetFormatToRTVDXGI(destination.desc.format), ParticleBlend::Alpha);
+  if (!updatePipeline || !*updatePipeline || !drawPipeline || !*drawPipeline || !opaquePipeline || !*opaquePipeline || !alphaPipeline || !*alphaPipeline)
     return;
   if (!particleNoSamples) {
     const auto properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -1869,7 +1873,10 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
     // two emitters sharing one would throw identical sprays.
     constants.seed = static_cast<uint32_t>(particleFrame) * 0x9e3779b9u ^ static_cast<uint32_t>(static_cast<long long>(id)) * 0x85ebca6bu;
     constants.reset = pool.fresh ? 1u : 0u;
-    constants.shape = static_cast<uint32_t>(onMesh ? ParticleShape::Mesh : ParticleShape::Sphere);
+    // A mesh that gave no samples falls back to the sphere; a box needs nothing but its extent.
+    constants.shape = static_cast<uint32_t>(onMesh ? ParticleShape::Mesh : emitter->shape == ParticleShape::Box ? ParticleShape::Box : ParticleShape::Sphere);
+    memcpy(constants.extent, glm::value_ptr(glm::max(emitter->extent, glm::vec3(.0f))), sizeof(constants.extent));
+    constants.turbulence = std::max(.0f, emitter->turbulence);
     constants.hold = hold;
     constants.holdVariance = std::clamp(emitter->holdVariance, .0f, 1.f);
     for (auto row = 0; row < 3; ++row)
@@ -1906,8 +1913,12 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
     auto &draw = particleDraws.emplace_back();
     draw.address = pool.buffer->GetGPUVirtualAddress();
     draw.capacity = capacity;
-    draw.opaque = emitter->blend == ParticleBlend::Opaque;
-    draw.constants.fade = draw.opaque ? .0f : 1.f;
+    draw.blend = emitter->blend;
+    draw.constants.fade = draw.blend == ParticleBlend::Opaque ? .0f : 1.f;
+    draw.constants.facing = static_cast<uint32_t>(emitter->facing);
+    draw.constants.sprite = static_cast<uint32_t>(emitter->sprite);
+    draw.constants.stretch = std::max(.0f, emitter->stretch);
+    draw.constants.opacity = std::clamp(emitter->opacity, .0f, 1.f);
     memcpy(draw.constants.viewProjection, glm::value_ptr(viewProjection), sizeof(draw.constants.viewProjection));
     memcpy(draw.constants.cameraRight, glm::value_ptr(cameraRight), sizeof(draw.constants.cameraRight));
     draw.constants.startSize = std::max(.0f, emitter->startSize);
@@ -1946,13 +1957,16 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
   // The solid ones first, so that their depth is there for the additive ones to be tested against:
   // a spark behind a cloud of dust is hidden by it, and one in front is not. Two passes over a list
   // this short rather than a sort of it.
-  for (const auto opaque : {true, false}) {
+  //
+  // The veils between the two: tested against the solid ones and laid under the additive ones, so a
+  // spark in a cloud of steam shines through it rather than being dimmed by mist drawn after it.
+  for (const auto blend : {ParticleBlend::Opaque, ParticleBlend::Alpha, ParticleBlend::Additive}) {
     auto bound = false;
     for (const auto &draw : particleDraws) {
-      if (draw.opaque != opaque)
+      if (draw.blend != blend)
         continue;
       if (!bound) {
-        commandList->SetPipelineState((opaque ? opaquePipeline : drawPipeline)->pipelineState.Get());
+        commandList->SetPipelineState((blend == ParticleBlend::Opaque ? opaquePipeline : blend == ParticleBlend::Alpha ? alphaPipeline : drawPipeline)->pipelineState.Get());
         bound = true;
       }
       commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXParticleDrawConstants) / sizeof(uint32_t), &draw.constants, 0);
@@ -1965,6 +1979,179 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
   // Put back, because this is the one pass that draws strips and every other one assumes a list --
   // most of them say so themselves, and this is for the one that some day does not.
   commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+auto DXRenderer::BindFullscreenInputs(std::span<std::string> inputs, std::span<std::string> outputs, DXRenderTarget *&source, DXRenderTarget *&depth, DXRenderTarget *&destination) -> bool {
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  if (!commandList || outputs.empty())
+    return false;
+  auto destinationIt = nameToTarget.find(outputs[0]);
+  if (destinationIt == nameToTarget.end() || !destinationIt->second.resource || destinationIt->second.rtvIndex == DXDescriptorHeap::InvalidIndex || destinationIt->second.desc.samples > 1)
+    return false;
+  destination = &destinationIt->second;
+  source = nullptr;
+  depth = nullptr;
+  for (const auto &name : inputs) {
+    auto it = nameToTarget.find(name);
+    if (it == nameToTarget.end() || !it->second.resource || it->second.srvIndex == DXDescriptorHeap::InvalidIndex || it->second.desc.samples > 1)
+      continue;
+    if (IsDepthFormat(it->second.desc.format)) {
+      if (!depth && it->second.desc.type != TargetType::Texture2DArray && it->second.desc.width == destination->desc.width && it->second.desc.height == destination->desc.height)
+        depth = &it->second;
+    } else if (!source)
+      source = &it->second;
+  }
+  if (!source || source->desc.width != destination->desc.width || source->desc.height != destination->desc.height)
+    return false;
+  Transition(*source, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  if (depth)
+    Transition(*depth, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  Transition(*destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  const auto rtv = context->GetRTVHeap().GetCPUHandle(destination->rtvIndex);
+  commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+  const auto viewport = CD3DX12_VIEWPORT(.0f, .0f, static_cast<float>(destination->desc.width), static_cast<float>(destination->desc.height));
+  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination->desc.width), static_cast<LONG>(destination->desc.height));
+  commandList->RSSetViewports(1, &viewport);
+  commandList->RSSetScissorRects(1, &scissor);
+  return true;
+}
+auto DXRenderer::DrawStylizePass(std::span<std::string> inputs, std::span<std::string> outputs, const char *entryPoint, DXStylizeConstants &constants) -> bool {
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  if (!commandList || outputs.empty())
+    return false;
+  auto destinationIt = nameToTarget.find(outputs[0]);
+  if (destinationIt == nameToTarget.end())
+    return false;
+  auto *fallback = EnsureDummyTexture();
+  const auto pipeline = pipelines.GetStylizePipeline(context->GetDevice(), TargetFormatToRTVDXGI(destinationIt->second.desc.format), entryPoint);
+  if (!fallback || !pipeline || !*pipeline)
+    return false;
+  DXRenderTarget *source{};
+  DXRenderTarget *depth{};
+  DXRenderTarget *destination{};
+  if (!BindFullscreenInputs(inputs, outputs, source, depth, destination))
+    return false;
+  constants.texelSize[0] = destination->desc.width > 0 ? 1.f / static_cast<float>(destination->desc.width) : .0f;
+  constants.texelSize[1] = destination->desc.height > 0 ? 1.f / static_cast<float>(destination->desc.height) : .0f;
+  constants.aspect = destination->desc.height > 0 ? static_cast<float>(destination->desc.width) / static_cast<float>(destination->desc.height) : 1.f;
+  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXStylizeConstants) / sizeof(uint32_t), &constants, 0);
+  commandList->SetGraphicsRootDescriptorTable(1, source->srvGPU);
+  commandList->SetGraphicsRootDescriptorTable(2, depth ? depth->srvGPU : fallback->srvGPU);
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  commandList->IASetVertexBuffers(0, 0, nullptr);
+  commandList->DrawInstanced(3, 1, 0, 0);
+  return true;
+}
+auto DXRenderer::ApplyPlanarReflection(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  auto scene = app.GetScene();
+  const auto *surface = scene ? scene->GetAnyComponent<PlanarReflection>() : nullptr;
+  const auto *camera = scene ? scene->GetCamera() : nullptr;
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  if (!surface || !camera || !commandList || surface->strength <= .0f || lightingDebugView != LightingDebugView::None) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  // The colour, the depth and the output, found as the stylize passes find theirs. The depth is
+  // required here: without it there is no telling which pixels are on the plane.
+  DXRenderTarget *source{};
+  DXRenderTarget *depth{};
+  DXRenderTarget *destination{};
+  const auto pipeline = pipelines.GetReflectionPipeline(context->GetDevice(), outputs.empty() ? DXGI_FORMAT_UNKNOWN : [&] {
+    auto it = nameToTarget.find(outputs[0]);
+    return it == nameToTarget.end() ? DXGI_FORMAT_UNKNOWN : TargetFormatToRTVDXGI(it->second.desc.format);
+  }());
+  if (!pipeline || !*pipeline || !BindFullscreenInputs(inputs, outputs, source, depth, destination) || !depth) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  DXReflectionConstants constants{};
+  const auto viewProjection = camera->transform.projection * camera->transform.view;
+  const auto inverse = glm::inverse(viewProjection);
+  memcpy(constants.viewProjection, glm::value_ptr(viewProjection), sizeof(constants.viewProjection));
+  memcpy(constants.inverseViewProjection, glm::value_ptr(inverse), sizeof(constants.inverseViewProjection));
+  memcpy(constants.cameraPosition, glm::value_ptr(camera->position), sizeof(constants.cameraPosition));
+  constants.height = surface->height;
+  constants.tolerance = std::max(surface->tolerance, 1.0e-4f);
+  constants.strength = std::clamp(surface->strength, .0f, 1.f);
+  constants.dryReflectance = std::clamp(surface->dryReflectance, .0f, 1.f);
+  constants.puddleCoverage = std::clamp(surface->puddleCoverage, .0f, 1.f);
+  constants.puddleScale = std::max(surface->puddleScale, 1.0e-3f);
+  constants.blur = std::clamp(surface->blur, .0f, 1.f);
+  constants.ripples = std::max(surface->ripples, .0f);
+  constants.rippleDensity = std::max(surface->rippleDensity, 1.0e-3f);
+  constants.maxDistance = std::max(surface->maxDistance, .1f);
+  // The stylize pass's clock, which this runs ahead of in the same frame and so reads a frame late:
+  // a ripple a sixtieth of a second behind is not one anybody can see.
+  constants.time = stylizeTime;
+  constants.texelSize[0] = 1.f / static_cast<float>(std::max(destination->desc.width, 1));
+  constants.texelSize[1] = 1.f / static_cast<float>(std::max(destination->desc.height, 1));
+  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXReflectionConstants) / sizeof(uint32_t), &constants, 0);
+  commandList->SetGraphicsRootDescriptorTable(1, source->srvGPU);
+  commandList->SetGraphicsRootDescriptorTable(2, depth->srvGPU);
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  commandList->IASetVertexBuffers(0, 0, nullptr);
+  commandList->DrawInstanced(3, 1, 0, 0);
+}
+auto DXRenderer::ApplyInk(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  auto scene = app.GetScene();
+  const auto *style = scene ? scene->GetAnyComponent<Stylization>() : nullptr;
+  const auto *camera = scene ? scene->GetCamera() : nullptr;
+  // No lines over a debug view, which is a picture of a number: a line across it would be a second
+  // number nobody asked for. Nor with no camera to say what the depth means, or nothing to draw.
+  if (!style || !camera || style->inkThickness <= .0f || lightingDebugView != LightingDebugView::None || camera->type != CameraType::Perspective) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  DXStylizeConstants constants{};
+  constants.projectionZ = camera->transform.projection[2][2];
+  constants.projectionW = camera->transform.projection[3][2];
+  constants.inkThickness = style->inkThickness;
+  constants.inkDepthThreshold = std::max(style->inkDepthThreshold, 1.0e-3f);
+  constants.inkCreaseThreshold = std::max(style->inkCreaseThreshold, .0f);
+  constants.inkFadeDistance = std::max(style->inkFadeDistance, 1.0e-3f);
+  memcpy(constants.inkColor, glm::value_ptr(style->inkColor), sizeof(constants.inkColor));
+  constants.inkTint = std::clamp(style->inkTint, .0f, 1.f);
+  if (!DrawStylizePass(inputs, outputs, "PSInk", constants))
+    BypassCopy(inputs, outputs);
+}
+auto DXRenderer::ApplyStylize(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  auto scene = app.GetScene();
+  const auto *style = scene ? scene->GetAnyComponent<Stylization>() : nullptr;
+  const auto *effects = scene ? scene->GetAnyComponent<ScreenEffects>() : nullptr;
+  stylizeTime += std::clamp(app.DeltaTime(), .0f, .25f);
+  if ((!style && !effects) || lightingDebugView != LightingDebugView::None) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  // A scene with effects and no look is graded by nothing: the defaults of the constants are the
+  // identity, not the defaults of the component.
+  DXStylizeConstants constants{};
+  constants.time = stylizeTime;
+  if (style) {
+    constants.saturation = std::max(style->saturation, .0f);
+    constants.contrast = std::max(style->contrast, .0f);
+    constants.vignette = std::clamp(style->vignette, .0f, 1.f);
+    memcpy(constants.shadowColor, glm::value_ptr(style->shadowColor), sizeof(constants.shadowColor));
+    memcpy(constants.highlightColor, glm::value_ptr(style->highlightColor), sizeof(constants.highlightColor));
+  }
+  if (effects) {
+    constants.flash = std::clamp(effects->flash, .0f, 1.f);
+    memcpy(constants.flashColor, glm::value_ptr(effects->flashColor), sizeof(constants.flashColor));
+    constants.impact = std::clamp(effects->impact, .0f, 1.f);
+    constants.speedLines = std::clamp(effects->speedLines, .0f, 1.f);
+    constants.radialBlur = std::clamp(effects->radialBlur, .0f, 1.f);
+    constants.aberration = std::max(effects->aberration, .0f);
+    constants.focus[0] = effects->focus.x;
+    constants.focus[1] = effects->focus.y;
+  }
+  if (!DrawStylizePass(inputs, outputs, "PSStylize", constants))
+    BypassCopy(inputs, outputs);
 }
 auto DXRenderer::BindAtmosphereResources(const std::array<uint32_t, ATMOSPHERE_SRV_SLOTS> &sources, const uint32_t table, const uint32_t cubemap) -> bool {
   auto context = GetContext();
@@ -2386,6 +2573,50 @@ auto DXRenderer::CollectSkinnedDraws(Scene &scene, const Camera *camera) -> std:
   });
   return draws;
 }
+auto DXRenderer::UploadSkinnedDepth(Scene &scene) -> std::vector<DXSkinnedDepthDraw> {
+  const auto skinned = CollectSkinnedDraws(scene);
+  std::vector<DXSkinnedDepthDraw> draws;
+  if (skinned.empty())
+    return draws;
+  auto required = instanceCursor;
+  for (const auto &draw : skinned)
+    required += sizeof(DXInstanceData) + draw.bones.size() * sizeof(glm::mat4) + 2 * D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
+  EnsureInstanceCapacity(required);
+  draws.reserve(skinned.size());
+  for (const auto &draw : skinned) {
+    // A see-through figure casts no shadow and hides nothing behind it, as a blended rigid mesh
+    // does not either: `CollectBatches` leaves those out of the same passes.
+    if (draw.material && draw.material->fallback.alphaMode == AlphaMode::Blend)
+      continue;
+    const auto instance = AllocateInstances(std::span(&draw.instance, 1));
+    const auto bones = draw.bones.empty() ? instance : AllocateBones(draw.bones);
+    if (instance && bones)
+      draws.push_back({draw.mesh, instance, bones});
+  }
+  return draws;
+}
+auto DXRenderer::DrawSkinnedDepth(std::span<const DXSkinnedDepthDraw> draws, const DXPipeline *restore) -> void {
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  if (!commandList || draws.empty())
+    return;
+  const auto pipeline = pipelines.GetShadowPipeline(context->GetDevice(), true);
+  if (!pipeline || !*pipeline)
+    return;
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  for (const auto &draw : draws) {
+    commandList->SetGraphicsRootShaderResourceView(1, draw.instance);
+    commandList->SetGraphicsRootShaderResourceView(2, draw.bones);
+    commandList->IASetVertexBuffers(0, 1, &draw.mesh->vertexBufferView);
+    if (draw.mesh->indexCount > 0) {
+      commandList->IASetIndexBuffer(&draw.mesh->indexBufferView);
+      commandList->DrawIndexedInstanced(draw.mesh->indexCount, 1, 0, 0, 0);
+    } else
+      commandList->DrawInstanced(draw.mesh->vertexCount, 1, 0, 0);
+  }
+  if (restore && *restore)
+    commandList->SetPipelineState(restore->pipelineState.Get());
+}
 auto DXBatchKeyHash::operator()(const DXBatchKey &key) const noexcept -> size_t {
   auto seed = std::hash<const DXMesh *>{}(key.mesh);
   hash_combine(seed, std::hash<uint64_t>{}(key.textureTable));
@@ -2698,6 +2929,20 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
   constants.probeTuning[0] = indirect.probeSurfaceBias;
   constants.probeTuning[1] = indirect.probeWeightFloor;
   constants.probeTuning[2] = indirect.probeVisibilitySharpness;
+  // Before the early return too: a scene with no probe field can still be drawn in cel bands. A
+  // scene with no `Stylization` gets its defaults, so a material that asks for bands still has them.
+  {
+    static constexpr Stylization fallback{};
+    const auto *style = scene.GetAnyComponent<Stylization>();
+    const auto &look = style ? *style : fallback;
+    constants.toon[0] = static_cast<float>(std::clamp(look.bands, 1u, 8u));
+    constants.toon[1] = std::max(look.bandSoftness, 1.0e-4f);
+    constants.toon[2] = look.terminator;
+    constants.toon[3] = std::clamp(look.highlightSize, .0f, 1.f);
+    memcpy(constants.toonShade, glm::value_ptr(look.shadowTint), sizeof(float) * 3);
+    constants.toonShade[3] = std::max(look.rimIntensity, .0f);
+    constants.toonRim[0] = std::clamp(look.rimWidth, .0f, 1.f);
+  }
   if (!probeVolume.IsReady())
     return;
   probeVolume.GetBounds(constants.probeVolume, constants.probeVolume + 3);
@@ -2884,7 +3129,7 @@ auto DXRenderer::GetCapabilities() const -> RendererCapabilities {
   // The debug views are not conditional on the same thing. They are branches in `scene.hlsl`, which
   // compiles and runs whatever the hardware can trace, and a field that never filled is worth
   // looking at through them more than a full one is.
-  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true, .particles = true};
+  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true, .particles = true, .stylization = true};
 }
 auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> void {
   auto context = GetContext();
@@ -3030,6 +3275,7 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
     constants.unlit = material && material->type == MaterialType::Unlit ? 1u : 0u;
     constants.alphaCutoff = fallback.alphaCutoff;
     constants.alphaMode = static_cast<uint32_t>(fallback.alphaMode);
+    constants.style[0] = std::clamp(fallback.toon, .0f, 1.f);
     commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXSceneConstants) / sizeof(uint32_t), &constants, 0);
     D3D12_GPU_DESCRIPTOR_HANDLE materialTable{hasTable ? material->textureTableGPU : fallbackMaterialTable.ptr};
     commandList->SetGraphicsRootDescriptorTable(2, materialTable);
@@ -3279,7 +3525,7 @@ auto DXRenderer::CreateDepthPrepass(std::span<std::string>, std::span<std::strin
       commandList->DrawIndexedInstanced(batch.mesh->indexCount, instances, 0, 0, 0);
     } else
       commandList->DrawInstanced(batch.mesh->vertexCount, instances, 0, 0);
-  }
+  }  DrawSkinnedDepth(UploadSkinnedDepth(*scene), nullptr);
 }
 auto DXRenderer::ApplyAntiAliasing(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   BlitOrResolve(inputs, outputs);
@@ -3501,7 +3747,7 @@ auto DXRenderer::CreateShadowMap(std::span<std::string>, std::span<std::string> 
       commandList->DrawIndexedInstanced(batch.mesh->indexCount, instances, 0, 0, 0);
     } else
       commandList->DrawInstanced(batch.mesh->vertexCount, instances, 0, 0);
-  }
+  }  DrawSkinnedDepth(UploadSkinnedDepth(*scene), nullptr);
 }
 auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::string> outputs) -> void {
   ClearOutputs(outputs);
@@ -3543,6 +3789,7 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
   addresses.reserve(batches.size());
   for (const auto &batch : batches)
     addresses.push_back(AllocateInstances(batch.instances));
+  const auto figures = UploadSkinnedDepth(*scene);
   for (size_t layer = 0; layer < layers; ++layer) {
     glm::mat4 view{1.f};
     glm::mat4 projection{1.f};
@@ -3566,6 +3813,7 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
       } else
         commandList->DrawInstanced(batches[index].mesh->vertexCount, instances, 0, 0);
     }
+    DrawSkinnedDepth(figures, pipeline);
   }
   spotShadowCount = static_cast<uint32_t>(layers);
 }

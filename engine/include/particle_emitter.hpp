@@ -14,7 +14,14 @@ enum class ParticleShape : uint8_t {
   Sphere,
   /// @brief On the surface of `mesh`, placed by the entity's transform, thrown into a cone around
   /// the surface's own normal at the point each one starts from.
-  Mesh
+  Mesh,
+  /// @brief Anywhere inside a box of half-size `extent` about the emitter, turned and scaled by its
+  /// transform, and thrown into the cone around its local +Y.
+  ///
+  /// What weather is: rain over a whole stage, snow falling everywhere at once, splashes over a whole
+  /// floor -- a box with no height. A sphere big enough to cover a stage is mostly air above and
+  /// below it, and spawns there are spawns nobody sees.
+  Box
 };
 /// @brief How an emitter's particles are put onto the picture. The other thing a backend implements.
 enum class ParticleBlend : uint8_t {
@@ -22,7 +29,32 @@ enum class ParticleBlend : uint8_t {
   Additive,
   /// @brief Solid discs that write depth. Needs no sort either, for the opposite reason -- the depth
   /// buffer settles which of two is in front -- and is the one way to draw a dark particle.
-  Opaque
+  Opaque,
+  /// @brief Laid over what is behind as a thin veil, by the particle's own coverage. Needs a sort to
+  /// be exact and gets none: the particles this is for -- mist, steam, dust -- are faint enough
+  /// that which of two was laid first cannot be seen. Writes no depth.
+  Alpha
+};
+/// @brief Which way a particle's quad is turned.
+enum class ParticleFacing : uint8_t {
+  /// @brief Square on to the camera. Sparks, embers, snow.
+  Camera,
+  /// @brief Stretched along the way it is moving and turned about that line to face the camera as
+  /// nearly as it can, `stretch` seconds of its own travel long. A raindrop seen by a camera is a
+  /// streak, not a dot, and this is the streak.
+  Velocity,
+  /// @brief Lying flat, face up. A ring spreading on a puddle.
+  Flat
+};
+/// @brief What is drawn on a particle's quad.
+enum class ParticleSprite : uint8_t {
+  /// @brief A disc bright at the centre and nothing at its edge.
+  Soft,
+  /// @brief A thin ring, its width a share of its radius. With `Flat`, a ripple.
+  Ring,
+  /// @brief A small oval turning end over end at a rate of its own, which is what a petal or a leaf
+  /// does on its way down.
+  Petal
 };
 /// @brief A source of particles: sparks, embers, dust -- small bright things there are a lot of.
 ///
@@ -126,6 +158,9 @@ struct ParticleEmitter {
   /// @brief Radius of the sphere around the emitter that particles appear inside, in scene units.
   /// Not read by a particle born on a mesh.
   float radius{.05f};
+  /// @brief Half the size of the box particles appear in, along the emitter's own axes, when `shape`
+  /// asks for a box.
+  glm::vec3 extent{1.f, 1.f, 1.f};
   /// @brief Acceleration applied to every particle, in scene units a second squared.
   ///
   /// Gravity by default and by name, but it is any constant acceleration: point it upwards and a
@@ -136,6 +171,12 @@ struct ParticleEmitter {
   /// What keeps a burst from reading as a fountain. Without it every particle follows a clean
   /// parabola, and a spray of clean parabolas is water.
   float drag{.6f};
+  /// @brief How hard a gust pushes each particle about, in scene units a second squared.
+  ///
+  /// Every particle sways to its own rhythm, two slow waves across the floor's two axes with a phase
+  /// drawn from its slot, so snow drifts and petals wander rather than falling in lines. Nought is
+  /// still air.
+  float turbulence{};
   /// @brief Width of a particle's quad when it is spawned, in scene units.
   float startSize{.07f};
   /// @brief Width when it dies. The size in between is a straight line from one to the other.
@@ -151,6 +192,16 @@ struct ParticleEmitter {
   /// keeps a lit side and a dark side rather than going flat in the frame it is swapped. An opaque
   /// particle from a sphere has no normal and is drawn in its colour as given.
   ParticleBlend blend{ParticleBlend::Additive};
+  /// @brief Which way each quad is turned. See `ParticleFacing`.
+  ParticleFacing facing{ParticleFacing::Camera};
+  /// @brief What each quad carries. See `ParticleSprite`.
+  ParticleSprite sprite{ParticleSprite::Soft};
+  /// @brief How many seconds of a particle's own travel its streak is long, when it faces along
+  /// its velocity. A raindrop is drawn at about a sixtieth: what a camera's shutter would smear it
+  /// over.
+  float stretch{.02f};
+  /// @brief How much of the alpha kind a particle covers at its thickest, from nought to one.
+  float opacity{1.f};
   /// @brief What the colours above are multiplied by before they reach the picture.
   ///
   /// Apart from them so that a colour can be picked as a colour. The scene is rendered in linear

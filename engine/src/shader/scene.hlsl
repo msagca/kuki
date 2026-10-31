@@ -130,6 +130,8 @@ cbuffer DrawConstants : register(b0) {
   uint u_unlit;
   float u_alphaCutoff;
   uint u_alphaMode;
+  // How far this surface is cel shaded, in `x`. See `MaterialFallback::toon`.
+  float4 u_style;
 };
 cbuffer FrameConstants : register(b1) {
   float4x4 u_viewProjection;
@@ -150,6 +152,11 @@ cbuffer FrameConstants : register(b1) {
   uint4 u_debug;
   float4 u_indirectScale;
   float4 u_probeTuning;
+  // The bands' count, softness, terminator and highlight size; the shaded side's tint and the rim's
+  // strength; the rim's width. From the scene's `Stylization`.
+  float4 u_toon;
+  float4 u_toonShade;
+  float4 u_toonRim;
 };
 Texture2D g_albedo : register(t0);
 Texture2D g_normal : register(t1);
@@ -804,6 +811,39 @@ float3 DirectContribution(float3 L, float3 radiance, float3 specularRadiance, fl
   float3 specular = (NDF * G * F / denominator) * specularRadiance;
   return (kD * diffuse + specular) * NdotL;
 }
+// A cosine stepped into the scene's bands: nought on the shaded side of the terminator, one at the
+// top, and as many evenly spaced tones between as were asked for. Each step is a smoothstep a few
+// hundredths wide rather than a hard edge, which is the difference between a band that holds still on
+// a turning arm and one that crawls along it a pixel at a time.
+float CelBands(float cosine) {
+  float bands = u_toon.x;
+  float soft = u_toon.y;
+  float terminator = u_toon.z;
+  float total = 0.0;
+  int edges = max(int(bands + 0.5) - 1, 1);
+  for (int k = 0; k < edges; ++k) {
+    float edge = terminator + (1.0 - terminator) * float(k) / float(edges + 1);
+    total += smoothstep(edge - soft, edge + soft, cosine);
+  }
+  return total / float(edges);
+}
+// One light as a cel would draw it. The diffuse is the albedo at full strength wherever the band says
+// lit, rather than falling off with the cosine: in a drawing a lit plane is one colour. The shadow
+// map is stepped as well, so the edge of a cast shadow is a band edge like any other. The highlight
+// is a hard disc, as large as the scene asks and dimmer the rougher the surface.
+float3 ToonContribution(float3 L, float3 radiance, float3 specularRadiance, float unshadowed, float3 A, float3 N, float3 V, float R, out float cel) {
+  float soft = u_toon.y;
+  cel = CelBands(dot(N, L)) * smoothstep(0.5 - soft * 4.0, 0.5 + soft * 4.0, unshadowed);
+  float3 diffuse = (A / PI) * radiance * cel;
+  float size = u_toon.w;
+  float highlight = 0.0;
+  if (size > 0.0) {
+    float NdotH = saturate(dot(N, normalize(V + L)));
+    float threshold = 1.0 - size * 0.5;
+    highlight = smoothstep(threshold - soft * 0.2, threshold + soft * 0.2, NdotH) * (1.0 - R) * (1.0 - R);
+  }
+  return diffuse + specularRadiance * (highlight * cel * 0.35);
+}
 PSOutput PSMain(PSInput input) {
   PSOutput output;
   bool useAlbedo = (u_textureMask & 0x1) != 0;
@@ -858,6 +898,10 @@ PSOutput PSMain(PSInput input) {
   // down -- since both would look identical.
   float3 bounced = kD * diffuseScale * probes.irradiance * u_indirectScale.x;
   float3 ambient;
+  // The reflection of the sky alone, kept apart so the cel half can take most of it away: a drawn
+  // surface does not mirror its surroundings, and a cel band with the sky's gradient across it reads
+  // as a mistake.
+  float3 ambientSpecular = 0.0;
   // Hoisted out of the branch below so a debug view can read it. Nought where there is no sky, which
   // is the honest answer rather than a missing one.
   float3 skyIrradiance = 0.0;
@@ -868,6 +912,7 @@ PSOutput PSMain(PSInput input) {
     float3 reflected = precomputed ? g_prefilter.SampleLevel(g_sampler, reflectDirection, R * MAX_REFLECTION_LOD).rgb : FallbackSky(reflectDirection);
     float2 brdf = precomputed ? g_brdfLUT.SampleLevel(g_sampler, float2(NdotV, R), 0).rg : FallbackBRDF(NdotV, R);
     float3 specular = reflected * (F * brdf.x + brdf.y);
+    ambientSpecular = specular * O;
     ambient = ((kD * diffuseScale * irradiance + bounced) * A.rgb + specular) * O;
   } else if (u_counts.z != 0)
     ambient = (u_directionalAmbient.rgb * diffuseScale + bounced) * A.rgb * O;
@@ -876,11 +921,25 @@ PSOutput PSMain(PSInput input) {
   else
     ambient = u_indirectScale.z * diffuseScale * A.rgb * O;
   float3 Lo = 0.0;
+  // The cel half of the shading, built beside the physical half and blended with it at the end by
+  // how far the material asks for bands. Nothing here runs for a material that asks for none.
+  float toon = u_style.x;
+  float3 LoToon = 0.0;
+  float cel = 0.0;
+  // How lit the surface is by the sun, in bands. One with no sun, so that the shaded side's tint is
+  // what a surface gets for facing away from a light, and not for there being no light to face.
+  float sunCel = 1.0;
+  float3 sunRadiance = 0.0;
   if (u_counts.z != 0) {
     float3 L = normalize(-u_directionalDirection.xyz);
     float intensity = u_directionalIntensity.x;
     float shadow = DirectionalShadowAmount(input.worldPosition, GN, L, input.position.xy);
     Lo += (1.0 - shadow) * DirectContribution(L, u_directionalDiffuse.rgb * intensity, u_directionalSpecular.rgb * intensity, F0, A.rgb, N, M, R, V, diffuseScale);
+    if (toon > 0.0) {
+      LoToon += ToonContribution(L, u_directionalDiffuse.rgb * intensity, u_directionalSpecular.rgb * intensity, 1.0 - shadow, A.rgb, N, V, R, cel);
+      sunCel = cel;
+      sunRadiance = u_directionalDiffuse.rgb * intensity / PI;
+    }
   }
   for (uint p = 0; p < min(u_counts.x, MAX_POINT_LIGHTS); ++p) {
     float3 offset = u_pointLights[p].position.xyz - input.worldPosition;
@@ -890,6 +949,8 @@ PSOutput PSMain(PSInput input) {
     float intensity = u_pointLights[p].attenuation.w;
     float attenuation = intensity / (a.x + a.y * distance + a.z * distance * distance);
     Lo += DirectContribution(L, u_pointLights[p].diffuse.rgb * attenuation, u_pointLights[p].specular.rgb * attenuation, F0, A.rgb, N, M, R, V, diffuseScale);
+    if (toon > 0.0)
+      LoToon += ToonContribution(L, u_pointLights[p].diffuse.rgb * attenuation, u_pointLights[p].specular.rgb * attenuation, 1.0, A.rgb, N, V, R, cel);
   }
   for (uint s = 0; s < min(u_counts.y, MAX_SPOT_LIGHTS); ++s) {
     float3 offset = u_spotLights[s].position.xyz - input.worldPosition;
@@ -902,6 +963,8 @@ PSOutput PSMain(PSInput input) {
     float attenuation = intensity * cone / (a.x + a.y * distance + a.z * distance * distance);
     float shadow = SpotShadowAmount(s, input.worldPosition, GN, L, input.position.xy);
     Lo += (1.0 - shadow) * DirectContribution(L, u_spotLights[s].diffuse.rgb * attenuation, u_spotLights[s].specular.rgb * attenuation, F0, A.rgb, N, M, R, V, diffuseScale);
+    if (toon > 0.0)
+      LoToon += ToonContribution(L, u_spotLights[s].diffuse.rgb * attenuation, u_spotLights[s].specular.rgb * attenuation, 1.0 - shadow, A.rgb, N, V, R, cel);
   }
   // One step of the shading, promoted to the output.
   //
@@ -945,6 +1008,24 @@ PSOutput PSMain(PSInput input) {
     output.color = float4(shown, alpha);
     return output;
   }
-  output.color = float4(ambient + Lo + transmitted + E.rgb, alpha);
+  float3 shaded = ambient + Lo;
+  if (toon > 0.0) {
+    // The ambient is kept, so a figure still takes the colour of the sky it stands under, but the
+    // shaded side has the scene's tint laid over it -- the shadow is a colour, not a darkness.
+    float3 ambientDiffuse = ambient - ambientSpecular;
+    float3 toonAmbient = ambientDiffuse * lerp(u_toonShade.rgb, 1.0, sunCel) + ambientSpecular * 0.2;
+    // The rim: a band of light along the silhouette, lit by the sun where there is one and by the
+    // sky where there is not. A back light, as a drawing has it: strongest with the sun behind the
+    // figure, faint with it behind the camera. On a figure made of boxes a whole face can be at the
+    // grazing angle the rim lives at, so it is kept to a share of the light and not added at full.
+    float rimWidth = u_toonRim.x;
+    float rimEdge = smoothstep(1.0 - rimWidth - u_toon.y, 1.0 - rimWidth + u_toon.y, 1.0 - NdotV);
+    bool hasSun = any(sunRadiance > 0.0);
+    float3 rimLight = hasSun ? sunRadiance : max(ambientDiffuse, 0.0);
+    float behind = hasSun ? saturate(-dot(V, normalize(-u_directionalDirection.xyz))) : 0.5;
+    float3 rim = u_toonShade.w * rimEdge * (0.2 + 0.8 * behind) * 0.45 * rimLight * lerp(A.rgb, 1.0, 0.5);
+    shaded = lerp(shaded, toonAmbient + LoToon + rim, toon);
+  }
+  output.color = float4(shaded + transmitted + E.rgb, alpha);
   return output;
 }

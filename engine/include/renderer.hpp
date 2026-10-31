@@ -82,6 +82,20 @@ public:
   /// the fog pass above. A scene with no emitters therefore costs a copy, as does a backend with no
   /// particles at all -- `RendererCapabilities::particles` is what says which.
   virtual auto DrawParticles(std::span<std::string>, std::span<std::string>) -> void = 0;
+  /// @brief Inks the outlines and folds of solid things over the resolved scene.
+  ///
+  /// Handed the picture and the depth it was drawn with, and returns the picture with lines in it.
+  /// A scene with no `Stylization`, or one whose ink is nought thick, costs a copy, as does a
+  /// backend that draws no lines -- `RendererCapabilities::stylization` says which.
+  virtual auto ApplyInk(std::span<std::string>, std::span<std::string>) -> void = 0;
+  /// @brief Grades the finished picture and lays the scene's `ScreenEffects` over it.
+  virtual auto ApplyStylize(std::span<std::string>, std::span<std::string>) -> void = 0;
+  /// @brief Mirrors the scene's level surface, where it has one, in the picture handed to it.
+  ///
+  /// A copy where there is no `PlanarReflection` or its strength is nought, and on a backend that
+  /// does not reflect -- `RendererCapabilities::stylization` covers this as well, being the same
+  /// kind of fullscreen work over the same two inputs.
+  virtual auto ApplyPlanarReflection(std::span<std::string>, std::span<std::string>) -> void = 0;
   /// @brief Draws a finished target onto the window's own surface, scaled to fill it.
   ///
   /// The render graph ends in an offscreen target, which is the right shape for an editor: the

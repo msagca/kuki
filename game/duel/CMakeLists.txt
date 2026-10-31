@@ -35,6 +35,13 @@ kuki_add_blender_models(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/model/fighter.blend"
   model
 )
+# The four stages, one .glb a part, exported to `stage/` beside the executable. `tools/make_stages.py`
+# is what wrote the .blend.
+kuki_add_blender_models(
+  ${PROJECT_NAME}
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/model/stages.blend"
+  stage
+)
 install(
   FILES ${FONT_SOURCES}
   DESTINATION "${CMAKE_INSTALL_BINDIR}/font"

@@ -68,5 +68,12 @@ struct RendererCapabilities {
   /// that -- compute shaders, storage buffers, instancing. What the OpenGL backend lacks is the
   /// pass, so this is false there until somebody writes it rather than because it cannot be written.
   bool particles{};
+  /// @brief Whether the backend draws a scene as a cel: bands on the materials that ask for them,
+  /// ink along the outlines, and the grade and screen effects over the finished picture.
+  ///
+  /// One flag for all of it because it is one look, and half of it is a different look rather than
+  /// a lesser one -- bands with no ink read as a flat render, not as a drawing. Gates the
+  /// `Stylization` panel, the material's toon slider, and the add menu's entry.
+  bool stylization{};
 };
 } // namespace kuki

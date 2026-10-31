@@ -14,11 +14,13 @@
 #include <model_asset.hpp>
 #include <optional>
 #include <particle_emitter.hpp>
+#include <planar_reflection.hpp>
 #include <scene_serializer.hpp>
 #include <serdes.hpp>
 #include <shader_asset.hpp>
 #include <skybox_handle.hpp>
 #include <spdlog/spdlog.h>
+#include <stylization.hpp>
 #include <texture_asset.hpp>
 #include <texture_handle.hpp>
 #include <transform.hpp>
@@ -47,7 +49,13 @@ namespace {
     // the scene. What does not travel is the particles themselves, which live in a buffer on the
     // GPU that nothing reads back -- a loaded scene starts its emitters from empty.
     ComponentType::ParticleEmitter,
+    // How wet the ground is, like the air above it, is a fact about the scene.
+    ComponentType::PlanarReflection,
     ComponentType::SkyboxHandle,
+    // Travels, as the atmosphere does: whether a scene is drawn in cel bands and ink is a decision
+    // about the work. `ScreenEffects` does not -- it is what a game is doing to the picture this
+    // instant, and a save that caught a flash would open on a white screen.
+    ComponentType::Stylization,
     ComponentType::TextureHandle,
     ComponentType::Transform,
     // Both travel, on the same terms as the atmosphere above and for the same reason. How thick a
@@ -530,6 +538,80 @@ namespace {
     Read("kilometresPerUnit", f.kilometresPerUnit);
     Read("steps", f.steps);
   }
+  auto ToJson(const Stylization &s) -> json {
+    return {
+      {"bands", s.bands},
+      {"bandSoftness", s.bandSoftness},
+      {"terminator", s.terminator},
+      {"shadowTint", s.shadowTint},
+      {"highlightSize", s.highlightSize},
+      {"rimIntensity", s.rimIntensity},
+      {"rimWidth", s.rimWidth},
+      {"inkThickness", s.inkThickness},
+      {"inkDepthThreshold", s.inkDepthThreshold},
+      {"inkCreaseThreshold", s.inkCreaseThreshold},
+      {"inkColor", s.inkColor},
+      {"inkTint", s.inkTint},
+      {"inkFadeDistance", s.inkFadeDistance},
+      {"saturation", s.saturation},
+      {"contrast", s.contrast},
+      {"shadowColor", s.shadowColor},
+      {"highlightColor", s.highlightColor},
+      {"vignette", s.vignette}};
+  }
+  auto FromJson(const json &j, Stylization &s) -> void {
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("bands", s.bands);
+    Read("bandSoftness", s.bandSoftness);
+    Read("terminator", s.terminator);
+    Read("shadowTint", s.shadowTint);
+    Read("highlightSize", s.highlightSize);
+    Read("rimIntensity", s.rimIntensity);
+    Read("rimWidth", s.rimWidth);
+    Read("inkThickness", s.inkThickness);
+    Read("inkDepthThreshold", s.inkDepthThreshold);
+    Read("inkCreaseThreshold", s.inkCreaseThreshold);
+    Read("inkColor", s.inkColor);
+    Read("inkTint", s.inkTint);
+    Read("inkFadeDistance", s.inkFadeDistance);
+    Read("saturation", s.saturation);
+    Read("contrast", s.contrast);
+    Read("shadowColor", s.shadowColor);
+    Read("highlightColor", s.highlightColor);
+    Read("vignette", s.vignette);
+  }
+  auto ToJson(const PlanarReflection &r) -> json {
+    return {
+      {"height", r.height},
+      {"tolerance", r.tolerance},
+      {"strength", r.strength},
+      {"dryReflectance", r.dryReflectance},
+      {"puddleCoverage", r.puddleCoverage},
+      {"puddleScale", r.puddleScale},
+      {"blur", r.blur},
+      {"ripples", r.ripples},
+      {"rippleDensity", r.rippleDensity},
+      {"maxDistance", r.maxDistance}};
+  }
+  auto FromJson(const json &j, PlanarReflection &r) -> void {
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("height", r.height);
+    Read("tolerance", r.tolerance);
+    Read("strength", r.strength);
+    Read("dryReflectance", r.dryReflectance);
+    Read("puddleCoverage", r.puddleCoverage);
+    Read("puddleScale", r.puddleScale);
+    Read("blur", r.blur);
+    Read("ripples", r.ripples);
+    Read("rippleDensity", r.rippleDensity);
+    Read("maxDistance", r.maxDistance);
+  }
   auto ToJson(const ParticleEmitter &p) -> json {
     return {
       {"capacity", p.capacity},
@@ -553,6 +635,12 @@ namespace {
       {"startColor", p.startColor},
       {"endColor", p.endColor},
       {"blend", static_cast<int>(p.blend)},
+      {"facing", static_cast<int>(p.facing)},
+      {"sprite", static_cast<int>(p.sprite)},
+      {"stretch", p.stretch},
+      {"opacity", p.opacity},
+      {"extent", p.extent},
+      {"turbulence", p.turbulence},
       {"intensity", p.intensity}};
   }
   auto FromJson(const json &j, ParticleEmitter &p) -> void {
@@ -585,6 +673,14 @@ namespace {
     Read("endColor", p.endColor);
     if (j.contains("blend"))
       p.blend = static_cast<ParticleBlend>(j.at("blend").get<int>());
+    if (j.contains("facing"))
+      p.facing = static_cast<ParticleFacing>(j.at("facing").get<int>());
+    if (j.contains("sprite"))
+      p.sprite = static_cast<ParticleSprite>(j.at("sprite").get<int>());
+    Read("stretch", p.stretch);
+    Read("opacity", p.opacity);
+    Read("extent", p.extent);
+    Read("turbulence", p.turbulence);
     Read("intensity", p.intensity);
   }
   struct ToJsonVisitor {
@@ -601,6 +697,12 @@ namespace {
     }
     auto operator()(VolumetricFog *f) const -> json {
       return ToJson(*f);
+    }
+    auto operator()(Stylization *s) const -> json {
+      return ToJson(*s);
+    }
+    auto operator()(PlanarReflection *r) const -> json {
+      return ToJson(*r);
     }
     auto operator()(ParticleEmitter *p) const -> json {
       if (p->mesh)
@@ -762,6 +864,14 @@ namespace {
           break;
         case ComponentType::VolumetricFog:
           if (auto *c = app.GetEntityComponent<VolumetricFog>(id))
+            FromJson(componentJson, *c);
+          break;
+        case ComponentType::Stylization:
+          if (auto *c = app.GetEntityComponent<Stylization>(id))
+            FromJson(componentJson, *c);
+          break;
+        case ComponentType::PlanarReflection:
+          if (auto *c = app.GetEntityComponent<PlanarReflection>(id))
             FromJson(componentJson, *c);
           break;
         case ComponentType::ParticleEmitter: {

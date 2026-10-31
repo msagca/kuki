@@ -242,6 +242,130 @@ auto DXPipelineCache::GetOutlinePipeline(ID3D12Device *device, const DXGI_FORMAT
   spdlog::info("[DX12] Created outline pipeline");
   return &pipeline;
 }
+auto DXPipelineCache::GetStylizeRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (stylizeRootSignature)
+    return stylizeRootSignature.Get();
+  CD3DX12_DESCRIPTOR_RANGE sourceRange{};
+  sourceRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+  CD3DX12_DESCRIPTOR_RANGE depthRange{};
+  depthRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
+  parameters[0].InitAsConstants(sizeof(DXStylizeConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+  parameters[1].InitAsDescriptorTable(1, &sourceRange, D3D12_SHADER_VISIBILITY_PIXEL);
+  parameters[2].InitAsDescriptorTable(1, &depthRange, D3D12_SHADER_VISIBILITY_PIXEL);
+  // Clamped, so the smear and the pulled-apart channels read the edge of the picture rather than
+  // wrapping round to the other side of it.
+  CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+  sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(_countof(parameters), parameters, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the stylize root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&stylizeRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return stylizeRootSignature.Get();
+}
+auto DXPipelineCache::GetStylizePipeline(ID3D12Device *device, const DXGI_FORMAT format, const char *entryPoint) -> const DXPipeline * {
+  if (!device || !entryPoint)
+    return nullptr;
+  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(std::string("stylize") + entryPoint);
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetStylizeRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = stylizeRootSignature;
+  const auto vertexShader = shaderCompiler.Compile(embedded_shader::stylize_hlsl, "VSMain", "vs_6_0", "stylize");
+  const auto pixelShader = shaderCompiler.Compile(embedded_shader::stylize_hlsl, entryPoint, "ps_6_0", "stylize");
+  if (!vertexShader || !pixelShader)
+    return nullptr;
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.VS = ToBytecode(vertexShader);
+  desc.PS = ToBytecode(pixelShader);
+  desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+  desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+  desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState.DepthEnable = FALSE;
+  desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+  desc.SampleMask = UINT_MAX;
+  desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+  desc.NumRenderTargets = 1;
+  desc.RTVFormats[0] = format;
+  desc.SampleDesc.Count = 1;
+  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created stylize pipeline: {}", entryPoint);
+  return &pipeline;
+}
+auto DXPipelineCache::GetReflectionRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
+  if (reflectionRootSignature)
+    return reflectionRootSignature.Get();
+  CD3DX12_DESCRIPTOR_RANGE sourceRange{};
+  sourceRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+  CD3DX12_DESCRIPTOR_RANGE depthRange{};
+  depthRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
+  parameters[0].InitAsConstants(sizeof(DXReflectionConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+  parameters[1].InitAsDescriptorTable(1, &sourceRange, D3D12_SHADER_VISIBILITY_PIXEL);
+  parameters[2].InitAsDescriptorTable(1, &depthRange, D3D12_SHADER_VISIBILITY_PIXEL);
+  CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+  sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(_countof(parameters), parameters, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the reflection root signature: {}", log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&reflectionRootSignature)), "CreateRootSignature"))
+    return nullptr;
+  return reflectionRootSignature.Get();
+}
+auto DXPipelineCache::GetReflectionPipeline(ID3D12Device *device, const DXGI_FORMAT format) -> const DXPipeline * {
+  if (!device)
+    return nullptr;
+  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}("reflection");
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  auto *rootSignature = GetReflectionRootSignature(device);
+  if (!rootSignature)
+    return nullptr;
+  pipeline.rootSignature = reflectionRootSignature;
+  const auto vertexShader = shaderCompiler.Compile(embedded_shader::reflect_hlsl, "VSMain", "vs_6_0", "reflect");
+  const auto pixelShader = shaderCompiler.Compile(embedded_shader::reflect_hlsl, "PSReflect", "ps_6_0", "reflect");
+  if (!vertexShader || !pixelShader)
+    return nullptr;
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature;
+  desc.VS = ToBytecode(vertexShader);
+  desc.PS = ToBytecode(pixelShader);
+  desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+  desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+  desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState.DepthEnable = FALSE;
+  desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+  desc.SampleMask = UINT_MAX;
+  desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+  desc.NumRenderTargets = 1;
+  desc.RTVFormats[0] = format;
+  desc.SampleDesc.Count = 1;
+  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created reflection pipeline");
+  return &pipeline;
+}
 auto DXPipelineCache::GetOverlayRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (overlayRootSignature)
     return overlayRootSignature.Get();
@@ -323,11 +447,14 @@ auto DXPipelineCache::GetOverlayPipeline(ID3D12Device *device, const DXGI_FORMAT
 auto DXPipelineCache::GetShadowRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (shadowRootSignature)
     return shadowRootSignature.Get();
-  CD3DX12_ROOT_PARAMETER parameters[2]{};
+  // The bones are a root view of their own, read only by the skinned variant. One signature for
+  // both, so a pass drawing the two kinds switches the pipeline and nothing else.
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
   parameters[0].InitAsConstants(sizeof(DXShadowConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
   parameters[1].InitAsShaderResourceView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+  parameters[2].InitAsShaderResourceView(1, 0, D3D12_SHADER_VISIBILITY_VERTEX);
   CD3DX12_ROOT_SIGNATURE_DESC desc{};
-  desc.Init(2, parameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+  desc.Init(_countof(parameters), parameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
   ComPtr<ID3DBlob> serialized;
   ComPtr<ID3DBlob> errors;
   if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
@@ -339,10 +466,10 @@ auto DXPipelineCache::GetShadowRootSignature(ID3D12Device *device) -> ID3D12Root
     return nullptr;
   return shadowRootSignature.Get();
 }
-auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipeline * {
+auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device, const bool skinned) -> const DXPipeline * {
   if (!device)
     return nullptr;
-  const auto key = std::hash<std::string>{}("shadow");
+  const auto key = std::hash<std::string>{}(skinned ? "shadowSkinned" : "shadow");
   if (auto it = pipelines.find(key); it != pipelines.end())
     return it->second ? &it->second : nullptr;
   auto &pipeline = pipelines[key];
@@ -350,7 +477,7 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipelin
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = shadowRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::shadow_hlsl, "VSMain", "vs_6_0", "shadow");
+  const auto vertexShader = shaderCompiler.Compile(embedded_shader::shadow_hlsl, skinned ? "VSSkinned" : "VSMain", "vs_6_0", "shadow");
   if (!vertexShader)
     return nullptr;
   const D3D12_INPUT_ELEMENT_DESC inputLayout[]{
@@ -358,9 +485,11 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipelin
     {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, normal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(Vertex, texture), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
     {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, tangent), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+    {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_SINT, 0, offsetof(Vertex, boneIds), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+    {"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, boneWeights), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
   };
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
-  desc.InputLayout = {inputLayout, _countof(inputLayout)};
+  desc.InputLayout = {inputLayout, static_cast<UINT>(skinned ? _countof(inputLayout) : _countof(inputLayout) - 2)};
   desc.pRootSignature = rootSignature;
   desc.VS = ToBytecode(vertexShader);
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -376,7 +505,7 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device) -> const DXPipelin
   desc.SampleDesc.Count = 1;
   if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
     return nullptr;
-  spdlog::info("[DX12] Created shadow pipeline");
+  spdlog::info("[DX12] Created {} shadow pipeline", skinned ? "skinned" : "static");
   return &pipeline;
 }
 auto DXPipelineCache::GetSkyboxRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -737,10 +866,13 @@ auto DXPipelineCache::GetParticleDrawRootSignature(ID3D12Device *device) -> ID3D
     return nullptr;
   return particleDrawRootSignature.Get();
 }
-auto DXPipelineCache::GetParticleDrawPipeline(ID3D12Device *device, const DXGI_FORMAT format, const bool opaque) -> const DXPipeline * {
+auto DXPipelineCache::GetParticleDrawPipeline(ID3D12Device *device, const DXGI_FORMAT format, const ParticleBlend mode) -> const DXPipeline * {
   if (!device)
     return nullptr;
-  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(opaque ? "particleDrawOpaque" : "particleDraw");
+  const auto opaque = mode == ParticleBlend::Opaque;
+  const auto veil = mode == ParticleBlend::Alpha;
+  const char *name = opaque ? "particleDrawOpaque" : veil ? "particleDrawAlpha" : "particleDraw";
+  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(name);
   if (auto it = pipelines.find(key); it != pipelines.end())
     return it->second ? &it->second : nullptr;
   auto &pipeline = pipelines[key];
@@ -749,7 +881,7 @@ auto DXPipelineCache::GetParticleDrawPipeline(ID3D12Device *device, const DXGI_F
     return nullptr;
   pipeline.rootSignature = particleDrawRootSignature;
   const auto vertexShader = shaderCompiler.Compile(embedded_shader::particles_hlsl, "VSMain", "vs_6_0", "particles");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::particles_hlsl, opaque ? "PSOpaque" : "PSMain", "ps_6_0", "particles");
+  const auto pixelShader = shaderCompiler.Compile(embedded_shader::particles_hlsl, opaque ? "PSOpaque" : veil ? "PSAlpha" : "PSMain", "ps_6_0", "particles");
   if (!vertexShader || !pixelShader)
     return nullptr;
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
@@ -778,6 +910,10 @@ auto DXPipelineCache::GetParticleDrawPipeline(ID3D12Device *device, const DXGI_F
   // The solid kind replaces what is there, and keeps the same write mask for the same reason.
   if (opaque)
     blend.BlendEnable = FALSE;
+  // The veil: the particle's premultiplied colour, over what is behind scaled by what it lets
+  // through. Order matters for this one in principle, and is not kept -- see `ParticleBlend::Alpha`.
+  if (veil)
+    blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
   // Tested and not written, for the additive kind. A spark is hidden by the scene in front of it
   // and hides nothing itself -- writing depth would make which of two overlapping sparks survives
   // depend on which instance came first, and bring the ordering problem back through the depth
@@ -794,7 +930,7 @@ auto DXPipelineCache::GetParticleDrawPipeline(ID3D12Device *device, const DXGI_F
   desc.SampleDesc.Count = 1;
   if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
     return nullptr;
-  spdlog::info("[DX12] Created {} particle draw pipeline", opaque ? "opaque" : "additive");
+  spdlog::info("[DX12] Created {} particle draw pipeline", opaque ? "opaque" : veil ? "alpha" : "additive");
   return &pipeline;
 }
 auto DXPipelineCache::GetComputePipeline(ID3D12Device *device, const char *entryPoint) -> const DXPipeline * {
