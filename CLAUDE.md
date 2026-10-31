@@ -357,3 +357,7 @@ wide — graphics backend, tone mapper, the settings menu's graphics) and `Prefe
   `KUKI_BUILD_TESTS=ON`, builds and runs `ctest` on a push to any branch but `main` (Windows/cl
   only for now). `main` is protected: work goes on a branch and reaches `main`
   by a pull request, which can merge once the `cmake (windows-latest)` check has passed on its head.
+- Local `main` is kept in step with the remote's and never worked on. Fixing a problem: open a
+  GitHub issue for it, fix it on a branch of its own, and merge that branch (its pull request closes
+  the issue). Other work needs no issue and goes on a local branch of its own, which reaches `main`
+  by a pull request like everything else.
