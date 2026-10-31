@@ -20,6 +20,9 @@ BoundingBox BoundingBox::GetWorldBounds(const glm::mat4 &transform) const {
 BoundingBox::operator bool() const {
   return glm::all(glm::greaterThan(max - min, glm::vec3(glm::epsilon<float>())));
 }
+auto BoundingBox::IsEmpty() const -> bool {
+  return glm::any(glm::greaterThan(min, max));
+}
 auto BoundingBox::Calculate(std::span<const glm::vec3> vertices) -> BoundingBox {
   BoundingBox bounds{};
   for (const auto &v : vertices) {

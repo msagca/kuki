@@ -211,6 +211,10 @@ auto DXProbeVolume::TrackGeometry(const std::vector<DXProbeGeometry> &geometry, 
   low = glm::vec3(std::numeric_limits<float>::max());
   high = glm::vec3(std::numeric_limits<float>::lowest());
   auto any = false;
+  // The box around everything, kept in case nothing fits: a scene made only of surfaces that reach
+  // the horizon still wants a volume, and the whole of it is the only one there is to give it.
+  auto allLow = low;
+  auto allHigh = high;
   const auto Dirty = [this](const glm::vec3 &from, const glm::vec3 &to) {
     dirtyBoxes.emplace_back(from, 0.f);
     dirtyBoxes.emplace_back(to, 0.f);
@@ -238,11 +242,9 @@ auto DXProbeVolume::TrackGeometry(const std::vector<DXProbeGeometry> &geometry, 
       worldLow = glm::min(worldLow, world);
       worldHigh = glm::max(worldHigh, world);
     }
-    low = glm::min(low, worldLow);
-    high = glm::max(high, worldHigh);
-    any = true;
     auto [placement, added] = placements.try_emplace(item.entity);
     auto &placed = placement->second;
+    auto moved = !added && placed.moved;
     if (added)
       Dirty(worldLow, worldHigh);
     else if (placed.mesh != mesh || placed.transform != item.transform) {
@@ -250,8 +252,23 @@ auto DXProbeVolume::TrackGeometry(const std::vector<DXProbeGeometry> &geometry, 
       // the board would otherwise re-measure every square it passed over.
       Dirty(placed.low, placed.high);
       Dirty(worldLow, worldHigh);
+      moved = true;
     }
-    placed = Placement{.mesh = mesh, .transform = item.transform, .low = worldLow, .high = worldHigh, .seen = geometryFrame};
+    placed = Placement{.mesh = mesh, .transform = item.transform, .low = worldLow, .high = worldHigh, .seen = geometryFrame, .moved = moved};
+    allLow = glm::min(allLow, worldLow);
+    allHigh = glm::max(allHigh, worldHigh);
+    // Only what has stood still since it appeared decides the volume's size. Something that moves is
+    // not a fixed part of the space being sampled, and following it costs the whole field: a volume
+    // the scene no longer fits is laid down afresh, every probe with it. With the sea out of the fit,
+    // the frontier's gulls set the box, and a gull flying off its edge re-laid the volume every few
+    // frames -- 65 units growing to 100 in one run, a stall each time, and a trace held at full rate
+    // because every reset wound its count back to nought. A thing that moves is still traced and still
+    // re-measured where it goes; it is only not followed.
+    if (item.fits && !moved) {
+      low = glm::min(low, worldLow);
+      high = glm::max(high, worldHigh);
+      any = true;
+    }
   }
   for (auto it = placements.begin(); it != placements.end();) {
     if (it->second.seen == geometryFrame) {
@@ -260,6 +277,11 @@ auto DXProbeVolume::TrackGeometry(const std::vector<DXProbeGeometry> &geometry, 
     }
     Dirty(it->second.low, it->second.high);
     it = placements.erase(it);
+  }
+  if (!any && allLow.x <= allHigh.x) {
+    low = allLow;
+    high = allHigh;
+    return true;
   }
   return any;
 }
@@ -459,6 +481,7 @@ auto DXProbeVolume::Update(DXContext &context, DXPipelineCache &pipelines, const
     reported = false;
     tracedFrames = 0;
     tracedSamples = 0;
+    sweepPhase = 0;
     traceHash = 0;
     spdlog::info("[DX12] Probe volume: laid down over {:.2f} units, uniform to depth {} for {:.2f} units between probes against a target of {:.2f}, {} probe slots", side, uniformDepth, side / static_cast<float>(1u << uniformDepth), PROBE_TARGET_SPACING, capacity);
   } else
@@ -592,6 +615,18 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   // how much of the mean survives: nothing accumulated yet means the estimate is taken whole
   const auto step = std::max(settings.meanStep, 1u);
   constants.params[0] = static_cast<float>(tracedSamples) / static_cast<float>(tracedSamples + step);
+  // The whole volume while it is first being lit, and a stride's worth of it after. Sized by the
+  // probes in use rather than the slots: a slot holding none returns at once, and the pool starts at
+  // `PROBE_POOL_MINIMUM` whatever the scene, so counting slots would sweep a small room that fits the
+  // budget many times over. The count comes back from the GPU a few frames late, and the slots stand
+  // in until it does. Worked out afresh each frame because either can change under it; a phase left
+  // past the new stride starts the sweep over rather than skipping the slots it would have missed.
+  const auto probes = liveProbes ? liveProbes : capacity;
+  const auto stride = tracedSamples < PROBE_FULL_RATE_SAMPLES ? 1u : std::max(1u, (probes + PROBE_TRACE_BUDGET - 1) / PROBE_TRACE_BUDGET);
+  if (sweepPhase >= stride)
+    sweepPhase = 0;
+  constants.schedule[0] = stride;
+  constants.schedule[1] = sweepPhase;
   constants.params[1] = side * settings.rayDistanceScale;
   constants.params[2] = side / static_cast<float>(GetLookupResolution()) * settings.hitNormalNudge;
   constants.params[3] = settings.probeDepthSharpness;
@@ -618,7 +653,7 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   // is there.
   commandList->SetComputeRootShaderResourceView(9, skyHarmonics ? skyHarmonics : probeBuffer->GetGPUVirtualAddress());
   // The whole pool, since which slots hold a probe is decided on the GPU this frame. See the trace.
-  commandList->Dispatch(capacity, 1, 1);
+  commandList->Dispatch((capacity - sweepPhase + stride - 1) / stride, 1, 1);
   // Under the same root signature and arguments, so only the pipeline changes. After the trace rather
   // than before it so the two never write the same probe's record in one dispatch.
   if (const auto classify = pipelines.GetProbeTracePipeline(context.GetDevice(), "CSClassify"); classify && *classify) {
@@ -631,7 +666,13 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   commandList->ResourceBarrier(1, &barrier);
   probeState = PROBE_READ_STATE;
   ++tracedFrames;
-  ++tracedSamples;
+  // An estimate is counted once every probe has had it, which is the end of a sweep. Counting every
+  // frame would weight each new estimate as though the probe had a stride's more behind it than it
+  // has, and a swept field would settle that many times too slowly.
+  if (++sweepPhase >= stride) {
+    sweepPhase = 0;
+    ++tracedSamples;
+  }
 }
 auto DXProbeVolume::Report(DXContext &context) -> void {
   if (reported || !ready || !settled || tracedFrames < REPORT_AFTER_FRAMES)
@@ -880,6 +921,7 @@ auto DXProbeVolume::Clear() -> void {
   loggedLeaves = 0;
   tracedFrames = 0;
   tracedSamples = 0;
+  sweepPhase = 0;
   traceHash = 0;
   ready = false;
   validated = false;

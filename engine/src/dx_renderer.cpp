@@ -2895,8 +2895,11 @@ auto DXRenderer::CollectProbeGeometry(Scene &) -> std::vector<DXProbeGeometry> {
       // Keyed by entity, with the low bit saying which kind of mesh placed it, so an entity moved
       // from a mesh asset to a model's mesh is a placement that changed rather than one that stayed.
       const auto *worlds = draw.table->GetColumn<WorldMatrix>();
+      // A pool made with empty bounds is one its game said reaches the horizon. See `DXProbeGeometry`.
+      // Empty, not merely flat: a floor's box has no height and still holds the floor.
+      const auto fits = !draw.table->bounds.IsEmpty();
       for (size_t row = 0; worlds && row < draw.table->entities.size(); ++row)
-        cache.probes.push_back({.entity = static_cast<uint64_t>(static_cast<long long>(draw.table->entities[row])) << 1 | kind, .vertices = mesh->vertices, .transform = worlds->components[row].matrix});
+        cache.probes.push_back({.entity = static_cast<uint64_t>(static_cast<long long>(draw.table->entities[row])) << 1 | kind, .vertices = mesh->vertices, .transform = worlds->components[row].matrix, .fits = fits});
     }
     geometry.insert(geometry.end(), cache.probes.begin(), cache.probes.end());
   }

@@ -167,6 +167,34 @@ inline constexpr uint32_t PROBE_MEAN_STEP = 4;
 /// either, since the next estimate would land whole and unaveraged — the noise of a single trace,
 /// as a flash, every frame of a drag.
 inline constexpr uint32_t PROBE_REACTIVE_SAMPLES = 19 * PROBE_MEAN_STEP;
+/// @brief Most probes traced in one frame.
+///
+/// Every probe used to be traced every frame, and on a large volume that was most of the frame: the
+/// frontier's 35937 probes at sixty-four rays each are 2.3 million rays, which measured 19 of its 28
+/// milliseconds on an RTX 3070 -- the scene with the trace switched off ran at 8.6. A volume with more
+/// probes than this is swept instead, a stride apart, so each probe is traced once every
+/// `ceil(probes / budget)` frames and the cost of a frame is bounded by this number rather than by the
+/// size of the scene. Volumes within it -- the rooms, the chess board -- are traced every frame as
+/// before.
+///
+/// What the sweep costs is reaction time, not convergence. A probe's mean is counted in sweeps, not
+/// frames (see `tracedSamples`), so the weights it is folded in at are exactly those a probe traced
+/// every frame would get; a change in the light reaches every probe within one sweep.
+///
+/// The number is set by the frame, measured on the frontier once its volume was fitted to the land:
+/// a thousand probes cost 1.35 ms, because probes standing among geometry shade nearly every ray
+/// they cast. 4096 came to 17.3 ms a frame and 1024 to 13.2; 17.3 misses a 60 Hz refresh, and with
+/// vsync on a frame that misses is shown at thirty. 2048 is about 14.6 and sweeps the frontier's
+/// 35937 slots in eighteen frames, a third of a second.
+inline constexpr uint32_t PROBE_TRACE_BUDGET = 2048;
+/// @brief Estimates a probe is given every frame before the sweep starts, after a volume is laid down.
+///
+/// A swept volume would otherwise light a slice of itself on the first frame, another on the next,
+/// and show the uneven field in between. Tracing everything for the first few estimates costs
+/// a handful of slow frames as the scene opens -- already the frames that load and build -- and
+/// leaves a field the sweep then only has to refine. A wind-back on a change never reaches this low
+/// (`PROBE_REACTIVE_SAMPLES` is far above it), so a scene that keeps changing stays on the budget.
+inline constexpr uint32_t PROBE_FULL_RATE_SAMPLES = 8;
 /// @brief Byte layout of `Vertex` as `probe_trace.hlsl` hardcodes it to fetch a hit's surface.
 ///
 /// A raw buffer load needs a byte offset and the shader has no reflection to derive one from, so
@@ -427,10 +455,18 @@ static_assert(sizeof(DXProbe) <= 2048, "a structured buffer element cannot be la
 /// digit that swaps its mesh is the same placement showing something else, and what has to be
 /// re-measured is the space it stood in before and stands in now -- both of which are known only if
 /// the placement can be found again under a key the swap did not change.
+///
+/// `fits` is whether the volume is sized to take the placement in. A placement in a pool made with
+/// empty bounds (`PoolSettings::bounds`) does not: that is what a game says of a surface reaching to
+/// the horizon, which it already keeps out of culling and the sun's shadow fit for the same reason.
+/// The frontier's sea did reach the volume, which then spanned 898 units and spaced its probes 28
+/// apart over an island a few dozen across. Such a placement is still traced against and still
+/// re-measured where it moves; it only stops deciding how big the volume is.
 struct DXProbeGeometry {
   uint64_t entity{};
   std::span<const Vertex> vertices;
   glm::mat4 transform{1.f};
+  bool fits{true};
 };
 /// @brief Where irradiance is sampled from and how a shading point finds the samples near it.
 ///
@@ -558,6 +594,8 @@ private:
     glm::vec3 low{};
     glm::vec3 high{};
     uint64_t seen{};
+    /// @brief Whether it has moved or changed mesh since it first appeared. See `TrackGeometry`.
+    bool moved{};
   };
   /// @brief A mesh's bounding box in its own space, with the vertex count it was taken from.
   ///
@@ -628,6 +666,11 @@ private:
   /// field has had to settle. This one is wound back whenever the scene changes, and it is the
   /// wind-back that keeps a converged field able to react at all.
   uint32_t tracedSamples{};
+  /// @brief Which part of the sweep the next trace takes, from nought to the stride less one.
+  ///
+  /// `tracedSamples` rises when this wraps rather than every frame, because that is when every probe
+  /// has been given one more estimate. See `PROBE_TRACE_BUDGET`.
+  uint32_t sweepPhase{};
   /// @brief The scene hash the accumulated estimates belong to. A different one winds them back.
   size_t traceHash{};
   bool ready{};

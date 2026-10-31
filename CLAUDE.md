@@ -182,9 +182,9 @@ material) and is a table of its own, so an archetype has its own table -- where 
 mesh yet sits, undrawn -- and one more per pool; `ForEachOf` and `ForEach` visit them all. Make an
 entity in one with `CreateEntity<A>(key)` (`World::Create<A>(app, key)`), give it another mesh or
 material with `MoveEntityToPool` (the builder's `.Mesh()`/`.Material()` do), make one ahead with
-`CreatePool` to give it bounds of its own (empty: never culled, out of the shadow's fit). A table's
-`version` rises when a row comes, goes or moves, which is how a renderer keeps what it worked out
-from a pool. The Direct3D 12 backend draws a pool as one instanced draw from its `WorldMatrix`
+`CreatePool` to give it bounds of its own (empty: never culled, and out of the shadow's and the probe
+volume's fit). A table's `version` rises when a row comes, goes or moves, which is how a renderer
+keeps what it worked out from a pool. The Direct3D 12 backend draws a pool as one instanced draw from its `WorldMatrix`
 column, copied as it lies, once a frame for every pass (`ResolvePools`, `PreparePools`); it culls a
 pool at a time and skinned meshes not at all.
 

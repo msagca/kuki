@@ -28,8 +28,9 @@ struct PoolKey {
 /// @brief What a pool is made with besides its key. Given when it is made, and kept.
 struct PoolSettings {
   /// @brief The bounds of what the pool draws, around each entity's origin: what culling and the
-  /// sun's shadow are fitted by. Left unset, they are the mesh's own. Set empty, the pool is never
-  /// culled and is left out of the shadow's fit, which is what a sea reaching the horizon wants.
+  /// sun's shadow are fitted by. Left unset, they are the mesh's own. Set empty (`BoundingBox{}`), the
+  /// pool is never culled and is left out of the shadow's fit and of the probe volume's, which is
+  /// what a sea reaching the horizon wants.
   std::optional<BoundingBox> bounds{};
   /// @brief Rows to make room for, so that a pool filled when its scene is built is not grown row by
   /// row. A pool may still grow past it.
