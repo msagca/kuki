@@ -38,7 +38,7 @@ auto MeshId(const std::string &name) -> kuki::AssetID;
 inline constexpr int VARIANTS = 4;
 /// @brief The name of one variant of a prop's part: `Prop("pine", 2, "crown")` is `pine/2/crown`.
 auto Prop(const std::string_view kind, const int variant, const std::string_view part = "") -> std::string;
-/// @brief Makes every material and every prop: trees, bushes, grass, flowers, stones, crystals and birds.
+/// @brief Makes every material and every prop: trees, bushes, grass, stones, crystals and birds.
 auto LoadProps(kuki::Application &) -> void;
 /// @brief One piece of a building: a mesh and what it is painted with, and whether it turns.
 struct BuildingPart {

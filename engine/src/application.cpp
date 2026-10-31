@@ -277,6 +277,50 @@ auto Application::CreateEntity(const ComponentMask &mask, std::string name) -> E
     return scene->CreateEntity(mask, std::move(name));
   return EntityID::Invalid;
 }
+auto Application::CreateEntity(const ComponentMask &mask, const PoolKey &pool, std::string name) -> EntityID {
+  auto scene = GetScene();
+  if (!scene)
+    return EntityID::Invalid;
+  if (pool && !scene->HasPool(mask, pool))
+    CreatePool(mask, pool);
+  return scene->CreateEntity(mask, pool, std::move(name));
+}
+auto Application::CreatePool(const ComponentMask &mask, const PoolKey &pool, PoolSettings settings) -> bool {
+  auto scene = GetScene();
+  if (!scene)
+    return false;
+  if (!settings.bounds)
+    settings.bounds = GetMeshBounds(pool);
+  return scene->CreatePool(mask, pool, settings);
+}
+auto Application::MoveEntityToPool(const EntityID id, const PoolKey &pool) -> bool {
+  auto scene = GetScene();
+  if (!scene)
+    return false;
+  if (const auto mask = scene->GetEntitySignature(id); pool && !scene->HasPool(mask, pool))
+    CreatePool(mask, pool);
+  return scene->MoveEntityToPool(id, pool);
+}
+auto Application::GetEntityPool(const EntityID id) const -> PoolKey {
+  if (auto scene = GetScene(); scene)
+    return scene->GetEntityPool(id);
+  return {};
+}
+auto Application::GetEntityBounds(const EntityID id) const -> BoundingBox {
+  if (auto scene = GetScene(); scene)
+    return scene->GetEntityBounds(id);
+  return {};
+}
+auto Application::GetMeshBounds(const PoolKey &pool) -> BoundingBox {
+  if (pool.meshIndex == PoolKey::NONE) {
+    if (const auto *mesh = GetAsset<MeshAsset>(pool.mesh))
+      return mesh->bounds;
+    return {};
+  }
+  if (const auto *model = GetAsset<ModelAsset>(pool.mesh); model && pool.meshIndex < model->meshes.size())
+    return BoundingBox::Calculate(model->meshes[pool.meshIndex].mesh.vertices);
+  return {};
+}
 auto Application::GetArchetypes() const -> const std::vector<ArchetypeSpec> & {
   return archetypes;
 }

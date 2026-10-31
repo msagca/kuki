@@ -20,8 +20,8 @@
 namespace kuki {
 /// @brief Marks a component a query reads where it exists, rather than one it filters on.
 ///
-/// `ForEach<MeshHandle, Transform, Optional<BoundingBox>>` visits every entity carrying a handle
-/// and a transform, and hands the callback a bounds pointer that is null for those without one.
+/// `ForEach<Transform, Optional<BoundingBox>>` visits every entity carrying a transform, and hands
+/// the callback a bounds pointer that is null for those without one.
 ///
 /// The point is where the component is read from. A required type narrows the archetypes a query
 /// visits, so asking for one an entity might not have would silently skip that entity; the usual
@@ -123,6 +123,33 @@ public:
   ///
   /// For what learns the components at run time: a scene file, a copy from another manager.
   auto Create(const ComponentMask &, std::string = "") -> EntityID;
+  /// @brief Makes an entity of a drawn archetype in one of its pools, making the pool if it is new.
+  ///
+  /// A key with no mesh makes it in the archetype's own table, where it is not drawn.
+  template <IsArchetype A>
+  auto Create(const PoolKey &, std::string = "") -> EntityID;
+  auto Create(const ComponentMask &, const PoolKey &, std::string = "") -> EntityID;
+  /// @brief Makes a pool of a drawn archetype ahead of its entities, with settings of its own.
+  ///
+  /// A pool made by an entity's `Create` takes the default settings, which are empty bounds here;
+  /// `Application` fills them in from the mesh. False if the archetype was never declared, is not
+  /// drawn, or the key has no mesh. A pool that is already there keeps the settings it was made with.
+  auto CreatePool(const ComponentMask &, const PoolKey &, const PoolSettings & = {}) -> bool;
+  /// @brief Moves an entity of a drawn archetype to another pool of it, keeping its id and its
+  /// components: how it is given another mesh or material, which are its pool's.
+  ///
+  /// A structural change, as making or deleting one is, and like `Delete` it waits for a running
+  /// query to end. A key with no mesh moves it to the archetype's own table, where it is not drawn.
+  auto MoveToPool(const EntityID, const PoolKey &) -> bool;
+  /// @brief The pool an entity is drawn from, or an empty key if it is not in one.
+  auto GetPool(const EntityID) const -> PoolKey;
+  /// @brief Whether a pool of these components was made here.
+  auto HasPool(const ComponentMask &, const PoolKey &) const -> bool;
+  /// @brief An entity's bounds around its origin: its own `BoundingBox` if it has one, otherwise
+  /// its pool's. Empty for one with neither.
+  auto GetBounds(const EntityID) const -> BoundingBox;
+  /// @brief Calls `func(table)` for every pool that has entities in it.
+  auto ForEachPool(this auto &, auto &&) -> void;
   auto Delete(const EntityID) -> bool;
   auto ForEachChild(this const auto &, const EntityID, auto &&) -> void;
   auto ForEachComponent(this const auto &, const EntityID, auto &&) -> void;
@@ -221,6 +248,11 @@ private:
   /// can invalidate them -- a column may move when it grows, and swapping the last row into a gap
   /// moves that one; `transformCacheGeneration` is what notices.
   std::vector<Transform *> transformCache;
+  /// @brief Each entry's world matrix, beside `transformCache` and invalidated with it. A column of
+  /// its own in the tables (see `Transform`), so a pointer of its own here.
+  std::vector<WorldMatrix *> worldCache;
+  /// @brief The table each entry's row is in, so that moving an entity raises its pool's version.
+  std::vector<uint32_t> transformTable;
   /// @brief Each entry's parent as an index into `transformCache`, or -1 for a root.
   ///
   /// The direct parent, matching what the update has always used: an entity whose parent carries
@@ -250,6 +282,7 @@ private:
   mutable size_t forEachDepth{};
   mutable std::vector<std::function<void()>> pendingStructuralChanges;
   void DeleteRecords(const EntityID);
+  auto CreateIn(const uint32_t table, std::string name) -> EntityID;
   auto DrainPendingStructuralChanges() const -> void;
   auto RebuildTransformOrder() -> void;
   auto RebuildTransformCache() -> void;
@@ -296,6 +329,17 @@ auto EntityManager::Declare() -> void {
 template <IsArchetype A>
 auto EntityManager::Create(std::string name) -> EntityID {
   return Create(A::Mask(), std::move(name));
+}
+template <IsArchetype A>
+auto EntityManager::Create(const PoolKey &pool, std::string name) -> EntityID {
+  static_assert(A::template Has<Pooled>, "Create: only an archetype that is drawn -- one with `Renderable` in it -- has pools");
+  return Create(A::Mask(), pool, std::move(name));
+}
+auto EntityManager::ForEachPool(this auto &self, auto &&func) -> void {
+  self.archetypeRegistry.ForEachTable([&](auto &table) {
+    if (table.pool && !table.entities.empty())
+      func(table);
+  });
 }
 auto EntityManager::ForEachChild(this const auto &self, const EntityID parent, auto &&func) -> void {
   if (auto it = self.idToChildren.find(parent); it != self.idToChildren.end()) {
@@ -357,17 +401,17 @@ template <IsArchetype A, typename... Q>
 auto EntityManager::ForEachOf(this auto &self, auto &&func) -> void {
   static_assert(IsQuery<Q...>, "ForEachOf: every parameter must be a component, Optional<component> or Without<component>; at least one must be required; and none may be both required and excluded");
   static_assert(QueryMatches<Q...>(A::bits), "ForEachOf: the archetype is not one the query visits");
-  const auto index = self.archetypeRegistry.Find(A::Mask());
-  if (!index)
-    return;
   ++self.forEachDepth;
-  auto &table = *self.archetypeRegistry.GetTable(*index);
-  auto columns = std::tuple_cat(KnownColumn<A, Q>(table)...);
-  const auto rowCount = table.entities.size();
-  for (size_t row = 0; row < rowCount; ++row) {
-    const auto id = table.entities[row];
-    std::apply([&](auto... column) { func(id, RowOf(column, row)...); }, columns);
-  }
+  // The archetype's own table and every pool of it: a drawn archetype's entities are spread over a
+  // table per mesh and material, and a query over the archetype is over all of them.
+  self.archetypeRegistry.ForEachTableOf(A::Mask(), [&](auto &table) {
+    auto columns = std::tuple_cat(KnownColumn<A, Q>(table)...);
+    const auto rowCount = table.entities.size();
+    for (size_t row = 0; row < rowCount; ++row) {
+      const auto id = table.entities[row];
+      std::apply([&](auto... column) { func(id, RowOf(column, row)...); }, columns);
+    }
+  });
   --self.forEachDepth;
   if (self.forEachDepth == 0)
     self.DrainPendingStructuralChanges();

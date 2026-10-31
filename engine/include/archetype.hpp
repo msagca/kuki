@@ -6,8 +6,10 @@
 #include <id.hpp>
 #include <kuki_engine_export.h>
 #include <memory>
+#include <pool.hpp>
 #include <string_view>
 #include <type_list.hpp>
+#include <type_traits>
 #include <vector>
 namespace kuki {
 /// @brief A named group of components, for writing archetypes in parts.
@@ -26,6 +28,9 @@ namespace detail {
   struct FlattenOne<Components<Ts...>> {
     using Type = Concat<typename FlattenOne<Ts>::Type...>;
   };
+  /// A transform brings the world matrix it works out to, unless the archetype named it already.
+  template <typename List>
+  using WithWorldMatrix = std::conditional_t<Contains<List, Transform> && !Contains<List, WorldMatrix>, Concat<List, TypeList<WorldMatrix>>, List>;
   template <typename T>
   struct IsComponentOf {
     static constexpr bool value = IsComponent<T>;
@@ -45,7 +50,13 @@ namespace detail {
 /// `World` that declares both is told so.
 template <typename... Ts>
 struct Archetype {
-  using List = Concat<typename detail::FlattenOne<Ts>::Type...>;
+  /// The components named, and a `WorldMatrix` if one of them is a `Transform`. The two are one
+  /// thing to whoever writes an archetype -- an entity with a place has a place in the world -- and
+  /// two columns to the table, so that the world matrices a renderer copies are packed together
+  /// rather than strided through the transforms (see `Transform`). Added here rather than asked for
+  /// in every archetype because a transform without one would be updated into nowhere, and an
+  /// archetype that forgot it is not a mistake worth a compile error to report.
+  using List = detail::WithWorldMatrix<Concat<typename detail::FlattenOne<Ts>::Type...>>;
   static_assert(sizeof...(Ts) > 0, "an archetype needs at least one component");
   static_assert(Filter<List, detail::IsComponentOf>::size == List::size, "an archetype names a type that is not a component -- declare it with KUKI_COMPONENT");
   static_assert(IsUnique<List>, "an archetype names a component twice, perhaps once on its own and once in a bundle");
@@ -78,6 +89,7 @@ struct KUKI_ENGINE_API IArchetypeColumn {
   virtual auto CopyRow(const IArchetypeColumn &, const size_t from, const size_t to) -> void = 0;
   virtual auto SwapPop(const size_t) -> void = 0;
   virtual auto Clear() -> void = 0;
+  virtual auto Reserve(const size_t) -> void = 0;
   /// @brief An empty column of the same component, for declaring the same archetype somewhere else.
   virtual auto CloneEmpty() const -> std::unique_ptr<IArchetypeColumn> = 0;
 };
@@ -104,6 +116,9 @@ struct ArchetypeColumn final : public IArchetypeColumn {
   }
   auto Clear() -> void override {
     components.clear();
+  }
+  auto Reserve(const size_t count) -> void override {
+    components.reserve(count);
   }
   auto CloneEmpty() const -> std::unique_ptr<IArchetypeColumn> override {
     return std::make_unique<ArchetypeColumn>();
@@ -148,11 +163,27 @@ auto MakeArchetypeSpecs(TypeList<As...>) -> std::vector<ArchetypeSpec> {
   return {MakeArchetypeSpec<As>()...};
 }
 /// @brief The entities of one archetype in one entity manager, and their components, by column.
+///
+/// An archetype has one table, or, if it is drawn (`Pooled`), one more for each pool: each mesh and
+/// material its entities are drawn with. A pool's entities are then its table's rows, in one block,
+/// and their world matrices one column -- what a renderer hands the GPU for the pool as it is, with
+/// no grouping to do first. Grouping the scene's entities by mesh and material every frame is what
+/// a pool replaces: it is done once, when an entity is made in a pool or moved to another, which is
+/// the only time it can change.
 struct ArchetypeTable {
   ArchetypeTable() {
     columnIndexById.fill(-1);
   }
   ComponentMask signature;
+  /// @brief What this table's entities are drawn with, if it is a pool; empty for the archetype's
+  /// own table, whose entities are not drawn.
+  PoolKey pool{};
+  /// @brief The pool's bounds around each entity's origin. See `PoolSettings::bounds`.
+  BoundingBox bounds{};
+  /// @brief Raised whenever a row comes or goes, or an entity of it moves: how whoever keeps
+  /// something worked out from the pool -- its bounds in the world, its ray-tracing instances --
+  /// tells whether it is still current without looking at the entities.
+  uint64_t version{};
   std::vector<EntityID> entities;
   std::array<int, MAX_COMPONENTS> columnIndexById;
   std::vector<std::unique_ptr<IArchetypeColumn>> columns;

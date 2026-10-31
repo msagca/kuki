@@ -672,7 +672,12 @@ if(${PROJECT_NAME_UPPER}_BUILD_GAMES AND KUKI_GAME_TARGETS)
   )
   foreach(GAME_TARGET ${KUKI_GAME_TARGETS})
     # `KukiChess` reads as `Kuki Chess` in the tree, matching the two components above.
-    string(REGEX REPLACE "^${PROJECT_NAME}" "${PROJECT_NAME} " GAME_DISPLAY_NAME "${GAME_TARGET}")
+    string(
+      REGEX REPLACE "^${PROJECT_NAME}"
+      "${PROJECT_NAME} "
+      GAME_DISPLAY_NAME
+      "${GAME_TARGET}"
+    )
     cpack_add_component(
       ${GAME_TARGET}
       DISPLAY_NAME "${GAME_DISPLAY_NAME}"

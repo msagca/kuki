@@ -47,7 +47,6 @@
 #include <material_type.hpp>
 #include <model_asset.hpp>
 #include <post_process.hpp>
-#include <render_binding.hpp>
 #include <profiler.hpp>
 #include <property_displayer.hpp>
 #include <rendering_system.hpp>
@@ -348,10 +347,8 @@ auto ComponentIcon(const ComponentType type) -> const char * {
   case ComponentType::Camera:
     return ICON_LC_VIDEO;
   case ComponentType::MaterialHandle:
-  case ComponentType::ModelMaterialHandle:
     return ICON_LC_PALETTE;
-  case ComponentType::MeshHandle:
-  case ComponentType::ModelMeshHandle:
+  case ComponentType::Pooled:
     return ICON_LC_BOX;
   case ComponentType::SkyboxHandle:
     return ICON_LC_GLOBE;
@@ -363,8 +360,6 @@ auto ComponentIcon(const ComponentType type) -> const char * {
     return ICON_LC_LIGHTBULB;
   case ComponentType::ParticleEmitter:
     return ICON_LC_SPARKLES;
-  case ComponentType::RenderBinding:
-    return ICON_LC_MONITOR;
   case ComponentType::Skeleton:
     return ICON_LC_BONE;
   case ComponentType::Transform:
@@ -381,6 +376,8 @@ auto ComponentIcon(const ComponentType type) -> const char * {
     return ICON_LC_ZAP;
   case ComponentType::Wind:
     return ICON_LC_WIND;
+  case ComponentType::WorldMatrix:
+    return ICON_LC_AXIS_3D;
   }
   return ICON_LC_CIRCLE_DASHED;
 }
@@ -423,7 +420,7 @@ inline constexpr CreatableKind CREATABLE[]{
 /// the first one found is the answer. Something with none of them is a plain node -- an empty
 /// parent, or a bone.
 auto EntityIcon(const std::vector<ComponentType> &types) -> const char * {
-  static constexpr ComponentType TELLING[]{ComponentType::Camera, ComponentType::Light, ComponentType::ParticleEmitter, ComponentType::Animator, ComponentType::AtmosphereSky, ComponentType::VolumetricClouds, ComponentType::VolumetricFog, ComponentType::Stylization, ComponentType::PlanarReflection, ComponentType::Wind, ComponentType::SkyboxHandle, ComponentType::IndirectLighting, ComponentType::AntiAliasing, ComponentType::ModelMeshHandle, ComponentType::MeshHandle};
+  static constexpr ComponentType TELLING[]{ComponentType::Camera, ComponentType::Light, ComponentType::ParticleEmitter, ComponentType::Animator, ComponentType::AtmosphereSky, ComponentType::VolumetricClouds, ComponentType::VolumetricFog, ComponentType::Stylization, ComponentType::PlanarReflection, ComponentType::Wind, ComponentType::SkyboxHandle, ComponentType::IndirectLighting, ComponentType::AntiAliasing, ComponentType::Pooled};
   for (const auto telling : TELLING)
     if (std::ranges::find(types, telling) != types.end())
       return ComponentIcon(telling);
@@ -803,39 +800,10 @@ auto Editor::UpdateView() -> void {
 }
 auto Editor::ApplyPickedAsset(const AssetID assetId) -> void {
   switch (context.pickingTarget) {
-  case PickingTarget::MaterialTexture: {
-    auto *binding = GetEntityComponent<RenderBinding>(context.pickingEntityId);
-    if (auto *material = binding && binding->glMaterialBound ? &binding->glMaterial : nullptr; material) {
-      const auto texture = PreviewAsset(assetId);
-      if (texture) {
-        const auto handle = static_cast<unsigned int>(texture->GetTextureHandle());
-        switch (context.pickingProperty) {
-        case MaterialProperty::AlbedoTexture:
-          material->textures.albedo = handle;
-          break;
-        case MaterialProperty::NormalTexture:
-          material->textures.normal = handle;
-          break;
-        case MaterialProperty::MetalnessTexture:
-          material->textures.metalness = handle;
-          break;
-        case MaterialProperty::OcclusionTexture:
-          material->textures.occlusion = handle;
-          break;
-        case MaterialProperty::RoughnessTexture:
-          material->textures.roughness = handle;
-          break;
-        case MaterialProperty::SpecularTexture:
-          material->textures.specular = handle;
-          break;
-        case MaterialProperty::EmissiveTexture:
-          material->textures.emissive = handle;
-          break;
-        }
-      }
-    }
+  case PickingTarget::MaterialTexture:
+    // Into the OpenGL material the entity's binding held, which went with the binding: a material is
+    // its pool's now and OpenGL draws no pools yet, so there is no material here to change.
     break;
-  }
   case PickingTarget::Skybox: {
     // Into the handle the entity has. It used to be given one if it had none, and an entity's
     // components are its archetype's now; an entity with no sky to set is not offered the picker.
@@ -1342,9 +1310,6 @@ auto Editor::PasteEntities() -> void {
 static auto IsHandleComponent(const ComponentType type) -> bool {
   switch (type) {
   case ComponentType::MaterialHandle:
-  case ComponentType::MeshHandle:
-  case ComponentType::ModelMaterialHandle:
-  case ComponentType::ModelMeshHandle:
   case ComponentType::SkyboxHandle:
   case ComponentType::TextureHandle:
     return true;
@@ -1904,19 +1869,25 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
   ImGuizmo::SetRect(windowPos.x, windowPos.y, width, height);
   ImGuizmo::SetOrthographic(cameraController->GetType() == CameraType::Orthographic);
   struct ManipulatorTarget {
+    EntityID id{};
     Transform *transformComp{};
     Camera *cameraComp{};
     Light *lightComp{};
     Transform current{};
+    /// Where it is in the world: its world matrix, or for a camera or a light the place it keeps.
+    glm::mat4 world{1.f};
   };
   std::vector<ManipulatorTarget> targets;
   targets.reserve(context.selectedEntities.size());
   for (const auto &id : context.selectedEntities) {
     ManipulatorTarget target;
+    target.id = id;
     target.transformComp = GetEntityComponent<Transform>(id);
-    if (target.transformComp)
+    if (target.transformComp) {
       target.current = *target.transformComp;
-    else {
+      if (const auto *world = GetEntityComponent<WorldMatrix>(id))
+        target.world = world->matrix;
+    } else {
       target.cameraComp = GetEntityComponent<Camera>(id);
       if (target.cameraComp)
         target.current = target.cameraComp->GetTransform();
@@ -1927,6 +1898,7 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
         else
           continue;
       }
+      target.world = target.current.local;
     }
     targets.push_back(target);
   }
@@ -1934,11 +1906,11 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
     return;
   glm::mat4 pivot;
   if (targets.size() == 1)
-    pivot = targets[0].current.world;
+    pivot = targets[0].world;
   else {
     glm::vec3 centroid{};
     for (const auto &target : targets)
-      centroid += glm::vec3(target.current.world[3]);
+      centroid += glm::vec3(target.world[3]);
     centroid /= static_cast<float>(targets.size());
     pivot = glm::translate(glm::mat4(1.f), centroid);
   }
@@ -1948,17 +1920,21 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
     return;
   const auto delta = pivot * glm::inverse(pivotBefore);
   for (auto &target : targets) {
-    const auto newWorld = delta * target.current.world;
+    const auto newWorld = delta * target.world;
     glm::vec3 rotation;
     Transform result;
     ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(newWorld), glm::value_ptr(result.position), glm::value_ptr(rotation), glm::value_ptr(result.scale));
     result.rotation = glm::quat(glm::radians(rotation));
-    result.world = newWorld;
+    result.local = newWorld;
     if (target.cameraComp)
       target.cameraComp->SetTransform(result);
     else if (target.lightComp)
       target.lightComp->SetTransform(result);
-    else
+    else {
+      // Worked out into the world matrix by the next transform update, children and all, rather
+      // than the matrix written here by hand -- which moved the entity and left its children behind.
       *target.transformComp = result;
+      MarkTransformDirty(target.id);
+    }
   }
 }

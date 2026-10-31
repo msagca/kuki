@@ -316,6 +316,20 @@ auto RenderingSystem::Update(float deltaTime) -> void {
         spdlog::info("[RenderingSystem] Saved frame {} to {}", captureFrame, capturePath.string());
       else
         spdlog::warn("[RenderingSystem] This backend cannot save a frame, so {} was not written", capturePath.string());
+      // What the frames before it cost, scope by scope, so a run with nobody at the screen can say
+      // where the time goes as well as what was drawn. Averages over the frames a scope ran in,
+      // which is what the profiler keeps; anything under a hundredth of a millisecond is left out.
+      const auto &profiler = Profiler::Get();
+      const auto Report = [&](const size_t index, const auto &self) -> void {
+        const auto &node = profiler.GetNodes()[index];
+        if (node.avgMillis < .01)
+          return;
+        spdlog::info("[Profile] {:>{}}{} {:.3f} ms avg, {:.3f} max, {} calls a frame", "", node.depth * 2, node.name, node.avgMillis, node.maxMillis, node.lastCalls);
+        for (const auto child : node.children)
+          self(child, self);
+      };
+      for (const auto root : profiler.GetRoots())
+        Report(root, Report);
       app.Quit();
     }
   }

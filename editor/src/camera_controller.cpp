@@ -110,8 +110,8 @@ auto CameraController::Start() -> void {
   lmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_LEFT, [this]() {
     if (!app.IsViewportHovered() || ImGuizmo::IsOver() || ImGuizmo::IsUsing())
       return;
-    if (const auto transform = app.GetEntityComponent<Transform>(app.GetSelectedEntity()); transform)
-      orbitPivot = glm::vec3(transform->world[3]);
+    if (const auto world = app.GetEntityComponent<WorldMatrix>(app.GetSelectedEntity()); world)
+      orbitPivot = glm::vec3(world->matrix[3]);
     else
       orbitPivot = camera.position + camera.forward * settings.orbitFallbackDistance;
     orbitDistance = glm::length(camera.position - orbitPivot);

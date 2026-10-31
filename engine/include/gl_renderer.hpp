@@ -76,7 +76,8 @@ struct GLDeferredDraw {
 };
 /// @brief One instanced draw call's worth of work: a mesh, a material, and every instance of them.
 ///
-/// Mirrors `DXDrawBatch`, minus its hidden instances: the OpenGL backend traces no rays, so an
+/// What this backend grouped entities into when they carried their own mesh and material, kept for
+/// when it draws pools (`DXPoolDraw` is the Direct3D 12 backend's): it traces no rays, so an
 /// instance the camera cannot see is dropped rather than kept aside.
 ///
 /// The mesh and material point at the components the batch was grouped from rather than holding
@@ -168,9 +169,6 @@ public:
   auto LoadAsset(Asset &) -> void;
   auto LoadAsset(const AssetID) -> void override;
   auto LoadAssets(const AssetType) -> void override;
-  /// @brief Fills in an entity's `RenderBinding` from a resource this renderer holds.
-  auto BindMaterial(Scene &, const EntityID, const EntityID) -> void;
-  auto BindMesh(Scene &, const EntityID, const EntityID) -> void;
   /// @brief The sky the scene is lit and backed by, or null if it has none loaded.
   auto GetSceneSkybox(Scene &) -> const GLSkybox *;
   auto LoadScene(Scene &) -> void override;
@@ -240,12 +238,11 @@ private:
   std::unordered_map<AssetID, EntityID> assetIdToPreviewId;
   /// @brief Storage `CollectBatches` refills rather than rebuilds, and the span it hands back.
   ///
-  /// Same reasoning as `DXRenderer::batchPool`: clearing the per-batch arrays keeps their capacity,
-  /// so a steady scene stops allocating here after its first frame. `batchPool` may hold more
+  /// Clearing the per-batch arrays keeps their capacity, so a steady scene stops allocating here
+  /// after its first frame. `batchPool` may hold more
   /// batches than the last call used; the returned span is what says how many are live.
   std::vector<GLDrawBatch> batchPool;
   std::unordered_map<GLMeshMat, size_t> batchLookup;
-  std::unordered_set<EntityID> placeholderScaledMeshes;
   int previewSize{ASSET_PREVIEW_SIZE};
   glm::mat4 shadowView{1.f};
   glm::mat4 shadowProjection{1.f};
@@ -286,7 +283,6 @@ private:
   auto GetDefaultMaterialAssetId() -> AssetID;
   auto GetDefaultMeshAssetId() -> AssetID;
   auto LoadMesh(Mesh &, bool = false) -> GLMesh;
-  auto UpdatePlaceholderScale(Scene &, const EntityID, const bool pending) -> void;
   auto LoadModelMaterial(ModelAsset &, const size_t) -> EntityID;
   auto LoadModelMesh(ModelAsset &, const size_t) -> EntityID;
   auto LoadModelTexture(ModelAsset &, const size_t) -> GLTexture *;
@@ -294,8 +290,9 @@ private:
   auto LoadCompressedTexture(Texture &, GLTexture &) -> GLTexture;
   /// @brief Groups the scene's drawable meshes into one batch per mesh and material.
   ///
-  /// The counterpart of `DXRenderer::CollectBatches`, and grouped on the same rule: two entities
-  /// share a draw call only where `GLMeshMat` says their mesh and material are interchangeable.
+  /// Empty for now: drawn entities live in pools and this backend does not read them yet, so it
+  /// draws no meshes. Two entities shared a draw call where `GLMeshMat` said their mesh and
+  /// material were interchangeable.
   ///
   /// Regrouped every frame rather than cached against the structural generation. The cache it
   /// replaced was not free — it held the id of every entity in a bucket, and a frame had to fetch

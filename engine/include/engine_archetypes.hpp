@@ -3,10 +3,10 @@
 #include <component_traits.hpp>
 #include <type_list.hpp>
 namespace kuki {
-/// @brief What a mesh asset needs to be drawn: the handles, bounds to cull by, and the backend's binding.
-using Renderable = Components<MeshHandle, MaterialHandle, BoundingBox, RenderBinding>;
-/// @brief What one of a model's meshes needs to be drawn.
-using ModelRenderable = Components<ModelMeshHandle, ModelMaterialHandle, BoundingBox, RenderBinding>;
+/// @brief What makes an archetype drawn: its entities live in pools, each pool one mesh and one
+/// material (`pool.hpp`). The mesh, the material, the bounds and what a backend resolved them to are
+/// the pool's, so there is nothing per entity to carry but the tag.
+using Renderable = Components<Pooled>;
 /// @brief What plays a model's clips: the bones' entities and the animator that poses them.
 using Animated = Components<Skeleton, Animator>;
 /// @brief Something with a place and nothing else: a group, a pivot, the parent of a clock's parts.
@@ -30,8 +30,9 @@ using PlanarReflectionObject = Archetype<Transform, PlanarReflection>;
 using WindObject = Archetype<Transform, Wind>;
 /// @brief One node of a placed model that carries no mesh: a bone, or a group of meshes.
 using ModelNodeObject = Archetype<Transform, BoundingBox>;
-/// @brief One node of a placed model that carries a mesh.
-using ModelMeshObject = Archetype<Transform, ModelRenderable>;
+/// @brief One node of a placed model that carries a mesh: a mesh object in the pool of that model's
+/// mesh and material. Its own archetype when a model's mesh was named by handles of its own kind.
+using ModelMeshObject = MeshObject;
 /// @brief The entity a model is placed as, unless the game asks for another (`InstantiateAsset<A>`).
 ///
 /// It stands for the model's top node: it takes that node's transform and bounds, and the nodes
@@ -41,5 +42,5 @@ using ModelRoot = Archetype<Transform, BoundingBox, Animated>;
 ///
 /// What the engine itself makes: the prefabs of models and meshes it places, the entities the
 /// builder's conveniences make, and the settings. A game's `World` adds its own to these.
-using EngineArchetypes = TypeList<EmptyNode, MeshObject, CameraObject, LightObject, ParticleObject, SkyboxObject, AtmosphereSkyObject, IndirectLightingObject, VolumetricCloudsObject, VolumetricFogObject, AntiAliasingObject, StylizationObject, PlanarReflectionObject, WindObject, ModelNodeObject, ModelMeshObject, ModelRoot>;
+using EngineArchetypes = TypeList<EmptyNode, MeshObject, CameraObject, LightObject, ParticleObject, SkyboxObject, AtmosphereSkyObject, IndirectLightingObject, VolumetricCloudsObject, VolumetricFogObject, AntiAliasingObject, StylizationObject, PlanarReflectionObject, WindObject, ModelNodeObject, ModelRoot>;
 } // namespace kuki

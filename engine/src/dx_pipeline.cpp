@@ -29,8 +29,9 @@ auto DXPipelineCache::GetSceneRootSignature(ID3D12Device *device) -> ID3D12RootS
   environmentRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, MATERIAL_TEXTURE_SLOTS + 4);
   CD3DX12_DESCRIPTOR_RANGE sceneColorRange{};
   sceneColorRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, MATERIAL_TEXTURE_SLOTS + 10);
-  CD3DX12_ROOT_PARAMETER parameters[12]{};
-  parameters[0].InitAsConstants(sizeof(DXSceneConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+  CD3DX12_ROOT_PARAMETER parameters[13]{};
+  // Visible to the vertex stage too, which reads the material's sway and waves from them.
+  parameters[0].InitAsConstants(sizeof(DXSceneConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_ALL);
   parameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_ALL);
   parameters[2].InitAsDescriptorTable(1, &materialRange, D3D12_SHADER_VISIBILITY_PIXEL);
   parameters[3].InitAsDescriptorTable(1, &shadowRange, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -42,6 +43,8 @@ auto DXPipelineCache::GetSceneRootSignature(ID3D12Device *device) -> ID3D12RootS
   parameters[9].InitAsShaderResourceView(MATERIAL_TEXTURE_SLOTS + 8, 0, D3D12_SHADER_VISIBILITY_PIXEL);
   parameters[10].InitAsShaderResourceView(MATERIAL_TEXTURE_SLOTS + 9, 0, D3D12_SHADER_VISIBILITY_PIXEL);
   parameters[11].InitAsDescriptorTable(1, &sceneColorRange, D3D12_SHADER_VISIBILITY_PIXEL);
+  // The entities of the pool being drawn, beside its matrices in parameter 5.
+  parameters[12].InitAsShaderResourceView(MATERIAL_TEXTURE_SLOTS + 11, 0, D3D12_SHADER_VISIBILITY_VERTEX);
   CD3DX12_STATIC_SAMPLER_DESC samplers[3]{};
   samplers[0] = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP);
   samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;

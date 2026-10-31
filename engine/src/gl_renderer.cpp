@@ -40,12 +40,10 @@
 #include <material_type.hpp>
 #include <mesh.hpp>
 #include <mesh_asset.hpp>
-#include <mesh_handle.hpp>
 #include <model_asset.hpp>
 #include <post_process.hpp>
 #include <primitive.hpp>
 #include <profiler.hpp>
-#include <render_binding.hpp>
 #include <render_target.hpp>
 #include <renderer.hpp>
 #include <scene.hpp>
@@ -560,89 +558,16 @@ auto GLRenderer::DrawEntities(std::span<std::string> inputs, const GLRenderTarge
     glDisable(GL_BLEND);
   }
 }
-auto GLRenderer::CollectBatches(Scene &scene, const Camera *camera) -> std::span<const GLDrawBatch> {
-  KUKI_PROFILE_SCOPE("CollectBatches");
-  // how many pooled batches this call has claimed; the rest is last call's, left alone for its capacity
-  size_t used = 0;
-  batchLookup.clear();
-  scene.ForEachEntity<RenderBinding, Transform, Optional<BoundingBox>>([&](const EntityID id, const RenderBinding *binding, const Transform *transform, const BoundingBox *bounds) {
-    const auto *mesh = &binding->glMesh;
-    const auto *material = &binding->glMaterial;
-    if (!binding->glMaterialBound || mesh->vao == 0 || mesh->skinned)
-      return;
-    // an entity with no bounds cannot be tested, so it is drawn; over-drawing is the safe way to be wrong
-    if (camera && bounds && *bounds && !camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world)))
-      return;
-    const GLMeshMat key{.mesh = *mesh, .material = *material};
-    auto it = batchLookup.find(key);
-    if (it == batchLookup.end()) {
-      if (used == batchPool.size())
-        batchPool.emplace_back();
-      it = batchLookup.emplace(key, used++).first;
-      auto &claimed = batchPool[it->second];
-      claimed.mesh = mesh;
-      claimed.material = material;
-      // clear, never shrink: the capacity is the whole point of pooling these
-      claimed.transforms.clear();
-      claimed.fallbacks.clear();
-      claimed.entityIds.clear();
-    }
-    auto &batch = batchPool[it->second];
-    batch.transforms.push_back(transform->world);
-    batch.fallbacks.push_back(material->fallback);
-    batch.entityIds.push_back(static_cast<uint32_t>(static_cast<long long>(id)));
-  });
-  return std::span(batchPool).first(used);
+auto GLRenderer::CollectBatches(Scene &, const Camera *) -> std::span<const GLDrawBatch> {
+  // Pools are drawn by the Direct3D 12 backend only for now. A drawn entity's mesh and material are
+  // its pool's (`pool.hpp`), and this backend still drew from handles on each entity, which drawn
+  // entities no longer carry; until it reads pools, OpenGL draws no meshes.
+  return {};
 }
-auto GLRenderer::DrawSkinnedEntities(std::span<std::string> inputs, std::vector<GLDeferredDraw> &deferred) -> void {
-  KUKI_PROFILE_SCOPE("DrawSkinnedEntities");
-  auto scene = GetScene();
-  if (!scene)
-    return;
-  auto camera = scene->GetCamera();
-  if (!camera)
-    return;
-  scene->ForEachEntity<ModelMeshHandle, RenderBinding, Transform, Optional<BoundingBox>>([&](const EntityID id, const ModelMeshHandle *handle, const RenderBinding *binding, const Transform *transform, const BoundingBox *bounds) {
-    const auto *mesh = &binding->glMesh;
-    const auto *material = &binding->glMaterial;
-    if (!binding->glMaterialBound || !mesh->skinned || mesh->vao == 0)
-      return;
-    if (bounds && *bounds && !camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world)))
-      return;
-    auto modelAsset = app.GetAsset<ModelAsset>(handle->modelAssetId);
-    if (!modelAsset || handle->meshIndex >= modelAsset->meshes.size())
-      return;
-    const auto &modelMesh = modelAsset->meshes[handle->meshIndex];
-    Skeleton *skeleton{};
-    auto ancestorId = id;
-    for (auto i = 0; i < 64 && ancestorId; ++i) {
-      if (auto skel = scene->GetEntityComponent<Skeleton>(ancestorId); skel) {
-        skeleton = skel;
-        break;
-      }
-      ancestorId = scene->GetParent(ancestorId);
-    }
-    std::vector<glm::mat4> boneMatrices(modelMesh.bones.size(), glm::mat4(1.f));
-    if (skeleton)
-      for (auto i = 0u; i < modelMesh.bones.size(); ++i) {
-        const auto &bone = modelMesh.bones[i];
-        if (bone.nodeIndex >= skeleton->nodeEntities.size())
-          continue;
-        const auto boneEntityId = skeleton->nodeEntities[bone.nodeIndex];
-        if (!boneEntityId)
-          continue;
-        if (auto boneTransform = scene->GetEntityComponent<Transform>(boneEntityId); boneTransform)
-          boneMatrices[i] = boneTransform->world * bone.offsetMatrix;
-      }
-    const auto entityId = static_cast<uint32_t>(static_cast<long long>(id));
-    const auto blended = material->fallback.alphaMode == AlphaMode::Blend;
-    if (blended || material->fallback.transmission > .0f) {
-      const glm::vec3 position{transform->world[3]};
-      deferred.push_back({mesh, material, material->fallback, transform->world, std::move(boneMatrices), entityId, blended, glm::distance(position, camera->position)});
-      return;
-    }
-    DrawSkinnedMesh(inputs, *mesh, *material, boneMatrices, entityId);
-  });
+auto GLRenderer::DrawSkinnedEntities(std::span<std::string>, std::vector<GLDeferredDraw> &) -> void {
+  // Pools are drawn by the Direct3D 12 backend only for now. A drawn entity's mesh and material are
+  // its pool's (`pool.hpp`), and this backend still drew from handles on each entity, which drawn
+  // entities no longer carry; until it reads pools, OpenGL draws no meshes.
 }
 auto GLRenderer::DrawSkinnedMesh(std::span<std::string> inputs, const GLMesh &mesh, const GLMaterial &material, std::span<const glm::mat4> bones, const uint32_t entityId, const unsigned int sceneColor) -> void {
   auto scene = GetScene();
@@ -767,21 +692,10 @@ auto GLRenderer::DrawMeshes() -> void {
 ///
 /// The same geometry a shadow map wants and a depth prepass wants, which differ only in whose eye
 /// they are seen from.
-auto GLRenderer::DrawOpaqueMeshes(const glm::mat4 &view, const glm::mat4 &projection) -> void {
-  auto scene = GetScene();
-  if (!scene)
-    return;
-  std::unordered_map<GLMesh, std::vector<glm::mat4>> meshToTransforms;
-  scene->ForEachEntity<RenderBinding, Transform>([&](const EntityID, const RenderBinding *binding, const Transform *transform) {
-    const auto *mesh = &binding->glMesh;
-    if (mesh->vao == 0 || mesh->skinned)
-      return;
-    if (const auto *material = binding->glMaterialBound ? &binding->glMaterial : nullptr; material && (material->fallback.alphaMode == AlphaMode::Blend || material->fallback.transmission > .0f))
-      return;
-    meshToTransforms[*mesh].push_back(transform->world);
-  });
-  for (const auto &[mesh, transforms] : meshToTransforms)
-    DrawMeshesInstanced(mesh, transforms, view, projection);
+auto GLRenderer::DrawOpaqueMeshes(const glm::mat4 &, const glm::mat4 &) -> void {
+  // Pools are drawn by the Direct3D 12 backend only for now. A drawn entity's mesh and material are
+  // its pool's (`pool.hpp`), and this backend still drew from handles on each entity, which drawn
+  // entities no longer carry; until it reads pools, OpenGL draws no meshes.
 }
 auto GLRenderer::CreateDepthPrepass(std::span<std::string>, std::span<std::string> outputs) -> void {
   auto scene = GetScene();
@@ -821,13 +735,13 @@ auto GLRenderer::DrawMeshesInstanced(const GLMesh &mesh, const std::vector<glm::
 auto GLRenderer::FitShadowFrustum(Scene &scene, const Light &light) -> void {
   KUKI_PROFILE_SCOPE("FitShadowFrustum");
   BoundingBox sceneBounds{};
-  scene.ForEachEntity<BoundingBox, Transform>([&](const EntityID, const BoundingBox *box, const Transform *transform) {
+  scene.ForEachEntity<BoundingBox, WorldMatrix>([&](const EntityID, const BoundingBox *box, const WorldMatrix *transform) {
     // An empty box says nothing about where anything is, and taken into the world its corners are
     // infinities that swallow every real box. Every drawable archetype carries bounds, filled in or
     // not: a mesh placed by the builder has an empty one, where it used to have none at all.
     if (!*box)
       return;
-    const auto worldBounds = box->GetWorldBounds(transform->world);
+    const auto worldBounds = box->GetWorldBounds(transform->matrix);
     sceneBounds.min = glm::min(sceneBounds.min, worldBounds.min);
     sceneBounds.max = glm::max(sceneBounds.max, worldBounds.max);
   });
@@ -880,15 +794,10 @@ auto GLRenderer::CreateSpotShadowMap(std::span<std::string> inputs, std::span<st
   spotShadowCount = static_cast<unsigned int>(spotLights.size());
   if (spotShadowCount == 0)
     return;
+  // Pools are drawn by the Direct3D 12 backend only for now. A drawn entity's mesh and material are
+  // its pool's (`pool.hpp`), and this backend still drew from handles on each entity, which drawn
+  // entities no longer carry; until it reads pools, OpenGL draws no meshes.
   std::unordered_map<GLMesh, std::vector<glm::mat4>> meshToTransforms;
-  scene->ForEachEntity<RenderBinding, Transform>([&](const EntityID, const RenderBinding *binding, const Transform *transform) {
-    const auto *mesh = &binding->glMesh;
-    if (mesh->vao == 0 || mesh->skinned)
-      return;
-    if (const auto *material = binding->glMaterialBound ? &binding->glMaterial : nullptr; material && (material->fallback.alphaMode == AlphaMode::Blend || material->fallback.transmission > .0f))
-      return;
-    meshToTransforms[*mesh].push_back(transform->world);
-  });
   glEnable(GL_DEPTH_TEST);
   glBindFramebuffer(GL_FRAMEBUFFER, out->framebuffer);
   glViewport(0, 0, out->desc.width, out->desc.height);
@@ -1210,77 +1119,9 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
   // which is the same thing it draws with.
   if (const auto camera = scene.GetCamera(); camera)
     exposure = camera->GetExposureStops();
-  std::vector<std::pair<EntityID, EntityID>> materialsToPopulate;
-  scene.ForEachEntity<MaterialHandle>([&](const EntityID id, MaterialHandle *materialHandle) {
-    if (!materialHandle || materialHandle->resourceId)
-      return;
-    const auto pending = materialHandle->assetId && !app.IsAssetLoaded(materialHandle->assetId);
-    const auto targetId = materialHandle->assetId && !pending ? materialHandle->assetId : GetDefaultMaterialAssetId();
-    if (auto materialAsset = app.GetAsset<MaterialAsset>(targetId); materialAsset) {
-      LoadAsset<MaterialAsset>(*materialAsset);
-      const auto resourceId = GetAssetResourceId(materialAsset->id);
-      materialsToPopulate.emplace_back(id, resourceId);
-      if (!pending)
-        materialHandle->resourceId = resourceId;
-    }
-  });
-  for (const auto &[id, resourceId] : materialsToPopulate)
-    BindMaterial(scene, id, resourceId);
-  std::vector<std::pair<EntityID, EntityID>> meshesToPopulate;
-  scene.ForEachEntity<MeshHandle>([&](const EntityID id, MeshHandle *meshHandle) {
-    if (!meshHandle || meshHandle->resourceId)
-      return;
-    const auto pending = meshHandle->assetId && !app.IsAssetLoaded(meshHandle->assetId);
-    const auto targetId = meshHandle->assetId && !pending ? meshHandle->assetId : GetDefaultMeshAssetId();
-    if (auto meshAsset = app.GetAsset<MeshAsset>(targetId); meshAsset) {
-      LoadAsset<MeshAsset>(*meshAsset);
-      const auto resourceId = GetAssetResourceId(meshAsset->id);
-      meshesToPopulate.emplace_back(id, resourceId);
-      UpdatePlaceholderScale(scene, id, pending);
-      if (!pending)
-        meshHandle->resourceId = resourceId;
-    }
-  });
-  for (const auto &[id, resourceId] : meshesToPopulate)
-    BindMesh(scene, id, resourceId);
-  std::vector<std::pair<EntityID, EntityID>> modelMaterialsToPopulate;
-  scene.ForEachEntity<ModelMaterialHandle>([&](const EntityID id, ModelMaterialHandle *materialHandle) {
-    if (!materialHandle || materialHandle->resourceId)
-      return;
-    if (app.IsAssetLoaded(materialHandle->modelAssetId)) {
-      if (auto modelAsset = app.GetAsset<ModelAsset>(materialHandle->modelAssetId); modelAsset) {
-        materialHandle->resourceId = LoadModelMaterial(*modelAsset, materialHandle->materialIndex);
-        modelMaterialsToPopulate.emplace_back(id, materialHandle->resourceId);
-      }
-      return;
-    }
-    if (auto materialAsset = app.GetAsset<MaterialAsset>(GetDefaultMaterialAssetId()); materialAsset) {
-      LoadAsset<MaterialAsset>(*materialAsset);
-      modelMaterialsToPopulate.emplace_back(id, GetAssetResourceId(materialAsset->id));
-    }
-  });
-  for (const auto &[id, resourceId] : modelMaterialsToPopulate)
-    BindMaterial(scene, id, resourceId);
-  std::vector<std::pair<EntityID, EntityID>> modelMeshesToPopulate;
-  scene.ForEachEntity<ModelMeshHandle>([&](const EntityID id, ModelMeshHandle *meshHandle) {
-    if (!meshHandle || meshHandle->resourceId)
-      return;
-    if (app.IsAssetLoaded(meshHandle->modelAssetId)) {
-      if (auto modelAsset = app.GetAsset<ModelAsset>(meshHandle->modelAssetId); modelAsset) {
-        meshHandle->resourceId = LoadModelMesh(*modelAsset, meshHandle->meshIndex);
-        modelMeshesToPopulate.emplace_back(id, meshHandle->resourceId);
-        UpdatePlaceholderScale(scene, id, false);
-      }
-      return;
-    }
-    if (auto meshAsset = app.GetAsset<MeshAsset>(GetDefaultMeshAssetId()); meshAsset) {
-      LoadAsset<MeshAsset>(*meshAsset);
-      modelMeshesToPopulate.emplace_back(id, GetAssetResourceId(meshAsset->id));
-      UpdatePlaceholderScale(scene, id, true);
-    }
-  });
-  for (const auto &[id, resourceId] : modelMeshesToPopulate)
-    BindMesh(scene, id, resourceId);
+  // Pools are drawn by the Direct3D 12 backend only for now. A drawn entity's mesh and material are
+  // its pool's (`pool.hpp`), and this backend still drew from handles on each entity, which drawn
+  // entities no longer carry; until it reads pools, OpenGL draws no meshes.
   scene.ForEachEntity<SkyboxHandle>([&](const EntityID, SkyboxHandle *skyboxHandle) {
     if (!skyboxHandle || skyboxHandle->resourceId)
       return;
@@ -1291,21 +1132,6 @@ auto GLRenderer::LoadScene(Scene &scene) -> void {
       skyboxHandle->resourceId = GetAssetResourceId(textureAsset->id);
     }
   });
-}
-auto GLRenderer::BindMaterial(Scene &scene, const EntityID id, const EntityID resourceId) -> void {
-  auto *binding = scene.GetEntityComponent<RenderBinding>(id);
-  const auto *material = resourceRegistry.GetComponent<GLMaterial>(resourceId);
-  if (!binding || !material)
-    return;
-  binding->glMaterial = *material;
-  binding->glMaterialBound = true;
-}
-auto GLRenderer::BindMesh(Scene &scene, const EntityID id, const EntityID resourceId) -> void {
-  auto *binding = scene.GetEntityComponent<RenderBinding>(id);
-  const auto *mesh = resourceRegistry.GetComponent<GLMesh>(resourceId);
-  if (!binding || !mesh)
-    return;
-  binding->glMesh = *mesh;
 }
 auto GLRenderer::GetSceneSkybox(Scene &scene) -> const GLSkybox * {
   // The first sky that has been loaded, as the scene's own `GLSkybox` component used to be found.
@@ -1822,23 +1648,5 @@ auto GLRenderer::LoadModelTexture(ModelAsset &modelAsset, const size_t textureIn
   *glTexture = LoadTexture(modelTexture.texture);
   spdlog::info("[GLRenderer] Loaded texture: {}", modelTexture.name);
   return glTexture;
-}
-auto GLRenderer::UpdatePlaceholderScale(Scene &scene, const EntityID id, const bool pending) -> void {
-  const auto wasScaled = placeholderScaledMeshes.contains(id);
-  if (pending == wasScaled)
-    return;
-  auto [bounds, transform] = scene.GetEntityComponent<BoundingBox, Transform>(id);
-  if (!bounds || !transform)
-    return;
-  const auto extents = bounds->max - bounds->min;
-  if (extents.x <= 0.f || extents.y <= 0.f || extents.z <= 0.f)
-    return;
-  if (pending) {
-    transform->scale *= extents;
-    placeholderScaledMeshes.insert(id);
-  } else {
-    transform->scale /= extents;
-    placeholderScaledMeshes.erase(id);
-  }
 }
 } // namespace kuki

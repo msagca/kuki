@@ -37,7 +37,6 @@ auto Camera::GetTransform() const -> Transform {
   transform.position = position;
   transform.rotation = rotation;
   transform.local = local;
-  transform.world = transform.local;
   return transform;
 }
 auto Camera::IntersectsFrustum(const BoundingBox &bounds) const -> bool {

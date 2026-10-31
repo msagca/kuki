@@ -53,10 +53,6 @@ namespace {
       {"prop/bush", {.albedo = {.12f, .32f, .1f}, .roughness = .9f, .sway = .12f}},
       {"prop/berries", {.albedo = {.7f, .04f, .08f}, .roughness = .4f, .emissive = {.05f, .0f, .0f}, .sway = .12f}},
       {"prop/grass", {.albedo = {.3f, .58f, .14f}, .roughness = .9f, .toon = .7f, .sway = 1.6f}},
-      {"prop/stems", {.albedo = {.25f, .5f, .12f}, .roughness = .9f, .toon = .7f, .sway = 1.6f}},
-      {"prop/flower_white", {.albedo = {.95f, .95f, .9f}, .roughness = .7f, .sway = 1.6f}},
-      {"prop/flower_yellow", {.albedo = {.95f, .75f, .1f}, .roughness = .7f, .sway = 1.6f}},
-      {"prop/flower_pink", {.albedo = {.95f, .4f, .6f}, .roughness = .7f, .sway = 1.6f}},
       {"prop/stone", {.albedo = {.45f, .44f, .42f}, .roughness = .85f}},
       {"prop/crystal", {.albedo = {.3f, .85f, .95f}, .roughness = .2f, .emissive = {.4f, 1.6f, 2.f}}},
       {"prop/crystal_rock", {.albedo = {.22f, .2f, .26f}, .roughness = .85f}},
@@ -152,19 +148,6 @@ namespace {
         Blade(tuft, out * random.Range(.0f, .06f), out * random.Range(.06f, .14f) + glm::vec3(.0f, height, .0f), .022f);
       }
       AddMesh(app, Prop("tuft", v), tuft.Take());
-      // Flowers: stems with a head on each.
-      auto stems = Builder();
-      auto heads = Builder();
-      for (auto i = 0; i < 5; ++i) {
-        const auto angle = random.Range(.0f, 6.2831853f);
-        const glm::vec3 out{std::cos(angle), .0f, std::sin(angle)};
-        const auto foot = out * random.Range(.0f, .12f);
-        const auto tip = foot + out * .03f + glm::vec3(.0f, random.Range(.16f, .26f), .0f);
-        Blade(stems, foot, tip, .012f);
-        heads.Rock(tip, glm::vec3(.035f, .025f, .035f), .15f, static_cast<uint32_t>(i + v * 10));
-      }
-      AddMesh(app, Prop("flowers", v, "stems"), stems.Take());
-      AddMesh(app, Prop("flowers", v, "heads"), heads.Take());
       auto boulder = Builder();
       boulder.Rock({.0f, .12f, .0f}, {.34f, .26f, .3f}, .28f, static_cast<uint32_t>(v + 70));
       AddMesh(app, Prop("boulder", v), boulder.Take());

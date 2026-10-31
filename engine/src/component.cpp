@@ -12,12 +12,9 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::IndirectLighting, "Indirect Lighting"},
   {ComponentType::Light, "Light"},
   {ComponentType::MaterialHandle, "MaterialHandle"},
-  {ComponentType::MeshHandle, "MeshHandle"},
-  {ComponentType::ModelMaterialHandle, "ModelMaterialHandle"},
-  {ComponentType::ModelMeshHandle, "ModelMeshHandle"},
   {ComponentType::ParticleEmitter, "Particle Emitter"},
   {ComponentType::PlanarReflection, "Planar Reflection"},
-  {ComponentType::RenderBinding, "RenderBinding"},
+  {ComponentType::Pooled, "Pooled"},
   {ComponentType::ScreenEffects, "Screen Effects"},
   {ComponentType::Skeleton, "Skeleton"},
   {ComponentType::SkyboxHandle, "SkyboxHandle"},
@@ -26,7 +23,8 @@ const std::unordered_map<ComponentType, std::string> Component::typeToName = {
   {ComponentType::Transform, "Transform"},
   {ComponentType::VolumetricClouds, "Volumetric Clouds"},
   {ComponentType::VolumetricFog, "Volumetric Fog"},
-  {ComponentType::Wind, "Wind"}};
+  {ComponentType::Wind, "Wind"},
+  {ComponentType::WorldMatrix, "World Matrix"}};
 auto Component::GetTypeName(const ComponentType type) -> std::string {
   if (auto it = typeToName.find(type); it != typeToName.end())
     return it->second;

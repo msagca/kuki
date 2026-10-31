@@ -38,7 +38,8 @@ auto Declare(EntityManager &manager) -> void {
 static_assert(ComponentIdOf<Transform> == static_cast<ComponentId>(ComponentType::Transform));
 static_assert(ComponentIdOf<Health> == FIRST_GAME_COMPONENT);
 static_assert(Unit::Has<Health> && !Unit::Has<Tag>);
-static_assert(Archetype<Transform, Renderable>::Has<RenderBinding>, "a bundle in an archetype is its components");
+static_assert(Archetype<Transform, Renderable>::Has<Pooled>, "a bundle in an archetype is its components");
+static_assert(Archetype<Transform>::Has<WorldMatrix>, "a transform brings its world matrix");
 static_assert(Archetype<Transform, Health>::bits == Archetype<Health, Transform>::bits, "the order of an archetype's components does not matter");
 static_assert(TestWorld::Has<Unit> && TestWorld::Has<MeshObject> && !TestWorld::Has<Archetype<Health>>);
 static_assert(TestWorld::Matches<Health> && TestWorld::Matches<Transform, Without<Tag>> && !TestWorld::Matches<Health, Camera>);
@@ -141,8 +142,8 @@ TEST(Archetype, ChildrenNeedTransformsAndMoveWithTheirParent) {
   manager.GetComponent<Transform>(child)->position = {1.f, .0f, .0f};
   manager.GetComponent<Transform>(parent)->position = {.0f, 2.f, .0f};
   manager.UpdateComponents<Transform>();
-  EXPECT_FLOAT_EQ(manager.GetComponent<Transform>(child)->world[3].y, 2.f);
-  EXPECT_FLOAT_EQ(manager.GetComponent<Transform>(child)->world[3].x, 1.f);
+  EXPECT_FLOAT_EQ(manager.GetComponent<WorldMatrix>(child)->matrix[3].y, 2.f);
+  EXPECT_FLOAT_EQ(manager.GetComponent<WorldMatrix>(child)->matrix[3].x, 1.f);
   // A row added to the parent's archetype can move its column, which the transform pass holds
   // pointers into. It has to notice and not write through a stale one.
   for (auto i = 0; i < 64; ++i)
@@ -150,7 +151,7 @@ TEST(Archetype, ChildrenNeedTransformsAndMoveWithTheirParent) {
   manager.GetComponent<Transform>(parent)->position = {.0f, 5.f, .0f};
   manager.MarkTransformDirty(parent);
   manager.UpdateComponents<Transform>();
-  EXPECT_FLOAT_EQ(manager.GetComponent<Transform>(child)->world[3].y, 5.f);
+  EXPECT_FLOAT_EQ(manager.GetComponent<WorldMatrix>(child)->matrix[3].y, 5.f);
 }
 TEST(Archetype, CopiesAnEntityAndItsChildrenToAnotherManager) {
   EntityManager from;
@@ -174,7 +175,7 @@ TEST(Archetype, CopiesAnEntityAndItsChildrenToAnotherManager) {
   // Into an entity of another archetype, what they share and no more, and what was left is said.
   const auto marker = to.Create<Marker>();
   const auto left = to.CopyComponents(from, child, marker);
-  EXPECT_EQ(left, (MaskOf<Transform, Health>()));
+  EXPECT_EQ(left, (MaskOf<Transform, WorldMatrix, Health>()));
   // A manager that was not told of the archetype makes no copy.
   EntityManager bare;
   EXPECT_FALSE(bare.CopyFrom(from, parent));
@@ -192,7 +193,7 @@ TEST(Archetype, RunTimeQuestionsAboutComponentsAreGeneratedFromTheList) {
   Declare(manager);
   const auto unit = manager.Create<Unit>();
   const auto types = manager.GetComponentTypes(unit);
-  EXPECT_EQ(types, (std::vector{ComponentType::Transform})) << "a game component has no engine type, and is left out rather than named wrongly";
+  EXPECT_EQ(types, (std::vector{ComponentType::Transform, ComponentType::WorldMatrix})) << "a game component has no engine type, and is left out rather than named wrongly; the transform brought its world matrix";
   auto variant = manager.GetComponent(unit, ComponentType::Transform);
   ASSERT_TRUE(std::holds_alternative<Transform *>(variant));
   EXPECT_EQ(std::get<Transform *>(variant), manager.GetComponent<Transform>(unit));

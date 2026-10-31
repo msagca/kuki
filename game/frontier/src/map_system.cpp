@@ -17,7 +17,6 @@
 #include <material_handle.hpp>
 #include <mesh_asset.hpp>
 #include <mesh_builder.hpp>
-#include <mesh_handle.hpp>
 #include <particle_emitter.hpp>
 #include <props.hpp>
 #include <spdlog/spdlog.h>
@@ -193,26 +192,23 @@ auto MapSystem::Generate() -> void {
   ++generation;
 }
 auto MapSystem::Place(const std::string &mesh, const std::string &material, const glm::vec3 &position, const float yaw, const float scale) -> EntityID {
-  const auto id = FrontierWorld::Create<MeshObject>(app);
+  const PoolKey pool{.mesh = MeshId(mesh), .material = MaterialId(material)};
+  // Bounds to cull by for the props, and none for the map's own meshes. Those are rebuilt with every
+  // map, there are few enough of them to draw whatever the camera sees -- and the sun's shadow is
+  // fitted round every box in the scene, so a sea reaching to the horizon would stretch one shadow
+  // map over all of it. The bounds are the pool's, so they are given when the pool is made, which
+  // is the first time anything is placed with that mesh and material.
+  const auto own = mesh.starts_with("map/") || mesh.starts_with("layer") || mesh == "highlight" || mesh == "path";
+  if (own)
+    FrontierWorld::CreatePool<MeshObject>(app, pool, {.bounds = BoundingBox{}});
+  const auto id = FrontierWorld::Create<MeshObject>(app, pool);
   if (!id)
     return id;
-  if (auto *handle = app.GetEntityComponent<MeshHandle>(id))
-    handle->assetId = MeshId(mesh);
-  if (auto *handle = app.GetEntityComponent<MaterialHandle>(id))
-    handle->assetId = MaterialId(material);
   if (auto *transform = app.GetEntityComponent<Transform>(id)) {
     transform->position = position;
     transform->rotation = glm::angleAxis(yaw, UP);
     transform->scale = glm::vec3(scale);
   }
-  // Bounds to cull by for the props, and none for the map's own meshes. Those are rebuilt with every
-  // map and would need them made again, there are few enough of them to draw whatever the camera
-  // sees -- and the sun's shadow is fitted round every box in the scene, so a sea reaching to the
-  // horizon would stretch one shadow map over all of it.
-  const auto own = mesh.starts_with("map/") || mesh.starts_with("layer") || mesh == "highlight" || mesh == "path";
-  if (const auto *asset = app.GetAsset<MeshAsset>(MeshId(mesh)); asset && !own)
-    if (auto *bounds = app.GetEntityComponent<BoundingBox>(id))
-      *bounds = asset->bounds;
   app.MarkTransformDirty(id);
   entities.push_back(id);
   return id;
@@ -390,18 +386,6 @@ auto MapSystem::BuildProps() -> void {
       const auto tufts = terrain == Terrain::Meadow ? 2 : static_cast<int>(random.Below(4));
       for (auto i = 0; i < tufts; ++i)
         Place(Prop("tuft", Variant()), "prop/grass", At(Scatter(c, random, .85f)), Yaw(), random.Range(.8f, 1.3f));
-      if (terrain == Terrain::Meadow) {
-        const auto flowers = 2 + static_cast<int>(random.Below(3));
-        constexpr std::array colours{"prop/flower_white", "prop/flower_yellow", "prop/flower_pink"};
-        const auto colour = colours[random.Below(3)];
-        for (auto i = 0; i < flowers; ++i) {
-          const auto v = Variant();
-          const auto at = At(Scatter(c, random, .8f));
-          const auto yaw = Yaw();
-          Place(Prop("flowers", v, "stems"), "prop/stems", at, yaw);
-          Place(Prop("flowers", v, "heads"), colour, at, yaw);
-        }
-      }
       if (map.resource[c] < 0 && random.Chance(terrain == Terrain::Grass ? .07f : .03f))
         Tree(At(Scatter(c, random, .5f)), random.Chance(.3f), random.Range(.9f, 1.3f));
       break;

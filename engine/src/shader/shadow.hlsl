@@ -1,18 +1,15 @@
-struct InstanceData {
-  float4x4 model;
-  uint entityId;
-  float sway;
-  float waves;
-  uint padding;
-};
 cbuffer ShadowConstants : register(b0) {
   float4x4 u_lightViewProjection;
   // The scene's wind, as scene.hlsl has it. See `Displace`.
   float4 u_wind;
   float4 u_gust;
   float4 u_waves;
+  // The pool being drawn: how far its material bends in the wind (`x`) and heaves with the waves
+  // (`y`). Set per draw, since a depth pass draws pool after pool under one light.
+  float4 u_draw;
 };
-StructuredBuffer<InstanceData> g_instances : register(t0);
+// A pool's world matrices, one per entity, as they lie in the pool's column.
+StructuredBuffer<float4x4> g_instances : register(t0);
 // The skinned meshes' bones, already carried into world space -- the same buffer the scene pass is
 // handed for the same draw. Read only by `VSSkinned`.
 StructuredBuffer<float4x4> g_bones : register(t1);
@@ -68,9 +65,9 @@ float3 Displace(float3 world, float3 origin, float sway, float waves) {
   return world;
 }
 float4 VSMain(VSInput input, uint instance : SV_InstanceID) : SV_POSITION {
-  InstanceData data = g_instances[instance];
-  float4 worldPosition = mul(data.model, float4(input.position, 1.0));
-  worldPosition.xyz = Displace(worldPosition.xyz, mul(data.model, float4(0.0, 0.0, 0.0, 1.0)).xyz, data.sway, data.waves);
+  float4x4 model = g_instances[instance];
+  float4 worldPosition = mul(model, float4(input.position, 1.0));
+  worldPosition.xyz = Displace(worldPosition.xyz, mul(model, float4(0.0, 0.0, 0.0, 1.0)).xyz, u_draw.x, u_draw.y);
   return mul(u_lightViewProjection, worldPosition);
 }
 struct VSSkinnedInput {
@@ -94,6 +91,6 @@ float4 VSSkinned(VSSkinnedInput input, uint instance : SV_InstanceID) : SV_POSIT
       total += input.boneWeights[i];
     }
   if (total <= 0.0)
-    world = g_instances[instance].model;
+    world = g_instances[instance];
   return mul(u_lightViewProjection, mul(world, float4(input.position, 1.0)));
 }

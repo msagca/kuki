@@ -24,6 +24,15 @@ public:
   auto CreateEntity(const ComponentMask &, std::string) -> EntityID;
   template <IsArchetype A>
   auto CreateEntity(std::string) -> EntityID;
+  /// @brief Makes an entity of a drawn archetype in a pool. See `EntityManager::Create`.
+  auto CreateEntity(const ComponentMask &, const PoolKey &, std::string) -> EntityID;
+  auto CreatePool(const ComponentMask &, const PoolKey &, const PoolSettings & = {}) -> bool;
+  auto HasPool(const ComponentMask &, const PoolKey &) const -> bool;
+  auto MoveEntityToPool(const EntityID, const PoolKey &) -> bool;
+  auto GetEntityPool(const EntityID) const -> PoolKey;
+  auto GetEntityBounds(const EntityID) const -> BoundingBox;
+  /// @brief Calls `func(table)` for every pool with entities in it. See `ArchetypeTable`.
+  auto ForEachPool(this auto &, auto &&) -> void;
   /// @brief Copies the components two entities share, from one of another manager to one here.
   auto CopyEntityComponents(const EntityManager &, const EntityID from, const EntityID to) -> ComponentMask;
   auto DeleteEntities() -> void;
@@ -67,6 +76,9 @@ private:
 };
 auto Scene::ForEachChildEntity(this auto &self, const EntityID id, auto &&func) -> void {
   self.entityManager.ForEachChild(id, std::forward<decltype(func)>(func));
+}
+auto Scene::ForEachPool(this auto &self, auto &&func) -> void {
+  self.entityManager.ForEachPool(std::forward<decltype(func)>(func));
 }
 auto Scene::ForEachRootEntity(this auto &self, auto &&func) -> void {
   self.entityManager.ForEachRoot(std::forward<decltype(func)>(func));

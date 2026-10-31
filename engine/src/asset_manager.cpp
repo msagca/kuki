@@ -34,7 +34,6 @@
 #include <material_type.hpp>
 #include <memory>
 #include <mesh_asset.hpp>
-#include <mesh_handle.hpp>
 #include <model_asset.hpp>
 #include <model_import.hpp>
 #include <nlohmann/json.hpp>
@@ -67,7 +66,6 @@ AssetManager::AssetManager(Application &app)
   prefabManager.Declare<TexturePrefab>();
   prefabManager.Declare<MeshObject>();
   prefabManager.Declare<ModelNodeObject>();
-  prefabManager.Declare<ModelMeshObject>();
 }
 auto AssetManager::Add(std::unique_ptr<Asset> asset, std::string name) -> bool {
   if (!asset || !asset->id)
@@ -183,15 +181,22 @@ auto AssetManager::Instantiate(const AssetID assetId, Scene &scene, const Compon
   const auto entityId = scene.CreateEntity(root, name);
   if (!entityId)
     return EntityID::Invalid;
-  const auto leftBehind = scene.CopyEntityComponents(prefabManager, prefabId, entityId);
-  if (leftBehind[ComponentIdOf<ModelMeshHandle>])
-    if (const auto meshId = scene.CreateEntity<ModelMeshObject>(name + " mesh"); meshId) {
+  scene.CopyEntityComponents(prefabManager, prefabId, entityId);
+  // A top node that is a mesh has its bounds in its pool and no component to copy them from.
+  if (auto *bounds = scene.GetEntityComponent<BoundingBox>(entityId); bounds && !*bounds)
+    *bounds = prefabManager.GetBounds(prefabId);
+  // A top node that is a mesh, under a root that is not drawn: the mesh comes in as a child of the
+  // root, from the same pool, with the bounds the prefab's pool has.
+  if (const auto pool = prefabManager.GetPool(prefabId); pool && !root[ComponentIdOf<Pooled>]) {
+    scene.CreatePool(MeshObject::Mask(), pool, {.bounds = prefabManager.GetBounds(prefabId)});
+    if (const auto meshId = scene.CreateEntity(MeshObject::Mask(), pool, name + " mesh"); meshId) {
       scene.CopyEntityComponents(prefabManager, prefabId, meshId);
       // Where the root is, rather than where the top node was relative to its parent: the root has
       // already taken that, and the mesh hangs from the root.
       *scene.GetEntityComponent<Transform>(meshId) = Transform{};
       scene.AddChildEntity(entityId, meshId);
     }
+  }
   prefabManager.ForEachChild(prefabId, [&](const EntityID childPrefabId) {
     if (const auto childId = scene.CopyEntityFrom(prefabManager, childPrefabId); childId)
       scene.AddChildEntity(entityId, childId);
@@ -286,45 +291,35 @@ auto AssetManager::CreateNodePrefab(const AssetID assetId, const ModelAsset &mod
   const auto IsMesh = [&](const int meshIndex) {
     return meshIndex >= 0 && meshIndex < modelAsset.meshes.size();
   };
+  // The pool a mesh of the model is drawn from: the model's mesh and the model's material for it.
+  // Its bounds are the mesh's own, worked out once, when the first node to use it makes the pool.
+  const auto PoolOf = [&](const int meshIndex) {
+    PoolKey pool{.mesh = assetId, .meshIndex = static_cast<uint32_t>(meshIndex)};
+    if (const auto materialIndex = modelAsset.meshes[meshIndex].material; materialIndex < modelAsset.materials.size()) {
+      pool.material = assetId;
+      pool.materialIndex = materialIndex;
+    }
+    if (!prefabManager.HasPool(MeshObject::Mask(), pool))
+      prefabManager.CreatePool(MeshObject::Mask(), pool, {.bounds = BoundingBox::Calculate(modelAsset.meshes[meshIndex].mesh.vertices)});
+    return pool;
+  };
   // A node with one mesh is that mesh; one with none, or with several, is a node, and the several
   // are its children. Which one is decided before the entity is made, since it cannot change after.
   const auto single = node.meshes.size() == 1 && IsMesh(node.meshes[0]);
-  const auto prefabId = single ? prefabManager.Create<ModelMeshObject>(node.name) : prefabManager.Create<ModelNodeObject>(node.name);
+  const auto prefabId = single ? prefabManager.Create<MeshObject>(PoolOf(node.meshes[0]), node.name) : prefabManager.Create<ModelNodeObject>(node.name);
   auto transform = prefabManager.GetComponent<Transform>(prefabId);
   transform->local = node.transform;
   glm::vec3 skew;
   glm::vec4 perspective;
   glm::decompose(node.transform, transform->scale, transform->rotation, transform->position, skew, perspective);
-  if (node.bounds)
-    *prefabManager.GetComponent<BoundingBox>(prefabId) = node.bounds;
-  const auto SetHandles = [&](const EntityID nodeId, const int meshIndex) {
-    auto meshHandle = prefabManager.GetComponent<ModelMeshHandle>(nodeId);
-    meshHandle->modelAssetId = assetId;
-    meshHandle->meshIndex = meshIndex;
-    const auto materialIndex = modelAsset.meshes[meshIndex].material;
-    if (materialIndex < 0 || materialIndex >= modelAsset.materials.size())
-      return;
-    auto materialHandle = prefabManager.GetComponent<ModelMaterialHandle>(nodeId);
-    materialHandle->modelAssetId = assetId;
-    materialHandle->materialIndex = materialIndex;
-    const auto &material = modelAsset.materials[materialIndex];
-    for (auto i = 0; i < material.textures.size(); ++i) {
-      const auto textureIndex = material.textures[i];
-      materialHandle->textureIndices.push_back(textureIndex);
-    }
-  };
-  if (single)
-    SetHandles(prefabId, node.meshes[0]);
-  else
+  if (auto *bounds = prefabManager.GetComponent<BoundingBox>(prefabId); bounds && node.bounds)
+    *bounds = node.bounds;
+  if (!single)
     for (const auto meshIndex : node.meshes) {
       // One that names no mesh is a node and not a mesh with nothing in it, which a renderer would
       // draw as the placeholder it shows for a mesh still loading.
-      const auto childId = IsMesh(meshIndex) ? prefabManager.Create<ModelMeshObject>() : prefabManager.Create<ModelNodeObject>();
-      auto childTransform = prefabManager.GetComponent<Transform>(childId);
-      childTransform->world = node.transform;
+      const auto childId = IsMesh(meshIndex) ? prefabManager.Create<MeshObject>(PoolOf(meshIndex)) : prefabManager.Create<ModelNodeObject>();
       prefabManager.AddChild(prefabId, childId);
-      if (IsMesh(meshIndex))
-        SetHandles(childId, meshIndex);
     }
   for (auto i = 0; i < node.children.size(); ++i) {
     const auto childIndex = node.children[i];

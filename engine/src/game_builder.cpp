@@ -1,5 +1,6 @@
 #include <application.hpp>
 #include <game_builder.hpp>
+#include <mesh_asset.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <utility>
@@ -49,5 +50,30 @@ auto BeginChild(BuilderStack &stack, const ComponentMask &mask, std::string name
 }
 auto MarkMoved(BuilderStack &stack) -> void {
   stack.app.MarkTransformDirty(stack.Current());
+}
+auto SetMesh(BuilderStack &stack, const AssetID mesh) -> void {
+  const auto id = stack.Current();
+  if (!id)
+    return;
+  auto pool = stack.app.GetEntityPool(id);
+  pool.mesh = mesh;
+  pool.meshIndex = PoolKey::NONE;
+  if (!pool.material)
+    if (const auto *asset = stack.app.GetAsset<MeshAsset>(mesh))
+      pool.material = asset->material;
+  stack.app.MoveEntityToPool(id, pool);
+}
+auto SetMaterial(BuilderStack &stack, const AssetID material) -> void {
+  const auto id = stack.Current();
+  if (!id)
+    return;
+  auto pool = stack.app.GetEntityPool(id);
+  if (!pool) {
+    spdlog::warn("[GameBuilder] '{}' was given a material before a mesh; a material is a pool's, and an entity with no mesh is in no pool", stack.app.GetEntityName(id));
+    return;
+  }
+  pool.material = material;
+  pool.materialIndex = PoolKey::NONE;
+  stack.app.MoveEntityToPool(id, pool);
 }
 } // namespace kuki::builder

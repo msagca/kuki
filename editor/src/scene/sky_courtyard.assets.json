@@ -5,44 +5,8 @@
       "low": 3425565642171139096
     },
     "name": "Plane",
-    "type": 1,
-    "path": ""
-  },
-  {
-    "id": {
-      "high": 8569614091031957600,
-      "low": 15471855482930753187
-    },
-    "name": "Cube",
-    "type": 1,
-    "path": ""
-  },
-  {
-    "id": {
-      "high": 1,
-      "low": 2001
-    },
-    "name": "cornell_white",
-    "type": 0,
-    "path": "material/cornell_white.mat"
-  },
-  {
-    "id": {
-      "high": 1,
-      "low": 2002
-    },
-    "name": "cornell_red",
-    "type": 0,
-    "path": "material/cornell_red.mat"
-  },
-  {
-    "id": {
-      "high": 1,
-      "low": 2003
-    },
-    "name": "cornell_green",
-    "type": 0,
-    "path": "material/cornell_green.mat"
+    "path": "",
+    "type": 1
   },
   {
     "id": {
@@ -50,7 +14,43 @@
       "low": 3001
     },
     "name": "qwantani_dusk_2_puresky_2k",
-    "type": 4,
-    "path": "image/qwantani_dusk_2_puresky_2k.exr"
+    "path": "image/qwantani_dusk_2_puresky_2k.exr",
+    "type": 4
+  },
+  {
+    "id": {
+      "high": 1,
+      "low": 2001
+    },
+    "name": "cornell_white",
+    "path": "material/cornell_white.mat",
+    "type": 0
+  },
+  {
+    "id": {
+      "high": 1,
+      "low": 2002
+    },
+    "name": "cornell_red",
+    "path": "material/cornell_red.mat",
+    "type": 0
+  },
+  {
+    "id": {
+      "high": 8569614091031957600,
+      "low": 15471855482930753187
+    },
+    "name": "Cube",
+    "path": "",
+    "type": 1
+  },
+  {
+    "id": {
+      "high": 1,
+      "low": 2003
+    },
+    "name": "cornell_green",
+    "path": "material/cornell_green.mat",
+    "type": 0
   }
 ]

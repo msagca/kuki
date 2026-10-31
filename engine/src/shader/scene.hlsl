@@ -95,14 +95,6 @@ struct SpotLight {
   float4 attenuation;
   float4 cutoff;
 };
-struct InstanceData {
-  float4x4 model;
-  uint entityId;
-  // How far this instance's material bends in the wind and heaves with the waves. See `DXInstanceData`.
-  float sway;
-  float waves;
-  uint padding;
-};
 struct OctreeNode {
   float3 center;
   float extent;
@@ -133,7 +125,9 @@ cbuffer DrawConstants : register(b0) {
   uint u_unlit;
   float u_alphaCutoff;
   uint u_alphaMode;
-  // How far this surface is cel shaded, in `x`. See `MaterialFallback::toon`.
+  // How far this surface is cel shaded (`x`), bends in the wind (`y`) and heaves with the waves
+  // (`z`). See `MaterialFallback::toon`, `sway` and `waves`; the last two are read by the vertex
+  // shader, which is why these constants are visible to it.
   float4 u_style;
 };
 cbuffer FrameConstants : register(b1) {
@@ -174,7 +168,8 @@ Texture2D g_specular : register(t5);
 Texture2D g_emissive : register(t6);
 Texture2D g_shadowMap : register(t7);
 Texture2DArray g_spotShadowMap : register(t8);
-StructuredBuffer<InstanceData> g_instances : register(t9);
+// A pool's world matrices, one per entity, as they lie in the pool's column.
+StructuredBuffer<float4x4> g_instances : register(t9);
 StructuredBuffer<float4x4> g_bones : register(t10);
 TextureCube g_irradiance : register(t11);
 TextureCube g_prefilter : register(t12);
@@ -183,6 +178,9 @@ StructuredBuffer<Probe> g_probes : register(t14);
 StructuredBuffer<OctreeNode> g_probeNodes : register(t15);
 StructuredBuffer<uint> g_probeLookup : register(t16);
 Texture2D g_sceneColor : register(t17);
+// The pool's entities, in the same order as its matrices: each is a 64-bit id, of which the picking
+// buffer keeps the low 24 bits.
+StructuredBuffer<uint2> g_entityIds : register(t18);
 SamplerState g_sampler : register(s0);
 SamplerState g_shadowSampler : register(s1);
 SamplerState g_clampSampler : register(s2);
@@ -277,8 +275,7 @@ PSInput BuildVertex(float4x4 world, float3 position, float3 normal, float3 tange
   return output;
 }
 PSInput VSMain(VSInput input, uint instance : SV_InstanceID) {
-  InstanceData data = g_instances[instance];
-  return BuildVertex(data.model, input.position, input.normal, input.tangent, input.texture0, data.entityId, data.sway, data.waves);
+  return BuildVertex(g_instances[instance], input.position, input.normal, input.tangent, input.texture0, g_entityIds[instance].x & 0xFFFFFF, u_style.y, u_style.z);
 }
 PSInput VSSkinned(VSSkinnedInput input, uint instance : SV_InstanceID) {
   float4x4 world = (float4x4)0;
@@ -289,8 +286,8 @@ PSInput VSSkinned(VSSkinnedInput input, uint instance : SV_InstanceID) {
       total += input.boneWeights[i];
     }
   if (total <= 0.0)
-    world = g_instances[instance].model;
-  return BuildVertex(world, input.position, input.normal, input.tangent, input.texture0, g_instances[instance].entityId, 0.0, 0.0);
+    world = g_instances[instance];
+  return BuildVertex(world, input.position, input.normal, input.tangent, input.texture0, g_entityIds[instance].x & 0xFFFFFF, 0.0, 0.0);
 }
 float DistributionGGX(float3 N, float3 H, float R) {
   float a = R * R;
