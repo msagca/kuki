@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <command_line.hpp>
+#include <controls.hpp>
 #include <format>
 #include <frontier.hpp>
 #include <frontier_world.hpp>
@@ -19,6 +20,7 @@
 #include <mesh_builder.hpp>
 #include <particle_emitter.hpp>
 #include <props.hpp>
+#include <settings_menu.hpp>
 #include <spdlog/spdlog.h>
 #include <transform.hpp>
 using namespace kuki;
@@ -103,6 +105,7 @@ auto MapSystem::PostStart() -> void {
   AddMesh(app, "highlight", {});
   AddMaterial(app, "path", {.albedo = {1.f, .85f, .3f}, .toon = .0f, .alpha = .9f, .unlit = true});
   AddMesh(app, "path", {});
+  AddSettings();
   Generate();
   if (HasFlag(arguments, DEMO_FLAG))
     DemoPath();
@@ -716,12 +719,28 @@ auto MapSystem::Raycast(const glm::vec3 &origin, const glm::vec3 &direction) con
   }
   return std::nullopt;
 }
+auto MapSystem::NextMap() -> void {
+  seed = seed * 6364136223846793005ull % 1000003ull + 1u;
+  Generate();
+}
+auto MapSystem::AddSettings() -> void {
+  auto &menu = app.GetSettingsMenu();
+  details = app.GetPreferences().GetBool(PREF_DETAILS, true);
+  std::vector<SettingsOption> layers;
+  for (const auto *name : LAYER_NAMES)
+    layers.push_back({name});
+  menu.AddChoice(SettingsPage::Game, "Layer", std::move(layers), [this] { return static_cast<size_t>(layer); }, [this](const size_t index) {
+    layer = static_cast<Layer>(index);
+    layersDirty = true; });
+  menu.AddToggle(SettingsPage::Game, "Map details", [this] { return details; }, [this](const bool value) {
+    details = value;
+    app.GetPreferences().Set(PREF_DETAILS, value); });
+  menu.AddAction(SettingsPage::Game, "New map", [this] { NextMap(); });
+}
 auto MapSystem::Update(const float) -> void {
-  if (app.IsInputPressed(GLFW_KEY_G)) {
-    seed = seed * 6364136223846793005ull % 1000003ull + 1u;
-    Generate();
-  }
-  if (app.IsInputPressed(GLFW_KEY_TAB)) {
+  if (app.IsBindingPressed(frontier::NEW_MAP))
+    NextMap();
+  if (app.IsBindingPressed(frontier::LAYER)) {
     layer = static_cast<Layer>((static_cast<size_t>(layer) + 1) % LAYER_NAMES.size());
     layersDirty = true;
   }
@@ -764,12 +783,16 @@ auto MapSystem::DrawPanel() -> void {
   auto &overlay = app.GetOverlay();
   const auto text = Display({1.f, .97f, .9f});
   const auto dim = Display({.75f, .78f, .8f}, .9f);
+  // Nothing at all unless asked for. The keys that used to be listed along the bottom are in the
+  // settings' controls, which is where they can be changed as well as read.
+  if (!details)
+    return;
   const auto [low, high] = map.grid.NeighbourRange();
   overlay.DrawRect({18.f * unit, 18.f * unit}, {430.f * unit, 150.f * unit}, {.02f, .03f, .05f, .55f});
   overlay.DrawText("FRONTIER", {32.f * unit, 26.f * unit}, 34.f * unit, text);
   overlay.DrawText(std::format("Seed {}   {} cells, {}-{} neighbours", map.seed, map.CellCount(), low, high), {32.f * unit, 70.f * unit}, 19.f * unit, dim);
   overlay.DrawText(std::format("Collapse: {} repairs, {} attempt{}, {:.0f} ms", map.repairs, map.attempts, map.attempts == 1 ? "" : "s", map.elapsed * 1000.f), {32.f * unit, 96.f * unit}, 19.f * unit, dim);
-  overlay.DrawText(std::format("Layer: {}  (Tab)", LAYER_NAMES[static_cast<size_t>(layer)]), {32.f * unit, 122.f * unit}, 19.f * unit, dim);
+  overlay.DrawText(std::format("Layer: {}", LAYER_NAMES[static_cast<size_t>(layer)]), {32.f * unit, 122.f * unit}, 19.f * unit, dim);
   if (hovered != INVALID_CELL) {
     const auto &cell = map.grid.GetCell(hovered);
     std::string resource = "none";
@@ -787,7 +810,4 @@ auto MapSystem::DrawPanel() -> void {
   }
   if (!path.empty())
     overlay.DrawText(std::format("Path: {} turns, {:.1f} long", path.size() - 2, pathLength), {0.f, 24.f * unit}, 22.f * unit, text, TextAnchor::Top);
-  else if (pathStart)
-    overlay.DrawText("Right click where the path should end", {0.f, 24.f * unit}, 22.f * unit, text, TextAnchor::Top);
-  overlay.DrawText("WASD move   wheel zoom   Q/E or middle drag turn   1-7 build   Tab layer   right click path   G new map   T time   Esc quit", {.0f, -18.f * unit}, 18.f * unit, dim, TextAnchor::Bottom);
 }

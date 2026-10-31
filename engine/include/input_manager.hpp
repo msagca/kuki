@@ -5,7 +5,9 @@
 #include <glm/ext/vector_int2.hpp>
 #include <kuki_engine_export.h>
 #include <manager.hpp>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <trie.hpp>
 #include <unordered_map>
 #include <vector>
@@ -58,6 +60,11 @@ public:
   auto CharCallback(GLFWwindow *, unsigned int) -> void;
   auto CursorPosCallback(GLFWwindow *, double, double) -> void;
   auto GetBinding(const std::string &) const -> Trigger;
+  /// @brief The trigger a binding was registered with, which is what resetting the controls puts back.
+  ///
+  /// Kept apart from the binding itself because a registration may be handed a saved trigger to use
+  /// instead -- see `RegisterBinding` -- and then the two differ from the first frame.
+  auto GetDefaultBinding(const std::string &) const -> Trigger;
   auto GetBindingDescription(const std::string &) const -> std::string;
   auto GetBindingNames() const -> const std::vector<std::string> &;
   /// @brief Which registered buttons are down for the tick being run, a bit each in the order they were registered.
@@ -103,7 +110,13 @@ public:
   auto PollKeyCapture() -> CaptureOutcome;
   auto RegisterAction(int, InputAction, bool = true) -> ActionID;
   auto RegisterAction(const std::string &, InputAction, std::string = "") -> ActionID;
-  auto RegisterBinding(const std::string &, const Trigger &, std::string = "") -> void;
+  /// @brief Registers a named binding, on `saved` if one is given and on the trigger otherwise.
+  ///
+  /// The trigger is the default either way, and is what `GetDefaultBinding` answers. A saved trigger
+  /// is taken at registration rather than applied after it, because applying it after would let the
+  /// default claim its key first: a player who swapped punch and kick would find the kick's default
+  /// taking the key the punch had been saved on, and the punch left with nothing.
+  auto RegisterBinding(const std::string &, const Trigger &, std::string = "", const std::optional<Trigger> & = std::nullopt) -> void;
   /// @brief Registers a binding that is also one of the game's buttons, and answers its bit.
   ///
   /// A button is a binding and nothing less: it has a name, it is rebound the same way, and it loses
@@ -113,7 +126,13 @@ public:
   /// same buttons in the same order for their masks to mean the same thing.
   ///
   /// Registering a name again answers the bit it already has. Past thirty-two the answer is -1.
-  auto RegisterButton(const std::string &, const Trigger &, std::string = "") -> int;
+  auto RegisterButton(const std::string &, const Trigger &, std::string = "", const std::optional<Trigger> & = std::nullopt) -> int;
+  /// @brief Lets go of everything held, as though every key and button had come up at once.
+  ///
+  /// For a menu taking the keyboard away from the game: what the game was holding when it opened is
+  /// released then, rather than left down until a release the menu has kept for itself. Release
+  /// actions run, so a drag that was under way ends the way a drag ends.
+  auto ReleaseAll() -> void;
   auto SetBinding(const std::string &, const Trigger &) -> void;
   /// @brief Turns one half of the input space on or off, or both.
   ///
@@ -165,6 +184,7 @@ private:
   std::unordered_map<ActionID, Registration> idToRegistration;
   std::unordered_map<std::string, Trigger> nameToBinding;
   std::unordered_map<std::string, std::string> nameToDescription;
+  std::unordered_map<std::string, Trigger> nameToDefault;
   std::vector<std::string> bindingOrder;
   std::unordered_multimap<unsigned char, InputAction> pressActions;
   std::unordered_multimap<unsigned char, InputAction> releaseActions;
@@ -195,4 +215,12 @@ private:
   static auto GLFWInputToIndex(int) -> unsigned char;
   static auto GLFWKeyToString(int) -> std::string;
 };
+/// @brief A trigger as the text it is saved in, `"<key> <mods>"` in GLFW's numbers, and back.
+///
+/// Numbers rather than key names, because the names are for reading and are not unique the other
+/// way round on every layout, and the numbers are what GLFW will hand back next run. Nought for the
+/// key is a binding left unbound, which is worth saving too: a binding whose key was taken by
+/// another is unbound by choice, and loading the default in its place would take the key back.
+auto KUKI_ENGINE_API FormatTrigger(const InputManager::Trigger &) -> std::string;
+auto KUKI_ENGINE_API ParseTrigger(const std::string_view) -> std::optional<InputManager::Trigger>;
 } // namespace kuki

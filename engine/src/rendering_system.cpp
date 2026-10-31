@@ -257,6 +257,7 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   if (activeRenderer) {
     if (const auto *settings = scene->GetAnyComponent<IndirectLighting>())
       activeRenderer->SetIndirectLighting(*settings);
+    activeRenderer->SetLightingQuality(lightingQuality);
     // From the active camera, so that switching cameras switches the view. The renderer keeps
     // reading its own member, which is now a copy of whichever camera is currently looking.
     if (const auto *camera = scene->GetCamera()) {
@@ -272,9 +273,16 @@ auto RenderingSystem::Update(float deltaTime) -> void {
     // `SetTargetSamples` compares the count before it reallocates anything. A scene with no such
     // component leaves the target at whatever the graph declared, which is the four samples this
     // was fixed at before it could be set at all.
-    if (renderGraph)
-      if (const auto *antiAliasing = scene->GetAnyComponent<AntiAliasing>())
+    //
+    // The override, where one is set, is the player's choice and stands in for the scene's -- and
+    // reaches a scene with no such component too, since it is about the machine and not the scene.
+    if (renderGraph) {
+      const auto *antiAliasing = scene->GetAnyComponent<AntiAliasing>();
+      if (antiAliasingOverride)
+        renderGraph->SetTargetSamples(*activeRenderer, "SceneMulti", SampleCount(*antiAliasingOverride));
+      else if (antiAliasing)
         renderGraph->SetTargetSamples(*activeRenderer, "SceneMulti", SampleCount(antiAliasing->mode));
+    }
   }
   if (activeRenderer) {
     {
@@ -315,6 +323,22 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   // or to forget to release. Here rather than at the top of the frame so that a renderer which
   // never ran -- no scene, no backend -- does not silently swallow what was queued for it.
   app.GetOverlay().Clear();
+}
+auto RenderingSystem::GetLightingQuality() const -> LightingQuality {
+  return lightingQuality;
+}
+auto RenderingSystem::SetLightingQuality(const LightingQuality quality) -> void {
+  lightingQuality = quality;
+  if (activeRenderer) {
+    activeRenderer->SetLightingQuality(quality);
+    activeRenderer->SetPassEnabled(RenderPass::ProbeTrace, quality != LightingQuality::Low);
+  }
+}
+auto RenderingSystem::GetAntiAliasingOverride() const -> std::optional<AntiAliasingMode> {
+  return antiAliasingOverride;
+}
+auto RenderingSystem::SetAntiAliasingOverride(const std::optional<AntiAliasingMode> mode) -> void {
+  antiAliasingOverride = mode;
 }
 auto RenderingSystem::IsPresentEnabled() const -> bool {
   return presentEnabled;

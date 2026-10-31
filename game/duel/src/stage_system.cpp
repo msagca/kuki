@@ -1,17 +1,22 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <application.hpp>
+#include <cctype>
 #include <cmath>
 #include <command_line.hpp>
+#include <duel.hpp>
 #include <duel_system.hpp>
 #include <duel_world.hpp>
 #include <light.hpp>
 #include <particle_emitter.hpp>
 #include <scene.hpp>
 #include <screen_effects.hpp>
+#include <settings_menu.hpp>
 #include <spdlog/spdlog.h>
 #include <stage.hpp>
 #include <stage_system.hpp>
+#include <string>
+#include <vector>
 using namespace kuki;
 using duel::DuelWorld;
 using duel::StageLight;
@@ -46,19 +51,19 @@ auto StageSystem::PostStart() -> void {
       spdlog::warn("[Duel] There is no stage called {}, so the fight is in the alley", *name);
   }
   Build(chosen);
-  // The lightning lights the street either way; it is only the white over the whole screen that
-  // the duel's `--no-flash` takes away.
-  flashing = !HasFlag(GetCommandLineArguments(), DuelSystem::NO_FLASH_FLAG);
-  // Asked for here and carried out in `Update`: the stage is taken down entity by entity, and the
-  // middle of the input manager's dispatch is no place to be deleting things from the scene.
-  nextAction = app.RegisterInputAction(GLFW_KEY_TAB, [this]() {
-    switchPending = true;
-  });
+  app.RegisterBinding(NEXT_BINDING, InputManager::Trigger{GLFW_KEY_TAB, 0}, "Next stage");
+  std::vector<SettingsOption> stages;
+  for (const auto *name : duel::STAGE_NAMES) {
+    std::string label(name);
+    label.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(label.front())));
+    stages.push_back({std::move(label)});
+  }
+  // Built at the top of the next frame rather than in the menu's own update, which runs between the
+  // systems' updates and the drawing: the stage is taken down entity by entity.
+  app.GetSettingsMenu().AddChoice(SettingsPage::Game, "Stage", std::move(stages), [this] { return pendingStage >= 0 ? static_cast<size_t>(pendingStage) : static_cast<size_t>(stage.id); }, [this](const size_t index) { pendingStage = static_cast<int>(index); });
   spdlog::info("[Duel] Tab moves the fight to the next stage");
 }
-auto StageSystem::Shutdown() -> void {
-  app.UnregisterInputAction(nextAction);
-}
+auto StageSystem::Shutdown() -> void {}
 auto StageSystem::Build(const duel::StageId id) -> void {
   duel::ClearStage(app, stage);
   stage = duel::BuildStage(app, id);
@@ -67,9 +72,12 @@ auto StageSystem::Build(const duel::StageId id) -> void {
   nextStrike = STRIKE_GAP_MIN * .5f;
 }
 auto StageSystem::Update(const float deltaTime) -> void {
-  if (switchPending) {
-    switchPending = false;
-    Build(static_cast<duel::StageId>((static_cast<size_t>(stage.id) + 1) % duel::STAGE_COUNT));
+  if (app.IsBindingPressed(NEXT_BINDING))
+    pendingStage = static_cast<int>((static_cast<size_t>(stage.id) + 1) % duel::STAGE_COUNT);
+  if (pendingStage >= 0) {
+    if (pendingStage != static_cast<int>(stage.id))
+      Build(static_cast<duel::StageId>(pendingStage));
+    pendingStage = -1;
   }
   clock += deltaTime;
   AnimateLights();
@@ -146,6 +154,10 @@ auto StageSystem::Storm(const float deltaTime) -> void {
     sun->diffuse = glm::mix(stage.sunColour, glm::vec3(.85f, .9f, 1.f), brightness);
     sun->specular = sun->diffuse;
   }
+  // The lightning lights the street either way; it is only the white over the whole screen that the
+  // duel's setting -- and its `--no-flash` -- takes away.
+  const auto *duel = dynamic_cast<Duel *>(&app);
+  const auto flashing = !duel || duel->GetSystem<DuelSystem>()->IsFlashing();
   // Over what the fight has put there this frame, never under it.
   if (auto scene = app.GetScene(); scene && flashing && brightness > .0f)
     if (auto *effects = scene->GetAnyComponent<ScreenEffects>()) {

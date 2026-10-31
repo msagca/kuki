@@ -5,6 +5,7 @@
 #include <exposure.hpp>
 #include <filesystem>
 #include <indirect_lighting.hpp>
+#include <lighting_quality.hpp>
 #include <kuki_engine_export.h>
 #include <material_type.hpp>
 #include <pool_policy.hpp>
@@ -126,6 +127,8 @@ public:
   ///
   /// Deliberately not saved with the display settings, for the reason the debug views are not: a
   /// pipeline that comes back half switched off on the next launch is indistinguishable from a bug.
+  /// The settings menu is the exception and knows it: the passes a player turns off there are saved
+  /// as the player's choice and put back by name, not as a pass left off.
   auto IsPassEnabled(const RenderPass pass) const -> bool { return passEnabled[static_cast<size_t>(pass)]; }
   auto SetPassEnabled(const RenderPass pass, const bool enabled) -> void { passEnabled[static_cast<size_t>(pass)] = enabled; }
   /// @brief What the backend's resource pools are holding. Empty where the backend has none.
@@ -137,6 +140,13 @@ public:
   /// @brief Curve the tone mapping pass fits the scene onto the display with.
   auto GetToneMapper() const -> ToneMapper { return toneMapper; }
   auto SetToneMapper(const ToneMapper mapper) -> void { toneMapper = mapper; }
+  /// @brief How much of the indirect lighting to draw. See `LightingQuality`.
+  ///
+  /// The backend reads it where it fills its constants and schedules the trace: `Low` scales the
+  /// bounce to nothing and `Medium` traces half the probes a frame. Standing the trace pass down for
+  /// `Low` is `RenderingSystem::SetLightingQuality`'s, since passes are switched there.
+  auto GetLightingQuality() const -> LightingQuality { return lightingQuality; }
+  auto SetLightingQuality(const LightingQuality quality) -> void { lightingQuality = quality; }
   /// @brief Which step of the shading the scene pass writes out instead of the finished pixel.
   ///
   /// Not a pass and not a target: every one of these is an intermediate inside the pixel shader, and
@@ -183,6 +193,7 @@ protected:
   /// is deliberately no setter: the camera is the place to change it.
   float exposure{DEFAULT_EXPOSURE};
   ToneMapper toneMapper{DEFAULT_TONE_MAPPER};
+  LightingQuality lightingQuality{LightingQuality::High};
   /// @brief Held here for the same reason as the two above, and deliberately not saved with them.
   ///
   /// A tone mapping curve is a preference and belongs in the config; a debug view is a thing you are

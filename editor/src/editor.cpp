@@ -466,7 +466,7 @@ auto EndWindow() -> void {
 }
 } // namespace
 Editor::Editor()
-  : SystemApplication({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api}) {
+  : SystemApplication({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api, .settingsMenu = false}) {
   context.pendingApi = GetDescription().api;
   // Before anything starts, so that no tick is run on the scene merely for being open. An
   // application is playing unless told otherwise, which is right for a game and wrong for this.

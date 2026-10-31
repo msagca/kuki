@@ -571,6 +571,9 @@ auto DXProbeVolume::Validate(DXContext &context, DXPipelineCache &pipelines) -> 
   }
   spdlog::error("[DX12] Probe volume: {} points reached no leaf, {} landed outside the leaf they resolved to, {} found an invalid probe index, {} found a probe off its corner", result[1], result[2], result[3], result[4]);
 }
+auto DXProbeVolume::SetTraceBudget(const uint32_t budget) -> void {
+  traceBudget = std::max(budget, 1u);
+}
 auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const DXAccelerationStructure &scene, const D3D12_GPU_VIRTUAL_ADDRESS frameConstants, const D3D12_GPU_VIRTUAL_ADDRESS skyHarmonics, const size_t sceneHash, const IndirectLighting &settings) -> void {
   KUKI_PROFILE_SCOPE("ProbeVolume::Trace");
   if (!ready || !scene.IsReady() || !frameConstants)
@@ -622,7 +625,7 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   // in until it does. Worked out afresh each frame because either can change under it; a phase left
   // past the new stride starts the sweep over rather than skipping the slots it would have missed.
   const auto probes = liveProbes ? liveProbes : capacity;
-  const auto stride = tracedSamples < PROBE_FULL_RATE_SAMPLES ? 1u : std::max(1u, (probes + PROBE_TRACE_BUDGET - 1) / PROBE_TRACE_BUDGET);
+  const auto stride = tracedSamples < PROBE_FULL_RATE_SAMPLES ? 1u : std::max(1u, (probes + traceBudget - 1) / traceBudget);
   if (sweepPhase >= stride)
     sweepPhase = 0;
   constants.schedule[0] = stride;

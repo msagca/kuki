@@ -1,4 +1,5 @@
 #pragma once
+#include <anti_aliasing.hpp>
 #include <application.hpp>
 #include <array>
 #include <asset_manager.hpp>
@@ -6,9 +7,11 @@
 #include <desktop_size.hpp>
 #include <filesystem>
 #include <kuki_engine_export.h>
+#include <lighting_quality.hpp>
 #include <indirect_lighting.hpp>
 #include <material_type.hpp>
 #include <memory>
+#include <optional>
 #include <pool_policy.hpp>
 #include <render_graph.hpp>
 #include <render_pass.hpp>
@@ -78,6 +81,19 @@ public:
   /// The exposure feeding that curve is not here: it belongs to the active camera, which the
   /// renderer reads every frame. See `Camera::exposureMode`.
   auto GetToneMapper() const -> ToneMapper;
+  /// @brief A sample count that replaces whatever the scene's `AntiAliasing` asks for, or none to
+  /// leave it to the scene.
+  ///
+  /// The scene's component says what the scene was made to be seen with; this is what the person
+  /// playing it has said their machine can afford, which is the settings menu's to set.
+  auto GetAntiAliasingOverride() const -> std::optional<AntiAliasingMode>;
+  /// @brief How much of the indirect lighting is drawn. See `LightingQuality`.
+  ///
+  /// Kept here as well as on the renderer so that a backend swapped at runtime is told it too, and
+  /// stands the probe trace down at `Low`.
+  auto GetLightingQuality() const -> LightingQuality;
+  auto SetLightingQuality(const LightingQuality) -> void;
+  auto SetAntiAliasingOverride(const std::optional<AntiAliasingMode>) -> void;
   auto SetToneMapper(const ToneMapper) -> void;
   /// @brief Bytes of texture staging the active backend keeps in flight before it waits.
   ///
@@ -128,6 +144,8 @@ private:
   std::unique_ptr<RenderGraph> renderGraph;
   Renderer *activeRenderer{};
   std::array<std::unique_ptr<Renderer>, static_cast<uint8_t>(RenderingAPI::Vulkan) + 1> renderers;
+  std::optional<AntiAliasingMode> antiAliasingOverride;
+  LightingQuality lightingQuality{LightingQuality::High};
   size_t fps{};
   size_t frameCounter{};
   size_t pendingSinceFrame{};

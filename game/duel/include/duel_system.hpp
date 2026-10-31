@@ -20,9 +20,9 @@ struct Animator;
 } // namespace kuki
 /// @brief The scene's half of the game: the screen a fighter is picked on, and the match after it.
 ///
-/// The game opens on the roster standing in a row. A and D move along it, Enter starts a match with
-/// the one chosen against another, Escape in a match comes back to the row, and Escape at the row
-/// quits.
+/// The game opens on the roster standing in a row. A and D move along it and Enter starts a match
+/// with the one chosen against another. Escape is the settings menu's, as in every game: leaving a
+/// match for the row is one of the entries on its game page, and quitting is the menu's own.
 ///
 /// In a match it feeds the rules the buttons and draws what they decide. The rules are in
 /// `duel::DuelSim`, which knows nothing of the scene. That is deliberate and it is what makes the
@@ -47,8 +47,18 @@ public:
   /// @brief Keeps blows from flashing the whole screen. See `ShowImpact`.
   static constexpr kuki::Flag NO_FLASH_FLAG{"--no-flash", kuki::FlagKind::Switch, "", "show blows without the impact frames and flashes, for anyone the flashing troubles"};
   static constexpr std::array FLAGS{NO_IK_FLAG, NO_FLASH_FLAG};
+  /// @brief The binding that starts a match from the select screen, Enter unless rebound.
+  static constexpr const char *START_BINDING = "Duel.Start";
+  /// @brief Keys the two presentation settings are kept under. See `kuki::Preferences`.
+  static constexpr const char *PREF_WATCH = "duel.watch";
+  static constexpr const char *PREF_FLASH = "duel.flash";
   explicit DuelSystem(kuki::Application &);
-  /// @brief Registers the buttons and the keys, makes the effects, and opens the select screen.
+  /// @brief Whether a blow, or the stage's lightning, may whiten or invert the whole screen.
+  auto IsFlashing() const -> bool {
+    return flashing;
+  }
+  /// @brief Registers the buttons and the keys, makes the effects, lists its settings, and opens the
+  /// select screen.
   ///
   /// After the game has built its scene, which is where the roster's models were loaded.
   auto PostStart() -> void override;
@@ -71,9 +81,8 @@ private:
   kuki::EntityID spotlight{};
   /// The buttons as they stood on the last tick, to see one go down.
   kuki::ButtonMask previousButtons{};
-  /// Asked for by a key and carried out in `Update`: the scene is not changed in the middle of the
-  /// input manager's dispatch.
-  bool startPending{};
+  /// Asked for by the settings menu and carried out in `Update`, at the top of the next frame rather
+  /// than between the systems' updates and the drawing of this one.
   bool backPending{};
   /// Shared and not unique because the network system holds the rules too, for as long as the match.
   std::shared_ptr<duel::DuelSim> sim;
@@ -93,9 +102,10 @@ private:
   float cameraDistance{6.5f};
   bool cameraPlaced{};
   float clock{};
-  /// Whether the figures turn their heads to each other. Off with `--no-ik`.
+  /// Whether the figures turn their heads to each other, and whether a blow may invert or whiten the
+  /// whole screen. Both are settings, kept between runs; `--no-ik` and `--no-flash` turn them off
+  /// for one run whatever was saved.
   bool watching{true};
-  /// Whether a blow may invert or whiten the whole screen. Off with `--no-flash`.
   bool flashing{true};
   /// The health each bar shows, and the pale trail that follows it down, as a share of a bar.
   std::array<float, duel::DuelSim::PLAYERS> shownHealth{1.f, 1.f};
@@ -103,9 +113,6 @@ private:
   /// A small generator of its own for choosing the opponent, which is presentation and must not
   /// touch anything the rules draw on.
   uint32_t seed{0x2545f491u};
-  kuki::InputManager::ActionID escapeAction{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID startAction{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID startPadAction{kuki::InputManager::InvalidActionID};
   int frames{};
   /// @brief Places a fighter of the roster: for a player, in a seat of nought or one, or for the row
   /// on the select screen, in a seat below nought.
@@ -142,4 +149,9 @@ private:
   auto ShowImpact(const float) -> void;
   /// @brief The bars along the top and the names under them.
   auto DrawHud() -> void;
+  /// @brief Gives each figure in a match the goal that turns its head to the other, or takes it away,
+  /// as `watching` says. So the setting takes in the middle of a match and not only at the next.
+  auto ApplyWatching() -> void;
+  /// @brief Lists the game's settings: leaving the match, and the two about how it is shown.
+  auto AddSettings() -> void;
 };
