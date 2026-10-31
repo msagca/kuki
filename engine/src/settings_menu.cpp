@@ -688,15 +688,15 @@ auto SettingsMenu::Draw(const std::vector<Row> &rows) -> void {
   auto x = centre - tabsWidth * .5f;
   const auto tabBaseline = top + 100.f * unit;
   const auto hovered = app.PickOverlay(app.GetMousePosition());
-  // Lit like a row while it has the focus, and then the arrows go along it.
-  if (focus == TAB_ROW)
-    Rect(left, tabBaseline - (TAB_SIZE + 12.f) * unit, panel, (TAB_SIZE + 32.f) * unit, FOCUS);
+  // No band behind the pages while they have the focus, as a row has: the pages are a heading, not
+  // a line of the list. The focus shows in the pages the arrows would move to, which brighten.
+  const glm::vec4 offered = focus == TAB_ROW ? glm::vec4(1.f, 1.f, 1.f, .8f) : DIM;
   for (const auto each : pages) {
     const auto name = PageName(each);
     const auto w = Ink(name, TAB_SIZE * unit);
     const auto id = TAB_ID + static_cast<int>(each);
     Text(name, x, tabBaseline, TAB_SIZE * unit, each == page ? TEXT : hovered == id ? glm::vec4(1.f, 1.f, 1.f, .8f)
-                                                                                    : DIM,
+                                                                                    : offered,
       Align::Left,
       id);
     if (each == page)
@@ -777,19 +777,26 @@ auto SettingsMenu::Draw(const std::vector<Row> &rows) -> void {
   }
   const auto footerTop = rowsTop + static_cast<float>(shown) * ROW_HEIGHT * unit + 12.f * unit;
   Rect(left, footerTop, panel, 1.f * unit, RULE);
-  // A notice if there is one; on the controls page otherwise the one thing about them that is not
-  // obvious from looking.
+  // Resume and Quit stand as far below the lower rule as the pages stand above the upper one, from
+  // the rule to the ink either way, so the list sits between two equal margins. Measured rather than
+  // set, so it holds whatever the sizes become.
+  const auto margin = rowsTop - 12.f * unit - tabBaseline;
+  glm::vec2 footerMin, footerMax;
+  const auto footerAscent = font.Bounds("RESUME", footerMin, footerMax) ? footerMax.y * FOOTER_SIZE * unit : FOOTER_SIZE * .7f * unit;
+  const auto footerBaseline = footerTop + margin + footerAscent;
+  // Under the footer, out of that margin: a notice if there is one, and on the controls page
+  // otherwise the one thing about them that is not obvious from looking.
+  const auto hintBaseline = footerBaseline + 48.f * unit;
   if (noticeLeft > .0f)
-    Text(notice, centre, footerTop + 36.f * unit, NOTICE_SIZE * unit, {ACCENT.r, ACCENT.g, ACCENT.b, std::min(1.f, noticeLeft * 2.f)}, Align::Centre);
+    Text(notice, centre, hintBaseline, NOTICE_SIZE * unit, {ACCENT.r, ACCENT.g, ACCENT.b, std::min(1.f, noticeLeft * 2.f)}, Align::Centre);
   else if (page == SettingsPage::Controls)
     Text(!capturing.empty() ? "Press the new key, or Escape to keep the old one" : pointerLast ? "Click a key to change it, right click to clear it"
                                                                                                : "Enter changes a key, Delete clears it, Backspace restores it",
       centre,
-      footerTop + 36.f * unit,
+      hintBaseline,
       NOTICE_SIZE * unit,
       FAINT,
       Align::Centre);
-  const auto footerBaseline = footerTop + 88.f * unit;
   const auto footerGap = 90.f * unit;
   const auto resumeWidth = Ink("RESUME", FOOTER_SIZE * unit);
   const auto quitWidth = Ink("QUIT", FOOTER_SIZE * unit);
