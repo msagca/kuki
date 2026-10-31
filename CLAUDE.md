@@ -140,7 +140,8 @@ it, the row of pages included. Its pages are the game's own
 (`GetSettingsMenu().AddChoice/AddToggle/AddAction(SettingsPage::Game, ...)`, each a get, a set and an
 optional visible), the engine's graphics (saved in `EngineConfig`: display, vsync, anti-aliasing,
 shadows, bloom, fog and clouds, reflections, a frame-rate counter), and the controls: every binding
-in registration order, rebindable, saved in the game's `Preferences` as `input.<name>` and taken at
+in registration order, rebindable (Enter or a click to change, Delete or a right click to clear,
+Backspace to restore one's default), saved in the game's `Preferences` as `input.<name>` and taken at
 registration (`RegisterBinding`/`RegisterButton`). Quitting is its footer's; a game does not quit
 itself on Escape. While it is open the game hears no keys, buttons, wheel or typed characters, what it
 held is released (`InputManager::ReleaseAll`), and a game that is not online is `Paused` -- a clock

@@ -144,6 +144,9 @@ private:
   std::string notice;
   float noticeLeft{};
   glm::vec2 lastMouse{};
+  /// @brief Whether the pointer was used last rather than the keyboard, which decides how the controls
+  /// page's hint is worded: the keys and the clicks that do the same things are not the same words.
+  bool pointerLast{};
   /// @brief How many rows the last frame had room for, and whether the keyboard has moved the focus
   /// since, so the page should scroll to keep it in view. The wheel scrolls without moving it.
   int visibleRows{1};
@@ -171,6 +174,10 @@ private:
   auto Activate(const int, const std::vector<Row> &) -> void;
   auto Step(const Row &, const int) -> void;
   auto Capture(const InputManager::Trigger &) -> void;
+  /// @brief Puts a binding on a trigger, or none, saying which binding lost the key if one did and
+  /// refusing the settings binding's key to anything else. What a captured key, a clear and a restore
+  /// all come down to.
+  auto Assign(const std::string &, const InputManager::Trigger &) -> void;
   auto ShowNotice(std::string) -> void;
   auto SwitchPage(const SettingsPage) -> void;
   /// @brief Moves to the page before or after the one shown, wrapping round.

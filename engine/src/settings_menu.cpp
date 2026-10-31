@@ -343,22 +343,26 @@ auto SettingsMenu::Capture(const InputManager::Trigger &trigger) -> void {
   auto &input = app.inputManager;
   const auto name = std::exchange(capturing, {});
   pendingModifier = 0;
-  if (name.empty())
-    return;
+  if (!name.empty())
+    Assign(name, trigger);
+}
+auto SettingsMenu::Assign(const std::string &name, const InputManager::Trigger &trigger) -> void {
+  auto &input = app.inputManager;
   const auto Label = [&](const std::string &binding) {
     const auto description = input.GetBindingDescription(binding);
     return description.empty() ? binding : description;
   };
-  if (name != BINDING && trigger == input.GetBinding(BINDING)) {
+  if (trigger.key != 0 && name != BINDING && trigger == input.GetBinding(BINDING)) {
     ShowNotice(std::format("{} opens these settings", input.GetTriggerName(trigger)));
     return;
   }
   // A key belongs to one binding, so whichever had it loses it; said here, where the player is
-  // looking, as well as in the log where `InputManager` says it.
+  // looking, as well as in the log where `InputManager` says it. No key at all is nobody's.
   std::string displaced;
-  for (const auto &other : input.GetBindingNames())
-    if (other != name && input.GetBinding(other) == trigger)
-      displaced = other;
+  if (trigger.key != 0)
+    for (const auto &other : input.GetBindingNames())
+      if (other != name && input.GetBinding(other) == trigger)
+        displaced = other;
   input.SetBinding(name, trigger);
   if (!displaced.empty())
     ShowNotice(std::format("{} is now unbound", Label(displaced)));
@@ -433,6 +437,12 @@ auto SettingsMenu::Handle(const Event &event, const std::vector<Row> &rows) -> v
       return RowId(focus, PART_WHOLE);
     return focus == rowCount ? RESUME_ID : QUIT_ID;
   };
+  // A key pressed says the keyboard is in use; a click or the wheel says the pointer is. A key let go
+  // says nothing, since it was pressed first.
+  if (event.kind == Event::Kind::Key)
+    pointerLast = false;
+  else if (event.kind != Event::Kind::KeyUp)
+    pointerLast = true;
   switch (event.kind) {
   case Event::Kind::Key: {
     if (!capturing.empty()) {
@@ -479,6 +489,22 @@ auto SettingsMenu::Handle(const Event &event, const std::vector<Row> &rows) -> v
     case GLFW_KEY_TAB:
       CyclePage((event.mods & GLFW_MOD_SHIFT) ? -1 : 1);
       return;
+    // The keyboard's way to what the right click does, and to the one thing nothing else does: one
+    // binding back to its default without resetting the rest. The settings binding cannot be
+    // cleared, for the reason it cannot be given away; it can be restored.
+    case GLFW_KEY_DELETE:
+    case GLFW_KEY_BACKSPACE: {
+      if (focus < 0 || focus >= rowCount)
+        return;
+      const auto &row = rows[static_cast<size_t>(focus)];
+      if (row.kind != Row::Kind::Binding)
+        return;
+      if (event.key == GLFW_KEY_BACKSPACE)
+        Assign(row.binding, app.inputManager.GetDefaultBinding(row.binding));
+      else if (row.binding != BINDING)
+        Assign(row.binding, {});
+      return;
+    }
     default:
       return;
     }
@@ -512,8 +538,7 @@ auto SettingsMenu::Handle(const Event &event, const std::vector<Row> &rows) -> v
     if (row.kind != Row::Kind::Binding || row.binding == BINDING)
       return;
     capturing.clear();
-    app.inputManager.SetBinding(row.binding, {});
-    SaveBindings();
+    Assign(row.binding, {});
     return;
   }
   case Event::Kind::Scroll:
@@ -571,6 +596,7 @@ auto SettingsMenu::Update(const float deltaTime) -> void {
   // resting over a row does not keep pulling the focus back from the arrow keys.
   if (const auto mouse = app.GetMousePosition(); mouse != lastMouse) {
     lastMouse = mouse;
+    pointerLast = true;
     const auto id = app.PickOverlay(mouse);
     if (id >= ROW_ID && (id - ROW_ID) / 4 < rowCount)
       focus = (id - ROW_ID) / 4;
@@ -756,7 +782,13 @@ auto SettingsMenu::Draw(const std::vector<Row> &rows) -> void {
   if (noticeLeft > .0f)
     Text(notice, centre, footerTop + 36.f * unit, NOTICE_SIZE * unit, {ACCENT.r, ACCENT.g, ACCENT.b, std::min(1.f, noticeLeft * 2.f)}, Align::Centre);
   else if (page == SettingsPage::Controls)
-    Text(capturing.empty() ? "Click a key to change it, right click to clear it" : "Press the new key, or Escape to keep the old one", centre, footerTop + 36.f * unit, NOTICE_SIZE * unit, FAINT, Align::Centre);
+    Text(!capturing.empty() ? "Press the new key, or Escape to keep the old one" : pointerLast ? "Click a key to change it, right click to clear it"
+                                                                                               : "Enter changes a key, Delete clears it, Backspace restores it",
+      centre,
+      footerTop + 36.f * unit,
+      NOTICE_SIZE * unit,
+      FAINT,
+      Align::Centre);
   const auto footerBaseline = footerTop + 88.f * unit;
   const auto footerGap = 90.f * unit;
   const auto resumeWidth = Ink("RESUME", FOOTER_SIZE * unit);
