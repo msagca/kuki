@@ -28,7 +28,7 @@ inline constexpr std::array LAYER_NAMES{"None", "Cells", "Resources", "Movement"
 ///
 /// On starting, a map is made from the seed `--seed` gives, or one from the clock, and built:
 /// a mesh a terrain for the ground, the faces of the steps between cells, the sea in three depths
-/// and its foam along the shore, and the props -- trees, grass, flowers, stones, crystals -- each an
+/// and its foam along the shore, and the props -- trees, grass, stones, crystals -- each an
 /// entity. G makes another map from a new seed in its place. Tab steps through the layers drawn over
 /// the ground: the cells' outlines, the resources, what it costs to walk where, and where a building
 /// can go. A right click marks one end of a path and a second the other, and the path the navigation

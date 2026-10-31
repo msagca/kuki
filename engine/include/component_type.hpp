@@ -3,9 +3,9 @@
 namespace kuki {
 /// @brief The engine's own components, one enumerator each, whose value is the component's id.
 ///
-/// Only what an entity can carry. The backends' per-entity state is one `RenderBinding` rather
-/// than a component per backend, and the GPU resources a backend keeps for itself (`GLBuffer`,
-/// `GLTexture` and the like) are its own business and live in its own pools.
+/// Only what an entity can carry. What a drawn entity is drawn with is its pool's (`Pooled`,
+/// `pool.hpp`), not a component of its own, and the GPU resources a backend keeps for itself are
+/// its own business.
 ///
 /// A game's components are not here: they take ids from `FIRST_GAME_COMPONENT` up, through
 /// `KUKI_COMPONENT` (`component_traits.hpp`), so a game never edits the engine to add one.
@@ -18,12 +18,9 @@ enum class ComponentType : uint8_t {
   IndirectLighting,
   Light,
   MaterialHandle,
-  MeshHandle,
-  ModelMaterialHandle,
-  ModelMeshHandle,
   ParticleEmitter,
   PlanarReflection,
-  RenderBinding,
+  Pooled,
   ScreenEffects,
   Skeleton,
   SkyboxHandle,
@@ -32,8 +29,9 @@ enum class ComponentType : uint8_t {
   Transform,
   VolumetricClouds,
   VolumetricFog,
-  Wind
+  Wind,
+  WorldMatrix
 };
 /// @brief How many engine components there are, from the last enumerator.
-inline constexpr auto ENGINE_COMPONENT_COUNT = static_cast<uint8_t>(ComponentType::Wind) + 1;
+inline constexpr auto ENGINE_COMPONENT_COUNT = static_cast<uint8_t>(ComponentType::WorldMatrix) + 1;
 } // namespace kuki

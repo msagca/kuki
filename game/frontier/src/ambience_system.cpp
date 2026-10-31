@@ -53,12 +53,16 @@ auto AmbienceSystem::Weather() -> void {
   if (!wind)
     return;
   // Turning through about a quarter of the compass over a minute or two, and rising and falling
-  // faster than it turns, as wind does.
+  // faster than it turns, as wind does. A breeze and never a gale: at twice this the grass lay flat
+  // under every gust and the field's heaving was all the eye went to, which is not what the map is
+  // for. Everything the wind moves -- the sway, the drift, the birds, the sails -- is scaled by the
+  // strength, so this one range calms all of it together.
   const auto heading = .5f + 1.4f * GradientNoise({clock * .012f, .5f}, 7u);
-  const auto strength = std::clamp(1.f + .7f * FractalNoise({clock * .05f, 3.5f}, 3, 11u), .35f, 2.f);
+  const auto strength = std::clamp(.45f + .25f * FractalNoise({clock * .05f, 3.5f}, 3, 11u), .2f, .75f);
   wind->direction = {std::cos(heading), std::sin(heading)};
   wind->strength = strength;
-  wind->gustStrength = .6f + .5f * strength;
+  wind->gustStrength = .3f + .3f * strength;
+  wind->flutterAmount = .2f;
   // Higher waves in a stronger wind, a little behind it, as a sea is.
   wind->waveHeight = .1f + .06f * strength;
   if (auto *clouds = scene->GetAnyComponent<VolumetricClouds>()) {

@@ -4,17 +4,18 @@
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <component.hpp>
+#include <engine_archetypes.hpp>
 #include <fstream>
 #include <inverse_kinematics.hpp>
 #include <launch_path.hpp>
 #include <light.hpp>
 #include <material_asset.hpp>
 #include <material_handle.hpp>
-#include <mesh_handle.hpp>
 #include <model_asset.hpp>
 #include <optional>
 #include <particle_emitter.hpp>
 #include <planar_reflection.hpp>
+#include <pool.hpp>
 #include <scene_serializer.hpp>
 #include <serdes.hpp>
 #include <shader_asset.hpp>
@@ -43,9 +44,6 @@ namespace {
     ComponentType::Camera,
     ComponentType::Light,
     ComponentType::MaterialHandle,
-    ComponentType::MeshHandle,
-    ComponentType::ModelMaterialHandle,
-    ComponentType::ModelMeshHandle,
     // Travels, like a light does: where the sparks come from and what they look like is part of
     // the scene. What does not travel is the particles themselves, which live in a buffer on the
     // GPU that nothing reads back -- a loaded scene starts its emitters from empty.
@@ -128,6 +126,56 @@ namespace {
     if (auto it = remap.find(id); it != remap.end())
       return it->second;
     return id;
+  }
+  /// @brief The components a drawn entity carried before the mesh and material were its pool's.
+  ///
+  /// A file from then names them in its archetype and has values for the handles; what the entity is
+  /// now is the same archetype with `Pooled` in their place, in the pool the handles name.
+  auto IsRetiredDrawComponent(const std::string &name) -> bool {
+    return name == "MeshHandle" || name == "MaterialHandle" || name == "ModelMeshHandle" || name == "ModelMaterialHandle" || name == "RenderBinding";
+  }
+  auto ToJson(const PoolKey &pool) -> json {
+    json j{{"mesh", pool.mesh}, {"material", pool.material}};
+    if (pool.meshIndex != PoolKey::NONE)
+      j["meshIndex"] = pool.meshIndex;
+    if (pool.materialIndex != PoolKey::NONE)
+      j["materialIndex"] = pool.materialIndex;
+    return j;
+  }
+  /// @brief The pool an entity of a file is drawn from: the one it names, or for a file from before
+  /// pools the one its mesh and material handles name.
+  auto ReadPool(const json &entityJson, const std::unordered_map<AssetID, AssetID> &remap) -> PoolKey {
+    PoolKey pool;
+    if (entityJson.contains("pool")) {
+      const auto &j = entityJson.at("pool");
+      if (j.contains("mesh"))
+        j.at("mesh").get_to(pool.mesh);
+      if (j.contains("material"))
+        j.at("material").get_to(pool.material);
+      pool.meshIndex = j.value("meshIndex", PoolKey::NONE);
+      pool.materialIndex = j.value("materialIndex", PoolKey::NONE);
+    } else if (entityJson.contains("components")) {
+      const auto &components = entityJson.at("components");
+      if (components.contains("MeshHandle") && components.at("MeshHandle").contains("assetId"))
+        components.at("MeshHandle").at("assetId").get_to(pool.mesh);
+      if (components.contains("MaterialHandle") && components.at("MaterialHandle").contains("assetId"))
+        components.at("MaterialHandle").at("assetId").get_to(pool.material);
+      if (components.contains("ModelMeshHandle")) {
+        const auto &h = components.at("ModelMeshHandle");
+        if (h.contains("modelAssetId"))
+          h.at("modelAssetId").get_to(pool.mesh);
+        pool.meshIndex = h.value("meshIndex", PoolKey::NONE);
+      }
+      if (components.contains("ModelMaterialHandle")) {
+        const auto &h = components.at("ModelMaterialHandle");
+        if (h.contains("modelAssetId"))
+          h.at("modelAssetId").get_to(pool.material);
+        pool.materialIndex = h.value("materialIndex", PoolKey::NONE);
+      }
+    }
+    pool.mesh = Remap(remap, pool.mesh);
+    pool.material = Remap(remap, pool.material);
+    return pool;
   }
   auto ManifestPath(const std::filesystem::path &scenePath) -> std::filesystem::path {
     auto path = scenePath;
@@ -323,13 +371,6 @@ namespace {
       j.at("rotation").get_to(transform.rotation);
     l.SetTransform(transform);
   }
-  auto ToJson(const MeshHandle &h) -> json {
-    return {{"assetId", h.assetId}};
-  }
-  auto FromJson(const json &j, MeshHandle &h) -> void {
-    if (j.contains("assetId"))
-      j.at("assetId").get_to(h.assetId);
-  }
   auto ToJson(const MaterialHandle &h) -> json {
     return {{"assetId", h.assetId}};
   }
@@ -446,26 +487,6 @@ namespace {
         goal.limit = entry.value("limit", goal.limit);
         a.ik.push_back(std::move(goal));
       }
-  }
-  auto ToJson(const ModelMeshHandle &h) -> json {
-    return {{"modelAssetId", h.modelAssetId}, {"meshIndex", h.meshIndex}};
-  }
-  auto FromJson(const json &j, ModelMeshHandle &h) -> void {
-    if (j.contains("modelAssetId"))
-      j.at("modelAssetId").get_to(h.modelAssetId);
-    if (j.contains("meshIndex"))
-      j.at("meshIndex").get_to(h.meshIndex);
-  }
-  auto ToJson(const ModelMaterialHandle &h) -> json {
-    return {{"modelAssetId", h.modelAssetId}, {"materialIndex", h.materialIndex}, {"textureIndices", h.textureIndices}};
-  }
-  auto FromJson(const json &j, ModelMaterialHandle &h) -> void {
-    if (j.contains("modelAssetId"))
-      j.at("modelAssetId").get_to(h.modelAssetId);
-    if (j.contains("materialIndex"))
-      j.at("materialIndex").get_to(h.materialIndex);
-    if (j.contains("textureIndices"))
-      j.at("textureIndices").get_to(h.textureIndices);
   }
   auto ToJson(const VolumetricClouds &c) -> json {
     return {
@@ -765,11 +786,6 @@ namespace {
       }
       return ToJson(*a, order);
     }
-    auto operator()(MeshHandle *h) const -> json {
-      if (h->assetId)
-        referenced.insert(h->assetId);
-      return ToJson(*h);
-    }
     auto operator()(MaterialHandle *h) const -> json {
       if (h->assetId)
         referenced.insert(h->assetId);
@@ -783,16 +799,6 @@ namespace {
     auto operator()(TextureHandle *h) const -> json {
       if (h->assetId)
         referenced.insert(h->assetId);
-      return ToJson(*h);
-    }
-    auto operator()(ModelMeshHandle *h) const -> json {
-      if (h->modelAssetId)
-        referenced.insert(h->modelAssetId);
-      return ToJson(*h);
-    }
-    auto operator()(ModelMaterialHandle *h) const -> json {
-      if (h->modelAssetId)
-        referenced.insert(h->modelAssetId);
       return ToJson(*h);
     }
     template <typename T>
@@ -822,6 +828,12 @@ namespace {
         components[Component::GetTypeName(type)] = std::visit(ToJsonVisitor{referenced, order}, *variant);
     }
     entity["components"] = std::move(components);
+    if (const auto pool = app.GetEntityPool(id)) {
+      referenced.insert(pool.mesh);
+      if (pool.material)
+        referenced.insert(pool.material);
+      entity["pool"] = ToJson(pool);
+    }
     auto children = json::array();
     app.ForEachChildEntity(id, [&](const EntityID childId) {
       children.push_back(SerializeEntity(app, childId, referenced, order, names));
@@ -852,13 +864,30 @@ namespace {
     // its children brought in at the top of the scene.
     ComponentMask mask;
     auto known = true;
+    // Whether the file is from before pools and names the entity's mesh by a handle of its own.
+    auto retiredDrawn = false;
     if (entityJson.contains("archetype")) {
       for (const auto &componentName : entityJson.at("archetype")) {
-        if (auto it = names.byName.find(componentName.get<std::string>()); it != names.byName.end())
+        const auto componentText = componentName.get<std::string>();
+        if (IsRetiredDrawComponent(componentText)) {
+          retiredDrawn = retiredDrawn || componentText == "MeshHandle" || componentText == "ModelMeshHandle";
+          continue;
+        }
+        if (auto it = names.byName.find(componentText); it != names.byName.end())
           mask.set(it->second);
         else
           known = false;
       }
+      // A drawn entity had its bounds as a component, which are its pool's now; and a transform
+      // brings its world matrix, which a file from before the two were apart does not name.
+      if (retiredDrawn) {
+        mask.set(ComponentIdOf<Pooled>);
+        mask.reset(ComponentIdOf<BoundingBox>);
+      }
+      if (mask[ComponentIdOf<Transform>])
+        mask.set(ComponentIdOf<WorldMatrix>);
+    } else if (entityJson.contains("components") && (entityJson.at("components").contains("MeshHandle") || entityJson.at("components").contains("ModelMeshHandle"))) {
+      mask = MeshObject::Mask();
     } else if (entityJson.contains("components")) {
       ComponentMask saved;
       const auto &nameToType = NameToType();
@@ -872,7 +901,7 @@ namespace {
     }
     if (entityJson.contains("scripts"))
       spdlog::warn("[SceneSerializer] Entity '{}' names scripts, which are no longer a thing an entity can have; its behaviour belongs to a system now", name);
-    const auto id = known ? app.CreateEntity(mask, name) : EntityID::Invalid;
+    const auto id = known ? app.CreateEntity(mask, mask[ComponentIdOf<Pooled>] ? ReadPool(entityJson, remap) : PoolKey{}, name) : EntityID::Invalid;
     if (!id)
       spdlog::error("[SceneSerializer] Entity '{}' is of an archetype this application does not declare, and was left out", name);
     created.push_back(id);
@@ -948,14 +977,6 @@ namespace {
           }
           break;
         }
-        case ComponentType::MeshHandle: {
-          auto h = app.GetEntityComponent<MeshHandle>(id);
-          if (!h)
-            break;
-          FromJson(componentJson, *h);
-          h->assetId = Remap(remap, h->assetId);
-          break;
-        }
         case ComponentType::MaterialHandle: {
           auto h = app.GetEntityComponent<MaterialHandle>(id);
           if (!h)
@@ -978,22 +999,6 @@ namespace {
             break;
           FromJson(componentJson, *h);
           h->assetId = Remap(remap, h->assetId);
-          break;
-        }
-        case ComponentType::ModelMeshHandle: {
-          auto h = app.GetEntityComponent<ModelMeshHandle>(id);
-          if (!h)
-            break;
-          FromJson(componentJson, *h);
-          h->modelAssetId = Remap(remap, h->modelAssetId);
-          break;
-        }
-        case ComponentType::ModelMaterialHandle: {
-          auto h = app.GetEntityComponent<ModelMaterialHandle>(id);
-          if (!h)
-            break;
-          FromJson(componentJson, *h);
-          h->modelAssetId = Remap(remap, h->modelAssetId);
           break;
         }
         default:
@@ -1045,7 +1050,9 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
     entry["name"] = app.GetAssetName(assetId);
     entry["type"] = static_cast<int>(app.GetAssetType(assetId));
     const auto path = app.GetAssetPath(assetId);
-    entry["path"] = path.empty() ? std::string{} : path.lexically_normal().string();
+    // With forward slashes whatever wrote it: `lexically_normal` turns them into the platform's own,
+    // and a scene saved on Windows would otherwise name its assets by paths no other system reads.
+    entry["path"] = path.empty() ? std::string{} : path.lexically_normal().generic_string();
     manifest.push_back(std::move(entry));
   }
   const auto manifestPath = ManifestPath(scenePath);

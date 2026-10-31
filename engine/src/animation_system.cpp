@@ -357,12 +357,12 @@ auto AnimationSystem::Tick() -> void {
     for (size_t node = 0; node < model->nodes.size() && node < skeleton->nodeEntities.size(); ++node) {
       if (model->nodes[node].name != animator->rootNode)
         continue;
-      const auto *parent = app.GetEntityComponent<Transform>(app.GetEntityParent(skeleton->nodeEntities[node]));
-      const auto *self = app.GetEntityComponent<Transform>(id);
+      const auto *parent = app.GetEntityComponent<WorldMatrix>(app.GetEntityParent(skeleton->nodeEntities[node]));
+      const auto *self = app.GetEntityComponent<WorldMatrix>(id);
       if (!parent || !self)
         break;
-      const auto travelled = glm::mat3(parent->world) * animator->rootDelta;
-      const glm::mat3 facing{glm::normalize(glm::vec3(self->world[0])), glm::normalize(glm::vec3(self->world[1])), glm::normalize(glm::vec3(self->world[2]))};
+      const auto travelled = glm::mat3(parent->matrix) * animator->rootDelta;
+      const glm::mat3 facing{glm::normalize(glm::vec3(self->matrix[0])), glm::normalize(glm::vec3(self->matrix[1])), glm::normalize(glm::vec3(self->matrix[2]))};
       animator->rootDelta = glm::transpose(facing) * travelled;
       break;
     }

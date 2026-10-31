@@ -11,7 +11,6 @@
 #include <map_system.hpp>
 #include <material_handle.hpp>
 #include <mesh_asset.hpp>
-#include <mesh_handle.hpp>
 #include <particle_emitter.hpp>
 #include <placement_system.hpp>
 #include <props.hpp>
@@ -61,12 +60,7 @@ auto PlacementSystem::Select(const int type) -> void {
   AddMaterial(app, "ghost/good", {.albedo = GOOD, .toon = .0f, .alpha = .5f, .unlit = true});
   AddMaterial(app, "ghost/bad", {.albedo = BAD, .toon = .0f, .alpha = .5f, .unlit = true});
   for (const auto &part : Buildings(app)[static_cast<size_t>(type)].parts) {
-    const auto id = FrontierWorld::Create<MeshObject>(app);
-    if (auto *handle = app.GetEntityComponent<MeshHandle>(id))
-      handle->assetId = MeshId(part.mesh);
-    if (auto *handle = app.GetEntityComponent<MaterialHandle>(id))
-      handle->assetId = MaterialId("ghost/good");
-    ghost.push_back(id);
+    ghost.push_back(FrontierWorld::Create<MeshObject>(app, {.mesh = MeshId(part.mesh), .material = MaterialId("ghost/good")}));
   }
 }
 auto PlacementSystem::Stand(const std::vector<CellIndex> &cells) const -> glm::vec3 {
@@ -89,16 +83,9 @@ auto PlacementSystem::Build(const int type, const std::vector<CellIndex> &cells,
   Placed building{.type = type, .cells = cells, .position = Stand(cells), .angle = turn};
   const auto rotation = Turn(turn);
   for (const auto &part : kind.parts) {
-    const auto entity = FrontierWorld::Create<StructureObject>(app);
-    if (auto *handle = app.GetEntityComponent<MeshHandle>(entity))
-      handle->assetId = MeshId(part.mesh);
-    if (auto *handle = app.GetEntityComponent<MaterialHandle>(entity))
-      handle->assetId = MaterialId(part.material);
+    const auto entity = FrontierWorld::Create<StructureObject>(app, {.mesh = MeshId(part.mesh), .material = MaterialId(part.material)});
     if (auto *structure = app.GetEntityComponent<Structure>(entity))
       structure->id = id;
-    if (const auto *asset = app.GetAsset<MeshAsset>(MeshId(part.mesh)))
-      if (auto *bounds = app.GetEntityComponent<BoundingBox>(entity))
-        *bounds = asset->bounds;
     if (auto *transform = app.GetEntityComponent<Transform>(entity)) {
       transform->position = building.position + (part.spins ? rotation * part.pivot : glm::vec3(.0f));
       transform->rotation = rotation;
@@ -222,8 +209,12 @@ auto PlacementSystem::Update(const float deltaTime) -> void {
         transform->rotation = rotation;
         app.MarkTransformDirty(ghost[i]);
       }
-      if (auto *handle = app.GetEntityComponent<MaterialHandle>(ghost[i]))
-        handle->assetId = MaterialId(valid ? "ghost/good" : "ghost/bad");
+      // The colour is the pool's, so a preview turning red moves to the red pool -- and only when it
+      // turns, not every frame it stays red.
+      if (auto pool = app.GetEntityPool(ghost[i]); pool && pool.material != MaterialId(valid ? "ghost/good" : "ghost/bad")) {
+        pool.material = MaterialId(valid ? "ghost/good" : "ghost/bad");
+        app.MoveEntityToPool(ghost[i], pool);
+      }
     }
     mapSystem->Highlight(footprint, valid ? GOOD : BAD);
     if (valid && app.IsInputPressed(GLFW_MOUSE_BUTTON_LEFT))

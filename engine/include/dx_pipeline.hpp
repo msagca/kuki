@@ -1,5 +1,6 @@
 #pragma once
 #ifdef KUKI_HAS_DIRECTX
+#include <cstddef>
 #include <dx_common.hpp>
 #include <dx_shader_compiler.hpp>
 #include <kuki_engine_export.h>
@@ -92,26 +93,6 @@ struct DXFrameConstants {
   float gust[4]{};
   float waves[4]{};
 };
-/// @brief One drawn instance, read out of a structured buffer by `SV_InstanceID`.
-///
-/// Everything that varies between instances of the same mesh and material lives here, which is
-/// what lets a batch collapse into one draw call. The transform stays a full matrix rather than a
-/// compressed form because the shader needs it twice, once for the position and once to build the
-/// normal basis.
-///
-/// Structured buffers pack tightly rather than by 16-byte register, so this layout is byte-for-byte
-/// what the shader's own struct declares. The padding is explicit for exactly that reason.
-struct DXInstanceData {
-  float model[16]{};
-  uint32_t entityId{};
-  /// @brief How far the instance's material bends in the wind and heaves with the waves --
-  /// `MaterialFallback::sway` and `waves`. Carried per instance rather than per material because
-  /// the shadow maps and the depth prepass batch by mesh alone and are given no material, and a
-  /// tree whose shadow did not sway with it would give itself away at once.
-  float sway{};
-  float waves{};
-  uint32_t padding{};
-};
 /// @brief Root constants the scene pipeline takes, laid out to match `cbuffer DrawConstants`.
 ///
 /// Only the material's scalar values remain here: the camera is per-frame and the transforms are
@@ -134,8 +115,8 @@ struct DXSceneConstants {
   uint32_t unlit{};
   float alphaCutoff{};
   uint32_t alphaMode{};
-  /// @brief How far the surface is cel shaded, then three floats free. A row of its own so the
-  /// block stays whole float4 rows, as the HLSL side packs it.
+  /// @brief How far the surface is cel shaded, bends in the wind and heaves with the waves, then a
+  /// float free. A row of its own so the block stays whole float4 rows, as the HLSL side packs it.
   float style[4]{};
 };
 /// @brief Root constants for the fullscreen post-processing pipelines.
@@ -603,7 +584,12 @@ struct DXShadowConstants {
   float wind[4]{};
   float gust[4]{};
   float waves[4]{};
+  /// @brief The pool being drawn: its material's sway and waves, then two floats free. Set alone,
+  /// per draw, with an offset into these constants (`DRAW_OFFSET`).
+  float draw[4]{};
+  static constexpr uint32_t DRAW_OFFSET = 28;
 };
+static_assert(offsetof(DXShadowConstants, draw) == DXShadowConstants::DRAW_OFFSET * sizeof(uint32_t), "DRAW_OFFSET is where `draw` starts, in words");
 /// @brief One compiled graphics pipeline plus the root signature it was created against.
 struct DXPipeline {
   ComPtr<ID3D12RootSignature> rootSignature;

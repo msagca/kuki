@@ -255,12 +255,11 @@ template <>
 inline auto AssetManager::CreatePrefab<MeshAsset>(const AssetID assetId) -> EntityID {
   if (auto meshAsset = Get<MeshAsset>(assetId); meshAsset) {
     const auto name = GetName(assetId);
-    const auto prefabId = prefabManager.Create<MeshObject>(name);
-    *prefabManager.GetComponent<BoundingBox>(prefabId) = meshAsset->bounds;
-    prefabManager.GetComponent<MeshHandle>(prefabId)->assetId = assetId;
-    auto materialHandle = prefabManager.GetComponent<MaterialHandle>(prefabId);
-    materialHandle->assetId = meshAsset->material;
-    CreatePrefab(materialHandle->assetId);
+    // In the pool of the mesh and the material it came with, which a placed copy is drawn from too.
+    const PoolKey pool{.mesh = assetId, .material = meshAsset->material};
+    prefabManager.CreatePool(MeshObject::Mask(), pool, {.bounds = meshAsset->bounds});
+    const auto prefabId = prefabManager.Create<MeshObject>(pool, name);
+    CreatePrefab(meshAsset->material);
     return prefabId;
   }
   return EntityID::Invalid;

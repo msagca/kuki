@@ -11,7 +11,6 @@
 #include <kuki_engine_export.h>
 #include <material_handle.hpp>
 #include <memory>
-#include <mesh_handle.hpp>
 #include <skybox_handle.hpp>
 #include <string>
 #include <transform.hpp>
@@ -91,6 +90,11 @@ namespace builder {
   /// @brief Makes an entity of an archetype under the current one and descends into it.
   KUKI_ENGINE_API auto BeginChild(BuilderStack &, const ComponentMask &, std::string) -> void;
   KUKI_ENGINE_API auto MarkMoved(BuilderStack &) -> void;
+  /// @brief Moves the current entity to the pool of this mesh and the material it has, or the
+  /// mesh's own material if it has none yet.
+  KUKI_ENGINE_API auto SetMesh(BuilderStack &, const AssetID) -> void;
+  /// @brief Moves the current entity to the pool of the mesh it has and this material.
+  KUKI_ENGINE_API auto SetMaterial(BuilderStack &, const AssetID) -> void;
 } // namespace builder
 template <typename W>
 class SceneBuilder;
@@ -99,7 +103,7 @@ class SceneBuilder;
 /// Returned by value throughout. It holds a `shared_ptr` and nothing else, so a chain of these
 /// costs one allocation for the whole `Game(...)` expression rather than one per link.
 ///
-/// Every call is checked against `A` at compile time: `Mesh` needs a `MeshHandle` in it, `At` a
+/// Every call is checked against `A` at compile time: `Mesh` needs it to be drawn, `At` a
 /// `Transform`, `With<T>` a `T`. Nothing here adds a component, because nothing can: an entity's
 /// components are its archetype's, chosen where `Entity<A>` or `Child<A>` made it. `Up` is the
 /// builder `Parent` returns to.
@@ -123,19 +127,24 @@ public:
   auto Mesh(const std::string &name) -> EntityBuilder {
     return Mesh(builder::ResolveAsset(stack->app, name));
   }
+  ///
+  /// The mesh is the entity's pool's, so this moves the entity to the pool of the mesh and the
+  /// material it has -- which, for an entity just made, is the mesh's own.
   auto Mesh(const AssetID asset) -> EntityBuilder {
-    static_assert(A::template Has<MeshHandle>, "Mesh: this entity's archetype has no MeshHandle -- make it with `Renderable` in it, as `MeshObject` is");
-    if (auto *handle = Get<MeshHandle>(); handle && asset)
-      handle->assetId = asset;
+    static_assert(A::template Has<Pooled>, "Mesh: this entity's archetype is not drawn and has nowhere to hold a mesh -- make it with `Renderable` in it, as `MeshObject` is");
+    if (asset)
+      builder::SetMesh(*stack, asset);
     return *this;
   }
   auto Material(const std::string &name) -> EntityBuilder {
     return Material(builder::ResolveAsset(stack->app, name));
   }
+  /// @brief Moves the entity to the pool of the mesh it has and this material. An entity with no
+  /// mesh yet has no pool to be in, so give it one first.
   auto Material(const AssetID asset) -> EntityBuilder {
-    static_assert(A::template Has<MaterialHandle>, "Material: this entity's archetype has no MaterialHandle -- make it with `Renderable` in it, as `MeshObject` is");
-    if (auto *handle = Get<MaterialHandle>(); handle && asset)
-      handle->assetId = asset;
+    static_assert(A::template Has<Pooled>, "Material: this entity's archetype is not drawn and has nowhere to hold a material -- make it with `Renderable` in it, as `MeshObject` is");
+    if (asset)
+      builder::SetMaterial(*stack, asset);
     return *this;
   }
   auto Skybox(const std::string &name) -> EntityBuilder {

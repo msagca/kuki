@@ -120,9 +120,9 @@ struct ParticleEmitter {
   ParticleShape shape{ParticleShape::Sphere};
   /// @brief The mesh whose surface they are born on, when `shape` asks for one.
   ///
-  /// Named here rather than taken from a `MeshHandle` beside this component, because an entity with
-  /// a mesh handle is drawn -- and the commonest use of this shape is something turning to dust,
-  /// where the mesh is exactly what is no longer wanted on screen. To have both, name the same mesh
+  /// Named here rather than taken from the pool of a drawn entity, because an entity in a pool is
+  /// drawn -- and the commonest use of this shape is something turning to dust, where the mesh is
+  /// exactly what is no longer wanted on screen. To have both, name the same mesh
   /// in both places. The mesh is read and never altered: the backend scatters `capacity` points over
   /// it once, weighted by area, and each slot of the pool is born at its own point from then on.
   ///

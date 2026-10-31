@@ -1,14 +1,24 @@
 {
-  "name": "SkyCourtyard",
   "entities": [
     {
-      "name": "Camera",
+      "archetype": [
+        "Camera",
+        "Transform",
+        "WorldMatrix"
+      ],
       "children": [],
       "components": {
         "Camera": {
+          "aperture": 2.799999952316284,
+          "exposure": 0.0,
+          "exposureMode": 0,
+          "farPlane": 100.0,
+          "fov": 45.0,
+          "nearPlane": 0.10000000149011612,
+          "orthoSize": 5.0,
           "position": {
             "x": 0.0,
-            "y": 2.6,
+            "y": 2.5999999046325684,
             "z": 8.0
           },
           "rotation": {
@@ -17,74 +27,144 @@
             "y": 0.0,
             "z": 0.0
           },
-          "fov": 45.0,
-          "nearPlane": 0.1,
-          "farPlane": 100.0,
-          "orthoSize": 5.0
+          "sensitivity": 400.0,
+          "shutterSpeed": 0.00800000037997961,
+          "type": 0
+        },
+        "Transform": {
+          "position": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.0,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          }
         }
-      }
+      },
+      "name": "Camera"
     },
     {
-      "name": "Skybox",
+      "archetype": [
+        "AtmosphereSky",
+        "SkyboxHandle",
+        "Transform",
+        "VolumetricClouds",
+        "VolumetricFog",
+        "WorldMatrix"
+      ],
       "children": [],
       "components": {
+        "Atmosphere Sky": {
+          "atmosphereHeight": 100.0,
+          "bottomRadius": 6360.0,
+          "groundAlbedo": 0.30000001192092896,
+          "marchSteps": 32,
+          "mieAbsorption": 0.004399999976158142,
+          "mieAnisotropy": 0.800000011920929,
+          "mieScaleHeight": 1.2000000476837158,
+          "mieScattering": 0.003996000159531832,
+          "multiscatterStrength": 1.0,
+          "ozoneAbsorption": {
+            "x": 0.0006500000017695129,
+            "y": 0.0018810000037774444,
+            "z": 8.499999967170879e-05
+          },
+          "ozoneCenter": 25.0,
+          "ozoneWidth": 15.0,
+          "rayleighScaleHeight": 8.0,
+          "rayleighScattering": {
+            "x": 0.005801999941468239,
+            "y": 0.013558000326156616,
+            "z": 0.03310000151395798
+          },
+          "sunIntensity": 10.0,
+          "viewAltitude": 0.05000000074505806
+        },
         "SkyboxHandle": {
           "assetId": {
             "high": 1,
             "low": 3001
           }
         },
-        "Atmosphere Sky": {
-          "viewAltitude": 0.05,
-          "sunIntensity": 10.0
+        "Transform": {
+          "position": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.0,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          }
         },
         "Volumetric Clouds": {
-          "bottomAltitude": 1.2,
-          "topAltitude": 3.6,
-          "coverage": 0.45,
+          "ambient": 0.8999999761581421,
+          "anisotropy": 0.7200000286102295,
+          "backscatter": 0.25,
+          "bottomAltitude": 1.2000000476837158,
+          "coverage": 0.44999998807907104,
           "density": 12.0,
+          "detailScale": 0.6000000238418579,
+          "detailStrength": 0.3499999940395355,
+          "lightSteps": 6,
+          "powder": 0.6000000238418579,
+          "scatteringScale": 1.0,
+          "shadowStrength": 0.699999988079071,
+          "shapeScale": 7.0,
+          "steps": 64,
+          "topAltitude": 3.5999999046325684,
           "windDirection": {
             "x": 1.0,
-            "y": 0.35
+            "y": 0.3499999940395355
           },
-          "windSpeed": 0.014,
-          "shapeScale": 7.0,
-          "detailScale": 0.6,
-          "detailStrength": 0.35,
-          "anisotropy": 0.72,
-          "backscatter": 0.25,
-          "powder": 0.6,
-          "ambient": 0.9,
-          "scatteringScale": 1.0,
-          "shadowStrength": 0.7,
-          "steps": 64,
-          "lightSteps": 6
+          "windSpeed": 0.014000000432133675
         },
         "Volumetric Fog": {
-          "density": 0.012,
-          "baseHeight": 0.0,
-          "heightFalloff": 0.55,
+          "aerialPerspective": 1.0,
           "albedo": {
-            "x": 0.86,
-            "y": 0.9,
+            "x": 0.8600000143051147,
+            "y": 0.8999999761581421,
             "z": 1.0
           },
-          "anisotropy": 0.4,
           "ambient": {
-            "x": 0.05,
-            "y": 0.06,
-            "z": 0.08
+            "x": 0.05000000074505806,
+            "y": 0.05999999865889549,
+            "z": 0.07999999821186066
           },
-          "lightScale": 1.4,
+          "anisotropy": 0.4000000059604645,
+          "baseHeight": 0.0,
+          "density": 0.012000000104308128,
+          "heightFalloff": 0.550000011920929,
+          "kilometresPerUnit": 0.004000000189989805,
+          "lightScale": 1.399999976158142,
           "maxDistance": 60.0,
-          "aerialPerspective": 1.0,
-          "kilometresPerUnit": 0.004,
           "steps": 40
         }
-      }
+      },
+      "name": "Skybox"
     },
     {
-      "name": "Ground",
+      "archetype": [
+        "Pooled",
+        "Transform",
+        "WorldMatrix"
+      ],
       "children": [],
       "components": {
         "Transform": {
@@ -104,35 +184,26 @@
             "y": 1.0,
             "z": 3.0
           }
+        }
+      },
+      "name": "Ground",
+      "pool": {
+        "material": {
+          "high": 1,
+          "low": 2001
         },
-        "BoundingBox": {
-          "min": {
-            "x": -1.0,
-            "y": 0.0,
-            "z": -1.0
-          },
-          "max": {
-            "x": 1.0,
-            "y": 0.0,
-            "z": 1.0
-          }
-        },
-        "MeshHandle": {
-          "assetId": {
-            "high": 1414967765654552757,
-            "low": 3425565642171139096
-          }
-        },
-        "MaterialHandle": {
-          "assetId": {
-            "high": 1,
-            "low": 2001
-          }
+        "mesh": {
+          "high": 1414967765654552757,
+          "low": 3425565642171139096
         }
       }
     },
     {
-      "name": "RedWall",
+      "archetype": [
+        "Pooled",
+        "Transform",
+        "WorldMatrix"
+      ],
       "children": [],
       "components": {
         "Transform": {
@@ -142,45 +213,36 @@
             "z": 0.0
           },
           "rotation": {
-            "w": 0.707107,
+            "w": 0.7071070075035095,
             "x": 0.0,
             "y": 0.0,
-            "z": -0.707107
+            "z": -0.7071070075035095
           },
           "scale": {
             "x": 2.0,
             "y": 1.0,
             "z": 3.0
           }
+        }
+      },
+      "name": "RedWall",
+      "pool": {
+        "material": {
+          "high": 1,
+          "low": 2002
         },
-        "BoundingBox": {
-          "min": {
-            "x": -1.0,
-            "y": 0.0,
-            "z": -1.0
-          },
-          "max": {
-            "x": 1.0,
-            "y": 0.0,
-            "z": 1.0
-          }
-        },
-        "MeshHandle": {
-          "assetId": {
-            "high": 1414967765654552757,
-            "low": 3425565642171139096
-          }
-        },
-        "MaterialHandle": {
-          "assetId": {
-            "high": 1,
-            "low": 2002
-          }
+        "mesh": {
+          "high": 1414967765654552757,
+          "low": 3425565642171139096
         }
       }
     },
     {
-      "name": "GreenWall",
+      "archetype": [
+        "Pooled",
+        "Transform",
+        "WorldMatrix"
+      ],
       "children": [],
       "components": {
         "Transform": {
@@ -190,45 +252,36 @@
             "z": 0.0
           },
           "rotation": {
-            "w": 0.707107,
+            "w": 0.7071070075035095,
             "x": 0.0,
             "y": 0.0,
-            "z": 0.707107
+            "z": 0.7071070075035095
           },
           "scale": {
             "x": 2.0,
             "y": 1.0,
             "z": 3.0
           }
+        }
+      },
+      "name": "GreenWall",
+      "pool": {
+        "material": {
+          "high": 1,
+          "low": 2003
         },
-        "BoundingBox": {
-          "min": {
-            "x": -1.0,
-            "y": 0.0,
-            "z": -1.0
-          },
-          "max": {
-            "x": 1.0,
-            "y": 0.0,
-            "z": 1.0
-          }
-        },
-        "MeshHandle": {
-          "assetId": {
-            "high": 1414967765654552757,
-            "low": 3425565642171139096
-          }
-        },
-        "MaterialHandle": {
-          "assetId": {
-            "high": 1,
-            "low": 2003
-          }
+        "mesh": {
+          "high": 1414967765654552757,
+          "low": 3425565642171139096
         }
       }
     },
     {
-      "name": "BackWall",
+      "archetype": [
+        "Pooled",
+        "Transform",
+        "WorldMatrix"
+      ],
       "children": [],
       "components": {
         "Transform": {
@@ -238,8 +291,8 @@
             "z": -3.0
           },
           "rotation": {
-            "w": 0.707107,
-            "x": 0.707107,
+            "w": 0.7071070075035095,
+            "x": 0.7071070075035095,
             "y": 0.0,
             "z": 0.0
           },
@@ -248,42 +301,33 @@
             "y": 1.0,
             "z": 2.0
           }
+        }
+      },
+      "name": "BackWall",
+      "pool": {
+        "material": {
+          "high": 1,
+          "low": 2001
         },
-        "BoundingBox": {
-          "min": {
-            "x": -1.0,
-            "y": 0.0,
-            "z": -1.0
-          },
-          "max": {
-            "x": 1.0,
-            "y": 0.0,
-            "z": 1.0
-          }
-        },
-        "MeshHandle": {
-          "assetId": {
-            "high": 1414967765654552757,
-            "low": 3425565642171139096
-          }
-        },
-        "MaterialHandle": {
-          "assetId": {
-            "high": 1,
-            "low": 2001
-          }
+        "mesh": {
+          "high": 1414967765654552757,
+          "low": 3425565642171139096
         }
       }
     },
     {
-      "name": "Pillar",
+      "archetype": [
+        "Pooled",
+        "Transform",
+        "WorldMatrix"
+      ],
       "children": [],
       "components": {
         "Transform": {
           "position": {
-            "x": -0.9,
-            "y": 1.2,
-            "z": -0.6
+            "x": -0.8999999761581421,
+            "y": 1.2000000476837158,
+            "z": -0.6000000238418579
           },
           "rotation": {
             "w": 1.0,
@@ -292,128 +336,132 @@
             "z": 0.0
           },
           "scale": {
-            "x": 1.2,
-            "y": 2.4,
-            "z": 1.2
+            "x": 1.2000000476837158,
+            "y": 2.4000000953674316,
+            "z": 1.2000000476837158
           }
+        }
+      },
+      "name": "Pillar",
+      "pool": {
+        "material": {
+          "high": 1,
+          "low": 2001
         },
-        "BoundingBox": {
-          "min": {
-            "x": -0.5,
-            "y": -0.5,
-            "z": -0.5
-          },
-          "max": {
-            "x": 0.5,
-            "y": 0.5,
-            "z": 0.5
-          }
-        },
-        "MeshHandle": {
-          "assetId": {
-            "high": 8569614091031957600,
-            "low": 15471855482930753187
-          }
-        },
-        "MaterialHandle": {
-          "assetId": {
-            "high": 1,
-            "low": 2001
-          }
+        "mesh": {
+          "high": 8569614091031957600,
+          "low": 15471855482930753187
         }
       }
     },
     {
-      "name": "Block",
+      "archetype": [
+        "Pooled",
+        "Transform",
+        "WorldMatrix"
+      ],
       "children": [],
       "components": {
         "Transform": {
           "position": {
-            "x": 1.1,
+            "x": 1.100000023841858,
             "y": 0.5,
-            "z": 0.8
+            "z": 0.800000011920929
           },
           "rotation": {
-            "w": 0.989016,
+            "w": 0.9890159964561462,
             "x": 0.0,
-            "y": 0.147809,
+            "y": 0.1478089988231659,
             "z": 0.0
           },
           "scale": {
-            "x": 1.4,
+            "x": 1.399999976158142,
             "y": 1.0,
-            "z": 1.4
+            "z": 1.399999976158142
           }
+        }
+      },
+      "name": "Block",
+      "pool": {
+        "material": {
+          "high": 1,
+          "low": 2001
         },
-        "BoundingBox": {
-          "min": {
-            "x": -0.5,
-            "y": -0.5,
-            "z": -0.5
-          },
-          "max": {
-            "x": 0.5,
-            "y": 0.5,
-            "z": 0.5
-          }
-        },
-        "MeshHandle": {
-          "assetId": {
-            "high": 8569614091031957600,
-            "low": 15471855482930753187
-          }
-        },
-        "MaterialHandle": {
-          "assetId": {
-            "high": 1,
-            "low": 2001
-          }
+        "mesh": {
+          "high": 8569614091031957600,
+          "low": 15471855482930753187
         }
       }
     },
     {
-      "name": "Sun",
+      "archetype": [
+        "Light",
+        "Transform",
+        "WorldMatrix"
+      ],
       "children": [],
       "components": {
         "Light": {
-          "type": 0,
-          "position": {
-            "x": 0.0,
-            "y": 6.0,
-            "z": -6.0
-          },
-          "rotation": {
-            "w": -0.210206,
-            "x": 0.046458,
-            "y": 0.953542,
-            "z": 0.210743
-          },
           "ambient": {
             "x": 0.0,
             "y": 0.0,
             "z": 0.0
           },
+          "angularDiameter": 0.5299999713897705,
+          "constant": 1.0,
           "diffuse": {
             "x": 1.0,
-            "y": 0.94,
-            "z": 0.84
+            "y": 0.9399999976158142,
+            "z": 0.8399999737739563
           },
+          "farPlane": 30.0,
+          "innerCutoff": 0.8999999761581421,
+          "intensity": 3.5,
+          "linear": 0.09000000357627869,
+          "nearPlane": 0.10000000149011612,
+          "orthoSize": 5.0,
+          "outerCutoff": 0.800000011920929,
+          "position": {
+            "x": 0.0,
+            "y": 6.0,
+            "z": -6.0
+          },
+          "quadratic": 0.03200000151991844,
+          "rotation": {
+            "w": -0.21020600199699402,
+            "x": 0.04645799845457077,
+            "y": 0.9535419940948486,
+            "z": 0.2107429951429367
+          },
+          "sourceRadius": 0.05000000074505806,
           "specular": {
             "x": 1.0,
             "y": 1.0,
             "z": 1.0
           },
-          "intensity": 3.5,
-          "constant": 1.0,
-          "linear": 0.09,
-          "quadratic": 0.032,
-          "innerCutoff": 0.9,
-          "outerCutoff": 0.8,
-          "nearPlane": 0.1,
-          "farPlane": 30.0,
-          "orthoSize": 5.0
+          "type": 0
+        },
+        "Transform": {
+          "position": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "w": 0.0,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "scale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          }
         }
-      }
+      },
+      "name": "Sun"
     }
-  ]
+  ],
+  "name": "sky_courtyard"
 }

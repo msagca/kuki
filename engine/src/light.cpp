@@ -10,7 +10,6 @@ auto Light::GetTransform() const -> Transform {
   transform.position = position;
   transform.rotation = rotation;
   transform.local = glm::translate(glm::mat4(1.f), position) * glm::toMat4(rotation);
-  transform.world = transform.local;
   return transform;
 }
 auto Light::GetView() const -> glm::mat4 {

@@ -174,14 +174,23 @@ archetype of the world matches, and visits only the archetypes the compiler foun
 (`EntityManager::ForEachOf<A, Q...>`). `Delete` during a query waits for it to end; `Create` does
 not, so a callback that creates in the archetype it is visiting must not use what it was handed after.
 
-A drawn archetype has `Renderable` (`MeshHandle`, `MaterialHandle`, `BoundingBox`, `RenderBinding`);
-one of a model's meshes has `ModelRenderable`, which names its mesh and material by the model and an
-index. `RenderBinding` is what the running backend resolved the handles to -- one component for
-every backend, each filling in its own half -- and is not saved: it is derived from the handles.
+**Every drawn entity is in a pool** (`pool.hpp`). A drawn archetype has `Renderable`, which is the
+tag `Pooled` and nothing else: the mesh, the material, the bounds and what a backend resolved them to
+are its pool's, not the entity's. A pool is a `PoolKey` (a mesh, or a model's mesh by index, and a
+material) and is a table of its own, so an archetype has its own table -- where an entity with no
+mesh yet sits, undrawn -- and one more per pool; `ForEachOf` and `ForEach` visit them all. Make an
+entity in one with `CreateEntity<A>(key)` (`World::Create<A>(app, key)`), give it another mesh or
+material with `MoveEntityToPool` (the builder's `.Mesh()`/`.Material()` do), make one ahead with
+`CreatePool` to give it bounds of its own (empty: never culled, out of the shadow's fit). A table's
+`version` rises when a row comes, goes or moves, which is how a renderer keeps what it worked out
+from a pool. The Direct3D 12 backend draws a pool as one instanced draw from its `WorldMatrix`
+column, copied as it lies, once a frame for every pass (`ResolvePools`, `PreparePools`); it culls a
+pool at a time and skinned meshes not at all. **OpenGL draws no pools yet**, so it draws no meshes.
 
 A model is placed with `InstantiateAsset<Root>(name)`: the root is an entity of archetype `Root`
 (`ModelRoot` unless the game wants its own components on it, as the duel's `Figure` does) standing for
-the model's top node, with the nodes below as `ModelNodeObject`/`ModelMeshObject` children.
+the model's top node, with the nodes below as `ModelNodeObject`/`MeshObject` children, each mesh in
+the pool of the model's mesh and material.
 
 `Transform` carries no dirty bit, and no world matrix: that is the `WorldMatrix` component, written
 by the transform update -- read where something is from it. After writing `position`/`rotation`/

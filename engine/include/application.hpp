@@ -54,6 +54,25 @@ public:
   template <IsArchetype A>
   auto CreateEntity(std::string = "") -> EntityID;
   auto CreateEntity(const ComponentMask &, std::string = "") -> EntityID;
+  /// @brief Makes an entity of a drawn archetype in the active scene, in the pool of a mesh and a
+  /// material, making the pool if it is the first. A pool made this way is given the mesh's bounds;
+  /// one made with `CreatePool` first keeps what it was given.
+  template <IsArchetype A>
+  auto CreateEntity(const PoolKey &, std::string = "") -> EntityID;
+  auto CreateEntity(const ComponentMask &, const PoolKey &, std::string = "") -> EntityID;
+  /// @brief Makes a pool of a drawn archetype in the active scene ahead of its entities. Bounds left
+  /// unset are the mesh's. See `PoolSettings`.
+  template <IsArchetype A>
+  auto CreatePool(const PoolKey &, PoolSettings = {}) -> bool;
+  auto CreatePool(const ComponentMask &, const PoolKey &, PoolSettings = {}) -> bool;
+  /// @brief Gives an entity of a drawn archetype another mesh or material by moving it to that
+  /// pool. See `EntityManager::MoveToPool`.
+  auto MoveEntityToPool(const EntityID, const PoolKey &) -> bool;
+  auto GetEntityPool(const EntityID) const -> PoolKey;
+  /// @brief An entity's bounds around its origin, its own or its pool's. See `EntityManager::GetBounds`.
+  auto GetEntityBounds(const EntityID) const -> BoundingBox;
+  /// @brief The bounds of what a pool key draws: its mesh's, or empty if the mesh is not loaded.
+  auto GetMeshBounds(const PoolKey &) -> BoundingBox;
   auto CreateScene(std::string = "") -> SceneID;
   /// @brief The archetypes every scene of this application is given when it is made.
   ///
@@ -407,6 +426,16 @@ auto Application::GetScene(this auto &self, const std::string &name) -> decltype
 template <IsArchetype A>
 auto Application::CreateEntity(std::string name) -> EntityID {
   return CreateEntity(A::Mask(), std::move(name));
+}
+template <IsArchetype A>
+auto Application::CreateEntity(const PoolKey &pool, std::string name) -> EntityID {
+  static_assert(A::template Has<Pooled>, "CreateEntity: only an archetype that is drawn -- one with `Renderable` in it -- has pools");
+  return CreateEntity(A::Mask(), pool, std::move(name));
+}
+template <IsArchetype A>
+auto Application::CreatePool(const PoolKey &pool, PoolSettings settings) -> bool {
+  static_assert(A::template Has<Pooled>, "CreatePool: only an archetype that is drawn -- one with `Renderable` in it -- has pools");
+  return CreatePool(A::Mask(), pool, std::move(settings));
 }
 template <IsArchetype Root>
 auto Application::InstantiateAsset(const AssetID id) -> EntityID {

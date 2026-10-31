@@ -64,6 +64,19 @@ struct World {
     static_assert(Has<A>, "World::Create: this world does not declare that archetype, so no scene of it can hold one");
     return app.CreateEntity<A>(std::move(name));
   }
+  /// @brief Makes an entity of one of the world's drawn archetypes in the pool of a mesh and a
+  /// material. See `Application::CreateEntity`.
+  template <IsArchetype A>
+  static auto Create(Application &app, const PoolKey &pool, std::string name = "") -> EntityID {
+    static_assert(Has<A>, "World::Create: this world does not declare that archetype, so no scene of it can hold one");
+    return app.CreateEntity<A>(pool, std::move(name));
+  }
+  /// @brief Makes a pool of one of the world's drawn archetypes ahead of its entities.
+  template <IsArchetype A>
+  static auto CreatePool(Application &app, const PoolKey &pool, PoolSettings settings = {}) -> bool {
+    static_assert(Has<A>, "World::CreatePool: this world does not declare that archetype");
+    return app.CreatePool<A>(pool, std::move(settings));
+  }
   /// @brief Places a model with a root of one of the world's archetypes. See `AssetManager::Instantiate`.
   template <IsArchetype Root = ModelRoot>
   static auto Instantiate(Application &app, const std::string &asset) -> EntityID {

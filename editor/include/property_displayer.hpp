@@ -31,10 +31,8 @@
 #include <light.hpp>
 #include <material_fallback.hpp>
 #include <material_type.hpp>
-#include <mesh_handle.hpp>
 #include <model_asset.hpp>
 #include <particle_presets.hpp>
-#include <render_binding.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <string>
@@ -1373,49 +1371,29 @@ inline auto PropertyDisplayer::operator()<kuki::MaterialHandle>(kuki::MaterialHa
   auto assetId = handle->assetId;
   field::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
 }
-template <>
-inline auto PropertyDisplayer::operator()<kuki::MeshHandle>(kuki::MeshHandle *handle) -> void {
-  if (!handle)
-    return;
-  auto assetId = handle->assetId;
-  field::InputScalar("Asset ID", ImGuiDataType_U64, &assetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::ModelMaterialHandle>(kuki::ModelMaterialHandle *handle) -> void {
-  if (!handle)
-    return;
-  auto modelAssetId = handle->modelAssetId;
-  field::InputScalar("Model Asset ID", ImGuiDataType_U64, &modelAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
-  auto materialIndex = handle->materialIndex;
-  field::InputScalar("Material Index", ImGuiDataType_U64, &materialIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::ModelMeshHandle>(kuki::ModelMeshHandle *handle) -> void {
-  if (!handle)
-    return;
-  auto modelAssetId = handle->modelAssetId;
-  field::InputScalar("Model Asset ID", ImGuiDataType_U64, &modelAssetId, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
-  auto meshIndex = handle->meshIndex;
-  field::InputScalar("Mesh Index", ImGuiDataType_U64, &meshIndex, nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
-}
-/// @brief What the running backend resolved the entity's handles to: its own material and mesh.
+/// @brief The pool a drawn entity is in: the mesh and the material every entity of it is drawn with.
 ///
-/// They were components of their own, one per backend, and had panels of their own. They are one
-/// component now, of which only the running backend's half is ever filled in, so that half is what
-/// is shown -- with the same panels.
+/// What the entity's mesh and material handles and the backend's binding of them showed when they
+/// were the entity's own. They are its pool's now, so the material shown is the asset, and a change
+/// made to it here is made to every entity drawn with it.
 template <>
-inline auto PropertyDisplayer::operator()<kuki::RenderBinding>(kuki::RenderBinding *binding) -> void {
-  if (!binding)
+inline auto PropertyDisplayer::operator()<kuki::Pooled>(kuki::Pooled *) -> void {
+  const auto pool = app.GetEntityPool(context.selectedEntityId);
+  if (!pool) {
+    ImGui::TextDisabled("Given no mesh yet, so in no pool and not drawn.");
     return;
-  if (binding->glMaterialBound || binding->glMesh) {
-    if (binding->glMaterialBound && field::Fold("Material", true))
-      (*this)(&binding->glMaterial);
-    if (binding->glMesh && field::Fold("Mesh", false))
-      (*this)(&binding->glMesh);
-  } else if (binding->dxMaterialBound)
-    (*this)(&binding->dxMaterial);
-  else
-    ImGui::TextDisabled("Not resolved by the running backend yet.");
+  }
+  const auto Name = [&](const kuki::AssetID id, const uint32_t index) {
+    auto name = id ? app.GetAssetName(id) : std::string("(none)");
+    if (index != kuki::PoolKey::NONE)
+      name += " #" + std::to_string(index);
+    return name;
+  };
+  ImGui::TextUnformatted(("Mesh: " + Name(pool.mesh, pool.meshIndex)).c_str());
+  ImGui::TextUnformatted(("Material: " + Name(pool.material, pool.materialIndex)).c_str());
+  if (pool.materialIndex == kuki::PoolKey::NONE)
+    if (auto *material = app.GetAsset<kuki::MaterialAsset>(pool.material))
+      DisplayMaterialSurface(material->type, material->fallback, context.capabilities.stylization);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Skeleton>(kuki::Skeleton *skeleton) -> void {

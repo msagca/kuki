@@ -1,5 +1,4 @@
 #include <dx_renderer.hpp>
-#include <render_binding.hpp>
 #ifdef KUKI_HAS_DIRECTX
 #include <algorithm>
 #include <application.hpp>
@@ -21,7 +20,6 @@
 #include <material_handle.hpp>
 #include <particle_emitter.hpp>
 #include <particle_limits.hpp>
-#include <mesh_handle.hpp>
 #include <texture.hpp>
 #include <texture_asset.hpp>
 #include <variant>
@@ -62,11 +60,6 @@ namespace {
     waves[1] = std::max(source->waveHeight, .0f);
     waves[2] = std::max(source->waveLength, .1f);
     waves[3] = source->waveSpeed;
-  }
-  /// @brief The material this backend resolved an entity's handles to, or null if it has not.
-  auto BoundMaterial(Scene &scene, const EntityID id) -> const DXMaterial * {
-    const auto *binding = scene.GetEntityComponent<RenderBinding>(id);
-    return binding && binding->dxMaterialBound ? &binding->dxMaterial : nullptr;
   }
 } // namespace
 namespace {
@@ -1803,7 +1796,7 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
   const auto sunRadiance = sun ? sun->diffuse * sun->intensity * glm::one_over_pi<float>() : glm::vec3(.0f);
   const auto ambient = sun ? sun->ambient : glm::vec3(1.f);
   auto computeBound = false;
-  scene->ForEachEntity<ParticleEmitter, Transform>([&](const EntityID id, const ParticleEmitter *emitter, const Transform *transform) {
+  scene->ForEachEntity<ParticleEmitter, WorldMatrix>([&](const EntityID id, const ParticleEmitter *emitter, const WorldMatrix *transform) {
     const auto capacity = std::clamp(emitter->capacity, 1u, PARTICLE_MAX_CAPACITY);
     auto &pool = particlePools[id];
     if (!pool.buffer || pool.capacity != capacity) {
@@ -1844,10 +1837,10 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
       }
     }
     const auto onMesh = surface && pool.samples && pool.sampledMesh == emitter->mesh;
-    const auto position = glm::vec3(transform->world[3]);
+    const auto position = glm::vec3(transform->matrix[3]);
     // The entity's local +Y as the world sees it. Normalised because the column carries the scale
     // with it, and a scaled emitter should throw its particles in the same direction, not faster.
-    const auto up = glm::vec3(transform->world[1]);
+    const auto up = glm::vec3(transform->matrix[1]);
     const auto upLength = glm::length(up);
     const auto axis = upLength > 1.0e-6f ? up / upLength : glm::vec3(.0f, 1.f, .0f);
     // An emitter seen for the first time has no last frame to have been anywhere in, and the origin
@@ -1918,7 +1911,7 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
     constants.holdVariance = std::clamp(emitter->holdVariance, .0f, 1.f);
     for (auto row = 0; row < 3; ++row)
       for (auto column = 0; column < 4; ++column)
-        constants.world[row][column] = transform->world[column][row];
+        constants.world[row][column] = transform->matrix[column][row];
     memcpy(constants.sunDirection, glm::value_ptr(sunDirection), sizeof(constants.sunDirection));
     memcpy(constants.sunRadiance, glm::value_ptr(sunRadiance), sizeof(constants.sunRadiance));
     memcpy(constants.ambient, glm::value_ptr(ambient), sizeof(constants.ambient));
@@ -2497,7 +2490,7 @@ auto DXRenderer::EnsureInstanceCapacity(const uint64_t bytes) -> bool {
     return false;
   if (instanceData && instanceCapacity >= bytes)
     return true;
-  auto capacity = instanceCapacity > 0 ? instanceCapacity : 256 * sizeof(DXInstanceData);
+  auto capacity = instanceCapacity > 0 ? instanceCapacity : 256 * sizeof(glm::mat4);
   while (capacity < bytes)
     capacity *= 2;
   const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -2517,22 +2510,28 @@ auto DXRenderer::EnsureInstanceCapacity(const uint64_t bytes) -> bool {
   instanceBuffer = std::move(grown);
   instanceData = static_cast<uint8_t *>(mapped);
   instanceCapacity = capacity;
-  spdlog::debug("[DXRenderer] Instance arena grown to {} instances per frame", capacity / sizeof(DXInstanceData));
+  spdlog::debug("[DXRenderer] Instance arena grown to {} matrices per frame", capacity / sizeof(glm::mat4));
   return true;
 }
-auto DXRenderer::AllocateInstances(std::span<const DXInstanceData> instances) -> D3D12_GPU_VIRTUAL_ADDRESS {
+auto DXRenderer::AllocateUpload(const void *data, const uint64_t bytes) -> D3D12_GPU_VIRTUAL_ADDRESS {
   auto context = GetContext();
-  if (!context || instances.empty())
+  if (!context || !data || bytes == 0)
     return 0;
   constexpr uint64_t ALIGNMENT = D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
   const auto offset = (instanceCursor + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
-  const auto bytes = instances.size() * sizeof(DXInstanceData);
   if (!EnsureInstanceCapacity(offset + bytes))
     return 0;
   const auto frameOffset = instanceCapacity * (context->GetFrameIndex() % DX_FRAME_COUNT);
-  memcpy(instanceData + frameOffset + offset, instances.data(), bytes);
+  memcpy(instanceData + frameOffset + offset, data, bytes);
   instanceCursor = offset + bytes;
   return instanceBuffer->GetGPUVirtualAddress() + frameOffset + offset;
+}
+auto DXRenderer::AllocateInstances(std::span<const glm::mat4> matrices) -> D3D12_GPU_VIRTUAL_ADDRESS {
+  return AllocateUpload(matrices.data(), matrices.size_bytes());
+}
+auto DXRenderer::AllocateEntities(std::span<const EntityID> entities) -> D3D12_GPU_VIRTUAL_ADDRESS {
+  static_assert(sizeof(EntityID) == 8, "g_entityIds reads each entity as two words, of which the first is the low one");
+  return AllocateUpload(entities.data(), entities.size_bytes());
 }
 auto DXRenderer::AllocateBones(const std::vector<glm::mat4> &bones) -> D3D12_GPU_VIRTUAL_ADDRESS {
   auto context = GetContext();
@@ -2562,52 +2561,54 @@ auto DXRenderer::AllocateOverlayVertices(const std::vector<Vertex> &vertices) ->
   instanceCursor = offset + bytes;
   return instanceBuffer->GetGPUVirtualAddress() + frameOffset + offset;
 }
-auto DXRenderer::CollectSkinnedDraws(Scene &scene, const Camera *camera) -> std::vector<DXSkinnedDraw> {
+auto DXRenderer::CollectSkinnedDraws(Scene &scene, const Camera *) -> std::vector<DXSkinnedDraw> {
   std::vector<DXSkinnedDraw> draws;
-  scene.ForEachEntity<ModelMeshHandle, Transform, Optional<BoundingBox>>([&](const EntityID id, const ModelMeshHandle *handle, const Transform *transform, const BoundingBox *bounds) {
-    auto modelIt = modelToMeshes.find(handle->modelAssetId);
-    if (modelIt == modelToMeshes.end())
-      return;
-    auto meshIt = modelIt->second.find(handle->meshIndex);
-    if (meshIt == modelIt->second.end() || !meshIt->second || !meshIt->second.skinned)
-      return;
-    if (camera && bounds && *bounds && !camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world)))
-      return;
-    auto modelAsset = app.GetAsset<ModelAsset>(handle->modelAssetId);
-    if (!modelAsset || handle->meshIndex >= modelAsset->meshes.size())
-      return;
-    const auto &modelMesh = modelAsset->meshes[handle->meshIndex];
-    const Skeleton *skeleton{};
-    auto ancestorId = id;
-    for (auto depth = 0; depth < 64 && ancestorId; ++depth) {
-      if (auto found = scene.GetEntityComponent<Skeleton>(ancestorId); found) {
-        skeleton = found;
-        break;
+  for (const auto &pool : poolDraws) {
+    if (!pool.skinned || pool.table->pool.meshIndex == PoolKey::NONE)
+      continue;
+    auto modelAsset = app.GetAsset<ModelAsset>(pool.table->pool.mesh);
+    if (!modelAsset || pool.table->pool.meshIndex >= modelAsset->meshes.size())
+      continue;
+    const auto &modelMesh = modelAsset->meshes[pool.table->pool.meshIndex];
+    const auto *worlds = pool.table->GetColumn<WorldMatrix>();
+    if (!worlds)
+      continue;
+    for (size_t row = 0; row < pool.table->entities.size(); ++row) {
+      const auto id = pool.table->entities[row];
+      // Not culled. A skinned mesh's vertices are put where they are by its bones, not by its own
+      // world matrix, so its pool's bounds taken through that matrix are somewhere else entirely --
+      // tried, and it threw away a fighter standing in plain view. There are a handful of figures
+      // in a scene, and drawing one out of shot costs less than losing one in it.
+      const auto &world = worlds->components[row].matrix;
+      const Skeleton *skeleton{};
+      auto ancestorId = id;
+      for (auto depth = 0; depth < 64 && ancestorId; ++depth) {
+        if (auto found = scene.GetEntityComponent<Skeleton>(ancestorId); found) {
+          skeleton = found;
+          break;
+        }
+        ancestorId = scene.GetParent(ancestorId);
       }
-      ancestorId = scene.GetParent(ancestorId);
+      DXSkinnedDraw draw{};
+      draw.mesh = pool.mesh;
+      draw.material = pool.material;
+      draw.world = world;
+      draw.entity = id;
+      draw.bones.assign(modelMesh.bones.size(), glm::mat4(1.f));
+      if (skeleton)
+        for (size_t i = 0; i < modelMesh.bones.size(); ++i) {
+          const auto &bone = modelMesh.bones[i];
+          if (bone.nodeIndex >= skeleton->nodeEntities.size())
+            continue;
+          const auto boneEntityId = skeleton->nodeEntities[bone.nodeIndex];
+          if (!boneEntityId)
+            continue;
+          if (auto boneTransform = scene.GetEntityComponent<WorldMatrix>(boneEntityId); boneTransform)
+            draw.bones[i] = boneTransform->matrix * bone.offsetMatrix;
+        }
+      draws.push_back(std::move(draw));
     }
-    DXSkinnedDraw draw{};
-    draw.mesh = &meshIt->second;
-    draw.material = BoundMaterial(scene, id);
-    if (!draw.material)
-      if (const auto parent = scene.GetParent(id); parent)
-        draw.material = BoundMaterial(scene, parent);
-    memcpy(draw.instance.model, glm::value_ptr(transform->world), sizeof(draw.instance.model));
-    draw.instance.entityId = static_cast<uint32_t>(static_cast<long long>(id)) & 0xFFFFFFu;
-    draw.bones.assign(modelMesh.bones.size(), glm::mat4(1.f));
-    if (skeleton)
-      for (size_t i = 0; i < modelMesh.bones.size(); ++i) {
-        const auto &bone = modelMesh.bones[i];
-        if (bone.nodeIndex >= skeleton->nodeEntities.size())
-          continue;
-        const auto boneEntityId = skeleton->nodeEntities[bone.nodeIndex];
-        if (!boneEntityId)
-          continue;
-        if (auto boneTransform = scene.GetEntityComponent<Transform>(boneEntityId); boneTransform)
-          draw.bones[i] = boneTransform->world * bone.offsetMatrix;
-      }
-    draws.push_back(std::move(draw));
-  });
+  }
   return draws;
 }
 auto DXRenderer::UploadSkinnedDepth(Scene &scene) -> std::vector<DXSkinnedDepthDraw> {
@@ -2617,15 +2618,15 @@ auto DXRenderer::UploadSkinnedDepth(Scene &scene) -> std::vector<DXSkinnedDepthD
     return draws;
   auto required = instanceCursor;
   for (const auto &draw : skinned)
-    required += sizeof(DXInstanceData) + draw.bones.size() * sizeof(glm::mat4) + 2 * D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
+    required += sizeof(glm::mat4) + draw.bones.size() * sizeof(glm::mat4) + 2 * D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
   EnsureInstanceCapacity(required);
   draws.reserve(skinned.size());
   for (const auto &draw : skinned) {
     // A see-through figure casts no shadow and hides nothing behind it, as a blended rigid mesh
-    // does not either: `CollectBatches` leaves those out of the same passes.
+    // does not either: `DrawPoolDepth` leaves those out of the same passes.
     if (draw.material && draw.material->fallback.alphaMode == AlphaMode::Blend)
       continue;
-    const auto instance = AllocateInstances(std::span(&draw.instance, 1));
+    const auto instance = AllocateInstances(std::span(&draw.world, 1));
     const auto bones = draw.bones.empty() ? instance : AllocateBones(draw.bones);
     if (instance && bones)
       draws.push_back({draw.mesh, instance, bones});
@@ -2654,159 +2655,251 @@ auto DXRenderer::DrawSkinnedDepth(std::span<const DXSkinnedDepthDraw> draws, con
   if (restore && *restore)
     commandList->SetPipelineState(restore->pipelineState.Get());
 }
-auto DXBatchKeyHash::operator()(const DXBatchKey &key) const noexcept -> size_t {
-  auto seed = std::hash<const DXMesh *>{}(key.mesh);
-  hash_combine(seed, std::hash<uint64_t>{}(key.textureTable));
-  hash_combine(seed, std::hash<uint32_t>{}(key.variant));
-  return seed;
-}
-auto DXRenderer::CollectBatches(Scene &scene, const bool shadowCastersOnly, const Camera *camera) -> std::span<const DXDrawBatch> {
-  KUKI_PROFILE_SCOPE("CollectBatches");
-  // How many of the pooled batches this call has claimed; everything past it is last call's, left
-  // alone so its capacity survives.
-  size_t used = 0;
-  batchLookup.clear();
-  const auto Add = [&](const DXMesh *mesh, const DXMaterial *material, const Transform *transform, const BoundingBox *bounds, const EntityID entityId) {
-    if (!mesh || !*mesh || mesh->skinned)
-      return;
-    if (shadowCastersOnly && material && (material->fallback.alphaMode == AlphaMode::Blend || material->fallback.transmission > .0f))
-      return;
-    const auto grouped = !shadowCastersOnly && material;
-    const auto blended = grouped && material->fallback.alphaMode == AlphaMode::Blend;
-    const auto variant = grouped ? static_cast<uint32_t>(material->type) + 1u + 4u * (static_cast<uint32_t>(material->fallback.alphaMode) + 1u) : 0u;
-    const DXBatchKey key{mesh, grouped ? material->textureTableGPU : 0ull, blended ? static_cast<uint32_t>(static_cast<long long>(entityId)) : variant};
-    auto it = batchLookup.find(key);
-    if (it == batchLookup.end()) {
-      it = batchLookup.emplace(key, used).first;
-      if (used == batchPool.size()) {
-        batchPool.emplace_back();
-        hiddenPool.emplace_back();
-      }
-      auto &claimed = batchPool[used];
-      claimed.mesh = mesh;
-      claimed.material = shadowCastersOnly ? nullptr : material;
-      // clear, never shrink: the capacity is the whole point of pooling these
-      claimed.instances.clear();
-      claimed.visibleCount = 0;
-      hiddenPool[used].clear();
-      ++used;
-    }
-    DXInstanceData instance{};
-    memcpy(instance.model, glm::value_ptr(transform->world), sizeof(instance.model));
-    instance.entityId = static_cast<uint32_t>(static_cast<long long>(entityId)) & 0xFFFFFFu;
-    if (material) {
-      instance.sway = std::max(material->fallback.sway, .0f);
-      instance.waves = std::clamp(material->fallback.waves, .0f, 1.f);
-    }
-    // an entity with no bounds cannot be tested, so it is drawn; over-drawing is the safe way to be wrong
-    const auto visible = !camera || !bounds || !*bounds || camera->IntersectsFrustum(bounds->GetWorldBounds(transform->world));
-    if (visible)
-      batchPool[it->second].instances.push_back(instance);
-    else
-      hiddenPool[it->second].push_back(instance);
+auto DXRenderer::ResolvePoolMaterial(const PoolKey &pool) -> const DXMaterial * {
+  if (!pool.material)
+    return nullptr;
+  std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> textures{};
+  const auto Place = [&](const DXTexture *texture) {
+    if (texture && *texture)
+      if (const auto slot = static_cast<uint32_t>(texture->content); slot < MATERIAL_TEXTURE_SLOTS)
+        textures[slot] = texture;
   };
-  scene.ForEachEntity<MeshHandle, Transform, Optional<BoundingBox>>([&](const EntityID id, const MeshHandle *handle, const Transform *transform, const BoundingBox *bounds) {
-    auto resolvedId = handle->assetId;
-    if (!app.GetAsset<MeshAsset>(resolvedId))
-      if (auto fallback = app.GetAsset("Cube"); fallback)
-        resolvedId = fallback->id;
-    if (auto it = assetToMesh.find(resolvedId); it != assetToMesh.end())
-      Add(&it->second, BoundMaterial(scene, id), transform, bounds, id);
-  });
-  scene.ForEachEntity<ModelMeshHandle, Transform, Optional<BoundingBox>>([&](const EntityID id, const ModelMeshHandle *handle, const Transform *transform, const BoundingBox *bounds) {
-    auto modelIt = modelToMeshes.find(handle->modelAssetId);
-    if (modelIt == modelToMeshes.end())
-      return;
-    auto meshIt = modelIt->second.find(handle->meshIndex);
-    if (meshIt == modelIt->second.end())
-      return;
-    auto material = BoundMaterial(scene, id);
-    if (!material)
-      if (const auto parent = scene.GetParent(id); parent)
-        material = BoundMaterial(scene, parent);
-    Add(&meshIt->second, material, transform, bounds, id);
-  });
-  uint64_t required = instanceCursor;
-  for (size_t index = 0; index < used; ++index) {
-    auto &batch = batchPool[index];
-    batch.visibleCount = static_cast<uint32_t>(batch.instances.size());
-    // only the visible prefix is ever uploaded, so that is what the arena has to hold
-    required += batch.instances.size() * sizeof(DXInstanceData) + D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
-    batch.instances.insert(batch.instances.end(), hiddenPool[index].begin(), hiddenPool[index].end());
+  MaterialFallback fallback{};
+  MaterialType type{};
+  size_t index = 0;
+  if (pool.materialIndex == PoolKey::NONE) {
+    const auto *materialAsset = app.GetAsset<MaterialAsset>(pool.material);
+    if (!materialAsset)
+      return nullptr;
+    for (const auto textureId : materialAsset->textures)
+      Place(EnsureTexture(textureId));
+    fallback = materialAsset->fallback;
+    fallback.textureMask = MaskForTextures(textures);
+    type = materialAsset->type;
+  } else {
+    if (!app.IsAssetLoaded(pool.material))
+      return nullptr;
+    const auto *modelAsset = app.GetAsset<ModelAsset>(pool.material);
+    if (!modelAsset || pool.materialIndex >= modelAsset->materials.size())
+      return nullptr;
+    const auto &modelMaterial = modelAsset->materials[pool.materialIndex];
+    for (const auto textureIndex : modelMaterial.textures)
+      Place(EnsureModelTexture(pool.material, textureIndex));
+    fallback = modelMaterial.fallback;
+    type = modelMaterial.type;
+    index = pool.materialIndex;
   }
-  EnsureInstanceCapacity(required);
-  return std::span(batchPool).first(used);
+  // Written again every frame, as the per-entity binding was, so a material edited in place -- the
+  // editor's sliders, a game fading one -- is drawn as it now is.
+  auto &shared = materialTables[pool.material][index];
+  shared.fallback = fallback;
+  shared.type = type;
+  if (!shared.textureTableGPU)
+    BuildMaterialTable(shared, textures);
+  return &shared;
 }
-auto DXRenderer::BuildRayScene(const Camera &camera, std::span<const DXDrawBatch> batches) -> void {
+auto DXRenderer::ResolvePools(Scene &scene) -> void {
+  KUKI_PROFILE_SCOPE("ResolvePools");
+  poolDraws.clear();
+  poolsUploaded = false;
+  if (&scene != poolCacheScene) {
+    poolCache.clear();
+    poolCacheScene = &scene;
+  }
+  const auto *camera = scene.GetCamera();
+  scene.ForEachPool([&](const ArchetypeTable &table) {
+    const auto &pool = table.pool;
+    DXPoolDraw draw{};
+    draw.table = &table;
+    draw.count = static_cast<uint32_t>(table.entities.size());
+    if (pool.meshIndex == PoolKey::NONE) {
+      // A mesh still loading is drawn as the placeholder cube in its place, as it always was.
+      auto resident = pool.mesh;
+      if (!app.GetAsset<MeshAsset>(resident))
+        if (auto fallback = app.GetAsset("Cube"); fallback)
+          resident = fallback->id;
+      draw.mesh = EnsureMesh(resident);
+    } else if (app.IsAssetLoaded(pool.mesh))
+      draw.mesh = EnsureModelMesh(pool.mesh, pool.meshIndex);
+    if (!draw.mesh || !*draw.mesh)
+      return;
+    draw.skinned = draw.mesh->skinned;
+    draw.material = ResolvePoolMaterial(pool);
+    // The pool's entities' bounds together, worked out again only when one of them came, went or
+    // moved: a pool of trees placed when the map was made is measured once.
+    auto &cache = poolCache[&table];
+    if (cache.boundsVersion != table.version) {
+      cache.boundsVersion = table.version;
+      cache.bounds = {};
+      if (table.bounds)
+        if (const auto *worlds = table.GetColumn<WorldMatrix>())
+          for (const auto &world : worlds->components) {
+            const auto placed = table.bounds.GetWorldBounds(world.matrix);
+            cache.bounds.min = glm::min(cache.bounds.min, placed.min);
+            cache.bounds.max = glm::max(cache.bounds.max, placed.max);
+          }
+    }
+    draw.bounds = cache.bounds;
+    draw.visible = !camera || !draw.bounds || camera->IntersectsFrustum(draw.bounds);
+    poolDraws.push_back(draw);
+  });
+}
+auto DXRenderer::PreparePools() -> std::span<const DXPoolDraw> {
+  if (poolsUploaded)
+    return poolDraws;
+  KUKI_PROFILE_SCOPE("PreparePools");
+  poolsUploaded = true;
+  // Reserved in one go, so the arena grows once rather than part way through the copies.
+  auto required = instanceCursor;
+  for (const auto &draw : poolDraws)
+    if (!draw.skinned)
+      required += draw.count * (sizeof(glm::mat4) + sizeof(EntityID)) + 2 * D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
+  EnsureInstanceCapacity(required);
+  for (auto &draw : poolDraws) {
+    if (draw.skinned)
+      continue;
+    // The pool's world matrices are its column, one block in the order of its entities, so a pool
+    // is handed over in two copies however many entities it has. `WorldMatrix` is a matrix and
+    // nothing else, which is what lets its column be read as matrices.
+    static_assert(sizeof(WorldMatrix) == sizeof(glm::mat4));
+    const auto *worlds = draw.table->GetColumn<WorldMatrix>();
+    if (!worlds)
+      continue;
+    draw.matrices = AllocateUpload(worlds->components.data(), worlds->components.size() * sizeof(glm::mat4));
+    draw.entities = AllocateEntities(draw.table->entities);
+  }
+  return poolDraws;
+}
+auto DXRenderer::DrawPoolDepth(const bool culled) -> void {
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  if (!commandList)
+    return;
+  for (const auto &draw : PreparePools()) {
+    if (draw.skinned || !draw.matrices || (culled && !draw.visible))
+      continue;
+    // A see-through surface casts no shadow and hides nothing behind it.
+    if (draw.material && (draw.material->fallback.alphaMode == AlphaMode::Blend || draw.material->fallback.transmission > .0f))
+      continue;
+    const auto fallback = draw.material ? draw.material->fallback : MaterialFallback{};
+    const float constants[4]{std::max(fallback.sway, .0f), std::clamp(fallback.waves, .0f, 1.f), .0f, .0f};
+    commandList->SetGraphicsRoot32BitConstants(0, 4, constants, DXShadowConstants::DRAW_OFFSET);
+    commandList->SetGraphicsRootShaderResourceView(1, draw.matrices);
+    commandList->IASetVertexBuffers(0, 1, &draw.mesh->vertexBufferView);
+    if (draw.mesh->indexCount > 0) {
+      commandList->IASetIndexBuffer(&draw.mesh->indexBufferView);
+      commandList->DrawIndexedInstanced(draw.mesh->indexCount, draw.count, 0, 0, 0);
+    } else
+      commandList->DrawInstanced(draw.mesh->vertexCount, draw.count, 0, 0);
+  }
+  // The figures after, which read no sway: left at zero so the constants say what is drawn.
+  constexpr float still[4]{};
+  commandList->SetGraphicsRoot32BitConstants(0, 4, still, DXShadowConstants::DRAW_OFFSET);
+}
+auto DXRenderer::BuildRayScene(const Camera &camera, std::span<const DXPoolDraw> pools) -> void {
   KUKI_PROFILE_SCOPE("BuildRayScene");
   auto context = GetContext();
   if (!context || !context->GetCapabilities().SupportsInlineRaytracing())
     return;
   std::vector<DXRayInstance> instances;
-  for (const auto &batch : batches) {
-    if (!batch.mesh || !*batch.mesh)
+  raySceneHash = 0;
+  for (const auto &draw : pools) {
+    if (draw.skinned || !draw.mesh || !*draw.mesh)
       continue;
-    const auto textures = batch.material && batch.material->textureTableGPU ? batch.material->textureTableIndex : DXDescriptorHeap::InvalidIndex;
-    const auto fallback = batch.material ? batch.material->fallback : MaterialFallback{};
-    const auto unlit = batch.material && batch.material->type == MaterialType::Unlit;
-    for (const auto &instance : batch.instances) {
-      DXRayInstance placement{};
-      placement.mesh = batch.mesh;
-      memcpy(placement.transform, instance.model, sizeof(placement.transform));
-      memcpy(placement.albedo, glm::value_ptr(fallback.albedo), sizeof(placement.albedo));
-      memcpy(placement.emissive, glm::value_ptr(unlit ? fallback.albedo : fallback.emissive), sizeof(placement.emissive));
-      memcpy(placement.attenuation, glm::value_ptr(fallback.attenuation), sizeof(placement.attenuation));
-      placement.transmission = fallback.transmission;
-      placement.thickness = fallback.thickness;
-      placement.alphaCutoff = fallback.alphaCutoff;
-      placement.alphaMode = static_cast<uint32_t>(fallback.alphaMode);
-      placement.materialTextures = textures;
-      placement.textureMask = static_cast<uint32_t>(fallback.textureMask.to_ulong());
-      placement.entityId = instance.entityId;
-      instances.push_back(placement);
+    const auto textures = draw.material && draw.material->textureTableGPU ? draw.material->textureTableIndex : DXDescriptorHeap::InvalidIndex;
+    const auto fallback = draw.material ? draw.material->fallback : MaterialFallback{};
+    const auto unlit = draw.material && draw.material->type == MaterialType::Unlit;
+    // What the placements are made of besides the entities: a material edited in place changes
+    // them as surely as an entity moving does.
+    auto key = reinterpret_cast<uintptr_t>(draw.mesh);
+    HashWords(key, glm::value_ptr(fallback.albedo), sizeof(fallback.albedo));
+    HashWords(key, glm::value_ptr(fallback.emissive), sizeof(fallback.emissive));
+    HashWords(key, glm::value_ptr(fallback.attenuation), sizeof(fallback.attenuation));
+    const float volume[3]{fallback.transmission, fallback.thickness, fallback.alphaCutoff};
+    HashWords(key, volume, sizeof(volume));
+    hash_combine(key, static_cast<size_t>(fallback.alphaMode));
+    hash_combine(key, fallback.textureMask.to_ulong());
+    hash_combine(key, textures);
+    hash_combine(key, unlit ? 1u : 0u);
+    auto &cache = poolCache[draw.table];
+    if (cache.rayVersion != draw.table->version || cache.rayKey != key) {
+      cache.rayVersion = draw.table->version;
+      cache.rayKey = key;
+      cache.rays.clear();
+      const auto *worlds = draw.table->GetColumn<WorldMatrix>();
+      for (size_t row = 0; worlds && row < draw.table->entities.size(); ++row) {
+        DXRayInstance placement{};
+        placement.mesh = draw.mesh;
+        memcpy(placement.transform, glm::value_ptr(worlds->components[row].matrix), sizeof(placement.transform));
+        memcpy(placement.albedo, glm::value_ptr(fallback.albedo), sizeof(placement.albedo));
+        memcpy(placement.emissive, glm::value_ptr(unlit ? fallback.albedo : fallback.emissive), sizeof(placement.emissive));
+        memcpy(placement.attenuation, glm::value_ptr(fallback.attenuation), sizeof(placement.attenuation));
+        placement.transmission = fallback.transmission;
+        placement.thickness = fallback.thickness;
+        placement.alphaCutoff = fallback.alphaCutoff;
+        placement.alphaMode = static_cast<uint32_t>(fallback.alphaMode);
+        placement.materialTextures = textures;
+        placement.textureMask = static_cast<uint32_t>(fallback.textureMask.to_ulong());
+        placement.entityId = static_cast<uint32_t>(static_cast<long long>(draw.table->entities[row])) & 0xFFFFFFu;
+        cache.rays.push_back(placement);
+      }
+      // What the probe trace sees of the pool, so it can tell whether its estimates are still of
+      // it. The mesh is hashed by address and the rest as words, up to the last field rather than to
+      // the end of the structure: the padding after it is never written and would hash differently
+      // every time, which would read as a scene that never holds still. Hashed here, when the pool
+      // changes, rather than every frame: a pool that was marked as moved and did not move hashes
+      // the same, and the trace keeps what it has.
+      constexpr auto begin = offsetof(DXRayInstance, transform);
+      constexpr auto end = offsetof(DXRayInstance, entityId) + sizeof(DXRayInstance::entityId);
+      cache.rayHash = cache.rays.size();
+      for (const auto &placement : cache.rays) {
+        hash_combine(cache.rayHash, reinterpret_cast<uintptr_t>(placement.mesh));
+        HashWords(cache.rayHash, reinterpret_cast<const uint8_t *>(&placement) + begin, end - begin);
+      }
     }
-  }
-  // what the probe trace sees of the scene, so it can tell whether its estimates are still of it.
-  // the mesh is hashed by address and the rest as words, up to the last field rather than to the
-  // end of the structure: the padding after it is never written and would hash differently every
-  // frame, which would read as a scene that never holds still
-  constexpr auto begin = offsetof(DXRayInstance, transform);
-  constexpr auto end = offsetof(DXRayInstance, entityId) + sizeof(DXRayInstance::entityId);
-  raySceneHash = instances.size();
-  for (const auto &instance : instances) {
-    hash_combine(raySceneHash, reinterpret_cast<uintptr_t>(instance.mesh));
-    HashWords(raySceneHash, reinterpret_cast<const uint8_t *>(&instance) + begin, end - begin);
+    instances.insert(instances.end(), cache.rays.begin(), cache.rays.end());
+    hash_combine(raySceneHash, cache.rayHash);
   }
   if (!rayScene.Build(*context, instances))
     return;
   const auto inverseViewProjection = glm::inverse(camera.transform.projection * camera.transform.view);
   rayScene.Validate(*context, pipelines, glm::value_ptr(inverseViewProjection), glm::value_ptr(camera.position));
 }
-auto DXRenderer::CollectProbeGeometry(Scene &scene) -> std::vector<DXProbeGeometry> {
+auto DXRenderer::CollectProbeGeometry(Scene &) -> std::vector<DXProbeGeometry> {
   KUKI_PROFILE_SCOPE("CollectProbeGeometry");
   std::vector<DXProbeGeometry> geometry;
-  // Keyed by entity, with the low bit saying which kind of handle placed it, so an entity carrying
-  // both a mesh and a model mesh is two placements rather than one that flickers between them.
-  const auto Add = [&](const EntityID entity, const uint64_t kind, const Mesh &mesh, const Transform *transform) {
-    if (mesh.vertices.empty())
-      return;
-    geometry.push_back({.entity = static_cast<uint64_t>(static_cast<long long>(entity)) << 1 | kind, .vertices = mesh.vertices, .transform = transform->world});
-  };
-  scene.ForEachEntity<MeshHandle, Transform>([&](const EntityID entity, const MeshHandle *handle, const Transform *transform) {
-    auto resolvedId = handle->assetId;
-    if (!app.GetAsset<MeshAsset>(resolvedId))
-      if (auto fallback = app.GetAsset("Cube"); fallback)
-        resolvedId = fallback->id;
-    if (auto meshAsset = app.GetAsset<MeshAsset>(resolvedId); meshAsset)
-      Add(entity, 0, meshAsset->mesh, transform);
-  });
-  scene.ForEachEntity<ModelMeshHandle, Transform>([&](const EntityID entity, const ModelMeshHandle *handle, const Transform *transform) {
-    auto modelAsset = app.GetAsset<ModelAsset>(handle->modelAssetId);
-    if (!modelAsset || handle->meshIndex >= modelAsset->meshes.size())
-      return;
-    if (modelAsset->meshes[handle->meshIndex].bones.empty())
-      Add(entity, 1, modelAsset->meshes[handle->meshIndex].mesh, transform);
-  });
+  for (const auto &draw : poolDraws) {
+    if (draw.skinned)
+      continue;
+    const auto &pool = draw.table->pool;
+    // The mesh as its asset has it, or the placeholder cube's for a mesh still loading.
+    const Mesh *mesh{};
+    uint64_t kind = 0;
+    if (pool.meshIndex == PoolKey::NONE) {
+      auto resident = pool.mesh;
+      if (!app.GetAsset<MeshAsset>(resident))
+        if (auto fallback = app.GetAsset("Cube"); fallback)
+          resident = fallback->id;
+      if (const auto *meshAsset = app.GetAsset<MeshAsset>(resident))
+        mesh = &meshAsset->mesh;
+    } else if (const auto *modelAsset = app.GetAsset<ModelAsset>(pool.mesh); modelAsset && pool.meshIndex < modelAsset->meshes.size()) {
+      mesh = &modelAsset->meshes[pool.meshIndex].mesh;
+      kind = 1;
+    }
+    if (!mesh || mesh->vertices.empty())
+      continue;
+    auto &cache = poolCache[draw.table];
+    if (cache.probeVersion != draw.table->version || (!cache.probes.empty() && cache.probes.front().vertices.data() != mesh->vertices.data())) {
+      cache.probeVersion = draw.table->version;
+      cache.probes.clear();
+      // Keyed by entity, with the low bit saying which kind of mesh placed it, so an entity moved
+      // from a mesh asset to a model's mesh is a placement that changed rather than one that stayed.
+      const auto *worlds = draw.table->GetColumn<WorldMatrix>();
+      for (size_t row = 0; worlds && row < draw.table->entities.size(); ++row)
+        cache.probes.push_back({.entity = static_cast<uint64_t>(static_cast<long long>(draw.table->entities[row])) << 1 | kind, .vertices = mesh->vertices, .transform = worlds->components[row].matrix});
+    }
+    geometry.insert(geometry.end(), cache.probes.begin(), cache.probes.end());
+  }
   return geometry;
 }
 auto DXRenderer::UpdateProbeVolume(Scene &scene) -> void {
@@ -3085,13 +3178,20 @@ auto DXRenderer::BuildShadowMatrix(Scene &scene, float *out) const -> bool {
   if (!directional)
     return false;
   BoundingBox sceneBounds{};
-  scene.ForEachEntity<BoundingBox, Transform>([&](const EntityID, const BoundingBox *box, const Transform *transform) {
+  // Not a skinned pool's: its bounds are not where its figures are (see `CollectSkinnedDraws`), and a
+  // figure's root carries bounds of its own, which the walk below gathers.
+  for (const auto &draw : poolDraws)
+    if (draw.bounds && !draw.skinned) {
+      sceneBounds.min = glm::min(sceneBounds.min, draw.bounds.min);
+      sceneBounds.max = glm::max(sceneBounds.max, draw.bounds.max);
+    }
+  scene.ForEachEntity<BoundingBox, WorldMatrix>([&](const EntityID, const BoundingBox *box, const WorldMatrix *transform) {
     // An empty box says nothing about where anything is, and taken into the world its corners are
-    // infinities that swallow every real box. Every drawable archetype carries bounds, filled in or
-    // not: a mesh placed by the builder has an empty one, where it used to have none at all.
+    // infinities that swallow every real box. A drawn entity's bounds are its pool's, gathered above;
+    // what is left here is a model's root and nodes.
     if (!*box)
       return;
-    const auto worldBounds = box->GetWorldBounds(transform->world);
+    const auto worldBounds = box->GetWorldBounds(transform->matrix);
     sceneBounds.min = glm::min(sceneBounds.min, worldBounds.min);
     sceneBounds.max = glm::max(sceneBounds.max, worldBounds.max);
   });
@@ -3184,16 +3284,9 @@ auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> 
   auto camera = scene->GetCamera();
   if (!camera)
     return;
-  // Collected here rather than handed across from the scene pass, which collects its own. Two walks
-  // of the scene is what the passes not knowing about each other costs, and beside a dispatch of
-  // sixty-four rays for every probe it is not worth paying for by making the scene pass unrunnable
-  // unless this one ran first -- which is the arrangement moving this out was meant to end.
-  //
-  // Frustum culling does not divide the two. `CollectBatches` puts the hidden instances back after
-  // recording where the visible ones ended, so what comes out is the whole scene either way, which
-  // is what a probe standing behind the camera needs the acceleration structure to contain.
-  const auto batches = CollectBatches(*scene, false, camera);
-  BuildRayScene(*camera, batches);
+  // Every pool, seen or not: a probe standing behind the camera needs the acceleration structure to
+  // hold what is behind the camera too.
+  BuildRayScene(*camera, poolDraws);
   UpdateProbeVolume(*scene);
   DXFrameConstants frameConstants{};
   // No shadow map, and nothing lost by it. The trace asks the acceleration structure whether a light
@@ -3235,7 +3328,7 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   if (!EnsureDepthBuffer(target))
     return;
   EnsureSceneResources(*scene);
-  const auto batches = CollectBatches(*scene, false, camera);
+  const auto pools = PreparePools();
   const auto samples = static_cast<uint32_t>(target.desc.samples > 0 ? target.desc.samples : 1);
   const auto pipeline = pipelines.GetScenePipeline(context->GetDevice(), TargetFormatToRTVDXGI(target.desc.format), samples);
   if (!pipeline || !*pipeline)
@@ -3319,6 +3412,8 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
     constants.alphaCutoff = fallback.alphaCutoff;
     constants.alphaMode = static_cast<uint32_t>(fallback.alphaMode);
     constants.style[0] = std::clamp(fallback.toon, .0f, 1.f);
+    constants.style[1] = std::max(fallback.sway, .0f);
+    constants.style[2] = std::clamp(fallback.waves, .0f, 1.f);
     commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXSceneConstants) / sizeof(uint32_t), &constants, 0);
     D3D12_GPU_DESCRIPTOR_HANDLE materialTable{hasTable ? material->textureTableGPU : fallbackMaterialTable.ptr};
     commandList->SetGraphicsRootDescriptorTable(2, materialTable);
@@ -3337,48 +3432,54 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   const auto Transmissive = [](const DXMaterial *material) {
     return material && material->fallback.transmission > .0f;
   };
-  const auto Distance = [&](const DXInstanceData &instance) {
-    const glm::vec3 position{instance.model[12], instance.model[13], instance.model[14]};
-    return glm::distance(position, camera->position);
+  // How far a see-through pool is, to sort it among the others by: the middle of its bounds, or for
+  // one with none its first entity. Sorted a pool at a time, so two of its entities overlapping are
+  // blended in the order they are in the pool.
+  const auto Distance = [&](const DXPoolDraw &draw) {
+    if (draw.bounds)
+      return glm::distance((draw.bounds.min + draw.bounds.max) * .5f, camera->position);
+    const auto *worlds = draw.table->GetColumn<WorldMatrix>();
+    return worlds && !worlds->components.empty() ? glm::distance(glm::vec3(worlds->components.front().matrix[3]), camera->position) : .0f;
   };
   std::vector<DXDeferredDraw> deferred;
-  for (const auto &batch : batches) {
-    // a batch may still hold instances the acceleration structure wants and the rasteriser does not
-    if (batch.visibleCount == 0)
+  auto drawnPools = 0;
+  for (const auto &draw : pools) {
+    if (draw.skinned || !draw.visible || !draw.matrices)
       continue;
-    const auto address = AllocateInstances(std::span(batch.instances).first(batch.visibleCount));
-    if (!address)
-      continue;
-    if (Blended(batch.material) || Transmissive(batch.material)) {
-      deferred.push_back({batch.mesh, batch.material, address, address, batch.visibleCount, false, Blended(batch.material), Distance(batch.instances.front())});
+    ++drawnPools;
+    if (Blended(draw.material) || Transmissive(draw.material)) {
+      deferred.push_back({draw.mesh, draw.material, draw.matrices, draw.matrices, draw.entities, draw.count, false, Blended(draw.material), Distance(draw)});
       continue;
     }
-    ApplyMaterial(batch.material);
-    commandList->SetGraphicsRootShaderResourceView(5, address);
-    commandList->SetGraphicsRootShaderResourceView(6, address);
-    DrawMesh(batch.mesh, static_cast<UINT>(batch.visibleCount));
-    drawnInstances += static_cast<int>(batch.visibleCount);
+    ApplyMaterial(draw.material);
+    commandList->SetGraphicsRootShaderResourceView(5, draw.matrices);
+    commandList->SetGraphicsRootShaderResourceView(6, draw.matrices);
+    commandList->SetGraphicsRootShaderResourceView(12, draw.entities);
+    DrawMesh(draw.mesh, draw.count);
+    drawnInstances += static_cast<int>(draw.count);
   }
   const auto skinnedDraws = CollectSkinnedDraws(*scene, camera);
   if (!skinnedDraws.empty()) {
     auto required = instanceCursor;
     for (const auto &draw : skinnedDraws)
-      required += sizeof(DXInstanceData) + draw.bones.size() * sizeof(glm::mat4) + 2 * D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
+      required += sizeof(glm::mat4) + sizeof(EntityID) + draw.bones.size() * sizeof(glm::mat4) + 3 * D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
     EnsureInstanceCapacity(required);
     if (const auto skinnedPipeline = pipelines.GetScenePipeline(context->GetDevice(), TargetFormatToRTVDXGI(target.desc.format), samples, true); skinnedPipeline && *skinnedPipeline) {
       commandList->SetPipelineState(skinnedPipeline->pipelineState.Get());
       for (const auto &draw : skinnedDraws) {
-        const auto address = AllocateInstances(std::span(&draw.instance, 1));
+        const auto address = AllocateInstances(std::span(&draw.world, 1));
+        const auto entity = AllocateEntities(std::span(&draw.entity, 1));
         const auto boneAddress = draw.bones.empty() ? address : AllocateBones(draw.bones);
-        if (!address || !boneAddress)
+        if (!address || !entity || !boneAddress)
           continue;
         if (Blended(draw.material) || Transmissive(draw.material)) {
-          deferred.push_back({draw.mesh, draw.material, address, boneAddress, 1u, true, Blended(draw.material), Distance(draw.instance)});
+          deferred.push_back({draw.mesh, draw.material, address, boneAddress, entity, 1u, true, Blended(draw.material), glm::distance(glm::vec3(draw.world[3]), camera->position)});
           continue;
         }
         ApplyMaterial(draw.material);
         commandList->SetGraphicsRootShaderResourceView(5, address);
         commandList->SetGraphicsRootShaderResourceView(6, boneAddress);
+        commandList->SetGraphicsRootShaderResourceView(12, entity);
         DrawMesh(draw.mesh, 1);
         ++drawnInstances;
       }
@@ -3401,6 +3502,7 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
       ApplyMaterial(draw.material);
       commandList->SetGraphicsRootShaderResourceView(5, draw.instances);
       commandList->SetGraphicsRootShaderResourceView(6, draw.bones);
+      commandList->SetGraphicsRootShaderResourceView(12, draw.entities);
       DrawMesh(draw.mesh, draw.count);
       drawnInstances += static_cast<int>(draw.count);
     }
@@ -3408,10 +3510,10 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   DrawProbes(target, frameConstants.viewProjection);
       static auto lastBatches = -1;
   static auto lastInstances = -1;
-  if (static_cast<int>(batches.size()) != lastBatches || drawnInstances != lastInstances) {
-    lastBatches = static_cast<int>(batches.size());
+  if (drawnPools != lastBatches || drawnInstances != lastInstances) {
+    lastBatches = drawnPools;
     lastInstances = drawnInstances;
-    spdlog::info("[DXRenderer] Scene pass drew {} instances in {} batches plus {} skinned meshes", drawnInstances, batches.size(), skinnedDraws.size());
+    spdlog::info("[DXRenderer] Scene pass drew {} instances from {} of {} pools plus {} skinned meshes", drawnInstances, drawnPools, pools.size(), skinnedDraws.size());
   }
 }
 auto DXRenderer::EnsureSceneColor(const DXRenderTarget &target) -> bool {
@@ -3557,19 +3659,9 @@ auto DXRenderer::CreateDepthPrepass(std::span<std::string>, std::span<std::strin
   commandList->SetPipelineState(pipeline->pipelineState.Get());
   commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXShadowConstants) / sizeof(uint32_t), &constants, 0);
-  for (const auto &batch : CollectBatches(*scene, true)) {
-    const auto address = AllocateInstances(batch.instances);
-    if (!address)
-      continue;
-    commandList->SetGraphicsRootShaderResourceView(1, address);
-    commandList->IASetVertexBuffers(0, 1, &batch.mesh->vertexBufferView);
-    const auto instances = static_cast<UINT>(batch.visibleCount);
-    if (batch.mesh->indexCount > 0) {
-      commandList->IASetIndexBuffer(&batch.mesh->indexBufferView);
-      commandList->DrawIndexedInstanced(batch.mesh->indexCount, instances, 0, 0, 0);
-    } else
-      commandList->DrawInstanced(batch.mesh->vertexCount, instances, 0, 0);
-  }  DrawSkinnedDepth(UploadSkinnedDepth(*scene), nullptr);
+  // Drawn from the camera, so a pool it cannot see has nothing to give the depth it keeps.
+  DrawPoolDepth(true);
+  DrawSkinnedDepth(UploadSkinnedDepth(*scene), nullptr);
 }
 auto DXRenderer::ApplyAntiAliasing(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
   BlitOrResolve(inputs, outputs);
@@ -3780,19 +3872,9 @@ auto DXRenderer::CreateShadowMap(std::span<std::string>, std::span<std::string> 
   commandList->SetPipelineState(pipeline->pipelineState.Get());
   commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXShadowConstants) / sizeof(uint32_t), &constants, 0);
-  for (const auto &batch : CollectBatches(*scene, true)) {
-    const auto address = AllocateInstances(batch.instances);
-    if (!address)
-      continue;
-    commandList->SetGraphicsRootShaderResourceView(1, address);
-    commandList->IASetVertexBuffers(0, 1, &batch.mesh->vertexBufferView);
-    const auto instances = static_cast<UINT>(batch.visibleCount);
-    if (batch.mesh->indexCount > 0) {
-      commandList->IASetIndexBuffer(&batch.mesh->indexBufferView);
-      commandList->DrawIndexedInstanced(batch.mesh->indexCount, instances, 0, 0, 0);
-    } else
-      commandList->DrawInstanced(batch.mesh->vertexCount, instances, 0, 0);
-  }  DrawSkinnedDepth(UploadSkinnedDepth(*scene), nullptr);
+  // Every pool, seen or not: a caster out of shot can still throw its shadow into it.
+  DrawPoolDepth(false);
+  DrawSkinnedDepth(UploadSkinnedDepth(*scene), nullptr);
 }
 auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::string> outputs) -> void {
   ClearOutputs(outputs);
@@ -3829,11 +3911,6 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
   commandList->SetPipelineState(pipeline->pipelineState.Get());
   commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   const auto layers = std::min(spotLights.size(), target.layerDsvIndices.size());
-  const auto batches = CollectBatches(*scene, true);
-  std::vector<D3D12_GPU_VIRTUAL_ADDRESS> addresses;
-  addresses.reserve(batches.size());
-  for (const auto &batch : batches)
-    addresses.push_back(AllocateInstances(batch.instances));
   const auto figures = UploadSkinnedDepth(*scene);
   for (size_t layer = 0; layer < layers; ++layer) {
     glm::mat4 view{1.f};
@@ -3847,18 +3924,7 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
     commandList->OMSetRenderTargets(0, nullptr, FALSE, &dsv);
     commandList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
     commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXShadowConstants) / sizeof(uint32_t), &constants, 0);
-    for (size_t index = 0; index < batches.size(); ++index) {
-      if (!addresses[index])
-        continue;
-      commandList->SetGraphicsRootShaderResourceView(1, addresses[index]);
-      commandList->IASetVertexBuffers(0, 1, &batches[index].mesh->vertexBufferView);
-      const auto instances = static_cast<UINT>(batches[index].visibleCount);
-      if (batches[index].mesh->indexCount > 0) {
-        commandList->IASetIndexBuffer(&batches[index].mesh->indexBufferView);
-        commandList->DrawIndexedInstanced(batches[index].mesh->indexCount, instances, 0, 0, 0);
-      } else
-        commandList->DrawInstanced(batches[index].mesh->vertexCount, instances, 0, 0);
-    }
+    DrawPoolDepth(false);
     DrawSkinnedDepth(figures, pipeline);
   }
   spotShadowCount = static_cast<uint32_t>(layers);
@@ -3994,27 +4060,6 @@ auto DXRenderer::EnsureSceneResources(Scene &scene) -> void {
   // taking that risk on.
   if (const auto atlas = app.GetOverlay().GetAtlasAssetId(); atlas)
     EnsureTexture(atlas);
-  scene.ForEachEntity<MeshHandle>([&](const EntityID, const MeshHandle *handle) {
-    auto residentId = handle->assetId;
-    if (!app.GetAsset<MeshAsset>(residentId))
-      if (auto fallback = app.GetAsset("Cube"); fallback)
-        residentId = fallback->id;
-    EnsureMesh(residentId);
-    if (auto meshAsset = app.GetAsset<MeshAsset>(residentId); meshAsset)
-      if (auto materialAsset = app.GetAsset<MaterialAsset>(meshAsset->material); materialAsset)
-        for (const auto textureId : materialAsset->textures)
-          EnsureTexture(textureId);
-  });
-  scene.ForEachEntity<ModelMeshHandle>([&](const EntityID, const ModelMeshHandle *handle) {
-    if (app.IsAssetLoaded(handle->modelAssetId))
-      EnsureModelMesh(handle->modelAssetId, handle->meshIndex);
-  });
-  scene.ForEachEntity<ModelMaterialHandle>([&](const EntityID, const ModelMaterialHandle *handle) {
-    if (!app.IsAssetLoaded(handle->modelAssetId))
-      return;
-    for (const auto textureIndex : handle->textureIndices)
-      EnsureModelTexture(handle->modelAssetId, textureIndex);
-  });
   // An atmosphere wins over a photograph, and the scene is not asked to resolve the two: a scene
   // holding both is saying it wants a computed sky, and the texture it also names is what it had
   // before. Removing the component is what goes back to the photograph, which is why this is a
@@ -4053,51 +4098,7 @@ auto DXRenderer::LoadScene(Scene &scene) -> void {
   // Once a frame, here, because every pass that moves a surface by the wind has to see one clock.
   windTime += std::clamp(app.DeltaTime(), .0f, .25f);
   EnsureSceneResources(scene);
-  std::vector<std::pair<EntityID, DXMaterial>> pending;
-  const auto Resolve = [&](const AssetID assetId, const size_t index, const MaterialFallback &fallback, const MaterialType type, const std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> &textures) -> DXMaterial {
-    auto &shared = materialTables[assetId][index];
-    shared.fallback = fallback;
-    shared.type = type;
-    if (!shared.textureTableGPU)
-      BuildMaterialTable(shared, textures);
-    return shared;
-  };
-  const auto Place = [](std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> &textures, const DXTexture *texture) {
-    if (!texture || !*texture)
-      return;
-    if (const auto slot = static_cast<uint32_t>(texture->content); slot < MATERIAL_TEXTURE_SLOTS)
-      textures[slot] = texture;
-  };
-  scene.ForEachEntity<MaterialHandle>([&](const EntityID id, const MaterialHandle *handle) {
-    auto materialAsset = app.GetAsset<MaterialAsset>(handle->assetId);
-    if (!materialAsset)
-      return;
-    std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> textures{};
-    for (const auto textureId : materialAsset->textures)
-      Place(textures, EnsureTexture(textureId));
-    auto fallback = materialAsset->fallback;
-    fallback.textureMask = MaskForTextures(textures);
-    pending.emplace_back(id, Resolve(handle->assetId, 0, fallback, materialAsset->type, textures));
-  });
-  scene.ForEachEntity<ModelMaterialHandle>([&](const EntityID id, const ModelMaterialHandle *handle) {
-    const auto modelAssetId = handle->modelAssetId;
-    const auto materialIndex = handle->materialIndex;
-    if (!app.IsAssetLoaded(modelAssetId))
-      return;
-    auto modelAsset = app.GetAsset<ModelAsset>(modelAssetId);
-    if (!modelAsset || materialIndex >= modelAsset->materials.size())
-      return;
-    const auto &modelMaterial = modelAsset->materials[materialIndex];
-    std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> textures{};
-    for (const auto textureIndex : modelMaterial.textures)
-      Place(textures, EnsureModelTexture(modelAssetId, textureIndex));
-    pending.emplace_back(id, Resolve(modelAssetId, materialIndex, modelMaterial.fallback, modelMaterial.type, textures));
-  });
-  for (const auto &[id, value] : pending)
-    if (auto *binding = scene.GetEntityComponent<RenderBinding>(id); binding) {
-      binding->dxMaterial = value;
-      binding->dxMaterialBound = true;
-    }
+  ResolvePools(scene);
 }
 auto DXRenderer::EnsurePickResources() -> bool {
   if (pickResultBuffer && pickReadbackBuffer)
@@ -4298,13 +4299,15 @@ auto DXRenderer::RenderPreview(const AssetID assetId, const std::vector<std::pai
   commandList->SetGraphicsRootDescriptorTable(7, environmentReady ? environmentTable : fallbackEnvironmentTable);
   commandList->SetGraphicsRootDescriptorTable(11, fallbackTexture->srvGPU);
   BindProbeVolume(frameConstantAddress);
-  DXInstanceData instance{};
-  memcpy(instance.model, glm::value_ptr(glm::mat4(1.f)), sizeof(instance.model));
-  const auto instanceAddress = AllocateInstances(std::span(&instance, 1));
-  if (!instanceAddress)
+  const glm::mat4 origin{1.f};
+  const auto instanceAddress = AllocateInstances(std::span(&origin, 1));
+  const auto nobody = EntityID::Invalid;
+  const auto entityAddress = AllocateEntities(std::span(&nobody, 1));
+  if (!instanceAddress || !entityAddress)
     return nullptr;
   commandList->SetGraphicsRootShaderResourceView(5, instanceAddress);
   commandList->SetGraphicsRootShaderResourceView(6, instanceAddress);
+  commandList->SetGraphicsRootShaderResourceView(12, entityAddress);
   for (const auto &[mesh, material] : draws) {
     if (!mesh || !*mesh || mesh->skinned)
       continue;

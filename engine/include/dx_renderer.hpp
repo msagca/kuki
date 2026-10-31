@@ -1,6 +1,7 @@
 #pragma once
 #ifdef KUKI_HAS_DIRECTX
 #include <array>
+#include <archetype.hpp>
 #include <atmosphere_sky.hpp>
 #include <bounding_box.hpp>
 #include <desktop_size.hpp>
@@ -22,6 +23,7 @@
 #include <mesh.hpp>
 #include <overlay.hpp>
 #include <particle_emitter.hpp>
+#include <pool.hpp>
 #include <renderer.hpp>
 #include <span>
 #include <string>
@@ -32,37 +34,45 @@
 #include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
 namespace kuki {
-/// @brief One draw call's worth of work: a mesh, a material, and every instance of the pair.
+/// @brief One pool of the scene as this frame draws it: what it is drawn with, where its entities are
+/// in the world, and where its matrices and entities went in the frame's arena.
 ///
-/// The material may be null, which the depth-only passes rely on: they group purely by mesh
-/// because a shadow caster's shading is irrelevant to the depth it writes.
-struct DXDrawBatch {
+/// Made once a frame, in `LoadScene`, from the scene's pools and not from its entities: a pool's
+/// mesh and material are resolved once for all its entities, and its matrices are its column of
+/// world matrices copied as they lie. Every pass draws from the same list -- the scene pass, the
+/// depth prepass, the shadow maps, the probes' acceleration structure -- where each used to group the
+/// scene's entities by mesh and material for itself, five times a frame.
+///
+/// The material may be null: a pool with no material is drawn with the fallback surface.
+struct DXPoolDraw {
+  const ArchetypeTable *table{};
   const DXMesh *mesh{};
   const DXMaterial *material{};
-  /// @brief Every instance of the pair, with the ones the camera can see first.
-  ///
-  /// The hidden ones are still here because a ray does not care where the camera is pointing: the
-  /// acceleration structure is built from this whole array, and dropping what is off screen would
-  /// make reflections and probe lighting change as the camera turns.
-  std::vector<DXInstanceData> instances;
-  /// @brief How many of `instances` the rasteriser should draw, always a prefix of the array.
-  ///
-  /// Equal to the whole array when the batch was collected without a camera, which is what the
-  /// depth-only passes do.
-  uint32_t visibleCount{};
+  uint32_t count{};
+  /// @brief The pool's entities' bounds together, in the world. Empty for a pool with no bounds,
+  /// which is never culled and is left out of the shadow's fit.
+  BoundingBox bounds{};
+  /// @brief Whether the camera may see any of it. Culled a pool at a time; see `PreparePools`.
+  bool visible{true};
+  /// @brief Drawn an entity at a time with its bones instead (`CollectSkinnedDraws`).
+  bool skinned{};
+  /// @brief Filled in by `PreparePools`, once a frame, at the first pass that draws.
+  D3D12_GPU_VIRTUAL_ADDRESS matrices{};
+  D3D12_GPU_VIRTUAL_ADDRESS entities{};
 };
-/// @brief What two entities must agree on to share a draw call.
-///
-/// A struct rather than a tuple so the fields say what they are, and compared exactly rather than
-/// by hash, so a hash collision costs one comparison instead of merging two unrelated batches.
-struct DXBatchKey {
-  const DXMesh *mesh{};
-  uint64_t textureTable{};
-  uint32_t variant{};
-  auto operator==(const DXBatchKey &) const noexcept -> bool = default;
-};
-struct KUKI_ENGINE_API DXBatchKeyHash {
-  auto operator()(const DXBatchKey &) const noexcept -> size_t;
+/// @brief What is kept of a pool between frames, worked out again only when the pool's version
+/// says its entities came, went or moved.
+struct DXPoolCache {
+  uint64_t boundsVersion{~0ull};
+  BoundingBox bounds{};
+  /// The pool's placements for the acceleration structure, and a hash of them, with what they were
+  /// made from: a material edited in place changes what a ray sees without moving anything.
+  uint64_t rayVersion{~0ull};
+  size_t rayKey{};
+  std::vector<DXRayInstance> rays;
+  size_t rayHash{};
+  uint64_t probeVersion{~0ull};
+  std::vector<DXProbeGeometry> probes;
 };
 /// @brief One draw held back until every opaque surface has been rasterised.
 ///
@@ -91,6 +101,7 @@ struct DXDeferredDraw {
   const DXMaterial *material{};
   D3D12_GPU_VIRTUAL_ADDRESS instances{};
   D3D12_GPU_VIRTUAL_ADDRESS bones{};
+  D3D12_GPU_VIRTUAL_ADDRESS entities{};
   uint32_t count{};
   bool skinned{};
   bool blended{};
@@ -99,12 +110,13 @@ struct DXDeferredDraw {
 /// @brief One skinned mesh, which is always drawn alone.
 ///
 /// Skinned meshes cannot be batched: the bone palette is per entity, so two entities sharing a
-/// mesh still pose it differently. The instance is carried anyway, to supply the entity id the
-/// picking buffer needs.
+/// mesh still pose it differently. The world matrix is carried anyway, for a mesh with no weights,
+/// and the entity for the picking buffer.
 struct DXSkinnedDraw {
   const DXMesh *mesh{};
   const DXMaterial *material{};
-  DXInstanceData instance{};
+  glm::mat4 world{1.f};
+  EntityID entity{};
   std::vector<glm::mat4> bones;
 };
 /// @brief A skinned mesh already uploaded for a depth-only pass: what to draw and where its instance
@@ -215,11 +227,8 @@ public:
   auto GetTarget(const std::string &) -> RenderTarget * override;
   auto LoadAsset(const AssetID) -> void override;
   auto LoadAssets(const AssetType) -> void override;
-  /// @brief Resolves scene handles into the `DXMaterial` of each entity's `RenderBinding`, and uploads what they reference.
-  ///
-  /// Collects first and mutates afterwards. Adding a component moves the entity to a different
-  /// archetype, which invalidates both the component pointers and the iteration in progress, so
-  /// nothing may be added while a `ForEachEntity` walk is still running.
+  /// @brief Resolves the scene's pools into this frame's draws (`ResolvePools`), uploading the meshes,
+  /// materials and textures they name.
   auto LoadScene(Scene &) -> void override;
   /// @brief Reads back the entity id written at a pixel of the scene pass's picking buffer.
   ///
@@ -334,19 +343,15 @@ private:
   uint8_t *instanceData{};
   uint64_t instanceCapacity{};
   uint64_t instanceCursor{};
-  /// @brief Storage `CollectBatches` refills rather than rebuilds, and the span it hands back.
-  ///
-  /// Grouping the scene means one instance array per batch, and a scene where every mesh is its own
-  /// batch turns that into an allocation per mesh per call, three times a frame. Keeping the arrays
-  /// and clearing only their contents leaves the capacity in place, so a steady scene allocates
-  /// nothing here after its first frame. `batchPool` may hold more batches than the last call used;
-  /// the returned span is what says how many are live.
-  std::vector<DXDrawBatch> batchPool;
-  /// @brief Per batch, the instances the camera rejected, held aside until the sweep ends.
-  ///
-  /// Parallel to `batchPool` and pooled for the same reason.
-  std::vector<std::vector<DXInstanceData>> hiddenPool;
-  std::unordered_map<DXBatchKey, size_t, DXBatchKeyHash> batchLookup;
+  /// @brief The frame's pools, as `LoadScene` resolved them. See `DXPoolDraw`.
+  std::vector<DXPoolDraw> poolDraws;
+  /// @brief Whether `PreparePools` has put this frame's pools in the arena yet. `LoadScene` runs
+  /// before the graph resets the arena, so the copy waits for the first pass.
+  bool poolsUploaded{};
+  /// @brief Per pool, what is worked out from its entities and kept until they change. Keyed by the
+  /// table, which lives as long as its scene does; emptied when the scene drawn is another one.
+  std::unordered_map<const ArchetypeTable *, DXPoolCache> poolCache;
+  const Scene *poolCacheScene{};
   /// @brief The environment maps the ambient term samples, precomputed once per skybox texture.
   DXComputeTexture skyboxCubemap;
   DXComputeTexture irradianceMap;
@@ -722,32 +727,35 @@ private:
   /// because a descriptor cannot be relocated once written and copying between shader-visible
   /// heaps is not allowed. Recreating a view is cheap; the resource behind it is shared either way.
   auto BuildMaterialTable(DXMaterial &, const std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> &) -> void;
-  /// @brief Copies the geometry of a batch into the frame's instance arena.
+  /// @brief Copies bytes into the frame's instance arena.
   ///
-  /// @return Address of the batch's first instance, or zero when the arena could not be grown.
-  ///
-  /// Takes a span so a caller can upload the visible prefix of a batch without copying it out.
-  auto AllocateInstances(std::span<const DXInstanceData>) -> D3D12_GPU_VIRTUAL_ADDRESS;
+  /// @return Their address, or zero when the arena could not be grown.
+  auto AllocateUpload(const void *, const uint64_t) -> D3D12_GPU_VIRTUAL_ADDRESS;
+  /// @brief Copies world matrices into the frame's instance arena: what `g_instances` reads.
+  auto AllocateInstances(std::span<const glm::mat4>) -> D3D12_GPU_VIRTUAL_ADDRESS;
+  /// @brief Copies entities into the frame's instance arena: what `g_entityIds` reads.
+  auto AllocateEntities(std::span<const EntityID>) -> D3D12_GPU_VIRTUAL_ADDRESS;
   /// @brief Grows the instance arena to hold at least the requested number of bytes.
   ///
   /// Growing discards the old buffer, which the GPU may still be reading from an earlier frame, so
   /// this waits for the GPU first. It happens when a scene's instance count reaches a new high and
   /// then stops, so the stall is a load-time cost rather than a per-frame one.
   auto EnsureInstanceCapacity(const uint64_t) -> bool;
-  /// @brief Groups the scene's drawable meshes into one batch per mesh and material.
+  /// @brief Resolves the scene's pools into this frame's draws: each pool's mesh, material and
+  /// bounds, and whether the camera may see it. Run from `LoadScene`, once a frame.
   ///
-  /// Two entities can share a draw call only when they agree on both, since the mesh is bound as
-  /// vertex buffers and the material as a descriptor table, neither of which can vary per instance.
-  ///
-  /// @param shadowCastersOnly Skips the material grouping, so the depth-only passes collapse every
-  /// entity sharing a mesh into a single batch regardless of how it is shaded.
-  /// @param camera Tested against each entity's bounds to order a batch's instances, visible first,
-  /// and to set `visibleCount`. Null collects everything as visible, which is what a shadow pass
-  /// wants: a caster outside the camera's view can still cast into it.
-  ///
-  /// @warning The result views storage this reuses on the next call, so only one collection may be
-  /// live at a time. Every pass finishes with its batches before the next one collects.
-  auto CollectBatches(Scene &, const bool, const Camera * = nullptr) -> std::span<const DXDrawBatch>;
+  /// Culls a pool at a time, against the bounds of all its entities together. Entities were culled
+  /// one at a time while each pass grouped them, which was most of what grouping cost; a pool that
+  /// spreads over the whole map is now drawn whole whenever any of it is in sight. Culling on the
+  /// GPU, per entity, is what would win that back without looking at entities here.
+  auto ResolvePools(Scene &) -> void;
+  /// @brief Puts the frame's pools in the instance arena, the first time a pass asks for them, and
+  /// hands back the list every pass draws from.
+  auto PreparePools() -> std::span<const DXPoolDraw>;
+  /// @brief Draws the pools that cast shadows into whatever depth target is bound, under the
+  /// constants already set. `culled` skips pools the camera cannot see, which only the depth
+  /// prepass -- drawn from the camera -- may do.
+  auto DrawPoolDepth(const bool culled) -> void;
   /// @brief Gathers the scene's skinned meshes, resolving each one's bone palette.
   ///
   /// A mesh's bones name nodes of a skeleton that lives on some ancestor entity rather than on the
@@ -755,9 +763,8 @@ private:
   /// transform composed with the bone's offset, which is what takes a vertex from its bind pose
   /// into the posed skeleton.
   ///
-  /// @param camera Drops meshes it cannot see. Safe to drop outright, unlike a rigid batch, because
-  /// a skinned mesh is never placed in the acceleration structure. The bounds are the bind pose's,
-  /// so a pose reaching well outside them can be culled early; `GLRenderer` accepts the same.
+  /// Found through the skinned pools and drawn whether the camera sees them or not: their pools'
+  /// bounds do not say where the bones have put them. The camera is taken and not used.
   auto CollectSkinnedDraws(Scene &, const Camera * = nullptr) -> std::vector<DXSkinnedDraw>;
   /// @brief Draws one of `stylize.hlsl`'s passes from the first resolved colour input to the output.
   ///
@@ -783,13 +790,13 @@ private:
   ///
   /// Must run before the pass binds any state. Building may wait on the GPU to grow a buffer, and
   /// the first build of a scene traces a validation grid that flushes the command list.
-  auto BuildRayScene(const Camera &, std::span<const DXDrawBatch>) -> void;
+  auto BuildRayScene(const Camera &, std::span<const DXPoolDraw>) -> void;
   /// @brief Gathers every placement the probe volume watches for changes, by entity.
   ///
-  /// Separate from `CollectBatches` because it wants a different thing from the same entities: the
-  /// batches carry uploaded buffers grouped by material, and the volume wants each placement on its
-  /// own under a key that survives a mesh being swapped. Yields spans into the assets rather than
-  /// copies, so the result must not outlive the assets it points into.
+  /// From the pools, each pool's kept until its version moves on, as the ray placements are: the
+  /// volume wants each placement on its own under a key that survives a mesh being swapped. Yields
+  /// spans into the assets rather than copies, so the result must not outlive the assets it points
+  /// into.
   auto CollectProbeGeometry(Scene &) -> std::vector<DXProbeGeometry>;
   /// @brief Records this frame's update of the probe octree, after the acceleration structure is built.
   ///
@@ -983,6 +990,8 @@ private:
   ///
   /// @return False when the scene has no directional light to cast from.
   auto BuildShadowMatrix(Scene &, float *) const -> bool;
+  /// @brief The material a pool key names, resolved and its textures uploaded. Null for none.
+  auto ResolvePoolMaterial(const PoolKey &) -> const DXMaterial *;
 };
 } // namespace kuki
 #endif

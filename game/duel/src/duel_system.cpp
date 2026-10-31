@@ -419,7 +419,7 @@ auto DuelSystem::SyncAnimators() -> void {
   });
 }
 auto DuelSystem::CheckRootSpace() -> void {
-  ForEachFigure([&](const int player, const EntityID id, Animator &animator, Transform &self) {
+  ForEachFigure([&](const int player, const EntityID id, Animator &animator, Transform &) {
     const auto *skeleton = player == 0 ? DuelWorld::Get<Skeleton>(app, id) : nullptr;
     const auto *model = skeleton ? app.GetAsset<ModelAsset>(animator.modelAssetId) : nullptr;
     if (!model)
@@ -427,13 +427,14 @@ auto DuelSystem::CheckRootSpace() -> void {
     for (size_t node = 0; node < model->nodes.size() && node < skeleton->nodeEntities.size(); ++node) {
       if (model->nodes[node].name != ROOT_NODE)
         continue;
-      const auto *parent = app.GetEntityComponent<Transform>(app.GetEntityParent(skeleton->nodeEntities[node]));
-      if (!parent)
+      const auto *parent = app.GetEntityComponent<WorldMatrix>(app.GetEntityParent(skeleton->nodeEntities[node]));
+      const auto *self = app.GetEntityComponent<WorldMatrix>(id);
+      if (!parent || !self)
         return;
       // As `AnimationSystem::Tick` has it: the root's parent in the world, taken back out through the
       // figure's own facing.
-      const glm::mat3 facing{glm::normalize(glm::vec3(self.world[0])), glm::normalize(glm::vec3(self.world[1])), glm::normalize(glm::vec3(self.world[2]))};
-      const auto live = glm::transpose(facing) * glm::mat3(parent->world);
+      const glm::mat3 facing{glm::normalize(glm::vec3(self->matrix[0])), glm::normalize(glm::vec3(self->matrix[1])), glm::normalize(glm::vec3(self->matrix[2]))};
+      const auto live = glm::transpose(facing) * glm::mat3(parent->matrix);
       const auto &mine = sim->GetRootSpace();
       auto difference = .0f;
       for (auto column = 0; column < 3; ++column)

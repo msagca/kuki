@@ -43,7 +43,10 @@ auto EntityManager::AddChild(const EntityID parent, const EntityID child, bool k
   }
   rootEntities.erase(child);
   childTransform->parent = parent;
-  childTransform->Reparent(parentTransform, keepWorld);
+  auto *childWorld = GetComponent<WorldMatrix>(child);
+  const auto *parentWorld = GetComponent<WorldMatrix>(parent);
+  if (childWorld && parentWorld)
+    childTransform->Reparent(&parentWorld->matrix, childWorld->matrix, keepWorld);
   idToChildren[parent].insert(child);
   idToParent[child] = parent;
   transformOrderDirty = true;
@@ -65,7 +68,13 @@ auto EntityManager::Clear() -> void {
 auto EntityManager::CopyFrom(const EntityManager &other, const EntityID otherId) -> EntityID {
   if (!otherId || !other.IsEntity(otherId))
     return EntityID::Invalid;
-  const auto id = Create(other.GetSignature(otherId), other.GetName(otherId));
+  // Into the same pool here as it was in there, made with the same bounds if it is new: a model's
+  // mesh placed from its prefab is drawn from the pool of that mesh in the scene.
+  const auto &location = other.idToLocation.at(otherId);
+  const auto *source = other.archetypeRegistry.GetTable(location.table);
+  if (source->pool)
+    archetypeRegistry.FindOrCreate(source->signature, source->pool, {.bounds = source->bounds});
+  const auto id = Create(source->signature, source->pool, other.GetName(otherId));
   if (!id)
     return EntityID::Invalid;
   CopyComponents(other, otherId, id);
@@ -101,13 +110,81 @@ auto EntityManager::Create(const ComponentMask &mask, std::string name) -> Entit
     spdlog::error("[EntityManager] No archetype of {} was declared, so '{}' was not made", Describe(mask), name);
     return EntityID::Invalid;
   }
+  return CreateIn(*table, std::move(name));
+}
+auto EntityManager::Create(const ComponentMask &mask, const PoolKey &pool, std::string name) -> EntityID {
+  if (pool && !mask[ComponentIdOf<Pooled>]) {
+    spdlog::error("[EntityManager] {} is not drawn, so it has no pools to make '{}' in", Describe(mask), name);
+    return EntityID::Invalid;
+  }
+  const auto table = archetypeRegistry.FindOrCreate(mask, pool);
+  if (!table) {
+    spdlog::error("[EntityManager] No archetype of {} was declared, so '{}' was not made", Describe(mask), name);
+    return EntityID::Invalid;
+  }
+  return CreateIn(*table, std::move(name));
+}
+auto EntityManager::CreatePool(const ComponentMask &mask, const PoolKey &pool, const PoolSettings &settings) -> bool {
+  if (!pool || !mask[ComponentIdOf<Pooled>])
+    return false;
+  return archetypeRegistry.FindOrCreate(mask, pool, settings).has_value();
+}
+auto EntityManager::HasPool(const ComponentMask &mask, const PoolKey &pool) const -> bool {
+  return pool && archetypeRegistry.Find(mask, pool).has_value();
+}
+auto EntityManager::MoveToPool(const EntityID id, const PoolKey &pool) -> bool {
+  if (forEachDepth > 0) {
+    if (!IsEntity(id))
+      return false;
+    pendingStructuralChanges.push_back([this, id, pool] { MoveToPool(id, pool); });
+    return true;
+  }
+  const auto it = idToLocation.find(id);
+  if (it == idToLocation.end())
+    return false;
+  const auto from = it->second;
+  const auto signature = archetypeRegistry.GetTable(from.table)->signature;
+  if (!signature[ComponentIdOf<Pooled>])
+    return false;
+  const auto destination = archetypeRegistry.FindOrCreate(signature, pool);
+  if (!destination)
+    return false;
+  if (*destination == from.table)
+    return true;
+  // The row is copied across and then taken out where it was, as a delete takes one out: the last
+  // row of the old pool fills the gap, and so the pool stays one block.
+  const auto row = archetypeRegistry.Append(*destination, id);
+  const auto *source = archetypeRegistry.GetTable(from.table);
+  auto *target = archetypeRegistry.GetTable(*destination);
+  for (size_t column = 0; column < source->columns.size(); ++column)
+    target->columns[column]->CopyRow(*source->columns[column], from.row, row);
+  const auto displaced = archetypeRegistry.Remove(from);
+  idToLocation[id] = {*destination, row};
+  if (displaced)
+    idToLocation[displaced].row = from.row;
+  ++structuralGeneration;
+  return true;
+}
+auto EntityManager::GetPool(const EntityID id) const -> PoolKey {
+  if (auto it = idToLocation.find(id); it != idToLocation.end())
+    return archetypeRegistry.GetTable(it->second.table)->pool;
+  return {};
+}
+auto EntityManager::GetBounds(const EntityID id) const -> BoundingBox {
+  if (const auto *bounds = GetComponent<BoundingBox>(id))
+    return *bounds;
+  if (auto it = idToLocation.find(id); it != idToLocation.end())
+    return archetypeRegistry.GetTable(it->second.table)->bounds;
+  return {};
+}
+auto EntityManager::CreateIn(const uint32_t table, std::string name) -> EntityID {
   const auto id = nextId++;
   if (!name.empty()) {
     idToName[id] = name;
     nameToId.insert({std::move(name), id});
   }
-  const auto row = archetypeRegistry.Append(*table, id);
-  idToLocation[id] = {*table, row};
+  const auto row = archetypeRegistry.Append(table, id);
+  idToLocation[id] = {table, row};
   rootEntities.insert(id);
   transformUpdateOrder.push_back(id);
   // A row added to a table can move the whole column, and the transform cache points into it.
@@ -205,7 +282,8 @@ auto EntityManager::RemoveChild(const EntityID parent, const EntityID child) -> 
     return false;
   if (auto *childTransform = GetComponent<Transform>(child); childTransform) {
     childTransform->parent = EntityID::Invalid;
-    childTransform->Reparent(nullptr);
+    if (auto *childWorld = GetComponent<WorldMatrix>(child))
+      childTransform->Reparent(nullptr, childWorld->matrix);
   }
   idToParent.erase(child);
   rootEntities.insert(child);
@@ -291,6 +369,8 @@ auto EntityManager::RebuildTransformCache() -> void {
   KUKI_PROFILE_SCOPE("RebuildTransformCache");
   const auto count = transformUpdateOrder.size();
   transformCache.assign(count, nullptr);
+  worldCache.assign(count, nullptr);
+  transformTable.assign(count, 0u);
   transformParent.assign(count, -1);
   transformSubtree.assign(count, 1);
   transformRowById.clear();
@@ -300,6 +380,9 @@ auto EntityManager::RebuildTransformCache() -> void {
   for (size_t row = 0; row < count; ++row) {
     const auto id = transformUpdateOrder[row];
     transformCache[row] = GetComponent<Transform>(id);
+    worldCache[row] = GetComponent<WorldMatrix>(id);
+    if (auto it = idToLocation.find(id); it != idToLocation.end())
+      transformTable[row] = it->second.table;
     if (auto parentIt = idToParent.find(id); parentIt != idToParent.end())
       if (auto rowIt = transformRowById.find(parentIt->second); rowIt != transformRowById.end())
         transformParent[row] = static_cast<int32_t>(rowIt->second);
@@ -354,8 +437,14 @@ auto EntityManager::UpdateTransforms() -> void {
     const auto last = first + transformSubtree[first];
     for (auto member = first; member < last; ++member)
       if (auto *transform = transformCache[member]) {
+        transform->Update();
+        // An entity whose parent has no world matrix composes against nothing, as it always has
+        // against a parent with no transform.
         const auto parent = transformParent[member];
-        transform->Update(parent >= 0 ? transformCache[parent] : nullptr);
+        const auto *parentWorld = parent >= 0 ? worldCache[parent] : nullptr;
+        if (auto *world = worldCache[member])
+          world->matrix = parentWorld ? parentWorld->matrix * transform->local : transform->local;
+        ++archetypeRegistry.GetTable(transformTable[member])->version;
       }
     row = last;
   }

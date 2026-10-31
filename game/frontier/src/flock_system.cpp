@@ -8,7 +8,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <map_system.hpp>
 #include <material_handle.hpp>
-#include <mesh_handle.hpp>
 #include <props.hpp>
 #include <scene.hpp>
 #include <transform.hpp>
@@ -84,11 +83,7 @@ auto FlockSystem::Spawn() -> void {
     const auto wing = birds.gulls ? "bird/gull" : "bird/swallow";
     for (size_t i = 0; i < count; ++i) {
       const auto Part = [&](const char *mesh, const char *material, const int side) {
-        const auto id = FrontierWorld::Create<BirdObject>(app);
-        if (auto *handle = app.GetEntityComponent<MeshHandle>(id))
-          handle->assetId = MeshId(mesh);
-        if (auto *handle = app.GetEntityComponent<MaterialHandle>(id))
-          handle->assetId = MaterialId(material);
+        const auto id = FrontierWorld::Create<BirdObject>(app, {.mesh = MeshId(mesh), .material = MaterialId(material)});
         if (auto *tag = app.GetEntityComponent<Wing>(id))
           *tag = {f, static_cast<int>(i), side};
         return id;

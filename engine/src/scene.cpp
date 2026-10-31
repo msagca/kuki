@@ -21,10 +21,11 @@ auto Scene::AlignView(const EntityID id) -> void {
   auto camera = GetCamera();
   if (!camera)
     return;
-  const auto [bounds, transform] = entityManager.GetComponent<BoundingBox, Transform>(id);
-  if (!bounds || !*bounds || !transform)
+  const auto [transform, world] = entityManager.GetComponent<Transform, WorldMatrix>(id);
+  const auto bounds = entityManager.GetBounds(id);
+  if (!bounds || !transform || !world)
     return;
-  camera->Frame(bounds->GetWorldBounds(transform->world), transform->position, ORIENTATION, DISTANCE_FACTOR);
+  camera->Frame(bounds.GetWorldBounds(world->matrix), transform->position, ORIENTATION, DISTANCE_FACTOR);
 }
 auto Scene::AddChildEntity(const EntityID parent, const EntityID child) -> bool {
   return entityManager.AddChild(parent, child);
@@ -43,6 +44,24 @@ auto Scene::IsDeclared(const ComponentMask &mask) const -> bool {
 }
 auto Scene::CreateEntity(const ComponentMask &mask, std::string name) -> EntityID {
   return entityManager.Create(mask, std::move(name));
+}
+auto Scene::CreateEntity(const ComponentMask &mask, const PoolKey &pool, std::string name) -> EntityID {
+  return entityManager.Create(mask, pool, std::move(name));
+}
+auto Scene::CreatePool(const ComponentMask &mask, const PoolKey &pool, const PoolSettings &settings) -> bool {
+  return entityManager.CreatePool(mask, pool, settings);
+}
+auto Scene::HasPool(const ComponentMask &mask, const PoolKey &pool) const -> bool {
+  return entityManager.HasPool(mask, pool);
+}
+auto Scene::MoveEntityToPool(const EntityID id, const PoolKey &pool) -> bool {
+  return entityManager.MoveToPool(id, pool);
+}
+auto Scene::GetEntityPool(const EntityID id) const -> PoolKey {
+  return entityManager.GetPool(id);
+}
+auto Scene::GetEntityBounds(const EntityID id) const -> BoundingBox {
+  return entityManager.GetBounds(id);
 }
 auto Scene::CopyEntityComponents(const EntityManager &other, const EntityID from, const EntityID to) -> ComponentMask {
   return entityManager.CopyComponents(other, from, to);
