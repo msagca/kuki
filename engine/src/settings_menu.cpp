@@ -688,17 +688,16 @@ auto SettingsMenu::Draw(const std::vector<Row> &rows) -> void {
   auto x = centre - tabsWidth * .5f;
   const auto tabBaseline = top + 100.f * unit;
   const auto hovered = app.PickOverlay(app.GetMousePosition());
-  // No band behind the pages while they have the focus, as a row has: the pages are a heading, not
-  // a line of the list. The focus shows in the pages the arrows would move to, which brighten.
-  const glm::vec4 offered = focus == TAB_ROW ? glm::vec4(1.f, 1.f, 1.f, .8f) : DIM;
+  // The underline says which page is shown and nothing else; the focus is said by colour, as it is
+  // on Resume and Quit. No band behind the pages either, as a row has: they are a heading, not a
+  // line of the list. While they have the focus the page shown is drawn in the accent, the colour of
+  // where the keys will go.
   for (const auto each : pages) {
     const auto name = PageName(each);
     const auto w = Ink(name, TAB_SIZE * unit);
     const auto id = TAB_ID + static_cast<int>(each);
-    Text(name, x, tabBaseline, TAB_SIZE * unit, each == page ? TEXT : hovered == id ? glm::vec4(1.f, 1.f, 1.f, .8f)
-                                                                                    : offered,
-      Align::Left,
-      id);
+    const auto shown = each == page;
+    Text(name, x, tabBaseline, TAB_SIZE * unit, shown && focus == TAB_ROW ? ACCENT : shown ? TEXT : hovered == id ? glm::vec4(1.f, 1.f, 1.f, .8f) : DIM, Align::Left, id);
     if (each == page)
       Rect(x, tabBaseline + 10.f * unit, w, 3.f * unit, TEXT);
     x += w + gap;
@@ -801,11 +800,8 @@ auto SettingsMenu::Draw(const std::vector<Row> &rows) -> void {
   const auto resumeWidth = Ink("RESUME", FOOTER_SIZE * unit);
   const auto quitWidth = Ink("QUIT", FOOTER_SIZE * unit);
   const auto footerLeft = centre - (resumeWidth + footerGap + quitWidth) * .5f;
-  Text("RESUME", footerLeft, footerBaseline, FOOTER_SIZE * unit, focus == rowCount ? TEXT : DIM, Align::Left, RESUME_ID);
-  Text("QUIT", footerLeft + resumeWidth + footerGap, footerBaseline, FOOTER_SIZE * unit, focus == rowCount + 1 ? TEXT : DIM, Align::Left, QUIT_ID);
-  if (focus >= rowCount) {
-    const auto at = focus == rowCount ? footerLeft : footerLeft + resumeWidth + footerGap;
-    Rect(at, footerBaseline + 10.f * unit, focus == rowCount ? resumeWidth : quitWidth, 3.f * unit, TEXT);
-  }
+  // The one with the focus in the accent, with no underline: that is the shown page's alone.
+  Text("RESUME", footerLeft, footerBaseline, FOOTER_SIZE * unit, focus == rowCount ? ACCENT : DIM, Align::Left, RESUME_ID);
+  Text("QUIT", footerLeft + resumeWidth + footerGap, footerBaseline, FOOTER_SIZE * unit, focus == rowCount + 1 ? ACCENT : DIM, Align::Left, QUIT_ID);
 }
 } // namespace kuki
