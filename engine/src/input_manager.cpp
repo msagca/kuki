@@ -231,6 +231,10 @@ auto InputManager::MouseButtonCallback(GLFWwindow *window, int button, int actio
     return;
   lastInputTime = glfwGetTime();
   const auto index = GLFWInputToIndex(button);
+  // Held as well as pressed and released, which it was not: a mouse button never reached the state
+  // `IsInputHeld` reads, so a drag that asked whether the button was still down was told it was not
+  // on the frame after it began.
+  inputState[index] = action == GLFW_PRESS;
   pressState[index] = pressState[index] || action == GLFW_PRESS;
   releaseState[index] = releaseState[index] || action == GLFW_RELEASE;
   FireAction(index, action == GLFW_PRESS);
