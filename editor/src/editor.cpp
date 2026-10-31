@@ -26,8 +26,6 @@
 #include <enum_traits.hpp>
 #include <field.hpp>
 #include <filesystem>
-#include <gl_render_target.hpp>
-#include <gl_texture.hpp>
 #include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -36,7 +34,6 @@
 #include <id.hpp>
 #include <imgui_file_browser.hpp>
 #include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
 #include <icons_lucide.hpp>
 #include <imgui_internal.h>
 #include <imguizmo.hpp>
@@ -579,9 +576,8 @@ auto Editor::Shutdown() -> void {
     dx->WaitForGPU();
     ImGui_ImplDX12_Shutdown();
     gImGuiSrvHeap = nullptr;
-  } else
+  }
 #endif
-    ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
   ImGui::DestroyContext();
 }
@@ -707,12 +703,8 @@ auto Editor::InitImGui() -> void {
     info.SrvDescriptorAllocFn = ImGuiSrvAlloc;
     info.SrvDescriptorFreeFn = ImGuiSrvFree;
     ImGui_ImplDX12_Init(&info);
-  } else
-#endif
-  {
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init();
   }
+#endif
   ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
   fileBrowser.SetTitle("Browse Files");
   sceneFileBrowser.SetTypeFilters({".json"});
@@ -762,9 +754,7 @@ auto Editor::UpdateView() -> void {
   const auto usingDX = dynamic_cast<DXContext *>(GetGraphicsContext()) != nullptr;
   if (usingDX)
     ImGui_ImplDX12_NewFrame();
-  else
 #endif
-    ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
   ImGuizmo::BeginFrame();
@@ -794,16 +784,11 @@ auto Editor::UpdateView() -> void {
       commandList->SetDescriptorHeaps(1, &heap);
       ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
     }
-  } else
+  }
 #endif
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 auto Editor::ApplyPickedAsset(const AssetID assetId) -> void {
   switch (context.pickingTarget) {
-  case PickingTarget::MaterialTexture:
-    // Into the OpenGL material the entity's binding held, which went with the binding: a material is
-    // its pool's now and OpenGL draws no pools yet, so there is no material here to change.
-    break;
   case PickingTarget::Skybox: {
     // Into the handle the entity has. It used to be given one if it had none, and an entity's
     // components are its archetype's now; an entity with no sky to set is not offered the picker.
@@ -1471,11 +1456,7 @@ auto Editor::DisplayHelp() -> void {
 #else
   Row("Build", "Debug");
 #endif
-#ifdef KUKI_HAS_DIRECTX
-  Row("Graphics", dynamic_cast<DXContext *>(GetGraphicsContext()) ? "Direct3D 12" : "OpenGL");
-#else
-  Row("Graphics", "OpenGL");
-#endif
+  Row("Graphics", std::string(ToString(GetDescription().api)).c_str());
   if (field::Fold("Licence: MIT", false, false))
     Licence("Kuki", texts.back());
   ImGui::SeparatorText("Made with");
@@ -1801,7 +1782,7 @@ auto Editor::DisplaySettings() -> void {
   ImGui::TextUnformatted("Graphics");
   const auto activeApi = GetDescription().api;
   if (field::BeginCombo("Rendering API", std::string(ToString(context.pendingApi)).c_str())) {
-    for (const auto api : {RenderingAPI::OpenGL, RenderingAPI::DirectX, RenderingAPI::Vulkan}) {
+    for (const auto api : {RenderingAPI::DirectX, RenderingAPI::Vulkan}) {
       const auto available = IsAvailable(api);
       ImGui::BeginDisabled(!available);
       const auto label = std::string(ToString(api)) + (available ? "" : " (unavailable)");

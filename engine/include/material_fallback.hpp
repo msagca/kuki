@@ -8,10 +8,9 @@ namespace kuki {
 /// Split by how often it changes rather than by what it means. The colours and the surface scalars
 /// are uploaded per instance, so two entities can share a mesh and a texture table and still differ
 /// in colour; everything from `alphaCutoff` down is per material and reaches the shader another way.
-/// The Direct3D root constants carry the whole struct either way, but the OpenGL backend feeds the
-/// per-instance half through the instance attribute stream and the per-material half through plain
-/// uniforms, because the attribute stream is full: locations 0 to 15 are all spoken for and
-/// `GL_MAX_VERTEX_ATTRIBS` is 16. A new per-instance field has to displace one or move to a buffer.
+/// The Direct3D root constants carry the whole struct either way. The split is what a backend with
+/// a fixed vertex attribute stream needs -- OpenGL's fed the per-instance half through instance
+/// attributes and the rest through uniforms, its sixteen attribute locations all spoken for.
 ///
 /// `alphaCutoff` is only consulted when `alphaMode` is `Mask`, and the fourth component of `albedo`
 /// is only consulted at all when `alphaMode` is not `Opaque`.
@@ -39,8 +38,8 @@ struct MaterialFallback {
   ///
   /// The shape of the bands is the scene's -- see `Stylization` -- and this is how much of them a
   /// surface takes. A figure drawn in flat tones in front of a backdrop shaded as a painting is
-  /// the commonest reason to want both in one frame. Read by the Direct3D 12 backend; the OpenGL one
-  /// shades every surface physically.
+  /// the commonest reason to want both in one frame. Read only where the backend draws the bands
+  /// (`RendererCapabilities::stylization`).
   float toon{.0f};
   /// @brief How far the scene's `Wind` bends the surface, per unit of height above its entity's
   /// origin squared, so a tree stood on its origin keeps its foot still and bends most at the top.

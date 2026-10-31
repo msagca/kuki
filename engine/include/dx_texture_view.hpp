@@ -7,9 +7,10 @@
 namespace kuki {
 /// @brief Presents an already-uploaded texture through the `RenderTarget` interface.
 ///
-/// Asset previews reach the editor as `RenderTarget *` because the OpenGL backend renders meshes
-/// and materials into one. Previewing a texture needs no rendering at all, only the shader resource
-/// view the texture already owns, so this carries the descriptor handle and owns no resource.
+/// Asset previews reach the editor as `RenderTarget *` because a mesh or material preview is
+/// rendered into one, by this backend and by OpenGL's before it. Previewing a texture needs no
+/// rendering at all, only the shader resource view the texture already owns, so this carries the
+/// descriptor handle and owns no resource.
 ///
 /// Lifetime therefore belongs to the `DXTexture` this was copied from. Anything that releases a
 /// texture has to drop the views built from it in the same breath.

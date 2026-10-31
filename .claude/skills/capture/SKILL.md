@@ -6,7 +6,7 @@ description: Build a Kuki game or the editor and look at a frame it draws, throu
 # Capture a frame
 
 `--capture <file.png>` draws `--capture-frame <n>` frames (300 by default, about five seconds at
-sixty), saves the last one and quits. Direct3D 12 only: on OpenGL nothing is saved.
+sixty), saves the last one and quits.
 
 ## 1. Build the target and its runtime
 
@@ -49,10 +49,10 @@ What sets up the picture (`--help` on any executable lists everything it reads):
 
 ## 3. Look
 
-Open the PNG with the Read tool. If there is no file, read the run's log: the usual causes are the
-Direct3D 12 backend falling back to OpenGL (`dxcompiler.dll`/`dxil.dll` missing beside the
-executable, or `kuki.config.json` asking for OpenGL) and a shader that failed to compile, which is
-reported at run time, not at build time.
+Open the PNG with the Read tool. If there is no file, or it is empty, read the run's log: the usual
+causes are `dxcompiler.dll`/`dxil.dll` missing beside the executable (nothing compiles, so nothing
+is drawn), no Direct3D 12 device (the run stops at startup), and a shader that failed to compile,
+which is reported at run time, not at build time.
 
 To compare, capture before and after with the same flags and frame, and name the files for what
 they show.

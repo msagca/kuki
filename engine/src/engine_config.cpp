@@ -32,10 +32,11 @@ auto ParseToneMapper(const std::string &name, const ToneMapper fallback) -> Tone
 auto ParseAPI(const std::string &name, const RenderingAPI fallback) -> RenderingAPI {
   if (name == "DirectX")
     return RenderingAPI::DirectX;
-  if (name == "OpenGL")
-    return RenderingAPI::OpenGL;
   if (name == "Vulkan")
     return RenderingAPI::Vulkan;
+  // Said out loud, unlike an unknown tone mapper: a config left from before OpenGL was removed still
+  // names it, and someone who chose it should learn why they are not getting it.
+  spdlog::warn("[Config] No backend is called {} in this build, using {}", name, ToString(fallback));
   return fallback;
 }
 } // namespace
@@ -45,9 +46,8 @@ auto ToString(const RenderingAPI api) -> std::string_view {
     return "DirectX";
   case RenderingAPI::Vulkan:
     return "Vulkan";
-  default:
-    return "OpenGL";
   }
+  return "Unknown";
 }
 auto IsAvailable(const RenderingAPI api) -> bool {
   switch (api) {
@@ -59,17 +59,14 @@ auto IsAvailable(const RenderingAPI api) -> bool {
 #endif
   case RenderingAPI::Vulkan:
     return false;
-  default:
-    return true;
   }
+  return false;
 }
 auto ConfiguredAPI() -> RenderingAPI {
   return EngineConfig::Load().api;
 }
 auto DefaultAPI() -> RenderingAPI {
-  // OpenGL is the floor rather than the preference: it is the one backend with no way to be
-  // unavailable, since the window it needs is the window GLFW was going to create anyway.
-  return IsAvailable(RenderingAPI::DirectX) ? RenderingAPI::DirectX : RenderingAPI::OpenGL;
+  return RenderingAPI::DirectX;
 }
 auto EngineConfig::GetPath() -> std::filesystem::path {
   return GetLaunchPath() / CONFIG_FILE_NAME;
@@ -95,9 +92,12 @@ auto EngineConfig::Load() -> EngineConfig {
     spdlog::warn("[Config] Malformed {}, using defaults: {}", path.string(), exception.what());
     return {};
   }
-  if (!IsAvailable(config.api)) {
-    spdlog::warn("[Config] {} is not available in this build, using {}", ToString(config.api), ToString(RenderingAPI::OpenGL));
-    config.api = RenderingAPI::OpenGL;
+  // A name this build does not know -- "OpenGL", from before its backend went -- has left the default
+  // in place above. An API it knows but cannot run is replaced by the default too, unless it is the
+  // default: then nothing can draw, and `GraphicsContext::Create` is the one to say why.
+  if (!IsAvailable(config.api) && config.api != DefaultAPI()) {
+    spdlog::warn("[Config] {} is not available in this build, using {}", ToString(config.api), ToString(DefaultAPI()));
+    config.api = DefaultAPI();
   }
   return config;
 }

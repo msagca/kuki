@@ -52,8 +52,9 @@ quits (Direct3D 12 only). It is how to see what a build draws without anyone at 
 `ResolvePath` against the executable's directory — never the working directory.
 
 On Windows the Direct3D 12 backend compiles HLSL at runtime through `dxcompiler.dll`/`dxil.dll`,
-found in the Windows SDK at configure time and copied beside each executable. Without them the
-backend is unavailable and applications fall back to OpenGL.
+found in the Windows SDK at configure time and copied beside each executable. Without them no
+shader compiles and nothing is drawn. Direct3D 12 is the only backend: OpenGL was removed, and a
+machine or build without Direct3D 12 stops at startup saying so, rather than falling back.
 
 ## Layout
 
@@ -185,7 +186,7 @@ material with `MoveEntityToPool` (the builder's `.Mesh()`/`.Material()` do), mak
 `version` rises when a row comes, goes or moves, which is how a renderer keeps what it worked out
 from a pool. The Direct3D 12 backend draws a pool as one instanced draw from its `WorldMatrix`
 column, copied as it lies, once a frame for every pass (`ResolvePools`, `PreparePools`); it culls a
-pool at a time and skinned meshes not at all. **OpenGL draws no pools yet**, so it draws no meshes.
+pool at a time and skinned meshes not at all.
 
 A model is placed with `InstantiateAsset<Root>(name)`: the root is an entity of archetype `Root`
 (`ModelRoot` unless the game wants its own components on it, as the duel's `Figure` does) standing for
@@ -214,16 +215,16 @@ generated from the list. A new enum shown in the editor needs an `EnumTraits<T>`
 
 Three layers, each replaceable independently:
 
-- `GraphicsContext` (`graphics_context.hpp`) owns the presentation surface: window hints, device or
-  GL context, `BeginFrame`, `Present`, resize. `Create(RenderingAPI)` is the only place that names
-  every backend; it falls back to OpenGL when the requested one is unusable.
+- `GraphicsContext` (`graphics_context.hpp`) owns the presentation surface: window hints, device,
+  `BeginFrame`, `Present`, resize. `Create(RenderingAPI)` is the only place that names every
+  backend, and returns null -- which stops the application -- for one this build has not got.
 - `Renderer` (`renderer.hpp`) is the backend interface — one method per render pass plus target
-  management. Implemented by `GLRenderer` and `DXRenderer` (`gl_*.cpp`, `dx_*.cpp`).
+  management. Implemented by `DXRenderer` (`dx_*.cpp`), the only backend.
   `GetCapabilities()` reports what a backend can actually do so the editor hides controls that
   reach nothing; it defaults to "none of it".
 - `RenderGraph` (`render_graph.hpp`) declares passes with named inputs and outputs, resolves the
-  edges, topologically flattens them, and allocates/resizes the targets. The graph for both
-  backends is assembled in `RenderingSystem::Start` (`rendering_system.cpp`) with
+  edges, topologically flattens them, and allocates/resizes the targets. The graph, the same for
+  every backend, is assembled in `RenderingSystem::Start` (`rendering_system.cpp`) with
   `RenderGraphBuilder`. `AddResource` declares something the graph orders on but does not allocate
   (the probe field's structured buffer).
 
@@ -232,23 +233,27 @@ being dropped from the graph, which would leave consumers reading last frame's i
 
 The chain after the scene pass is: resolve, `Ink`, `PlanarReflection`, `Particles`, the volumetric
 fog, the bloom chain, the editor's outline, tone mapping, `Stylize`, `Overlay`. The look of a cel is
-three of those and the scene shader, all Direct3D 12 only (`RendererCapabilities::stylization`;
-OpenGL copies through): a material's `toon` blends physical shading into the bands the scene's
-`Stylization` describes, `Ink` finds outlines and folds in the prepass depth (which holds skinned
-meshes too), and `Stylize` grades the tone-mapped picture and applies the scene's `ScreenEffects` --
+three of those and the scene shader (`RendererCapabilities::stylization`): a material's `toon`
+blends physical shading into the bands the scene's `Stylization` describes, `Ink` finds outlines
+and folds in the prepass depth (which holds skinned meshes too), and `Stylize` grades the tone-mapped picture and applies the scene's `ScreenEffects` --
 a scene singleton a game writes every frame for flashes, impact frames, speed lines and smears, and
 which is never saved. `PlanarReflection` mirrors one level surface in screen space (wet ground,
 puddles, rain rings). Particles have a box shape, a facing (camera, velocity streak, flat), a sprite
 (soft, ring, petal), turbulence and an unsorted alpha blend, which is what the weather is made of.
 
-**Adding a render pass** touches the enum, the renderer's interface and both its switches, each
+**Adding a render pass** touches the enum, the renderer's interface and both its switches, the
 backend and the graph; the `add-render-pass` skill lists them.
+
+**Adding a backend** (Vulkan is the one named) is a `GraphicsContext` and a `Renderer` of its own,
+a case in `GraphicsContext::Create`, `RenderingSystem::SetRenderer` and `IsAvailable`
+(`engine_config.cpp`), its Dear ImGui backend beside Direct3D 12's in the editor, and its
+`RendererCapabilities`. HLSL can reach it through dxc (`-spirv`), so the shaders need not be
+rewritten; `SHADER_DEFINITIONS` must reach its compiler too.
 
 ### Shaders
 
-GLSL for OpenGL, HLSL (Shader Model 6) for Direct3D 12, all under `engine/src/shader/`, embedded into
-the build as strings and compiled at runtime -- so editing a shader is a rebuild, not a recompile of
-any C++ that uses it. Constants both sides must agree on live once in C++ (`SHADER_DEFINITIONS` in
+HLSL (Shader Model 6), all under `engine/src/shader/`, embedded into the build as strings and
+compiled at runtime -- so editing a shader is a rebuild, not a recompile of any C++ that uses it. Constants both sides must agree on live once in C++ (`SHADER_DEFINITIONS` in
 `shader_definitions.hpp`). The rest is in `engine/src/shader/CLAUDE.md`.
 
 ### Procedural generation, navigation and flocking
@@ -278,9 +283,8 @@ per cell. `Flock` (`flock.hpp`) is boids with a height band over a caller's grou
 (`mesh_builder.hpp`) puts flat-shaded low-poly meshes together: faces, fans, frustums, boxes, gables,
 rocks. `game/frontier` is built from all of it (`game/frontier/CLAUDE.md`).
 
-A `MeshAsset` whose `revision` is raised is uploaded again by the Direct3D 12 backend (OpenGL keeps
-its first copy), which also drops the mesh's ray-tracing structure -- it is cached by `DXMesh`
-address, and a stale one reads freed memory.
+A `MeshAsset` whose `revision` is raised is uploaded again, which also drops the mesh's ray-tracing
+structure -- it is cached by `DXMesh` address, and a stale one reads freed memory.
 
 ### Wind
 

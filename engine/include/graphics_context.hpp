@@ -11,7 +11,8 @@ namespace kuki {
 class KUKI_ENGINE_API GraphicsContext {
 public:
   virtual ~GraphicsContext() = default;
-  /// @brief Creates the context for the requested backend, falling back to OpenGL when it is unavailable.
+  /// @brief Creates the context for the requested backend, or null -- having said why -- when there is
+  /// none for it in this build.
   ///
   /// The single place that knows every implemented backend; mirrors `RenderingSystem::SetRenderer`.
   static auto Create(const RenderingAPI) -> std::unique_ptr<GraphicsContext>;

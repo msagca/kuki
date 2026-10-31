@@ -73,9 +73,6 @@ public:
   auto Instantiate(const std::string &, Scene &, const ComponentMask &root) -> EntityID;
   auto IsLoaded(const AssetID) const -> bool;
   auto ResolveModelInstance(Scene &, const EntityID, const ModelAsset &, const AssetID) -> void;
-  auto LoadComputeFromSource(const std::string_view, std::string = "") -> AssetID;
-  auto LoadShader(const std::filesystem::path &, const std::filesystem::path &, std::string = "", const MaterialType = MaterialType::Unlit) -> AssetID;
-  auto LoadShaderFromSource(const std::string_view, const std::string_view, std::string = "", const MaterialType = MaterialType::Unlit) -> AssetID;
   auto Rename(const AssetID, std::string = "") -> bool;
   auto Update() -> void;
   template <IsAsset... T>

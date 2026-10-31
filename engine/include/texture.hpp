@@ -28,8 +28,8 @@ enum class TextureCompression : uint8_t {
 /// @brief One mip level's place in the texture's byte blob.
 ///
 /// Levels live end to end in one allocation rather than a vector each, because that is the shape
-/// both upload paths want: Direct3D takes an array of subresources pointing into it, and OpenGL
-/// walks it level by level.
+/// an upload wants: Direct3D takes an array of subresources pointing into it, and an API that
+/// uploads level by level (OpenGL did) walks it.
 struct TextureLevel {
   int width{};
   int height{};

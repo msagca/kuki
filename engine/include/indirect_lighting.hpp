@@ -34,11 +34,11 @@ namespace kuki {
 ///   is the same treatment a light moving gets, and it happens on its own: the trace hash covers
 ///   this group.
 ///
-/// The OpenGL backend reads `skyIntensity` and `ambientFallback`, and nothing else. Those two
-/// describe light arriving by a route it has -- an irradiance cubemap, and the flat term for a
-/// scene with no sky at all -- while everything from `bounceIntensity` down describes a probe
-/// field that backend has not got. The editor hides what it cannot reach rather
-/// than drawing the slider anyway; see `RendererCapabilities::probeVolume`.
+/// `skyIntensity` and `ambientFallback` describe light arriving by a route any backend can have --
+/// an irradiance cubemap, and the flat term for a scene with no sky at all -- while everything from
+/// `bounceIntensity` down describes a probe field, which a backend may not have (OpenGL's did not).
+/// The editor hides what the backend cannot reach rather than drawing the slider anyway; see
+/// `RendererCapabilities::probeVolume`.
 ///
 /// Not saved to `EngineConfig` either, for the reason the debug views are not: a session that comes
 /// back with the bounce turned down to a tenth and no memory of having done it is a renderer that

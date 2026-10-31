@@ -17,8 +17,7 @@ struct KUKI_ENGINE_API MeshAsset final : public Asset {
   /// A backend uploads a mesh once and draws that copy from then on, so a mesh built by a game and
   /// rebuilt as the game goes -- a highlight under the cursor, a path, an overlay of the map -- would
   /// otherwise go on being drawn as it first was. Raising this makes the Direct3D 12 backend upload
-  /// it again, and let the old copy go once the frames drawing it are done. The OpenGL backend
-  /// keeps the copy it first made.
+  /// it again, and let the old copy go once the frames drawing it are done.
   uint32_t revision{};
 };
 } // namespace kuki

@@ -81,17 +81,16 @@ public:
   auto SetToneMapper(const ToneMapper) -> void;
   /// @brief Bytes of texture staging the active backend keeps in flight before it waits.
   ///
-  /// Zero on a backend that does not stage uploads itself. OpenGL is one: `glTextureSubImage2D`
-  /// hands pixels to the driver, which does its own staging and pipelining, so there is no buffer
-  /// whose lifetime the engine has to manage and nothing a budget here could bound. Callers should
-  /// read zero as "this backend has no such knob" and offer no control at all, rather than showing
-  /// one that silently does nothing.
+  /// Zero on a backend that does not stage uploads itself -- one whose driver takes pixels and does
+  /// its own staging and pipelining, as OpenGL's did, leaves no buffer whose lifetime the engine
+  /// manages and nothing a budget here could bound. Callers should read zero as "this backend has no
+  /// such knob" and offer no control at all, rather than showing one that silently does nothing.
   auto GetUploadBudget() const -> size_t;
   /// @brief Resizes the active backend's upload batch. Ignored where the concept does not apply.
   auto SetUploadBudget(const size_t) -> void;
   /// @brief What the active backend can do, or none of it when there is no renderer yet.
   auto GetCapabilities() const -> RendererCapabilities;
-  auto SetRenderer(const RenderingAPI = RenderingAPI::OpenGL) -> void;
+  auto SetRenderer(const RenderingAPI = RenderingAPI::DirectX) -> void;
   /// @brief Whether the finished frame is drawn onto the window at the end of every render.
   ///
   /// On by default, so that an application which does nothing but run gets a picture. The editor
@@ -106,9 +105,9 @@ public:
   ///
   /// The editor derives this from the viewport's content region, which is itself sized from the
   /// render target, so the two chase each other. Window maximise and dock-splitter settling then
-  /// sweep the width across hundreds of intermediate values in as many frames. Under OpenGL that
-  /// is merely wasteful; under Direct3D 12 each step is a full GPU stall plus fresh committed
-  /// resources, so requests are debounced here rather than in any one backend.
+  /// sweep the width across hundreds of intermediate values in as many frames. Under Direct3D 12
+  /// each step is a full GPU stall plus fresh committed resources, so requests are debounced here
+  /// rather than in any one backend.
   ///
   /// A request within `RESOLUTION_CHANGE_THRESHOLD` of the live resolution is dropped outright.
   /// Anything larger becomes a pending candidate that must hold still for
@@ -152,9 +151,9 @@ private:
   int screenHeight{DesktopHeight()};
   /// @brief Derives a directional light from the scene's skybox and writes it into the scene.
   ///
-  /// Runs before the renderer loads the scene, and must: the OpenGL backend frees a texture's
-  /// pixel data once it has been uploaded, so the environment map is only readable on the CPU
-  /// until that point.
+  /// Runs before the renderer loads the scene, and must: a backend may free a texture's pixel data
+  /// once it has been uploaded (OpenGL's did), so the environment map is only certain to be readable
+  /// on the CPU until that point.
   ///
   /// Does nothing when the skybox has no region meaningfully brighter than the rest, leaving any
   /// light authored in the scene authoritative. A smooth gradient sky is exactly that case.

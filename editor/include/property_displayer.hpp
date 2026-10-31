@@ -16,15 +16,6 @@
 #include <editor.hpp>
 #include <enum_traits.hpp>
 #include <exposure.hpp>
-#include <gl_buffer.hpp>
-#include <gl_compute_shader.hpp>
-#include <gl_lit_shader.hpp>
-#include <gl_material.hpp>
-#include <gl_mesh.hpp>
-#include <gl_render_target.hpp>
-#include <gl_skybox.hpp>
-#include <gl_texture.hpp>
-#include <gl_unlit_shader.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <indirect_lighting.hpp>
@@ -48,9 +39,10 @@ struct PropertyDisplayer {
 };
 /// @brief The half of a material that is the same whichever backend is holding it.
 ///
-/// `GLMaterial` and `DXMaterial` differ in how they reach their textures and in nothing else: the
-/// surface values underneath are one `MaterialFallback` in both. Shared rather than ported, because
-/// two copies of a panel this long is how the two backends end up offering different materials.
+/// Backends differ in how a material reaches its textures and in nothing else: the surface values
+/// underneath are one `MaterialFallback` in every one. Kept apart from `DXMaterial`'s panel so that
+/// another backend's material shows the same surface rather than a port of it -- two copies of a
+/// panel this long is how two backends end up offering different materials.
 ///
 /// `toon` offers the cel shading slider, which only a backend that draws the bands should.
 inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallback &fallback, const bool toon = false) -> void {
@@ -600,9 +592,9 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   // Kept to the bottom of the panel and behind a fold, under everything that describes the camera
   // itself. These do not change what the camera is, only what it draws instead of the picture, and
   // somebody opening this panel is far more often here for the lens than for the diagnostics.
-  // The whole fold goes when the backend answers neither, which on the OpenGL one is both of them:
-  // its scene shader writes finished pixels and nothing else, and there is no probe field for the
-  // spheres to stand for. An empty fold would still read as a feature that had stopped working.
+  // The whole fold goes when the backend answers neither -- one whose scene shader writes finished
+  // pixels and nothing else, with no probe field for the spheres to stand for, as OpenGL's did. An
+  // empty fold would still read as a feature that had stopped working.
   if ((context.capabilities.lightingDebugViews || context.capabilities.probeVolume) && field::Fold("Debug Views")) {
     if (context.capabilities.lightingDebugViews) {
       static auto &lightingNames = kuki::EnumTraits<kuki::LightingDebugView>::GetNames();
@@ -625,9 +617,9 @@ template <>
 inline auto PropertyDisplayer::operator()<kuki::DXMaterial>(kuki::DXMaterial *material) -> void {
   if (!material)
     return;
-  // No texture tiles here, unlike the OpenGL panel. Direct3D reaches its textures through a bindless
-  // table rather than a handle per slot, so there is no per-texture id to hand Dear ImGui and
-  // nothing to draw a thumbnail from. What the table holds is described instead of shown.
+  // No texture tiles here. Direct3D reaches its textures through a bindless table rather than a
+  // handle per slot, so there is no per-texture id to hand Dear ImGui and nothing to draw a
+  // thumbnail from. What the table holds is described instead of shown.
   auto tableIndex = static_cast<int>(material->textureTableIndex);
   field::InputInt("Texture Table", &tableIndex, 0, 0, ImGuiInputTextFlags_ReadOnly);
   ImGui::SetItemTooltip("Index of this material's descriptor table in the bindless heap.");
@@ -637,192 +629,6 @@ inline auto PropertyDisplayer::operator()<kuki::DXMaterial>(kuki::DXMaterial *ma
   ImGui::EndDisabled();
   ImGui::SetItemTooltip("Whether the table has been built and uploaded yet.");
   DisplayMaterialSurface(material->type, material->fallback, context.capabilities.stylization);
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::GLBuffer>(kuki::GLBuffer *buffer) -> void {
-  if (!buffer)
-    return;
-  auto id = static_cast<int>(buffer->id);
-  field::InputInt("Buffer Object", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::GLComputeShader>(kuki::GLComputeShader *shader) -> void {
-  if (!shader)
-    return;
-  auto id = static_cast<int>(shader->id);
-  field::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::GLLitShader>(kuki::GLLitShader *shader) -> void {
-  if (!shader)
-    return;
-  auto id = static_cast<int>(shader->id);
-  field::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
-  static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
-  field::LabelText("Draws", "%s", types[static_cast<size_t>(shader->type)]);
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::GLMaterial>(kuki::GLMaterial *material) -> void {
-  static constexpr ImVec2 TEXTURE_SIZE(64, 64);
-  if (!material)
-    return;
-  const auto &style = ImGui::GetStyle();
-  auto GetTileWidth = [&](const char *label) -> float {
-    const auto textWidth = ImGui::CalcTextSize(label).x;
-    const auto buttonWidth = TEXTURE_SIZE.x + style.FramePadding.x * 2.f;
-    return (std::max)(buttonWidth, textWidth);
-  };
-  auto DrawTextureTile = [&](const char *id, ImTextureID tex, const char *label, bool pending, auto onClick) -> float {
-    const auto tileWidth = GetTileWidth(label);
-    auto startPos = ImGui::GetCursorPos();
-    ImGui::BeginGroup();
-    auto clicked = TextureButton(id, tex, TEXTURE_SIZE);
-    if (pending)
-      ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), PICKING_HIGHLIGHT_COLOR, 0.f, 0, PICKING_HIGHLIGHT_THICKNESS);
-    if (clicked)
-      onClick();
-    const auto textWidth = ImGui::CalcTextSize(label).x;
-    const auto buttonHeight = TEXTURE_SIZE.y + style.FramePadding.y * 2.f;
-    ImGui::SetCursorPosX(startPos.x + (tileWidth - textWidth) * .5f);
-    ImGui::SetCursorPosY(startPos.y + buttonHeight + style.ItemInnerSpacing.y);
-    ImGui::TextUnformatted(label);
-    ImGui::EndGroup();
-    return tileWidth;
-  };
-  const auto SelectProperty = [&](const kuki::MaterialProperty prop) {
-    context.state = EditorState::PickingAsset;
-    context.pickingAssetType = AssetType::Texture;
-    context.pickingEntityId = context.selectedEntityId;
-    context.pickingProperty = prop;
-    context.pickingTarget = PickingTarget::MaterialTexture;
-  };
-  struct TexEntry {
-    const char *id;
-    ImTextureID tex;
-    const char *label;
-    kuki::MaterialProperty prop;
-  };
-  std::array<TexEntry, 7> entries{
-    TexEntry{"Albedo", static_cast<ImTextureID>(material->textures.albedo), "Albedo", kuki::MaterialProperty::AlbedoTexture},
-    {"Normal", static_cast<ImTextureID>(material->textures.normal), "Normal", kuki::MaterialProperty::NormalTexture},
-    {"Metalness", static_cast<ImTextureID>(material->textures.metalness), "Metalness", kuki::MaterialProperty::MetalnessTexture},
-    {"Occlusion", static_cast<ImTextureID>(material->textures.occlusion), "Occlusion", kuki::MaterialProperty::OcclusionTexture},
-    {"Roughness", static_cast<ImTextureID>(material->textures.roughness), "Roughness", kuki::MaterialProperty::RoughnessTexture},
-    {"Specular", static_cast<ImTextureID>(material->textures.specular), "Specular", kuki::MaterialProperty::SpecularTexture},
-    {"Emissive", static_cast<ImTextureID>(material->textures.emissive), "Emissive", kuki::MaterialProperty::EmissiveTexture},
-  };
-  auto firstOnLine = true;
-  auto lineWidth = .0f;
-  auto remaining = .0f;
-  for (const auto &e : entries) {
-    if (firstOnLine) {
-      lineWidth = ImGui::GetContentRegionAvail().x;
-      remaining = lineWidth;
-    }
-    const auto tileWidth = GetTileWidth(e.label);
-    if (!firstOnLine) {
-      if (tileWidth + style.ItemSpacing.x <= remaining) {
-        ImGui::SameLine();
-        remaining -= style.ItemSpacing.x;
-      } else {
-        firstOnLine = true;
-        lineWidth = ImGui::GetContentRegionAvail().x;
-        remaining = lineWidth;
-      }
-    }
-    const auto pending = context.state == EditorState::PickingAsset && context.pickingEntityId == context.selectedEntityId && context.pickingProperty == e.prop;
-    remaining -= DrawTextureTile(e.id, e.tex, e.label, pending, [&SelectProperty, &e] { SelectProperty(e.prop); });
-    firstOnLine = false;
-  }
-  static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
-  DisplayMaterialSurface(material->type, material->fallback);
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::GLMesh>(kuki::GLMesh *mesh) -> void {
-  if (!mesh)
-    return;
-  auto vao = static_cast<int>(mesh->vao);
-  field::InputInt("Vertex Array Object", &vao, 1, 100, ImGuiInputTextFlags_ReadOnly);
-  auto ebo = static_cast<int>(mesh->ebo);
-  field::InputInt("Element Buffer Object", &ebo, 1, 100, ImGuiInputTextFlags_ReadOnly);
-  auto vertexCount = mesh->vertexCount;
-  field::InputInt("Vertex Count", &vertexCount, 1, 100, ImGuiInputTextFlags_ReadOnly);
-  auto indexCount = mesh->indexCount;
-  field::InputInt("Index Count", &indexCount, 1, 100, ImGuiInputTextFlags_ReadOnly);
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::GLRenderTarget>(kuki::GLRenderTarget *target) -> void {
-  if (!target)
-    return;
-  field::LabelText("Size", "%d x %d", target->desc.width, target->desc.height);
-  auto samples = target->desc.samples;
-  field::InputInt("Samples", &samples, 0, 0, ImGuiInputTextFlags_ReadOnly);
-  auto framebuffer = static_cast<int>(target->framebuffer);
-  field::InputInt("Framebuffer", &framebuffer, 0, 0, ImGuiInputTextFlags_ReadOnly);
-  auto renderbuffer = static_cast<int>(target->renderbuffer);
-  field::InputInt("Renderbuffer", &renderbuffer, 0, 0, ImGuiInputTextFlags_ReadOnly);
-  auto texture = static_cast<int>(target->texture);
-  field::InputInt("Colour Texture", &texture, 0, 0, ImGuiInputTextFlags_ReadOnly);
-  auto idTexture = static_cast<int>(target->idTexture);
-  field::InputInt("Picking Texture", &idTexture, 0, 0, ImGuiInputTextFlags_ReadOnly);
-  ImGui::SetItemTooltip("Entity ids written alongside the colour, for clicking things in the viewport.\nZero when this target was not asked for one.");
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::GLSkybox>(kuki::GLSkybox *skybox) -> void {
-  static constexpr ImVec2 TEXTURE_SIZE(64, 64);
-  if (!skybox)
-    return;
-  const auto &style = ImGui::GetStyle();
-  const auto label = "Skybox";
-  auto tex = ImTextureID{};
-  auto uv0 = ImVec2(0.f, 1.f);
-  auto uv1 = ImVec2(1.f, 0.f);
-  if (auto *handle = app.GetEntityComponent<kuki::SkyboxHandle>(context.selectedEntityId); handle)
-    if (auto *texture = app.PreviewAsset(handle->assetId); texture) {
-      tex = static_cast<ImTextureID>(texture->GetTextureHandle());
-      if (!texture->NeedsVerticalFlip()) {
-        uv0 = ImVec2(0.f, 0.f);
-        uv1 = ImVec2(1.f, 1.f);
-      }
-    }
-  const float textWidth = ImGui::CalcTextSize(label).x;
-  const float buttonWidth = TEXTURE_SIZE.x + style.FramePadding.x * 2.f;
-  const float tileWidth = std::max(buttonWidth, textWidth);
-  auto startPos = ImGui::GetCursorPos();
-  ImGui::BeginGroup();
-  const auto pending = context.state == EditorState::PickingAsset && context.pickingTarget == PickingTarget::Skybox && context.pickingEntityId == context.selectedEntityId;
-  const auto clicked = TextureButton("Skybox##Texture", tex, TEXTURE_SIZE, uv0, uv1);
-  if (pending)
-    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), PICKING_HIGHLIGHT_COLOR, 0.f, 0, PICKING_HIGHLIGHT_THICKNESS);
-  if (clicked) {
-    context.state = EditorState::PickingAsset;
-    context.pickingAssetType = AssetType::Texture;
-    context.pickingEntityId = context.selectedEntityId;
-    context.pickingTarget = PickingTarget::Skybox;
-  }
-  const auto buttonHeight = TEXTURE_SIZE.y + style.FramePadding.y * 2.f;
-  ImGui::SetCursorPosX(startPos.x + (tileWidth - textWidth) * .5f);
-  ImGui::SetCursorPosY(startPos.y + buttonHeight + style.ItemInnerSpacing.y);
-  ImGui::TextUnformatted(label);
-  ImGui::EndGroup();
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::GLTexture>(kuki::GLTexture *texture) -> void {
-  static constexpr auto MAX_INT = std::numeric_limits<int>::max();
-  static constexpr auto TEXTURE_SIZE = ImVec2(64, 64);
-  if (!texture)
-    return;
-  const auto textureId = static_cast<ImTextureID>(texture->id);
-  if (TextureButton("ID", textureId, TEXTURE_SIZE)) {}
-}
-template <>
-inline auto PropertyDisplayer::operator()<kuki::GLUnlitShader>(kuki::GLUnlitShader *shader) -> void {
-  if (!shader)
-    return;
-  auto id = static_cast<int>(shader->id);
-  field::InputInt("Program", &id, 0, 0, ImGuiInputTextFlags_ReadOnly);
-  static auto &types = kuki::EnumTraits<kuki::MaterialType>::GetNames();
-  field::LabelText("Draws", "%s", types[static_cast<size_t>(shader->type)]);
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::AntiAliasing>(kuki::AntiAliasing *antiAliasing) -> void {
@@ -1204,10 +1010,9 @@ inline auto PropertyDisplayer::operator()<kuki::IndirectLighting>(kuki::Indirect
   // reading.
   //
   // Most of them describe a probe field, so most of them are absent on a backend without one. What
-  // survives is `Sky` and `Ambient Fallback`: light that arrives by a route the OpenGL backend also
-  // has, and which it now reads -- see `GLLitShader::SetIndirectLighting`. Hidden rather than
-  // disabled, because a greyed row invites you to work out how to un-grey it and there is no answer
-  // short of restarting on the other backend.
+  // survives is `Sky` and `Ambient Fallback`: light that arrives by a route any backend has. Hidden
+  // rather than disabled, because a greyed row invites you to work out how to un-grey it and there
+  // is no answer short of restarting on another backend.
   const auto probes = context.capabilities.probeVolume;
   const auto defaults = kuki::IndirectLighting{};
   auto edited = *indirect;

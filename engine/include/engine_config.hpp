@@ -21,15 +21,14 @@ auto KUKI_ENGINE_API ToString(const RenderingAPI) -> std::string_view;
 auto KUKI_ENGINE_API IsAvailable(const RenderingAPI) -> bool;
 /// @brief The backend to use when nobody has said otherwise: the best one this machine can run.
 ///
-/// Which is Direct3D 12 wherever it will run, and OpenGL everywhere else. The two are not equal --
-/// only one of them traces the probe field, so only one renders the indirect bounce the default
-/// scene was built to show -- and defaulting to the lesser of them on a machine that can run the
-/// other means the first thing a new clone renders understates the engine.
+/// Direct3D 12, the only backend there is. Where it cannot run there is nothing to fall back to, and
+/// it is still the answer: `GraphicsContext::Create` then reports why no window can be drawn into,
+/// which says more than an empty picture would.
 ///
 /// Not a preference, which is the reason this is a function rather than a constant in the config
 /// struct. A preference is what someone chose and belongs in `kuki.config.json`; this is what to do
-/// when they have not chosen, and the right answer to that changes with the machine rather than
-/// with the file. Someone who picks OpenGL on a Windows box has that saved and honoured.
+/// when they have not chosen, and with a second backend the right answer would change with the
+/// machine rather than with the file.
 auto KUKI_ENGINE_API DefaultAPI() -> RenderingAPI;
 /// @brief Settings that belong to the installation rather than to any one scene.
 ///

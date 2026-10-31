@@ -1,6 +1,6 @@
 ---
 name: add-render-pass
-description: Checklist for adding a render pass to Kuki's render graph -- the enum and its name, the Renderer interface, the dispatch and bypass switches, both backends, the graph wiring, and a capability flag. Use whenever a new pass is introduced.
+description: Checklist for adding a render pass to Kuki's render graph -- the enum and its name, the Renderer interface, the dispatch and bypass switches, the backend, the graph wiring, and a capability flag. Use whenever a new pass is introduced.
 ---
 
 # Add a render pass
@@ -12,7 +12,7 @@ description: Checklist for adding a render pass to Kuki's render graph -- the en
 4. `engine/src/renderer.cpp` -- the dispatch switch **and** the `BypassPass` switch. A disabled pass
    still runs its bypass rather than leaving the graph, or whatever reads its output reads last
    frame's image.
-5. Each backend: `DXRenderer` (`dx_*.cpp`) and `GLRenderer` (`gl_*.cpp`). A backend with no such path
+5. Each backend: `DXRenderer` (`dx_*.cpp`) is the only one now. A backend with no such path
    implements it as `BypassCopy(inputs, outputs)`, which is the honest one-liner.
 6. `RenderingSystem::Start` (`engine/src/rendering_system.cpp`) -- a `BeginPass`/`AddInput`/
    `AddOutput` block, placed in the chain where it belongs (the root `CLAUDE.md` lists the chain

@@ -237,41 +237,6 @@ auto AssetManager::Instantiate(const std::string &name, Scene &scene, const Comp
     return Instantiate(ids.first->second, scene, root);
   return EntityID::Invalid;
 }
-auto AssetManager::LoadComputeFromSource(const std::string_view source, std::string name) -> AssetID {
-  const auto id = AssetID::Generate();
-  auto asset = std::make_unique<ShaderAsset>(id);
-  asset->shaderType = ShaderType::Compute;
-  asset->text = std::string(source);
-  Add(std::move(asset), std::move(name));
-  return id;
-}
-auto AssetManager::LoadShader(const std::filesystem::path &vertPath, const std::filesystem::path &fragPath, std::string name, const MaterialType materialType) -> AssetID {
-  auto vertId = Register<ShaderAsset>(vertPath, "");
-  Load(Load<ShaderAsset>(vertId, ResolvePath(vertPath)));
-  auto fragId = Register<ShaderAsset>(fragPath, std::move(name));
-  auto asset = Load<ShaderAsset>(fragId, ResolvePath(fragPath));
-  if (auto fragAsset = asset->As<ShaderAsset>(); fragAsset) {
-    fragAsset->materialType = materialType;
-    fragAsset->vertexShader = vertId;
-    Load(std::move(asset));
-  }
-  return fragId;
-}
-auto AssetManager::LoadShaderFromSource(const std::string_view vertSource, const std::string_view fragSource, std::string name, const MaterialType materialType) -> AssetID {
-  const auto vertId = AssetID::Generate();
-  auto vertAsset = std::make_unique<ShaderAsset>(vertId);
-  vertAsset->shaderType = ShaderType::Vertex;
-  vertAsset->text = std::string(vertSource);
-  Add(std::move(vertAsset));
-  const auto fragId = AssetID::Generate();
-  auto fragAsset = std::make_unique<ShaderAsset>(fragId);
-  fragAsset->shaderType = ShaderType::Fragment;
-  fragAsset->text = std::string(fragSource);
-  fragAsset->materialType = materialType;
-  fragAsset->vertexShader = vertId;
-  Add(std::move(fragAsset), std::move(name));
-  return fragId;
-}
 auto AssetManager::Update() -> void {
   for (auto it = idToFuture.begin(); it != idToFuture.end();)
     if (it->second.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {

@@ -22,8 +22,8 @@ namespace kuki {
 /// The particles and the clouds have winds of their own -- an emitter's `gravity` and the clouds'
 /// `windDirection` -- for a game to set from this one if it wants them all to agree.
 ///
-/// A scene singleton, and saved: the weather a scene was left in is part of it. Drawn by the
-/// Direct3D 12 backend; OpenGL draws everything still.
+/// A scene singleton, and saved: the weather a scene was left in is part of it. Drawn where the
+/// backend says so (`RendererCapabilities::wind`).
 struct Wind {
   /// @brief Which way it blows along the ground, as x and z. Need not be of unit length.
   glm::vec2 direction{1.f, .3f};

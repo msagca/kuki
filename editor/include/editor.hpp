@@ -26,7 +26,7 @@ inline constexpr ImU32 PICKING_HIGHLIGHT_COLOR = IM_COL32(255, 0, 200, 255);
 inline constexpr float PICKING_HIGHLIGHT_THICKNESS = 3.0f;
 /// @brief Draws an image button, falling back to a plain button when there is no texture to show.
 ///
-/// A zero handle is not the harmless "draw nothing" it is under OpenGL. Dear ImGui records it
+/// A zero handle is not a harmless "draw nothing". Dear ImGui records it
 /// verbatim and the Direct3D 12 backend feeds it straight to `SetGraphicsRootDescriptorTable`, so a
 /// null GPU descriptor handle reaches the driver and removes the device. Unassigned texture slots
 /// and backends that cannot preview an asset both produce zero, so every image the editor draws
@@ -55,7 +55,6 @@ enum class EditorState : uint8_t {
   RebindingKey
 };
 enum class PickingTarget : uint8_t {
-  MaterialTexture,
   Skybox
 };
 enum class SceneFileAction : uint8_t {
@@ -95,7 +94,7 @@ struct EditorContext {
   AssetType pickingAssetType{};
   EntityID pickingEntityId{};
   MaterialProperty pickingProperty{};
-  PickingTarget pickingTarget{PickingTarget::MaterialTexture};
+  PickingTarget pickingTarget{PickingTarget::Skybox};
   kuki::RenderingAPI pendingApi{kuki::DefaultAPI()};
   /// @brief What the running backend can do, so no panel offers a control that reaches nothing.
   ///

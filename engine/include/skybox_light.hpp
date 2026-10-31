@@ -22,8 +22,8 @@ struct DominantLight {
 ///
 /// Bins the image into a coarse grid and takes the brightest bin rather than the brightest texel,
 /// so a single hot pixel or sensor noise cannot swing the result. The bin's centre is converted to
-/// a direction using the same mapping as `cubemap_equirect.comp`, which is the project's authority
-/// on equirectangular conventions.
+/// a direction using the same mapping as `SampleSphericalMap` in `ibl.hlsl`, which is the project's
+/// authority on equirectangular conventions.
 ///
 /// @param minimumContrast How many times brighter than the image average the peak must be before
 ///        it counts as a light source rather than general sky brightness.

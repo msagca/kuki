@@ -5,23 +5,24 @@ namespace kuki {
 /// shading languages.
 ///
 /// These sit here rather than in each backend for the reason the post-processing constants do, and
-/// with more at stake. A light limit is written down in four places at once: the C++ that gathers
-/// the lights and sizes the constant buffer, the GLSL that loops over them, the HLSL that does the
-/// same, and the HLSL the probe trace shades its rays with. It used to be written down in all four
-/// independently -- `dx_pipeline.hpp` held the two counts, `gl_renderer.hpp` held the shadow count,
-/// `lit.frag` and `scene.hlsl` and `probe_trace.hlsl` each declared their own -- held in agreement
+/// with more at stake. A light limit is written down in several places at once: the C++ that
+/// gathers the lights and sizes the constant buffer, the HLSL that loops over them, and the HLSL the
+/// probe trace shades its rays with -- and, while there was an OpenGL backend, its GLSL. It used to
+/// be written down in all four independently -- `dx_pipeline.hpp` held the two counts,
+/// `gl_renderer.hpp` held the shadow count, `lit.frag` and `scene.hlsl` and `probe_trace.hlsl` each
+/// declared their own -- held in agreement
 /// by a comment asking the next person to keep them in step.
 ///
 /// What made that worse than the usual duplication is how it fails. Raising the count in the C++
 /// alone does not overflow anything: the gather clamps to the array it is filling, so the extra
 /// lights are collected, counted, and then quietly dropped. Nothing asserts, nothing logs, and the
 /// scene simply stops lighting from a light that is plainly there in the hierarchy. The two shader
-/// copies fail the same way in reverse.
+/// copies failed the same way in reverse.
 ///
-/// So the shaders no longer declare these at all. Both compilers take their source as a string at
-/// runtime, which means both can be handed the values as preprocessor definitions -- see
-/// `SHADER_DEFINITIONS` in `shader_definitions.hpp`, with `DXShaderCompiler::Compile` carrying them
-/// to the HLSL side and `GLShaderBase::Compile` to the GLSL one. A shader that reads one of these
+/// So the shaders no longer declare these at all. The compiler takes their source as a string at
+/// runtime, which means it can be handed the values as preprocessor definitions -- see
+/// `SHADER_DEFINITIONS` in `shader_definitions.hpp`, which `DXShaderCompiler::Compile` carries to
+/// the HLSL, and which a second backend's compiler must carry too. A shader that reads one of these
 /// without being given it fails to compile with a message naming the macro, which is the loud
 /// failure the comment was standing in for.
 inline constexpr uint32_t MAX_POINT_LIGHTS = 8;
