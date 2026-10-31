@@ -28,6 +28,7 @@
 #include <unordered_set>
 #include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
+#include <wind.hpp>
 using json = nlohmann::json;
 namespace kuki {
 namespace {
@@ -63,6 +64,8 @@ namespace {
     // the desk it is being looked at on.
     ComponentType::VolumetricClouds,
     ComponentType::VolumetricFog,
+    // The weather a scene was left in, which is as much a part of it as its fog.
+    ComponentType::Wind,
   };
   auto IsSerialized(const ComponentType type) -> bool {
     for (const auto t : SERIALIZED_TYPES)
@@ -521,6 +524,35 @@ namespace {
       {"kilometresPerUnit", f.kilometresPerUnit},
       {"steps", f.steps}};
   }
+  auto ToJson(const Wind &w) -> json {
+    return {
+      {"direction", w.direction},
+      {"strength", w.strength},
+      {"gustStrength", w.gustStrength},
+      {"gustScale", w.gustScale},
+      {"gustSpeed", w.gustSpeed},
+      {"flutter", w.flutter},
+      {"flutterAmount", w.flutterAmount},
+      {"waveHeight", w.waveHeight},
+      {"waveLength", w.waveLength},
+      {"waveSpeed", w.waveSpeed}};
+  }
+  auto FromJson(const json &j, Wind &w) -> void {
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("direction", w.direction);
+    Read("strength", w.strength);
+    Read("gustStrength", w.gustStrength);
+    Read("gustScale", w.gustScale);
+    Read("gustSpeed", w.gustSpeed);
+    Read("flutter", w.flutter);
+    Read("flutterAmount", w.flutterAmount);
+    Read("waveHeight", w.waveHeight);
+    Read("waveLength", w.waveLength);
+    Read("waveSpeed", w.waveSpeed);
+  }
   auto FromJson(const json &j, VolumetricFog &f) -> void {
     const auto Read = [&j](const char *key, auto &field) {
       if (j.contains(key))
@@ -698,6 +730,9 @@ namespace {
     auto operator()(VolumetricFog *f) const -> json {
       return ToJson(*f);
     }
+    auto operator()(Wind *w) const -> json {
+      return ToJson(*w);
+    }
     auto operator()(Stylization *s) const -> json {
       return ToJson(*s);
     }
@@ -864,6 +899,10 @@ namespace {
           break;
         case ComponentType::VolumetricFog:
           if (auto *c = app.GetEntityComponent<VolumetricFog>(id))
+            FromJson(componentJson, *c);
+          break;
+        case ComponentType::Wind:
+          if (auto *c = app.GetEntityComponent<Wind>(id))
             FromJson(componentJson, *c);
           break;
         case ComponentType::Stylization:

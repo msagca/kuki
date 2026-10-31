@@ -98,7 +98,10 @@ struct SpotLight {
 struct InstanceData {
   float4x4 model;
   uint entityId;
-  uint3 padding;
+  // How far this instance's material bends in the wind and heaves with the waves. See `DXInstanceData`.
+  float sway;
+  float waves;
+  uint padding;
 };
 struct OctreeNode {
   float3 center;
@@ -157,6 +160,10 @@ cbuffer FrameConstants : register(b1) {
   float4 u_toon;
   float4 u_toonShade;
   float4 u_toonRim;
+  // The scene's wind. See `Displace`.
+  float4 u_wind;
+  float4 u_gust;
+  float4 u_waves;
 };
 Texture2D g_albedo : register(t0);
 Texture2D g_normal : register(t1);
@@ -200,14 +207,63 @@ struct PSInput {
   float3 tangent : TANGENT;
   float2 texture0 : TEXCOORD0;
   nointerpolation uint entityId : TEXCOORD2;
+  // Above nought for a surface the waves move, which is shaded a flat facet a triangle.
+  nointerpolation float waves : TEXCOORD3;
 };
 struct PSOutput {
   float4 color : SV_TARGET0;
   float4 entityId : SV_TARGET1;
 };
-PSInput BuildVertex(float4x4 world, float3 position, float3 normal, float3 tangent, float2 texture0, uint entityId) {
+// Where the scene's wind and waves move a vertex, in the world. The same function, word for word,
+// is in shadow.hlsl, and has to stay so: a surface the depth passes put somewhere else from where
+// this pass draws it casts a shadow that slides off it and is inked along an edge it no longer has.
+//
+// `u_wind` is the wind's direction along the ground, its strength and the clock; `u_gust` the
+// gusts' strength, spacing and speed and the shiver's rate; `u_waves` the shiver's amount and the
+// waves' height, length and speed. See `Wind`.
+float WaveHeight(float2 p) {
+  float2 d1 = u_wind.xy;
+  float2 d2 = float2(d1.x * 0.825 - d1.y * 0.565, d1.x * 0.565 + d1.y * 0.825);
+  float2 d3 = float2(d1.x * 0.622 + d1.y * 0.783, -d1.x * 0.783 + d1.y * 0.622);
+  float k = 6.2831853 / u_waves.z;
+  float travel = u_wind.w * u_waves.w;
+  // Three trains, the longest with the wind and two shorter across it, at lengths no two of which
+  // divide one another: the sum never repeats within sight, and never shows one wave marching.
+  float h = sin((dot(p, d1) - travel) * k) * 0.55;
+  h += sin((dot(p, d2) - travel * 0.8) * k * 1.73 + 1.3) * 0.3;
+  h += sin((dot(p, d3) - travel * 0.7) * k * 2.91 + 2.1) * 0.15;
+  return h * u_waves.y * 0.5;
+}
+float3 Displace(float3 world, float3 origin, float sway, float waves) {
+  if (sway > 0.0 && u_wind.z > 0.0) {
+    float2 dir = u_wind.xy;
+    float t = u_wind.w;
+    float height = max(world.y - origin.y, 0.0);
+    float bend = sway * height * height;
+    // Bands of gust rolling along the wind, read off where the thing stands rather than the vertex,
+    // so a tree leans as one and a field shows the band crossing it tree by tree.
+    float along = dot(origin.xz, dir);
+    float gust = pow(saturate(0.5 + 0.5 * sin((along - t * u_gust.z) / u_gust.y * 6.2831853)), 3.0) * u_gust.x;
+    float lean = u_wind.z * (1.0 + gust);
+    // Out of step from one thing to the next by a hash of where it stands.
+    float seed = frac(sin(dot(origin.xz, float2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
+    float shiver = sin(t * u_gust.w * 6.2831853 + seed + height * 0.7) * u_waves.x * lean;
+    float sideways = cos(t * u_gust.w * 4.37 + seed * 1.7) * u_waves.x * lean * 0.5;
+    float2 push = (dir * (lean + shiver) + float2(-dir.y, dir.x) * sideways) * bend;
+    world.xz += push;
+    // Lowered by about what bending through that arc takes off its height, so a tall thing bowing
+    // far does not stretch.
+    world.y -= dot(push, push) / max(2.0 * height, 0.05);
+  }
+  if (waves > 0.0 && u_waves.y > 0.0)
+    world.y += waves * WaveHeight(world.xz);
+  return world;
+}
+PSInput BuildVertex(float4x4 world, float3 position, float3 normal, float3 tangent, float2 texture0, uint entityId, float sway, float waves) {
   PSInput output;
   float4 worldPosition = mul(world, float4(position, 1.0));
+  worldPosition.xyz = Displace(worldPosition.xyz, mul(world, float4(0.0, 0.0, 0.0, 1.0)).xyz, sway, waves);
+  output.waves = waves;
   output.position = mul(u_viewProjection, worldPosition);
   output.worldPosition = worldPosition.xyz;
   output.entityId = entityId;
@@ -221,7 +277,8 @@ PSInput BuildVertex(float4x4 world, float3 position, float3 normal, float3 tange
   return output;
 }
 PSInput VSMain(VSInput input, uint instance : SV_InstanceID) {
-  return BuildVertex(g_instances[instance].model, input.position, input.normal, input.tangent, input.texture0, g_instances[instance].entityId);
+  InstanceData data = g_instances[instance];
+  return BuildVertex(data.model, input.position, input.normal, input.tangent, input.texture0, data.entityId, data.sway, data.waves);
 }
 PSInput VSSkinned(VSSkinnedInput input, uint instance : SV_InstanceID) {
   float4x4 world = (float4x4)0;
@@ -233,7 +290,7 @@ PSInput VSSkinned(VSSkinnedInput input, uint instance : SV_InstanceID) {
     }
   if (total <= 0.0)
     world = g_instances[instance].model;
-  return BuildVertex(world, input.position, input.normal, input.tangent, input.texture0, g_instances[instance].entityId);
+  return BuildVertex(world, input.position, input.normal, input.tangent, input.texture0, g_instances[instance].entityId, 0.0, 0.0);
 }
 float DistributionGGX(float3 N, float3 H, float R) {
   float a = R * R;
@@ -871,6 +928,13 @@ PSOutput PSMain(PSInput input) {
   // one a normal map bends. The map holds no record of that detail, and a step whose length jumps
   // from pixel to pixel is the one thing the receiver plane solve cannot survive.
   float3 GN = normalize(input.normal);
+  // A surface the waves move has normals that no longer match it, and is meant to read as facets
+  // anyway: the triangle's own plane, from how the position changes across the pixel, turned to
+  // the side the mesh's normal is on.
+  if (input.waves > 0.0) {
+    float3 facet = normalize(cross(ddy(input.worldPosition), ddx(input.worldPosition)));
+    GN = dot(facet, GN) < 0.0 ? -facet : facet;
+  }
   float3 N = useNormal ? GetNormalFromTexture(input.texture0, GN, input.tangent) : GN;
   float4 S = useSpecular ? g_specular.Sample(g_sampler, input.texture0) : u_specular;
   float4 E = useEmissive ? g_emissive.Sample(g_sampler, input.texture0) : u_emissive;

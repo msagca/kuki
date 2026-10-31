@@ -1,9 +1,11 @@
+#include <algorithm>
 #include <anti_aliasing.hpp>
 #include <application.hpp>
 #include <array>
 #include <asset_type.hpp>
 #include <atmosphere_sky.hpp>
 #include <camera.hpp>
+#include <command_line.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <embedded_shaders.hpp>
@@ -38,6 +40,18 @@ RenderingSystem::RenderingSystem(Application &app)
   : System(std::in_place_type<RenderingSystem>, app) {}
 auto RenderingSystem::Start() -> void {
   SetRenderer(app.GetDescription().api);
+  {
+    const auto arguments = GetCommandLineArguments();
+    if (const auto path = GetFlagValue(arguments, CAPTURE_FLAG))
+      capturePath = *path;
+    if (const auto frame = GetFlagValue(arguments, CAPTURE_FRAME_FLAG)) {
+      try {
+        captureFrame = std::max<size_t>(1, std::stoul(*frame));
+      } catch (...) {
+        spdlog::warn("[RenderingSystem] --capture-frame wants a count, not {}", *frame);
+      }
+    }
+  }
   // The other half of the installation's display preference, applied here rather than left to each
   // application to remember. The editor also sets it in its own `Start`, which is now a no-op that
   // repeats this -- but it is the thing that lets the panel change it afterwards, so it stays.
@@ -295,6 +309,14 @@ auto RenderingSystem::Update(float deltaTime) -> void {
     if (presentEnabled && renderGraph) {
       KUKI_PROFILE_SCOPE("PresentTarget");
       activeRenderer->PresentTarget(renderGraph->GetFinalOutputName());
+    }
+    // After the frame is whole, overlay and all, and before it is presented.
+    if (!capturePath.empty() && renderGraph && ++capturedFrames == captureFrame) {
+      if (activeRenderer->CaptureTarget(renderGraph->GetFinalOutputName(), capturePath))
+        spdlog::info("[RenderingSystem] Saved frame {} to {}", captureFrame, capturePath.string());
+      else
+        spdlog::warn("[RenderingSystem] This backend cannot save a frame, so {} was not written", capturePath.string());
+      app.Quit();
     }
   }
   // Emptied by the frame that drew it, which is what makes the overlay immediate mode: a caption

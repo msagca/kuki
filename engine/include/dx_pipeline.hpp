@@ -85,6 +85,12 @@ struct DXFrameConstants {
   float toonShade[4]{};
   /// @brief The rim's width, and three floats kept for whatever the bands need next.
   float toonRim[4]{};
+  /// @brief The scene's `Wind`: its direction along the ground, made unit, its strength and the
+  /// clock; the gusts' strength, spacing and speed and the flutter's rate; the flutter's amount and
+  /// the waves' height, length and speed. All nought for a scene with no wind, which stills it.
+  float wind[4]{};
+  float gust[4]{};
+  float waves[4]{};
 };
 /// @brief One drawn instance, read out of a structured buffer by `SV_InstanceID`.
 ///
@@ -98,7 +104,13 @@ struct DXFrameConstants {
 struct DXInstanceData {
   float model[16]{};
   uint32_t entityId{};
-  uint32_t padding[3]{};
+  /// @brief How far the instance's material bends in the wind and heaves with the waves --
+  /// `MaterialFallback::sway` and `waves`. Carried per instance rather than per material because
+  /// the shadow maps and the depth prepass batch by mesh alone and are given no material, and a
+  /// tree whose shadow did not sway with it would give itself away at once.
+  float sway{};
+  float waves{};
+  uint32_t padding{};
 };
 /// @brief Root constants the scene pipeline takes, laid out to match `cbuffer DrawConstants`.
 ///
@@ -586,6 +598,11 @@ struct DXPickConstants {
 /// that have nothing to do with where the geometry actually is.
 struct DXShadowConstants {
   float lightViewProjection[16]{};
+  /// @brief The scene's `Wind`, laid out as in `DXFrameConstants`, so a depth pass moves a surface
+  /// exactly where the scene pass draws it.
+  float wind[4]{};
+  float gust[4]{};
+  float waves[4]{};
 };
 /// @brief One compiled graphics pipeline plus the root signature it was created against.
 struct DXPipeline {

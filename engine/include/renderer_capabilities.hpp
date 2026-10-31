@@ -75,5 +75,10 @@ struct RendererCapabilities {
   /// a lesser one -- bands with no ink read as a flat render, not as a drawing. Gates the
   /// `Stylization` panel, the material's toon slider, and the add menu's entry.
   bool stylization{};
+  /// @brief Whether the backend moves surfaces by the scene's `Wind`: the materials' sway and waves.
+  ///
+  /// Gates the `Wind` panel and its entry in the add menu. A backend without it draws every surface
+  /// where its mesh puts it, which is a still day rather than a wrong picture.
+  bool wind{};
 };
 } // namespace kuki

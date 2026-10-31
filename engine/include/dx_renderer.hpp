@@ -253,6 +253,7 @@ public:
   /// would reallocate every target on every frame. `CreateTarget` already no-ops when a target
   /// exists with a matching description, so leaving them alone is both correct and free.
   auto PresentTarget(const std::string &) -> void override;
+  auto CaptureTarget(const std::string &, const std::filesystem::path &) -> bool override;
   auto Reset() -> void override;
   auto SetPreviewSize(const int) -> void override;
   /// @brief Bytes of upload staging allowed in flight before the upload path stops and waits.
@@ -422,6 +423,9 @@ private:
   /// @brief Seconds the stylize pass has run for, which is what turns the speed lines over. Its own
   /// clock rather than the application's, so the lines keep streaming while a game holds a frame.
   float stylizeTime{};
+  /// @brief Seconds the wind has blown for, which every sway and wave is a function of. Its own clock
+  /// for the reason the stylize pass has one: the grass keeps moving while a game is paused.
+  float windTime{};
   /// @brief What is bound where the surface samples go for an emitter that has none.
   ///
   /// The step's shader names the samples whether or not a given emitter reads them, and a root

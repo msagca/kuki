@@ -41,6 +41,7 @@
 #include <planar_reflection.hpp>
 #include <stylization.hpp>
 #include <texture_handle.hpp>
+#include <wind.hpp>
 struct PropertyDisplayer {
   EditorContext &context;
   Editor &app;
@@ -98,6 +99,15 @@ inline auto DisplayMaterialSurface(kuki::MaterialType &type, kuki::MaterialFallb
     if (field::SliderFloat("Toon", &amount, .0f, 1.f))
       fallback.toon = amount;
     ImGui::SetItemTooltip("How far the surface is drawn in the scene's cel bands rather than shaded\nphysically. The bands themselves are the scene's Stylization.");
+    // Behind the same flag as the bands: one backend draws both, and the other neither.
+    auto sway = fallback.sway;
+    if (field::SliderFloat("Sway", &sway, .0f, .5f))
+      fallback.sway = sway;
+    ImGui::SetItemTooltip("How far the scene's Wind bends the surface, per unit of height above its\norigin squared. Grass a tenth or more, a tree a few hundredths.");
+    auto waves = fallback.waves;
+    if (field::SliderFloat("Waves", &waves, .0f, 1.f))
+      fallback.waves = waves;
+    ImGui::SetItemTooltip("How much the surface heaves with the Wind's waves, drawn faceted.");
   }
   if (fallback.transmission > .0f) {
     auto thickness = fallback.thickness;
@@ -1005,6 +1015,33 @@ inline auto PropertyDisplayer::operator()<kuki::PlanarReflection>(kuki::PlanarRe
   }
   if (edited != *surface)
     *surface = edited;
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::Wind>(kuki::Wind *wind) -> void {
+  if (!wind || !context.capabilities.wind)
+    return;
+  auto edited = *wind;
+  if (field::Fold("Wind", true)) {
+    field::DragFloat2("Direction", &edited.direction.x, .01f, -1.f, 1.f, "%.2f");
+    ImGui::SetItemTooltip("Which way it blows along the ground, as x and z.");
+    field::SliderFloat("Strength", &edited.strength, .0f, 4.f);
+    ImGui::SetItemTooltip("How hard it leans whatever sways, times each material's Sway.");
+    field::SliderFloat("Flutter", &edited.flutter, .0f, 8.f);
+    field::SliderFloat("Flutter Amount", &edited.flutterAmount, .0f, 1.f);
+  }
+  if (field::Fold("Gusts", true)) {
+    field::SliderFloat("Strength", &edited.gustStrength, .0f, 4.f);
+    field::DragFloat("Spacing", &edited.gustScale, .1f, 1.f, 200.f, "%.1f");
+    ImGui::SetItemTooltip("How far apart the bands of gust are that roll across the ground.");
+    field::DragFloat("Speed", &edited.gustSpeed, .1f, .0f, 60.f, "%.1f");
+  }
+  if (field::Fold("Waves", true)) {
+    field::DragFloat("Height", &edited.waveHeight, .005f, .0f, 4.f, "%.3f");
+    field::DragFloat("Length", &edited.waveLength, .05f, .1f, 100.f, "%.2f");
+    field::DragFloat("Speed", &edited.waveSpeed, .05f, .0f, 20.f, "%.2f");
+  }
+  if (edited != *wind)
+    *wind = edited;
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::VolumetricFog>(kuki::VolumetricFog *fog) -> void {

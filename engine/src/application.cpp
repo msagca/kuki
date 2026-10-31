@@ -422,6 +422,12 @@ auto Application::SetInputEnabled(const InputManager::InputKind kind, const bool
 auto Application::GetMousePosition() const -> glm::vec2 {
   return inputManager.GetMousePosition();
 };
+auto Application::GetWindowSize() const -> glm::ivec2 {
+  glm::ivec2 size{};
+  if (window)
+    glfwGetWindowSize(window, &size.x, &size.y);
+  return size;
+}
 auto Application::GetScrollOffset() const -> glm::vec2 {
   return inputManager.GetScrollOffset();
 }

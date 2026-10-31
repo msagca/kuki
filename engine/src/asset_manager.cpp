@@ -485,6 +485,8 @@ auto AssetManager::Load<MaterialAsset>(const AssetID id, const std::filesystem::
   material->fallback.thickness = description.value("thickness", material->fallback.thickness);
   material->fallback.ior = description.value("ior", material->fallback.ior);
   material->fallback.toon = description.value("toon", material->fallback.toon);
+  material->fallback.sway = description.value("sway", material->fallback.sway);
+  material->fallback.waves = description.value("waves", material->fallback.waves);
   material->fallback.attenuation.w = description.value("attenuationDistance", material->fallback.attenuation.w);
   if (description.value("unlit", false))
     material->type = MaterialType::Unlit;

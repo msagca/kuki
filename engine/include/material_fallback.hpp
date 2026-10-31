@@ -42,5 +42,19 @@ struct MaterialFallback {
   /// the commonest reason to want both in one frame. Read by the Direct3D 12 backend; the OpenGL one
   /// shades every surface physically.
   float toon{.0f};
+  /// @brief How far the scene's `Wind` bends the surface, per unit of height above its entity's
+  /// origin squared, so a tree stood on its origin keeps its foot still and bends most at the top.
+  ///
+  /// A few hundredths for a tree a couple of units tall, a tenth or more for grass. Kept off the
+  /// ground and off anything built: a material either sways or does not. Read by the Direct3D 12
+  /// backend, in every pass that draws the surface, so its shadow and its outline move with it.
+  float sway{.0f};
+  /// @brief How much of the wind's waves the surface heaves with, from nought to one, and whether it
+  /// is drawn faceted, a flat facet a triangle, the way low-poly water catches the light.
+  ///
+  /// Moves vertices up and down by where they are in the world, not by where they are in the mesh,
+  /// so two pieces of the sea laid side by side heave as one. A wave is only as fine as the mesh it
+  /// moves: the sea wants triangles about a unit across.
+  float waves{.0f};
 };
 } // namespace kuki

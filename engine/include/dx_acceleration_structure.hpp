@@ -5,6 +5,7 @@
 #include <dx_descriptor_heap.hpp>
 #include <dx_mesh.hpp>
 #include <kuki_engine_export.h>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 namespace kuki {
@@ -129,6 +130,19 @@ public:
   /// Waits on the GPU first: a structure the command list still references cannot be freed, and
   /// the meshes these were built from are usually being torn down in the same breath.
   auto Clear() -> void;
+  /// @brief What a mesh's bottom-level structure held, handed back for the caller to let go of once
+  /// the frames still tracing against it are done.
+  struct Released {
+    ComPtr<ID3D12Resource> structure;
+    uint32_t vertexBuffer{DXDescriptorHeap::InvalidIndex};
+    uint32_t indexBuffer{DXDescriptorHeap::InvalidIndex};
+  };
+  /// @brief Forgets one mesh's structure, for a mesh about to be uploaded again in place.
+  ///
+  /// The structures are cached by the mesh's address, which an upload in place keeps. Without this
+  /// the next build would find the old structure still cached -- built from, and reaching through
+  /// views of, vertex buffers that have been let go -- and the trace would read freed memory.
+  auto Forget(const DXMesh *) -> std::optional<Released>;
 private:
   /// @brief One mesh's bottom-level structure, with the descriptors its geometry is reached through.
   struct MeshStructure {

@@ -26,6 +26,7 @@
 #include <variant>
 #include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
+#include <wind.hpp>
 namespace kuki {
 template <typename T>
 using AddPointer = T *;
