@@ -33,7 +33,8 @@ public:
   static auto GetPath(const std::string &) -> std::filesystem::path;
   /// @brief Reads the file, leaving this empty when it is missing or malformed.
   auto Load(const std::string &) -> bool;
-  /// @brief Writes the file. Does nothing and succeeds when nothing has been set.
+  /// @brief Writes the file. Does nothing and succeeds when nothing has been set and there is no
+  /// file yet; empties one that is there.
   auto Save() const -> bool;
   auto Has(const std::string_view) const -> bool;
   auto GetInt(const std::string_view, const int = 0) const -> int;
