@@ -45,8 +45,11 @@ struct SettingsOption {
 /// machine is not, because the other machine is not waiting; it plays on with no buttons held.
 ///
 /// It is the overlay's like everything else on the picture, drawn after every system's `Update` and
-/// `LateUpdate` (`SystemApplication::UpdateSystems`) so that it lies over whatever they drew, and
-/// picked at with `Overlay::HitTest` under ids well clear of any a game would choose.
+/// `LateUpdate` (`SystemApplication::UpdateSystems`), and while it is open it is the only thing the
+/// overlay draws: whatever the systems queued that frame is dropped, so the menu stands over the
+/// scene and nothing else. It is picked at with `Overlay::HitTest` under ids well clear of any a
+/// game would choose. It hangs from the top of the window and grows down, so the title and the
+/// pages stay where they are as the pages change.
 ///
 /// An entry is three functions rather than a pointer to a value: what it shows, what choosing does,
 /// and whether it is shown at all, asked every frame it is open. That keeps the value where the game
@@ -125,8 +128,11 @@ private:
   /// @brief Whether opening the menu paused the game, and so whether closing it should play it again.
   bool pausedGame{};
   SettingsPage page{SettingsPage::Game};
-  /// @brief The line keyboard focus is on: a row of the page, or past the rows, the footer's two.
+  /// @brief The line keyboard focus is on: the row of pages above everything (`TAB_ROW`), a row of
+  /// the page, or past the rows, the footer's two. The arrow keys reach all of them, so the whole
+  /// menu can be worked without the mouse -- which a game played on the keyboard needs.
   int focus{};
+  static constexpr int TAB_ROW = -1;
   /// @brief How many rows the page is scrolled past, when it has more than fit.
   int scroll{};
   /// @brief The binding waiting for a key, or empty when none is.
@@ -167,6 +173,8 @@ private:
   auto Capture(const InputManager::Trigger &) -> void;
   auto ShowNotice(std::string) -> void;
   auto SwitchPage(const SettingsPage) -> void;
+  /// @brief Moves to the page before or after the one shown, wrapping round.
+  auto CyclePage(const int) -> void;
   auto Draw(const std::vector<Row> &) -> void;
   auto ValueText(const Row &) const -> std::string;
   /// @brief Writes every binding that differs from its default into the preferences, and removes the

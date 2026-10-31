@@ -134,7 +134,9 @@ used for editor shortcuts.
 
 Every game has `SettingsMenu` (`settings_menu.hpp`, owned by `Application`, off in the editor through
 `ApplicationDescription::settingsMenu`): Escape -- the `Settings` binding, registered first -- opens
-and closes it over the dimmed picture, in the overlay's text. Its pages are the game's own
+and closes it over the dimmed picture, in the overlay's text, hanging from the top of the window;
+while it is open nothing else the overlay was given is drawn, and the arrow keys reach every line of
+it, the row of pages included. Its pages are the game's own
 (`GetSettingsMenu().AddChoice/AddToggle/AddAction(SettingsPage::Game, ...)`, each a get, a set and an
 optional visible), the engine's graphics (saved in `EngineConfig`: display, vsync, anti-aliasing,
 shadows, bloom, fog and clouds, reflections, a frame-rate counter), and the controls: every binding

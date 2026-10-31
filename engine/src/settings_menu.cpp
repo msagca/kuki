@@ -49,7 +49,9 @@ namespace {
   constexpr float FOOTER_SIZE = 27.f;
   constexpr float NOTICE_SIZE = 20.f;
   constexpr float SIDE = 22.f;
-  /// @brief Space taken by everything but the rows: the title, the tabs, the notice and the footer.
+  /// @brief How far below the window's top edge the title stands.
+constexpr float TOP_MARGIN = 72.f;
+/// @brief Space taken by everything but the rows: the title, the tabs, the notice and the footer.
   constexpr float HEADER_HEIGHT = 150.f;
   constexpr float FOOTER_HEIGHT = 120.f;
   /// @brief How long a notice stays, in seconds.
@@ -308,10 +310,21 @@ auto SettingsMenu::SwitchPage(const SettingsPage next) -> void {
   if (next == page)
     return;
   page = next;
-  focus = 0;
+  // The focus stays on the pages if it is there, so the arrows can go on along them; anywhere else
+  // it goes to the top of the new page.
+  if (focus != TAB_ROW)
+    focus = 0;
   scroll = 0;
   capturing.clear();
   pendingModifier = 0;
+}
+auto SettingsMenu::CyclePage(const int delta) -> void {
+  const auto pages = Pages();
+  if (pages.empty())
+    return;
+  const auto count = static_cast<int>(pages.size());
+  const auto at = static_cast<int>(std::ranges::find(pages, page) - pages.begin());
+  SwitchPage(pages[static_cast<size_t>(((at + delta) % count + count) % count)]);
 }
 auto SettingsMenu::SaveBindings() -> void {
   auto &input = app.inputManager;
@@ -363,6 +376,7 @@ auto SettingsMenu::Step(const Row &row, const int delta) -> void {
 }
 auto SettingsMenu::Activate(const int id, const std::vector<Row> &rows) -> void {
   if (id >= TAB_ID && id < TAB_ID + 3) {
+    focus = TAB_ROW;
     SwitchPage(static_cast<SettingsPage>(id - TAB_ID));
     return;
   }
@@ -413,6 +427,8 @@ auto SettingsMenu::Activate(const int id, const std::vector<Row> &rows) -> void 
 auto SettingsMenu::Handle(const Event &event, const std::vector<Row> &rows) -> void {
   const auto rowCount = static_cast<int>(rows.size());
   const auto FocusId = [&] {
+    if (focus == TAB_ROW)
+      return TAB_ID + static_cast<int>(page);
     if (focus < rowCount)
       return RowId(focus, PART_WHOLE);
     return focus == rowCount ? RESUME_ID : QUIT_ID;
@@ -438,7 +454,8 @@ auto SettingsMenu::Handle(const Event &event, const std::vector<Row> &rows) -> v
     }
     switch (event.key) {
     case GLFW_KEY_UP:
-      focus = focus > rowCount ? rowCount - 1 : std::max(0, focus - 1);
+      // Up from the footer to the last row, and from the first row onto the pages.
+      focus = focus > rowCount ? rowCount - 1 : std::max(TAB_ROW, focus - 1);
       revealFocus = true;
       return;
     case GLFW_KEY_DOWN:
@@ -447,7 +464,9 @@ auto SettingsMenu::Handle(const Event &event, const std::vector<Row> &rows) -> v
       return;
     case GLFW_KEY_LEFT:
     case GLFW_KEY_RIGHT:
-      if (focus < rowCount)
+      if (focus == TAB_ROW)
+        CyclePage(event.key == GLFW_KEY_RIGHT ? 1 : -1);
+      else if (focus < rowCount)
         Step(rows[static_cast<size_t>(focus)], event.key == GLFW_KEY_RIGHT ? 1 : -1);
       else
         focus = event.key == GLFW_KEY_RIGHT ? rowCount + 1 : rowCount;
@@ -457,14 +476,9 @@ auto SettingsMenu::Handle(const Event &event, const std::vector<Row> &rows) -> v
     case GLFW_KEY_SPACE:
       Activate(FocusId(), rows);
       return;
-    case GLFW_KEY_TAB: {
-      const auto pages = Pages();
-      const auto at = std::ranges::find(pages, page) - pages.begin();
-      const auto count = static_cast<long long>(pages.size());
-      const auto next = (event.mods & GLFW_MOD_SHIFT) ? (at + count - 1) % count : (at + 1) % count;
-      SwitchPage(pages[static_cast<size_t>(next)]);
+    case GLFW_KEY_TAB:
+      CyclePage((event.mods & GLFW_MOD_SHIFT) ? -1 : 1);
       return;
-    }
     default:
       return;
     }
@@ -533,23 +547,25 @@ auto SettingsMenu::Update(const float deltaTime) -> void {
   const auto *context = app.graphicsContext.get();
   const auto [width, height] = context ? context->GetSurfaceSize() : std::pair{0, 0};
   const auto unit = static_cast<float>(height) / 1080.f;
-  if (graphics.showFrameRate && height > 0)
-    if (const auto *rendering = app.GetRenderingSystem(); rendering)
-      overlay.DrawText(std::format("{} fps", rendering->GetFPS()), {-16.f * unit, 14.f * unit}, 20.f * unit, {1.f, 1.f, 1.f, .6f}, TextAnchor::TopRight);
-  if (!open) {
-    events.clear();
-    return;
-  }
   // One at a time, the rows built again after each: an event can change the page, or a value that
   // decides whether a row is shown at all.
-  auto rows = BuildRows();
+  auto rows = open ? BuildRows() : std::vector<Row>{};
   for (size_t index = 0; index < events.size() && open; ++index) {
     Handle(events[index], rows);
     rows = BuildRows();
   }
   events.clear();
-  if (!open)
+  if (!open) {
+    if (graphics.showFrameRate && height > 0)
+      if (const auto *rendering = app.GetRenderingSystem(); rendering)
+        overlay.DrawText(std::format("{} fps", rendering->GetFPS()), {-16.f * unit, 14.f * unit}, 20.f * unit, {1.f, 1.f, 1.f, .6f}, TextAnchor::TopRight);
     return;
+  }
+  // Nothing else the overlay was given this frame is shown while the menu is: a game's bars and
+  // panels, the network's status, the frame rate. The menu is drawn over the scene alone. Emptied
+  // here rather than asked of each system, because the menu is queued after all of them and is the
+  // one place that knows it is open; the overlay is immediate, so they come back the frame it shuts.
+  overlay.Clear();
   const auto rowCount = static_cast<int>(rows.size());
   // The pointer takes the focus where it moves to, and only when it moves, so that a mouse left
   // resting over a row does not keep pulling the focus back from the arrow keys.
@@ -558,13 +574,18 @@ auto SettingsMenu::Update(const float deltaTime) -> void {
     const auto id = app.PickOverlay(mouse);
     if (id >= ROW_ID && (id - ROW_ID) / 4 < rowCount)
       focus = (id - ROW_ID) / 4;
+    else if (id >= TAB_ID && id < TAB_ID + 3)
+      focus = TAB_ROW;
     else if (id == RESUME_ID)
       focus = rowCount;
     else if (id == QUIT_ID)
       focus = rowCount + 1;
   }
-  focus = std::clamp(focus, 0, rowCount + 1);
-  if (revealFocus && focus < rowCount) {
+  focus = std::clamp(focus, TAB_ROW, rowCount + 1);
+  // The pages are above the rows, so reaching them shows the rows from the top.
+  if (revealFocus && focus == TAB_ROW)
+    scroll = 0;
+  else if (revealFocus && focus < rowCount) {
     if (focus < scroll)
       scroll = focus;
     else if (focus >= scroll + visibleRows)
@@ -622,13 +643,14 @@ auto SettingsMenu::Draw(const std::vector<Row> &rows) -> void {
   const auto left = (width - panel) * .5f;
   const auto right = left + panel;
   const auto centre = width * .5f;
-  // As many rows as fit between the header and the footer, and the whole block centred.
-  const auto room = height / unit - HEADER_HEIGHT - FOOTER_HEIGHT - 80.f;
+  // From a fixed point near the top and downward, with as many rows as fit between there and the
+  // bottom. Centred, the title and the pages moved whenever a page with a different number of rows
+  // was shown; held at the top, only the footer moves, which is the end of the list it follows.
+  const auto top = TOP_MARGIN * unit;
+  const auto room = height / unit - TOP_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT - 24.f;
   visibleRows = std::max(3, static_cast<int>(room / ROW_HEIGHT));
   const auto shown = std::min(rowCount, visibleRows);
   scroll = std::clamp(scroll, 0, std::max(0, rowCount - visibleRows));
-  const auto block = (HEADER_HEIGHT + static_cast<float>(std::max(shown, 3)) * ROW_HEIGHT + FOOTER_HEIGHT) * unit;
-  const auto top = std::max(24.f * unit, (height - block) * .5f);
   Text("SETTINGS", centre, top + 40.f * unit, TITLE_SIZE * unit, TEXT, Align::Centre);
   // The pages, side by side under the title; the one shown is underlined.
   const auto pages = Pages();
@@ -640,6 +662,9 @@ auto SettingsMenu::Draw(const std::vector<Row> &rows) -> void {
   auto x = centre - tabsWidth * .5f;
   const auto tabBaseline = top + 100.f * unit;
   const auto hovered = app.PickOverlay(app.GetMousePosition());
+  // Lit like a row while it has the focus, and then the arrows go along it.
+  if (focus == TAB_ROW)
+    Rect(left, tabBaseline - (TAB_SIZE + 12.f) * unit, panel, (TAB_SIZE + 32.f) * unit, FOCUS);
   for (const auto each : pages) {
     const auto name = PageName(each);
     const auto w = Ink(name, TAB_SIZE * unit);
@@ -724,7 +749,7 @@ auto SettingsMenu::Draw(const std::vector<Row> &rows) -> void {
     Rect(right + 10.f * unit, rowsTop, 4.f * unit, track, RULE);
     Rect(right + 10.f * unit, rowsTop + track * static_cast<float>(scroll) / static_cast<float>(rowCount), 4.f * unit, track * static_cast<float>(shown) / static_cast<float>(rowCount), DIM);
   }
-  const auto footerTop = rowsTop + static_cast<float>(std::max(shown, 3)) * ROW_HEIGHT * unit + 12.f * unit;
+  const auto footerTop = rowsTop + static_cast<float>(shown) * ROW_HEIGHT * unit + 12.f * unit;
   Rect(left, footerTop, panel, 1.f * unit, RULE);
   // A notice if there is one; on the controls page otherwise the one thing about them that is not
   // obvious from looking.
