@@ -54,7 +54,12 @@ auto Preferences::Load(const std::string &application) -> bool {
   return true;
 }
 auto Preferences::Save() const -> bool {
-  if (path.empty() || values.empty())
+  if (path.empty())
+    return true;
+  // Nothing set and nothing written before is nothing to do. Nothing set over a file that exists is
+  // not: the values in it were removed, and leaving the file be would bring them back next run.
+  std::error_code error;
+  if (values.empty() && !std::filesystem::exists(path, error))
     return true;
   std::ofstream stream(path);
   if (!stream) {
