@@ -111,6 +111,9 @@ cbuffer TraceConstants : register(b0) {
   float4 u_params;
   float4 u_relocation;
   float4 u_field;
+  // Every `x`th probe slot, starting at `y`: a volume larger than the frame's budget is traced a
+  // stride at a time. See `PROBE_TRACE_BUDGET`.
+  uint4 u_schedule;
 };
 cbuffer FrameConstants : register(b1) {
   float4x4 u_viewProjection;
@@ -572,7 +575,7 @@ float3 ShadeHit(GeometryInfo info, float3 position, float3 normal, float2 texcoo
 }
 [numthreads(RAYS_PER_PROBE, 1, 1)]
 void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
-  uint probe = group.x;
+  uint probe = group.x * u_schedule.x + u_schedule.y;
   if (probe >= u_counts.x)
     return;
   // A slot the update has not given to any lattice point. The dispatch covers the whole pool rather

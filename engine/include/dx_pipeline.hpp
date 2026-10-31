@@ -529,6 +529,9 @@ struct DXProbeTraceConstants {
   /// @brief How far a probe's visibility reaches as a fraction of the volume's side, and how much
   /// light must still be getting through an alpha-blended chain before a ray stops being followed.
   float field[4]{};
+  /// @brief Which probes this dispatch traces: every `schedule[0]`th slot, starting at `schedule[1]`.
+  /// One and nought trace them all. See `PROBE_TRACE_BUDGET`.
+  uint32_t schedule[4]{};
 };
 /// @brief Root constants for the passes that keep the probe octree up to date. See `probe_update.hlsl`.
 ///
