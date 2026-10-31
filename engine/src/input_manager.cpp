@@ -1,6 +1,7 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_int2.hpp>
 #include <input_manager.hpp>
@@ -89,6 +90,10 @@ auto InputManager::GetBinding(const std::string &name) const -> Trigger {
   auto it = nameToBinding.find(name);
   return it != nameToBinding.end() ? it->second : Trigger{};
 }
+auto InputManager::GetDefaultBinding(const std::string &name) const -> Trigger {
+  auto it = nameToDefault.find(name);
+  return it != nameToDefault.end() ? it->second : Trigger{};
+}
 auto InputManager::GetBindingDescription(const std::string &name) const -> std::string {
   auto it = nameToDescription.find(name);
   return it != nameToDescription.end() ? it->second : "";
@@ -113,14 +118,14 @@ auto InputManager::LatchTick() -> void {
   }
   tickLatch.reset();
 }
-auto InputManager::RegisterButton(const std::string &name, const Trigger &trigger, std::string description) -> int {
+auto InputManager::RegisterButton(const std::string &name, const Trigger &trigger, std::string description, const std::optional<Trigger> &saved) -> int {
   if (const auto it = std::ranges::find(buttonOrder, name); it != buttonOrder.end())
     return static_cast<int>(it - buttonOrder.begin());
   if (buttonOrder.size() >= 32) {
     spdlog::warn("[InputManager] Failed to register button {}: all 32 are taken", name);
     return -1;
   }
-  RegisterBinding(name, trigger, std::move(description));
+  RegisterBinding(name, trigger, std::move(description), saved);
   buttonOrder.push_back(name);
   return static_cast<int>(buttonOrder.size() - 1);
 }
@@ -266,12 +271,27 @@ auto InputManager::RegisterAction(int trigger, InputAction action, bool press) -
   spdlog::info("[InputManager] Registered {} action for key/button: {}", press ? "press" : "release", GLFWKeyToString(trigger));
   return id;
 }
-auto InputManager::RegisterBinding(const std::string &name, const Trigger &trigger, std::string description) -> void {
+auto InputManager::RegisterBinding(const std::string &name, const Trigger &trigger, std::string description, const std::optional<Trigger> &saved) -> void {
   if (nameToBinding.contains(name))
     return;
   bindingOrder.push_back(name);
   nameToDescription[name] = std::move(description);
-  AssignBinding(name, trigger);
+  nameToDefault[name] = trigger;
+  AssignBinding(name, saved.value_or(trigger));
+}
+auto InputManager::ReleaseAll() -> void {
+  // First, because a sequence half typed is what `FireAction` takes to mean the keys are spelling
+  // something, and it would hold every release action back.
+  keyseq.clear();
+  for (size_t index = 0; index < inputState.size(); ++index)
+    if (inputState[index]) {
+      inputState[index] = false;
+      releaseState[index] = true;
+      FireAction(static_cast<unsigned char>(index), false);
+    }
+  tickLatch.reset();
+  tickButtons = 0;
+  scrollOffset = {};
 }
 auto InputManager::SetBinding(const std::string &name, const Trigger &trigger) -> void {
   AssignBinding(name, trigger);
@@ -556,5 +576,19 @@ auto InputManager::GLFWKeyToString(int key) -> std::string {
   if (key >= GLFW_MOUSE_BUTTON_1 && key <= GLFW_MOUSE_BUTTON_8)
     return "MouseButton" + std::to_string(1 + key - GLFW_MOUSE_BUTTON_1);
   return "Unknown";
+}
+auto FormatTrigger(const InputManager::Trigger &trigger) -> std::string {
+  return std::to_string(trigger.key) + " " + std::to_string(trigger.mods);
+}
+auto ParseTrigger(const std::string_view text) -> std::optional<InputManager::Trigger> {
+  InputManager::Trigger trigger;
+  const auto *end = text.data() + text.size();
+  const auto [afterKey, keyError] = std::from_chars(text.data(), end, trigger.key);
+  if (keyError != std::errc{} || afterKey == end || *afterKey != ' ')
+    return std::nullopt;
+  const auto [afterMods, modsError] = std::from_chars(afterKey + 1, end, trigger.mods);
+  if (modsError != std::errc{} || afterMods != end || trigger.key < 0 || trigger.mods < 0)
+    return std::nullopt;
+  return trigger;
 }
 } // namespace kuki

@@ -11,6 +11,7 @@
 #include <concepts.hpp>
 #include <cstdlib>
 #include <engine_archetypes.hpp>
+#include <engine_config.hpp>
 #include <filesystem>
 #include <fstream>
 #include <glm/ext/vector_float2.hpp>
@@ -81,7 +82,7 @@ auto ConfigureLogging() -> void {
 } // namespace
 namespace kuki {
 Application::Application(ApplicationDescription desc)
-  : desc(std::move(desc)), assetManager(*this), inputManager(*this), sceneManager(*this), archetypes(MakeArchetypeSpecs(EngineArchetypes{})) {
+  : desc(std::move(desc)), assetManager(*this), inputManager(*this), sceneManager(*this), settingsMenu(*this), archetypes(MakeArchetypeSpecs(EngineArchetypes{})) {
   // First, so that nothing this constructor goes on to do can log before the level is settled.
   ConfigureLogging();
   this->desc.path = GetExePath();
@@ -106,6 +107,15 @@ auto Application::PreStart() -> void {
   // Before the window, so that even a launch that fails to get one has read them -- and before
   // `Start`, which is where an application picks up whatever it saved last time.
   preferences.Load(desc.name);
+  settingsMenu.SetEnabled(desc.settingsMenu);
+  if (settingsMenu.IsEnabled()) {
+    // The window as the player last left it, which the menu is where they say so.
+    const auto config = EngineConfig::Load();
+    desc.fullscreen = config.fullscreen;
+    desc.vsync = config.vsync;
+    // First, so it heads the list on the controls page, and claims Escape before any game can.
+    RegisterBinding(SettingsMenu::BINDING, {GLFW_KEY_ESCAPE, 0}, "Open or close the settings");
+  }
   if (!CreateWindow())
     return;
   LoadPrimitiveAssets();
@@ -113,7 +123,13 @@ auto Application::PreStart() -> void {
 };
 auto Application::PostStart() -> void {
   PostStartSystems();
+  if (settingsMenu.IsEnabled())
+    settingsMenu.Start();
 };
+auto Application::UpdateSettingsMenu(const float delta) -> void {
+  if (settingsMenu.IsEnabled())
+    settingsMenu.Update(delta);
+}
 auto Application::PreUpdate() -> void {
   Profiler::Get().BeginFrame();
   const auto timeNow = std::chrono::high_resolution_clock::now();
@@ -164,6 +180,8 @@ auto Application::PostUpdate() -> void {
 }
 auto Application::PreShutdown() -> void {
   ShutdownSystems();
+  // Its entries call into the systems that have just shut down.
+  settingsMenu.Clear();
   // After the systems, so a system that writes a preference as it stops is not writing into a file
   // that has already been saved.
   preferences.Save();
@@ -401,7 +419,13 @@ auto Application::GetButtonNames() const -> const std::vector<std::string> & {
   return inputManager.GetButtonNames();
 }
 auto Application::RegisterButton(const std::string &name, const InputManager::Trigger &trigger, std::string description) -> int {
-  return inputManager.RegisterButton(name, trigger, std::move(description));
+  return inputManager.RegisterButton(name, trigger, std::move(description), SavedBinding(name));
+}
+auto Application::SavedBinding(const std::string &name) const -> std::optional<InputManager::Trigger> {
+  const auto key = "input." + name;
+  if (!preferences.Has(key))
+    return std::nullopt;
+  return ParseTrigger(preferences.GetString(key));
 }
 auto Application::EntityHasChildren(const EntityID id) const -> bool {
   if (auto scene = GetScene(); scene)
@@ -549,7 +573,7 @@ auto Application::IsSequenceInProgress() const -> bool {
   return inputManager.IsSequenceInProgress();
 }
 auto Application::RegisterBinding(const std::string &name, const InputManager::Trigger &trigger, std::string description) -> void {
-  inputManager.RegisterBinding(name, trigger, std::move(description));
+  inputManager.RegisterBinding(name, trigger, std::move(description), SavedBinding(name));
 }
 auto Application::RegisterInputAction(const std::string &trigger, InputAction action, std::string description) -> InputManager::ActionID {
   return inputManager.RegisterAction(trigger, std::move(action), std::move(description));
@@ -627,6 +651,35 @@ auto Application::LoadPrimitiveAssets() -> void {
   LoadPrimitive("Plane");
   LoadPrimitive("Sphere");
 }
+auto Application::SetFullscreen(const bool fullscreen) -> void {
+  if (!window)
+    return;
+  desc.fullscreen = fullscreen;
+  auto *monitor = glfwGetPrimaryMonitor();
+  const auto *mode = monitor ? glfwGetVideoMode(monitor) : nullptr;
+  if (!mode)
+    return;
+  int monitorX{};
+  int monitorY{};
+  glfwGetMonitorPos(monitor, &monitorX, &monitorY);
+  // Borderless, as at creation: the window loses its frame and covers the monitor, and no monitor is
+  // handed to GLFW, so there is no change of mode. Restored first, because a maximised window keeps
+  // the size it was maximised to whatever it is then told.
+  glfwRestoreWindow(window);
+  if (fullscreen) {
+    glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
+    glfwSetWindowMonitor(window, nullptr, monitorX, monitorY, mode->width, mode->height, GLFW_DONT_CARE);
+    return;
+  }
+  // Back to a framed window two thirds the monitor's size in its middle, and then maximised if the
+  // application asked to start that way -- which is where a game's window began.
+  const auto width = mode->width * 2 / 3;
+  const auto height = mode->height * 2 / 3;
+  glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
+  glfwSetWindowMonitor(window, nullptr, monitorX + (mode->width - width) / 2, monitorY + (mode->height - height) / 2, width, height, GLFW_DONT_CARE);
+  if (desc.maximized)
+    glfwMaximizeWindow(window);
+}
 auto Application::SetWindowIcon() -> void {
   if (desc.iconPath.empty())
     return;
@@ -682,7 +735,7 @@ auto Application::SetWindowIcon() -> void {
   }
 }
 auto Application::CharCallback(GLFWwindow *window, unsigned int codepoint) -> void {
-  if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance)
+  if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance && !instance->settingsMenu.OnChar())
     instance->inputManager.CharCallback(window, codepoint);
 }
 auto Application::CursorPosCallback(GLFWwindow *window, double xpos, double ypos) -> void {
@@ -699,15 +752,17 @@ auto Application::FramebufferSizeCallback(GLFWwindow *window, int width, int hei
   // side effect and keeps one path rather than two disagreeing about who owns the resolution.
 }
 auto Application::KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) -> void {
-  if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance)
+  // The settings menu first: it opens on its own binding, and while it is open it keeps every key from
+  // the game.
+  if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance && !instance->settingsMenu.OnKey(key, action, mods))
     instance->inputManager.KeyCallback(window, key, scancode, action, mods);
 }
 auto Application::MouseButtonCallback(GLFWwindow *window, int button, int action, int mods) -> void {
-  if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance)
+  if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance && !instance->settingsMenu.OnMouseButton(button, action))
     instance->inputManager.MouseButtonCallback(window, button, action, mods);
 }
 auto Application::ScrollCallback(GLFWwindow *window, double xoffset, double yoffset) -> void {
-  if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance)
+  if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance && !instance->settingsMenu.OnScroll(yoffset))
     instance->inputManager.ScrollCallback(window, xoffset, yoffset);
 }
 auto Application::WindowCloseCallback(GLFWwindow *window) -> void {

@@ -16,6 +16,8 @@ class Application;
 class AmbienceSystem final : public kuki::System {
 public:
   explicit AmbienceSystem(kuki::Application &);
+  /// @brief Lists whether the day passes among the game's settings.
+  auto PostStart() -> void override;
   auto Update(const float) -> void override;
 private:
   float clock{};

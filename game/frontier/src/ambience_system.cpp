@@ -1,6 +1,8 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <ambience_system.hpp>
+#include <controls.hpp>
+#include <settings_menu.hpp>
 #include <application.hpp>
 #include <atmosphere_sky.hpp>
 #include <cmath>
@@ -29,10 +31,13 @@ auto Mix(const glm::vec3 &a, const glm::vec3 &b, const float t) -> glm::vec3 {
 } // namespace
 AmbienceSystem::AmbienceSystem(Application &app)
   : System(std::in_place_type<AmbienceSystem>, app) {}
+auto AmbienceSystem::PostStart() -> void {
+  app.GetSettingsMenu().AddToggle(SettingsPage::Game, "Day passes", [this] { return passing; }, [this](const bool value) { passing = value; });
+}
 auto AmbienceSystem::Update(const float deltaTime) -> void {
   const auto dt = std::min(deltaTime, .1f);
   clock += dt;
-  if (app.IsInputPressed(GLFW_KEY_T))
+  if (app.IsBindingPressed(frontier::TIME))
     passing = !passing;
   if (passing) {
     // Dawn to dusk and back again, never through the night: the map is for looking at.

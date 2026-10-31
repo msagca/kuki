@@ -11,11 +11,13 @@
 #include <input_manager.hpp>
 #include <kuki_engine_export.h>
 #include <memory>
+#include <optional>
 #include <overlay.hpp>
 #include <preferences.hpp>
 #include <primitive.hpp>
 #include <scene.hpp>
 #include <scene_manager.hpp>
+#include <settings_menu.hpp>
 #include <shader_asset.hpp>
 #include <string_view>
 #include <system.hpp>
@@ -196,6 +198,11 @@ public:
   auto GetPreferences(this auto &self) -> decltype(auto) {
     return (self.preferences);
   }
+  /// @brief The settings every game has, which a game adds its own page of entries to. See
+  /// `SettingsMenu`.
+  auto GetSettingsMenu(this auto &self) -> decltype(auto) {
+    return (self.settingsMenu);
+  }
   /// @brief The text queued to be drawn over this frame's picture. See `Overlay`.
   auto GetOverlay(this auto &self) -> decltype(auto) {
     return (self.overlay);
@@ -280,8 +287,13 @@ public:
   /// previously the sole route to a false answer. Sets the same flag the close callback sets, so
   /// shutdown runs exactly as it does when someone closes the window.
   auto Quit() -> void;
+  /// @brief Registers a named binding, on the key the player last rebound it to if they did.
+  ///
+  /// The trigger given is the default, which the settings menu's reset puts back. A rebinding is
+  /// kept in the preferences under `input.` and the name; see `SettingsMenu::SaveBindings`.
   auto RegisterBinding(const std::string &, const InputManager::Trigger &, std::string = "") -> void;
-  /// @brief Registers a binding that is also one of the game's buttons. See `InputManager::RegisterButton`.
+  /// @brief Registers a binding that is also one of the game's buttons, on a rebound key as
+  /// `RegisterBinding` is. See `InputManager::RegisterButton`.
   auto RegisterButton(const std::string &, const InputManager::Trigger &, std::string = "") -> int;
   auto RegisterInputAction(const std::string &, InputAction, std::string = "") -> InputManager::ActionID;
   auto RegisterInputAction(int, InputAction, bool = true) -> InputManager::ActionID;
@@ -350,15 +362,25 @@ protected:
   virtual auto UpdateSystems(const float) -> void {}
   virtual auto TickSystems() -> void {}
   virtual auto ShutdownSystems() -> void {}
+  /// @brief Acts on the settings menu's input and queues it into the overlay, when it is enabled.
+  ///
+  /// For `SystemApplication::UpdateSystems` to call after every system has updated and late-updated
+  /// and before anything is drawn, so the menu lies over whatever the systems queued.
+  auto UpdateSettingsMenu(const float) -> void;
   /// @brief Replaces the archetypes scenes are made with. For `SystemApplication`, before any scene is.
   auto SetArchetypes(std::vector<ArchetypeSpec>) -> void;
 private:
+  /// @brief The menu reaches past the facade: it takes the keyboard, lists and rebinds every binding,
+  /// switches the window to fullscreen and sets the renderer's passes -- each a thing the facade
+  /// keeps from a game on purpose, and each the whole of what a settings screen is for.
+  friend class SettingsMenu;
   ApplicationDescription desc;
   AssetManager assetManager;
   Overlay overlay;
   Preferences preferences;
   InputManager inputManager;
   SceneManager sceneManager;
+  SettingsMenu settingsMenu;
   std::vector<ArchetypeSpec> archetypes;
   float deltaTime{};
   TickClock tickClock;
@@ -384,6 +406,10 @@ private:
   auto PostUpdate() -> void;
   auto PreShutdown() -> void;
   auto SetWindowIcon() -> void;
+  /// @brief Takes the window to borderless fullscreen on the primary monitor, or back to a window.
+  auto SetFullscreen(const bool) -> void;
+  /// @brief The trigger a binding was last saved on, if it was.
+  auto SavedBinding(const std::string &) const -> std::optional<InputManager::Trigger>;
   static auto CharCallback(GLFWwindow *, unsigned int) -> void;
   static auto CursorPosCallback(GLFWwindow *, double, double) -> void;
   static auto FramebufferSizeCallback(GLFWwindow *, int, int) -> void;

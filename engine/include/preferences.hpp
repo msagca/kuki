@@ -24,6 +24,10 @@ namespace kuki {
 /// as nonsense. Absent and unparseable are the same answer for the same reason: a caller has to
 /// have a sensible default anyway, and a preferences file is the last thing that should be able to
 /// stop a game starting.
+///
+/// One part of it the engine does write: `Application` keeps the keys a player has rebound in the
+/// settings menu here, under `input.` and the binding's name, because which key punches is a choice
+/// about this game rather than about the machine. See `SettingsMenu`.
 class KUKI_ENGINE_API Preferences {
 public:
   /// @brief Where an application's preferences live: beside the executable, named after it.

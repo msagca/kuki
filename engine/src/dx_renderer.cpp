@@ -3060,7 +3060,8 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
   constants.debug[0] = static_cast<uint32_t>(lightingDebugView);
   // Set before the early return for the same reason as the line above: a scene with no volume still
   // has a sky and a fallback ambient, and both are scaled from here.
-  constants.indirectScale[0] = indirect.bounceIntensity;
+  // Nothing at `Low`, where the trace is stood down and the field it leaves is not to be shown.
+  constants.indirectScale[0] = GetLightingQuality() == LightingQuality::Low ? .0f : indirect.bounceIntensity;
   constants.indirectScale[1] = indirect.skyIntensity;
   constants.indirectScale[2] = indirect.ambientFallback;
   constants.probeTuning[0] = indirect.probeSurfaceBias;
@@ -3308,6 +3309,7 @@ auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> 
   hash_combine(traceHash, HashProbeTuning(frameConstants));
   // The trace's own settings are hashed by the volume rather than here, since it is the one that
   // knows which of them it actually put into the dispatch.
+  probeVolume.SetTraceBudget(GetLightingQuality() == LightingQuality::Medium ? PROBE_TRACE_BUDGET / 2 : PROBE_TRACE_BUDGET);
   probeVolume.Trace(*context, pipelines, rayScene, frameConstantAddress, shBuffer ? shBuffer->GetGPUVirtualAddress() : 0, traceHash, indirect);
   // After the trace rather than before it, so the probes are in the state the audit reads them in.
   // Both wait for the tree to settle and run once, and both stall when they do.

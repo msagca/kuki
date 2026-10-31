@@ -46,6 +46,7 @@ What sets up the picture (`--help` on any executable lists everything it reads):
 - editor: `--play` to capture the scene playing rather than stopped.
 - any: `--capture-frame <n>` for a later or earlier frame -- later for something that settles
   (probes, clouds), earlier to catch a start-up state.
+- any game: `--settings game|graphics|controls` to capture the settings menu open on that page.
 
 ## 3. Look
 

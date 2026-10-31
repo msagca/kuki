@@ -1,5 +1,6 @@
 #include <atmosphere_sky.hpp>
 #include <camera.hpp>
+#include <controls.hpp>
 #include <frontier.hpp>
 #include <frontier_world.hpp>
 #include <game_builder.hpp>
@@ -26,6 +27,7 @@ auto Frontier::Start() -> void {
 }
 auto SetupFrontier(Application &app) -> void {
   LoadProps(app);
+  RegisterControls(app);
   if (!app.SetOverlayFont(ResolvePath(FRONTIER_FONT)))
     spdlog::warn("[Frontier] No font, so nothing will be written on screen");
   FrontierWorld::Game(app, "Kuki Frontier")

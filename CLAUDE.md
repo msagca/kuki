@@ -130,6 +130,25 @@ order and resolved after load. The maths is `SolveTwoBone`/`SolveAim` in `invers
 The older `RegisterInputAction` sequences are a different thing: typed characters with no timing,
 used for editor shortcuts.
 
+### The settings menu, and no text that is a hint
+
+Every game has `SettingsMenu` (`settings_menu.hpp`, owned by `Application`, off in the editor through
+`ApplicationDescription::settingsMenu`): Escape -- the `Settings` binding, registered first -- opens
+and closes it over the dimmed picture, in the overlay's text. Its pages are the game's own
+(`GetSettingsMenu().AddChoice/AddToggle/AddAction(SettingsPage::Game, ...)`, each a get, a set and an
+optional visible), the engine's graphics (saved in `EngineConfig`: display, vsync, anti-aliasing,
+shadows, bloom, fog and clouds, reflections, a frame-rate counter), and the controls: every binding
+in registration order, rebindable, saved in the game's `Preferences` as `input.<name>` and taken at
+registration (`RegisterBinding`/`RegisterButton`). Quitting is its footer's; a game does not quit
+itself on Escape. While it is open the game hears no keys, buttons, wheel or typed characters, what it
+held is released (`InputManager::ReleaseAll`), and a game that is not online is `Paused` -- a clock
+that runs in `Update` should check `GetPlayState`. `--settings <page>` starts with it open, for a
+capture.
+
+So a game puts no key hints on its scene: a key a game reads is a named binding with a description,
+which is what the controls page lists, and an option a game offers belongs on its page, not drawn
+over the picture. Mouse buttons are read directly; the menu cannot capture them.
+
 ### Games as libraries, and building scenes
 
 A game is a library plus a launcher (`kuki_add_game` in the root `CMakeLists.txt`). Its sources hold
@@ -310,8 +329,8 @@ from before guesses the archetype from the components it holds. An entity of an 
 is reported and left out.
 
 Two persistence layers that are easy to confuse: `EngineConfig` (`kuki.config.json`, installation-
-wide — graphics backend, tone mapper) and `Preferences` (per-application named values, loaded
-before `Start` and written after shutdown).
+wide — graphics backend, tone mapper, the settings menu's graphics) and `Preferences`
+(per-application named values, loaded before `Start` and written after shutdown; rebound keys too).
 
 ## Conventions
 

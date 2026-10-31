@@ -29,13 +29,15 @@ public:
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
 private:
+  /// @brief The binding that moves the fight to the next stage, Tab unless rebound.
+  static constexpr const char *NEXT_BINDING = "Duel.NextStage";
   duel::StageScene stage;
-  kuki::InputManager::ActionID nextAction{kuki::InputManager::InvalidActionID};
-  bool switchPending{};
+  /// @brief The stage asked for by the settings menu, built at the top of the next frame. Below
+  /// nought when none is waiting.
+  int pendingStage{-1};
   /// Whether the blinking lights were lit last frame, so their glow goes off once as they come on.
   bool blinkWasOn{};
   /// Whether lightning may whiten the screen as well as the street. Off with `--no-flash`.
-  bool flashing{true};
   /// Seconds since the stage was built, which every flicker is a function of.
   float clock{};
   /// When the next bolt falls, and how far into the one falling now the clock is; below nought

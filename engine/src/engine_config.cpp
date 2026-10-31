@@ -88,6 +88,29 @@ auto EngineConfig::Load() -> EngineConfig {
       config.api = ParseAPI(it->get<std::string>(), config.api);
     if (const auto it = json.find("toneMapper"); it != json.end() && it->is_string())
       config.toneMapper = ParseToneMapper(it->get<std::string>(), config.toneMapper);
+    const auto Flag = [&](const char *name, bool &value) {
+      if (const auto it = json.find(name); it != json.end() && it->is_boolean())
+        value = it->get<bool>();
+    };
+    Flag("fullscreen", config.fullscreen);
+    Flag("vsync", config.vsync);
+    Flag("shadows", config.shadows);
+    Flag("bloom", config.bloom);
+    Flag("volumetrics", config.volumetrics);
+    Flag("reflections", config.reflections);
+    Flag("showFrameRate", config.showFrameRate);
+    // By name, like the tone mapper, so that a level added between two others reads back as itself.
+    if (const auto it = json.find("lighting"); it != json.end() && it->is_string()) {
+      const auto name = it->get<std::string>();
+      config.lighting = name == "low" ? LightingQuality::Low : name == "medium" ? LightingQuality::Medium
+                                                                              : LightingQuality::High;
+    }
+    // By the sample count, which is what the setting means to anyone reading the file; a count the
+    // enum has no mode for keeps the default.
+    if (const auto it = json.find("antiAliasing"); it != json.end() && it->is_number_integer())
+      for (const auto mode : {AntiAliasingMode::None, AntiAliasingMode::MSAA2x, AntiAliasingMode::MSAA4x, AntiAliasingMode::MSAA8x})
+        if (SampleCount(mode) == it->get<int>())
+          config.antiAliasing = mode;
   } catch (const nlohmann::json::exception &exception) {
     spdlog::warn("[Config] Malformed {}, using defaults: {}", path.string(), exception.what());
     return {};
@@ -106,6 +129,16 @@ auto EngineConfig::Save() const -> bool {
   nlohmann::json json;
   json["renderingApi"] = std::string(ToString(api));
   json["toneMapper"] = EnumTraits<ToneMapper>::GetNames()[static_cast<size_t>(toneMapper)];
+  json["fullscreen"] = fullscreen;
+  json["vsync"] = vsync;
+  json["antiAliasing"] = SampleCount(antiAliasing);
+  json["shadows"] = shadows;
+  json["bloom"] = bloom;
+  json["volumetrics"] = volumetrics;
+  json["reflections"] = reflections;
+  json["lighting"] = lighting == LightingQuality::Low ? "low" : lighting == LightingQuality::Medium ? "medium"
+                                                                                                   : "high";
+  json["showFrameRate"] = showFrameRate;
   std::ofstream stream(path);
   if (!stream) {
     spdlog::error("[Config] Could not write {}", path.string());

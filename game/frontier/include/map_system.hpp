@@ -94,6 +94,15 @@ private:
   /// @brief A point inside a cell, picked at random but not too near its edge.
   auto Scatter(const kuki::CellIndex, kuki::Random &, const float reach = .6f) const -> glm::vec2;
   auto DrawPanel() -> void;
+  /// @brief Whether the map's panels are drawn: its seed and collapse, and the cell under the cursor.
+  /// A setting, kept between runs, for a picture with nothing written on it.
+  bool details{true};
+  /// @brief Key the panels' setting is kept under. See `kuki::Preferences`.
+  static constexpr const char *PREF_DETAILS = "frontier.details";
+  /// @brief Makes a map from the next seed. What the new-map key and the settings' entry both do.
+  auto NextMap() -> void;
+  /// @brief Lists a new map, the layer and the panels among the game's settings.
+  auto AddSettings() -> void;
   /// @brief A path between the two walkable cells furthest apart of a few picked at random.
   auto DemoPath() -> void;
 };

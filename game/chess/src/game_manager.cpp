@@ -30,12 +30,14 @@
 #include <particle_emitter.hpp>
 #include <particle_presets.hpp>
 #include <preferences.hpp>
+#include <settings_menu.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
 #include <texture_asset.hpp>
 #include <transform.hpp>
 #include <utility>
+#include <vector>
 using namespace kuki;
 namespace {
 /// @brief What the camera turns about, which is the middle of the board.
@@ -113,16 +115,16 @@ auto Blocks(const glm::vec3 &eye, const glm::vec3 &target, const glm::vec3 &cent
 auto LookAt(const glm::vec3 &from, const glm::vec3 &to) -> glm::quat {
   return glm::quatLookAt(glm::normalize(to - from), glm::vec3(.0f, 1.f, .0f));
 }
-/// @brief Colours the code draws with: the board's own blue, for the chosen time control, and the
-/// red its squares take when something can be captured there, for a clock that is running out.
+/// @brief The red the squares take when something can be captured there, which a clock that is
+/// running out is printed in too.
 ///
 /// The `.mat` files carry the board's numbers as albedo. They are data and cannot include a header,
 /// so a colour changed here has to be changed there too.
 ///
 /// Worth knowing when reading the values: a material's albedo is lit and tone mapped before anyone
-/// sees it, while overlay text is written straight onto the finished picture. The same number
-/// therefore arrives lighter on the board than it does in a caption, which is why the text is
-/// carried at less than full opacity rather than at a lightened shade of its own.
+/// sees it, while overlay colours are written straight onto the finished picture. The same number
+/// therefore arrives lighter on the board than it does in the settings' swatches, which is what
+/// `Swatch` corrects for.
 constexpr glm::vec3 HIGHLIGHT_RED{.66f, .16f, .14f};
 /// @brief The green a square showing a legal move is mixed toward, and how far.
 ///
@@ -134,8 +136,7 @@ constexpr glm::vec3 MOVE_GREEN{.24f, .58f, .28f};
 constexpr auto HIGHLIGHT_MIX = .7f;
 /// @brief A look for the board: its two shades of square and its frame.
 ///
-/// The chosen time option is drawn in the theme's dark shade, so the settings and the board agree
-/// by construction rather than by two people picking similar numbers.
+/// The settings menu shows each as its name beside a pair of its squares, light then dark.
 struct BoardTheme {
   const char *key;
   const char *name;
@@ -192,12 +193,6 @@ constexpr glm::vec3 CLOCK_INK{.02f, .02f, .02f};
 constexpr glm::vec3 CLOCK_INK_IDLE{.34f, .34f, .34f};
 constexpr glm::vec3 CLOCK_INK_LOW{HIGHLIGHT_RED * .7f};
 constexpr glm::vec3 CLOCK_INK_LOW_IDLE{.4f, .24f, .2f};
-/// @brief The option in force, the one under the pointer, and the ones merely on offer.
-///
-/// Hover is the chosen blue at less than full strength rather than a colour of its own, so that
-/// pointing at an option previews what choosing it would look like instead of introducing a third
-/// thing to learn.
-constexpr glm::vec4 OPTION_IDLE{1.f, 1.f, 1.f, .35f};
 /// @brief Index into anything kept one per side, White first.
 auto SideIndex(const PieceColor color) -> size_t {
   return color == PieceColor::White ? 0 : 1;
@@ -355,22 +350,54 @@ auto GameManager::Begin(Application &application) -> void {
     GLFW_MOUSE_BUTTON_LEFT,
     [this]() { orbiting = false; },
     false);
-  quitAction = app->RegisterInputAction(GLFW_KEY_ESCAPE, [this]() {
-    // Through the base rather than captured: an input action outlives the call that registered it.
-    if (auto *self = GetApp(); self)
-      self->Quit();
-  });
-  restartAction = app->RegisterInputAction(GLFW_KEY_R, [this]() { Restart(); });
-  spdlog::info("[Chess] Click a piece to select it, then a green square to move it; red marks a piece it can take; drag anywhere else to turn the board; R restarts, Escape quits");
+  // A binding rather than an action on R, so that it is listed with the settings' controls and can
+  // be moved. Escape is the settings menu's, which is also where quitting is now.
+  app->RegisterBinding(RESTART_BINDING, InputManager::Trigger{GLFW_KEY_R, 0}, "New game");
+  AddSettings(application);
+  spdlog::info("[Chess] Click a piece to select it, then a green square to move it; red marks a piece it can take; drag anywhere else to turn the board");
+}
+auto GameManager::AddSettings(Application &application) -> void {
+  auto &menu = application.GetSettingsMenu();
+  std::vector<SettingsOption> themes;
+  for (const auto &theme : THEMES)
+    themes.push_back({theme.name, {Swatch(theme.light), Swatch(theme.dark)}});
+  // A look is not a reason to throw the game away, so it is put on the board as it stands.
+  menu.AddChoice(SettingsPage::Game, "Board", std::move(themes), [this] { return themeOption; }, [this](const size_t index) {
+    if (index == themeOption)
+      return;
+    themeOption = index;
+    SaveSettings(app);
+    ApplyTheme(); });
+  // A clock is: a game half played under one control and finished under another was played under
+  // neither, so changing it starts again, as choosing it on the board did.
+  std::vector<SettingsOption> times;
+  for (const auto minutes : TIME_OPTIONS)
+    times.push_back({std::to_string(minutes) + (minutes == 1 ? " minute" : " minutes")});
+  menu.AddChoice(SettingsPage::Game, "Time control", std::move(times), [this] { return timeOption; }, [this](const size_t index) {
+    if (index == timeOption)
+      return;
+    timeOption = index;
+    SaveSettings(app);
+    Restart(); });
+  std::vector<SettingsOption> increments;
+  for (const auto seconds : INCREMENT_OPTIONS)
+    increments.push_back({seconds == 0 ? std::string("None") : "+" + std::to_string(seconds) + (seconds == 1 ? " second" : " seconds")});
+  menu.AddChoice(SettingsPage::Game, "Increment", std::move(increments), [this] { return incrementOption; }, [this](const size_t index) {
+    if (index == incrementOption)
+      return;
+    incrementOption = index;
+    SaveSettings(app);
+    Restart(); });
+  menu.AddAction(SettingsPage::Game, "New game", [this] { Restart(); });
 }
 auto GameManager::Frame(Application &application) -> void {
+  if (application.IsBindingPressed(RESTART_BINDING))
+    Restart();
   if (orbiting)
     Orbit(application);
   UpdateClocks(application);
   UpdateClock(application);
   UpdateSparks(application);
-  DrawOptions(application);
-  DrawThemes(application);
   // Which pieces are in the way depends on where the camera is and not only on what is selected, so
   // it is re-checked every frame: turning the board takes a piece out of the way as surely as
   // taking it does. Nothing is redrawn unless the answer has actually changed.
@@ -413,70 +440,10 @@ auto GameManager::PushMove(std::string text) -> void {
     moves[i - 1] = std::move(moves[i]);
   moves.back() = std::move(text);
 }
-auto GameManager::DrawOptions(Application &application) -> void {
-  auto &overlay = application.GetOverlay();
-  const auto &font = overlay.GetFont();
-  if (!font.IsLoaded())
-    return;
-  // Asked once for the whole overlay rather than once an option, and answered from where the last
-  // frame put things -- which is what the pointer is actually over, since that is the frame on
-  // screen while it is being pointed at.
-  const auto hovered = application.PickOverlay(application.GetMousePosition());
-  const glm::vec4 active{THEMES[themeOption].dark, 1.f};
-  const glm::vec4 hover{THEMES[themeOption].dark, .7f};
-  const auto Row = [&](const auto &options, const size_t chosen, const int idBase, const char *suffix, const bool plus, const float y) {
-    auto x = OPTION_MARGIN;
-    for (size_t i = 0; i < std::size(options); ++i) {
-      const auto text = (plus ? "+" : "") + std::to_string(options[i]) + suffix;
-      // Stepped by the ink rather than by the advance, because the ink is what the anchor places:
-      // stepping by anything else leaves the gaps between the options visibly uneven.
-      glm::vec2 min, max;
-      if (!font.Bounds(text, min, max))
-        continue;
-      const auto id = idBase + static_cast<int>(i);
-      const auto tint = i == chosen ? active : id == hovered ? hover
-                                                             : OPTION_IDLE;
-      overlay.DrawText(text, {x, y}, OPTION_TEXT_SIZE, tint, TextAnchor::TopLeft, id);
-      x += (max.x - min.x) * OPTION_TEXT_SIZE + OPTION_SPACING;
-    }
-  };
-  // Minutes above, increment below, both in the top left corner. The units are on every figure --
-  // "5m", "+2s" -- so neither row needs a label to say what it is, which is a row of words saved
-  // on a screen that is mostly board.
-  Row(TIME_OPTIONS, timeOption, TIME_OPTION_ID, "m", false, OPTION_MARGIN);
-  Row(INCREMENT_OPTIONS, incrementOption, INCREMENT_OPTION_ID, "s", true, OPTION_MARGIN + OPTION_ROW_STEP);
-}
-auto GameManager::OnOptionPressed(const int id) -> bool {
-  const auto Choose = [&](const int base, const size_t count, size_t &chosen) {
-    const auto index = static_cast<size_t>(id - base);
-    if (id < base || index >= count)
-      return false;
-    // A click on the option already in force is not a change, and so is not a reason to throw away
-    // the game being played. It still counts as handled: the click was on the options.
-    if (index != chosen) {
-      chosen = index;
-      if (auto *app = GetApp(); app)
-        SaveSettings(*app);
-      Restart();
-    }
-    return true;
-  };
-  if (Choose(TIME_OPTION_ID, std::size(TIME_OPTIONS), timeOption) || Choose(INCREMENT_OPTION_ID, std::size(INCREMENT_OPTIONS), incrementOption))
-    return true;
-  // A theme is not a reason to throw the game away either, so this one is applied in place.
-  const auto theme = static_cast<size_t>(id - THEME_OPTION_ID);
-  if (id < THEME_OPTION_ID || theme >= std::size(THEMES))
-    return false;
-  if (theme != themeOption) {
-    themeOption = theme;
-    if (auto *app = GetApp(); app)
-      SaveSettings(*app);
-    ApplyTheme();
-  }
-  return true;
-}
 auto GameManager::UpdateClocks(Application &application) -> void {
-  if (!playable)
+  // Neither clock runs while the game is paused, which it is while the settings are open: time spent
+  // choosing a board is not time spent thinking about the position.
+  if (!playable || application.GetPlayState() != PlayState::Playing)
     return;
   const auto side = SideIndex(board.ToMove());
   clocks[side] = std::max(clocks[side] - application.DeltaTime(), .0f);
@@ -582,13 +549,11 @@ auto GameManager::End(Application &application) -> void {
   SaveSettings(application);
   // Unregistered explicitly, because the actions capture `this` and the input manager outlives the
   // system: a stale action would call into a destroyed one on the next click.
-  for (const auto action : {pressAction, releaseAction, quitAction, restartAction})
+  for (const auto action : {pressAction, releaseAction})
     if (action != InputManager::InvalidActionID)
       application.UnregisterInputAction(action);
   pressAction = InputManager::InvalidActionID;
   releaseAction = InputManager::InvalidActionID;
-  quitAction = InputManager::InvalidActionID;
-  restartAction = InputManager::InvalidActionID;
 }
 auto GameManager::Refresh() -> void {
   RefreshSquares();
@@ -727,38 +692,6 @@ auto GameManager::ApplyTheme() -> void {
   if (rocker)
     chess::ChessWorld::Game(*app).Scene("Main").Entity<MeshObject>(rocker).Material(ClockMaterial(theme, "lever"));
   RefreshSquares();
-}
-auto GameManager::DrawThemes(Application &application) -> void {
-  auto &overlay = application.GetOverlay();
-  const auto &font = overlay.GetFont();
-  if (!font.IsLoaded())
-    return;
-  const auto hovered = application.PickOverlay(application.GetMousePosition());
-  for (size_t i = 0; i < std::size(THEMES); ++i) {
-    const auto &theme = THEMES[i];
-    const auto id = THEME_OPTION_ID + static_cast<int>(i);
-    const auto chosen = i == themeOption;
-    // A row to a theme, level with the time options' rows, measured in from the right edge.
-    const auto y = OPTION_MARGIN + static_cast<float>(i) * OPTION_ROW_STEP;
-    const auto right = -OPTION_MARGIN;
-    // The chosen pair is ringed and the one under the pointer faintly so: a ring rather than a
-    // change to the swatches, because the swatches are the thing being compared and must not
-    // change colour to say which one is chosen.
-    if (chosen || id == hovered)
-      overlay.DrawRect({right + SWATCH_RING, y - SWATCH_RING}, {SWATCH_SIZE * 2.f + SWATCH_RING * 2.f, SWATCH_SIZE + SWATCH_RING * 2.f}, {1.f, 1.f, 1.f, chosen ? .9f : .4f}, TextAnchor::TopRight, id);
-    // Light then dark, the way the board's own corner reads from White's side.
-    overlay.DrawRect({right - SWATCH_SIZE, y}, glm::vec2(SWATCH_SIZE), Swatch(theme.light), TextAnchor::TopRight, id);
-    overlay.DrawRect({right, y}, glm::vec2(SWATCH_SIZE), Swatch(theme.dark), TextAnchor::TopRight, id);
-    // The name to the left, its ink centred on the swatches. None of the names has a descender,
-    // so the ink's height is the cap height and the centring holds row to row.
-    glm::vec2 min, max;
-    if (!font.Bounds(theme.name, min, max))
-      continue;
-    const auto ink = (max.y - min.y) * THEME_TEXT_SIZE;
-    const glm::vec4 tint = chosen ? glm::vec4(1.f, 1.f, 1.f, .95f) : id == hovered ? glm::vec4(1.f, 1.f, 1.f, .7f)
-                                                                                   : OPTION_IDLE;
-    overlay.DrawText(theme.name, {right - SWATCH_SIZE * 2.f - SWATCH_RING - OPTION_SPACING, y + (SWATCH_SIZE - ink) * .5f}, THEME_TEXT_SIZE, tint, TextAnchor::TopRight, id);
-  }
 }
 auto GameManager::CreateClock() -> void {
   auto *app = GetApp();
@@ -963,10 +896,6 @@ auto GameManager::SquareOfEntity(const EntityID id) const -> int {
 auto GameManager::OnPress() -> void {
   auto *app = GetApp();
   if (!app)
-    return;
-  // The overlay first, because it is drawn over everything and a click that lands on a caption was
-  // aimed at the caption rather than at whatever the caption is covering.
-  if (OnOptionPressed(app->PickOverlay(app->GetMousePosition())))
     return;
   const auto picked = app->PickEntity(app->GetMousePosition());
   auto square = SquareOfEntity(picked);

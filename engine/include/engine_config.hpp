@@ -1,6 +1,8 @@
 #pragma once
+#include <anti_aliasing.hpp>
 #include <filesystem>
 #include <kuki_engine_export.h>
+#include <lighting_quality.hpp>
 #include <post_process.hpp>
 #include <rendering_api.hpp>
 #include <string_view>
@@ -45,6 +47,23 @@ auto KUKI_ENGINE_API DefaultAPI() -> RenderingAPI;
 struct KUKI_ENGINE_API EngineConfig {
   RenderingAPI api{DefaultAPI()};
   ToneMapper toneMapper{DEFAULT_TONE_MAPPER};
+  /// @brief What a player chose in a game's settings menu. See `SettingsMenu`.
+  ///
+  /// Here rather than in the game's `Preferences` for the reason the tone mapper is: they say how
+  /// this machine should draw, not anything about the game, and the engine is what reads them. The
+  /// editor neither shows nor applies them; it reads the file only to write it back whole.
+  ///
+  /// The anti-aliasing replaces whatever the scene's `AntiAliasing` asks for, and the passes turned
+  /// off here are stood down rather than taken out, as any disabled pass is.
+  bool fullscreen{};
+  bool vsync{true};
+  AntiAliasingMode antiAliasing{AntiAliasingMode::MSAA4x};
+  bool shadows{true};
+  bool bloom{true};
+  bool volumetrics{true};
+  bool reflections{true};
+  LightingQuality lighting{LightingQuality::High};
+  bool showFrameRate{};
   /// @brief Location of the config file, alongside the executable.
   static auto GetPath() -> std::filesystem::path;
   /// @brief Reads the config, falling back to defaults when the file is missing or malformed.

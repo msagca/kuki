@@ -6,10 +6,12 @@ collapses nine terrains over it biased by two ranked fields (an island for where
 rising from the shore for the land), raises terraces and peaks, lays resource sites over whole cells
 (stone and ore over two or three), and builds the movement layer and navmesh. `MapSystem` builds the
 scene from it (a mesh a terrain, step faces, the sea in three tints, shore foam, props as entities),
-draws the layers (Tab), the hovered cell's panel, and a debug path (two right clicks).
+draws the layers, the map's and the hovered cell's panels (the settings' "Map details"), and a debug
+path (two right clicks). Every key is a binding named in `controls.hpp` and registered together by
+`RegisterControls`, so the controls page lists them in order; nothing on the scene names a key.
 `PlacementSystem` places buildings from `props.cpp`'s catalogue with free rotation through
 `Footprint`; `FlockSystem` flies gulls and swallows; `AmbienceSystem` moves the wind, the clouds,
-every wandering emitter, the foam and the sun (T).
+every wandering emitter, the foam and the sun (the day passes on a binding, or the settings).
 
 The sea is opaque on purpose: `PlanarReflection` reads the depth prepass, which has no see-through
 surfaces.

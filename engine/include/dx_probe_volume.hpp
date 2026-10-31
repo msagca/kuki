@@ -556,6 +556,9 @@ public:
   /// changing one winds the mean back exactly as a light moving does -- which is the honest
   /// treatment, since a mean of estimates taken under two different settings is a mean of nothing.
   auto Trace(DXContext &, DXPipelineCache &, const DXAccelerationStructure &, const D3D12_GPU_VIRTUAL_ADDRESS, const D3D12_GPU_VIRTUAL_ADDRESS, const size_t, const IndirectLighting &) -> void;
+  /// @brief Most probes traced a frame, `PROBE_TRACE_BUDGET` unless the lighting quality lowers it.
+  /// Not hashed into the mean: a smaller budget sweeps more slowly but gathers the same estimates.
+  auto SetTraceBudget(const uint32_t) -> void;
   /// @brief Reads the probes back once the field has converged and logs what they hold.
   ///
   /// Nothing renders from the probes yet, so a trace that produced black, uniform grey, or the same
@@ -671,6 +674,7 @@ private:
   /// `tracedSamples` rises when this wraps rather than every frame, because that is when every probe
   /// has been given one more estimate. See `PROBE_TRACE_BUDGET`.
   uint32_t sweepPhase{};
+  uint32_t traceBudget{PROBE_TRACE_BUDGET};
   /// @brief The scene hash the accumulated estimates belong to. A different one winds them back.
   size_t traceHash{};
   bool ready{};

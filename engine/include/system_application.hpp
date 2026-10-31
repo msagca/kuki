@@ -55,6 +55,7 @@ protected:
   ///
   /// Drawing is `RenderingSystem::Update`, and it is held back to the end wherever the system stands
   /// in the list, so that a late update is never too late to be seen. The list puts it last anyway.
+  /// The settings menu comes just before it, so that it is laid over everything the systems drew.
   auto UpdateSystems(const float deltaTime) -> void override {
     auto *rendering = static_cast<System *>(GetRenderingSystem());
     for (auto *system : systems)
@@ -62,6 +63,7 @@ protected:
         system->Update(deltaTime);
     for (auto *system : systems)
       system->LateUpdate(deltaTime);
+    UpdateSettingsMenu(deltaTime);
     rendering->Update(deltaTime);
   }
   auto TickSystems() -> void override {

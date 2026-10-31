@@ -21,8 +21,9 @@ class EntityManager;
 class GameManager final : public kuki::System {
 public:
   explicit GameManager(kuki::Application &);
-  /// @brief Draws the board, the clock and the labels, and takes the mouse. After the scene's
-  /// skeleton has been built, and the font baked whose atlas the labels are drawn from.
+  /// @brief Draws the board, the clock and the labels, takes the mouse, and puts the game's own
+  /// settings in the settings menu. After the scene's skeleton has been built, and the font baked
+  /// whose atlas the labels are drawn from.
   auto PostStart() -> void override;
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
@@ -55,16 +56,6 @@ private:
   /// The labels are centred in a band one `LABEL_SIZE` deep beginning this far out, and no glyph
   /// fills its em, so the gap that is actually seen is this plus whatever the ink leaves.
   static constexpr float LABEL_MARGIN = .16f;
-  /// @brief Height of the options text, in pixels.
-  ///
-  /// Pixels rather than anything derived from the window, so the text stays the size it was drawn
-  /// at whatever the window is doing. A caption that grew with the window would be a caption that
-  /// is unreadable on a small one and absurd on a large one.
-  ///
-  /// Comfortably under twice the pixel height the atlas is baked at, which is where a bitmap font
-  /// starts to soften -- and the 2x oversampling in `Font::Load` means the atlas holds about twice
-  /// the detail its nominal size suggests.
-  static constexpr float OPTION_TEXT_SIZE = 52.f;
   /// @brief The time controls on offer, in minutes, and the increments, in seconds.
   ///
   /// Arrays rather than a range, because these are the figures people actually play: bullet,
@@ -78,11 +69,6 @@ private:
   /// @brief Key the chosen board theme is kept under, by the theme's key rather than its place in
   /// the list, for the same reason the time control is kept by value.
   static constexpr const char *PREF_THEME = "board.theme";
-  /// @brief Inset of the options from the window's top left corner, and the gap between options.
-  static constexpr float OPTION_MARGIN = 40.f;
-  static constexpr float OPTION_SPACING = 22.f;
-  /// @brief Distance from one row of options to the next.
-  static constexpr float OPTION_ROW_STEP = OPTION_TEXT_SIZE * 1.15f;
   /// @brief How many recent moves are kept for the title bar.
   ///
   /// More than will usually fit, because what fits is decided in characters by
@@ -95,22 +81,6 @@ private:
   /// past that the bar elides the middle and the whole row stops being worth reading. Older moves
   /// fall off the end rather than the name giving way.
   static constexpr size_t TITLE_MOVE_BUDGET = 60;
-  /// @brief Base of the ids the option rows answer `PickOverlay` with.
-  ///
-  /// A row's ids run from its base, so an id says which row was clicked and which option in it.
-  /// Both are well clear of `Overlay::NoHit`, which is zero.
-  static constexpr int TIME_OPTION_ID = 100;
-  static constexpr int INCREMENT_OPTION_ID = 200;
-  static constexpr int THEME_OPTION_ID = 300;
-  /// @brief Edge of one preview square in the theme picker, and the ring round the chosen pair.
-  ///
-  /// About the height of a figure in the time options beside it, so the picker's rows sit level
-  /// with theirs and the top of the window reads as one band of settings rather than two.
-  static constexpr float SWATCH_SIZE = 38.f;
-  static constexpr float SWATCH_RING = 4.f;
-  /// @brief Height of a theme's name, smaller than the time options: the name is a caption to the
-  /// swatches, which are what the eye compares.
-  static constexpr float THEME_TEXT_SIZE = OPTION_TEXT_SIZE * .7f;
   /// @brief How far the labels sit above the board frame's top face, which is also the squares'.
   ///
   /// The labels are painted onto the frame, and two surfaces at the same height fight over which
@@ -323,8 +293,8 @@ private:
   float orbitDistance{};
   kuki::InputManager::ActionID pressAction{kuki::InputManager::InvalidActionID};
   kuki::InputManager::ActionID releaseAction{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID quitAction{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID restartAction{kuki::InputManager::InvalidActionID};
+  /// @brief The binding that starts a new game, R unless the player has rebound it.
+  static constexpr const char *RESTART_BINDING = "Chess.Restart";
   /// @brief Centre of a square in world space, with `y` on the board's surface.
   static auto SquareCenter(const int) -> glm::vec3;
   /// @brief Which square an entity stands on, or -1 when it is neither a piece nor a square.
@@ -396,12 +366,6 @@ private:
   auto IncrementSeconds() const -> float;
   /// @brief Adds a move to the list and drops the oldest.
   auto PushMove(std::string) -> void;
-  /// @brief Queues both rows of options down the left, and says where each one was put.
-  auto DrawOptions(kuki::Application &) -> void;
-  /// @brief Answers a click on an option, restarting under the new control.
-  ///
-  /// @return Whether the click belonged to the options, and so should go no further.
-  auto OnOptionPressed(const int) -> bool;
   /// @brief Takes the running side's time off its clock, and ends the game if it runs out.
   auto UpdateClocks(kuki::Application &) -> void;
   /// @brief Lays the board's frame under the squares. Created once; recoloured by `ApplyTheme`.
@@ -415,8 +379,11 @@ private:
   auto CreateThemeMaterials() -> void;
   /// @brief Puts the chosen theme on the squares, the frame and the clock. The game carries on.
   auto ApplyTheme() -> void;
-  /// @brief Queues the theme picker down the top right: a name and a pair of squares a theme.
-  auto DrawThemes(kuki::Application &) -> void;
+  /// @brief Lists the board's look, the time control and a new game in the settings menu.
+  ///
+  /// Where the time control and the board's look were drawn along the top of the window for the
+  /// whole of every game; the menu holds them now, and the window holds the board.
+  auto AddSettings(kuki::Application &) -> void;
   /// @brief Builds the clock: body, screens, rocker, and the glyph meshes the screens show.
   ///
   /// The glyphs are cut from the same atlas as the labels, one character to a mesh and each

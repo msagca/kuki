@@ -81,7 +81,10 @@ inline constexpr Flag HELP_FLAG{"--help", FlagKind::Switch, "", "list these and 
 /// anyone at the screen: a check run from a script, or a picture for a change's description.
 inline constexpr Flag CAPTURE_FLAG{"--capture", FlagKind::Value, "<file.png>", "save the frame drawn after --capture-frame frames to this picture and quit (Direct3D 12)"};
 inline constexpr Flag CAPTURE_FRAME_FLAG{"--capture-frame", FlagKind::Value, "<count>", "how many frames to draw before --capture takes one (300)"};
-inline constexpr std::array ENGINE_FLAGS{GAME_FLAG, PLAY_FLAG, HELP_FLAG, CAPTURE_FLAG, CAPTURE_FRAME_FLAG};
+/// @brief Starts with the settings menu open on a page, which is how a capture shows it: nobody is
+/// there to press Escape.
+inline constexpr Flag SETTINGS_FLAG{"--settings", FlagKind::Value, "<page>", "start with the settings open on a page: game, graphics or controls"};
+inline constexpr std::array ENGINE_FLAGS{GAME_FLAG, PLAY_FLAG, HELP_FLAG, CAPTURE_FLAG, CAPTURE_FRAME_FLAG, SETTINGS_FLAG};
 /// @brief Whether a flag was given.
 KUKI_ENGINE_API auto HasFlag(const std::span<const std::string>, const Flag &) -> bool;
 /// @brief What follows a flag, if it was given with something after it.

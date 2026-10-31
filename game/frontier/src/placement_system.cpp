@@ -4,6 +4,7 @@
 #include <camera_system.hpp>
 #include <cmath>
 #include <command_line.hpp>
+#include <controls.hpp>
 #include <format>
 #include <frontier.hpp>
 #include <frontier_world.hpp>
@@ -25,7 +26,6 @@ namespace {
 constexpr glm::vec3 UP{.0f, 1.f, .0f};
 constexpr glm::vec3 GOOD{.3f, 1.f, .45f};
 constexpr glm::vec3 BAD{1.f, .25f, .2f};
-constexpr int KEYS[]{GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4, GLFW_KEY_5, GLFW_KEY_6, GLFW_KEY_7, GLFW_KEY_8, GLFW_KEY_9};
 /// @brief The turn a building is given for an angle on the map's plane. The plane's second axis is
 /// the world's Z, so a turn that is counter-clockwise on the plane is clockwise about the world's Y.
 auto Turn(const float angle) -> glm::quat {
@@ -181,22 +181,21 @@ auto PlacementSystem::Update(const float deltaTime) -> void {
   }
   auto &map = mapSystem->GetMap();
   const auto &types = Buildings(app);
-  for (size_t i = 0; i < types.size() && i < std::size(KEYS); ++i)
-    if (app.IsInputPressed(KEYS[i]))
+  for (size_t i = 0; i < types.size() && i < BUILD_KEYS; ++i)
+    if (app.IsBindingPressed(BuildBinding(i)))
       Select(selected == static_cast<int>(i) ? -1 : static_cast<int>(i));
-  if (selected >= 0 && (app.IsInputPressed(GLFW_MOUSE_BUTTON_RIGHT) || app.IsInputPressed(GLFW_KEY_ESCAPE)))
+  // A right click puts the building down again, as its key does. Escape is the settings menu's now.
+  if (selected >= 0 && app.IsInputPressed(GLFW_MOUSE_BUTTON_RIGHT))
     Select(-1);
-  else if (selected < 0 && app.IsInputPressed(GLFW_KEY_ESCAPE))
-    app.Quit();
   camera->SetTurnKeys(selected < 0);
   mapSystem->SetPathEnabled(selected < 0);
   const auto &cursor = mapSystem->GetCursor();
   const auto hovered = mapSystem->GetHoveredCell();
   if (selected >= 0) {
-    const auto rate = app.IsInputHeld(GLFW_KEY_LEFT_SHIFT) ? .6f : 2.2f;
-    if (app.IsInputHeld(GLFW_KEY_Q))
+    const auto rate = app.IsBindingHeld(MODIFIER) ? .6f : 2.2f;
+    if (app.IsBindingHeld(TURN_LEFT))
       angle += rate * deltaTime;
-    if (app.IsInputHeld(GLFW_KEY_E))
+    if (app.IsBindingHeld(TURN_RIGHT))
       angle -= rate * deltaTime;
     const auto &type = types[static_cast<size_t>(selected)];
     footprint = cursor ? map.grid.Footprint({cursor->x, cursor->z}, angle, type.shape) : std::vector<CellIndex>{};
@@ -224,7 +223,7 @@ auto PlacementSystem::Update(const float deltaTime) -> void {
     const auto occupant = hovered != INVALID_CELL ? map.occupant[hovered] : -1;
     if (occupant >= 0 && placed[static_cast<size_t>(occupant)]) {
       mapSystem->Highlight(placed[static_cast<size_t>(occupant)]->cells, {.4f, .7f, 1.f});
-      if (app.IsInputPressed(GLFW_KEY_DELETE) || app.IsInputPressed(GLFW_KEY_X))
+      if (app.IsBindingPressed(DEMOLISH))
         Demolish(occupant);
     } else if (hovered != INVALID_CELL) {
       const std::vector one{hovered};
@@ -256,6 +255,11 @@ auto PlacementSystem::Demo() -> void {
     }
 }
 auto PlacementSystem::DrawPanel() -> void {
+  // Only while a building is in hand, and then only which one, and turned how far. The catalogue and
+  // the keys that pick from it are in the settings' controls; the line that said how to turn, build
+  // and cancel is gone with the rest of the hints.
+  if (selected < 0)
+    return;
   const auto *context = app.GetGraphicsContext();
   if (!context)
     return;
@@ -263,17 +267,10 @@ auto PlacementSystem::DrawPanel() -> void {
   if (width <= 0 || height <= 0)
     return;
   const auto unit = static_cast<float>(height) / 1080.f;
-  auto &overlay = app.GetOverlay();
   const auto &types = Buildings(app);
-  const auto rows = static_cast<float>(types.size());
-  overlay.DrawRect({-18.f * unit, -54.f * unit}, {300.f * unit, (rows * 28.f + 54.f) * unit}, {.02f, .03f, .05f, .55f}, TextAnchor::BottomRight);
-  overlay.DrawText("BUILD", {-32.f * unit, -(rows * 28.f + 66.f) * unit}, 22.f * unit, Display({1.f, .97f, .9f}), TextAnchor::BottomRight);
-  for (size_t i = 0; i < types.size(); ++i) {
-    const auto chosen = static_cast<int>(i) == selected;
-    const auto cells = types[i].shape.size();
-    const auto colour = chosen ? Display(valid ? GOOD : BAD) : Display({.78f, .8f, .82f}, .9f);
-    overlay.DrawText(std::format("{}  {}  ({} cell{})", i + 1, types[i].name, cells, cells == 1 ? "" : "s"), {-32.f * unit, -(rows - static_cast<float>(i)) * 28.f * unit - 40.f * unit}, 19.f * unit, colour, TextAnchor::BottomRight);
-  }
-  if (selected >= 0)
-    overlay.DrawText(std::format("Q/E turn ({:.0f} degrees)   click to build   right click to cancel", std::fmod(std::fmod(angle * 57.2958f, 360.f) + 360.f, 360.f)), {.0f, -48.f * unit}, 19.f * unit, Display({1.f, .97f, .9f}), TextAnchor::Bottom);
+  if (static_cast<size_t>(selected) >= types.size())
+    return;
+  const auto &type = types[static_cast<size_t>(selected)];
+  const auto degrees = std::fmod(std::fmod(angle * 57.2958f, 360.f) + 360.f, 360.f);
+  app.GetOverlay().DrawText(std::format("{}   {:.0f} degrees", type.name, degrees), {.0f, -48.f * unit}, 22.f * unit, Display(valid ? GOOD : BAD), TextAnchor::Bottom);
 }

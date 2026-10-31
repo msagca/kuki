@@ -3,6 +3,7 @@
 #include <application.hpp>
 #include <camera.hpp>
 #include <camera_system.hpp>
+#include <controls.hpp>
 #include <cmath>
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -61,22 +62,22 @@ auto CameraSystem::Update(const float deltaTime) -> void {
   const glm::vec2 forward{-std::sin(yaw), -std::cos(yaw)};
   const glm::vec2 right{std::cos(yaw), -std::sin(yaw)};
   glm::vec2 move{};
-  if (app.IsInputHeld(GLFW_KEY_W) || app.IsInputHeld(GLFW_KEY_UP))
+  if (app.IsBindingHeld(frontier::FORWARD))
     move += forward;
-  if (app.IsInputHeld(GLFW_KEY_S) || app.IsInputHeld(GLFW_KEY_DOWN))
+  if (app.IsBindingHeld(frontier::BACK))
     move -= forward;
-  if (app.IsInputHeld(GLFW_KEY_D) || app.IsInputHeld(GLFW_KEY_RIGHT))
+  if (app.IsBindingHeld(frontier::RIGHT))
     move += right;
-  if (app.IsInputHeld(GLFW_KEY_A) || app.IsInputHeld(GLFW_KEY_LEFT))
+  if (app.IsBindingHeld(frontier::LEFT))
     move -= right;
-  const auto fast = app.IsInputHeld(GLFW_KEY_LEFT_SHIFT) ? 2.5f : 1.f;
+  const auto fast = app.IsBindingHeld(frontier::MODIFIER) ? 2.5f : 1.f;
   if (glm::length(move) > .0f)
     target += glm::normalize(move) * targetDistance * .9f * fast * dt;
   target = glm::clamp(target, min, max);
   if (turnKeys) {
-    if (app.IsInputHeld(GLFW_KEY_Q))
+    if (app.IsBindingHeld(frontier::TURN_LEFT))
       targetYaw -= 1.6f * dt;
-    if (app.IsInputHeld(GLFW_KEY_E))
+    if (app.IsBindingHeld(frontier::TURN_RIGHT))
       targetYaw += 1.6f * dt;
   }
   if (const auto scroll = app.GetScrollOffset().y; scroll != .0f)

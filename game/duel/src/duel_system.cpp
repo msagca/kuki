@@ -27,6 +27,7 @@
 #include <particle_presets.hpp>
 #include <scene.hpp>
 #include <screen_effects.hpp>
+#include <settings_menu.hpp>
 #include <skeleton.hpp>
 #include <spdlog/spdlog.h>
 #include <transform.hpp>
@@ -76,9 +77,12 @@ auto DuelSystem::PostStart() -> void {
   app.RegisterButton("Duel.Right", InputManager::Trigger{GLFW_KEY_D, 0}, "Step right");
   app.RegisterButton("Duel.Punch", InputManager::Trigger{GLFW_KEY_J, 0}, "Punch");
   app.RegisterButton("Duel.Kick", InputManager::Trigger{GLFW_KEY_K, 0}, "Kick");
-  // Presentation only, so read once here and carried into every match. See `StartFight`.
-  watching = !HasFlag(GetCommandLineArguments(), NO_IK_FLAG);
-  flashing = !HasFlag(GetCommandLineArguments(), NO_FLASH_FLAG);
+  app.RegisterBinding(START_BINDING, InputManager::Trigger{GLFW_KEY_ENTER, 0}, "Fight");
+  // Presentation only, so carried into every match. See `StartFight`. The flags are for a run, and
+  // win over what was saved without overwriting it.
+  const auto &preferences = app.GetPreferences();
+  watching = preferences.GetBool(PREF_WATCH, true) && !HasFlag(GetCommandLineArguments(), NO_IK_FLAG);
+  flashing = preferences.GetBool(PREF_FLASH, true) && !HasFlag(GetCommandLineArguments(), NO_FLASH_FLAG);
   spdlog::info("[Duel] Inverse kinematics {}", watching ? "on" : "off");
   if (auto *network = app.GetNetwork(); network) {
     network->SetProtocol(duel::PROTOCOL);
@@ -151,29 +155,39 @@ auto DuelSystem::PostStart() -> void {
              puff.intensity = 1.f;
            })
            .Id();
-  // Escape backs out a step at a time: from a match to the select screen, and from there out of the
-  // game. Enter on the keyboard or the keypad starts a match.
-  escapeAction = app.RegisterInputAction(GLFW_KEY_ESCAPE, [this]() {
-    if (screen == Screen::Fight)
-      backPending = true;
-    else
-      app.Quit();
-  });
-  startAction = app.RegisterInputAction(GLFW_KEY_ENTER, [this]() {
-    startPending = screen == Screen::Select;
-  });
-  startPadAction = app.RegisterInputAction(GLFW_KEY_KP_ENTER, [this]() {
-    startPending = screen == Screen::Select;
-  });
-  spdlog::info("[Duel] A and D choose, Enter fights, Escape goes back; in a match A and D step, J punches, K kicks, D twice lunges");
+  AddSettings();
+  spdlog::info("[Duel] A and D choose, Enter fights; in a match A and D step, J punches, K kicks, D twice lunges; Escape opens the settings");
   EnterSelect();
+}
+auto DuelSystem::AddSettings() -> void {
+  auto &menu = app.GetSettingsMenu();
+  menu.AddAction(SettingsPage::Game, "Leave the match", [this] { backPending = true; }, [this] { return screen == Screen::Fight; });
+  menu.AddToggle(SettingsPage::Game, "Fighters watch each other", [this] { return watching; }, [this](const bool value) {
+    watching = value;
+    app.GetPreferences().Set(PREF_WATCH, value);
+    ApplyWatching(); });
+  // Said as what it does for the player, which is the same thing `--no-flash` is for.
+  menu.AddToggle(SettingsPage::Game, "Screen flashes", [this] { return flashing; }, [this](const bool value) {
+    flashing = value;
+    app.GetPreferences().Set(PREF_FLASH, value); });
+}
+auto DuelSystem::ApplyWatching() -> void {
+  if (screen != Screen::Fight)
+    return;
+  for (auto index = 0; index < duel::DuelSim::PLAYERS; ++index) {
+    auto *animator = GetAnimator(index);
+    if (!animator)
+      continue;
+    const auto has = animator->FindGoal("watch") != nullptr;
+    if (watching && !has)
+      animator->ik.push_back({.name = "watch", .kind = IKKind::Aim, .bone = "Head", .target = FindBone(1 - index, "Head"), .chain = 2, .limit = WATCH_LIMIT});
+    else if (!watching && has)
+      std::erase_if(animator->ik, [](const IKGoal &goal) { return goal.name == "watch"; });
+  }
 }
 auto DuelSystem::Shutdown() -> void {
   if (auto *network = app.GetNetwork(); network)
     network->End();
-  app.UnregisterInputAction(escapeAction);
-  app.UnregisterInputAction(startAction);
-  app.UnregisterInputAction(startPadAction);
 }
 auto DuelSystem::Spawn(const int index, const size_t character, const bool alternate) -> EntityID {
   // As a figure and not as a plain model: the seat is what the rest of this finds it by, and it is
@@ -273,9 +287,7 @@ auto DuelSystem::StartFight() -> void {
   //
   // Each keeps its eyes on the other: the head and the chest share a turn towards the other's
   // head, so that the face follows a duck or a lunge and does not stare at where it was.
-  for (auto index = 0; watching && index < duel::DuelSim::PLAYERS; ++index)
-    if (auto *scene = GetAnimator(index); scene)
-      scene->ik.push_back({.name = "watch", .kind = IKKind::Aim, .bone = "Head", .target = FindBone(1 - index, "Head"), .chain = 2, .limit = WATCH_LIMIT});
+  ApplyWatching();
   for (auto index = 0; index < duel::DuelSim::PLAYERS; ++index) {
     shownState[index] = sim ? sim->GetAnimator(index).state : 0;
     shownHealth[index] = 1.f;
@@ -448,11 +460,8 @@ auto DuelSystem::CheckRootSpace() -> void {
   });
 }
 auto DuelSystem::Update(const float) -> void {
-  if (startPending) {
-    startPending = false;
-    if (screen == Screen::Select)
-      StartFight();
-  }
+  if (screen == Screen::Select && app.IsBindingPressed(START_BINDING))
+    StartFight();
   if (backPending) {
     backPending = false;
     if (screen == Screen::Fight)
