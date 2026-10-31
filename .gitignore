@@ -31,7 +31,6 @@
 .ninja_log
 .vs/
 .vscode/
-CLAUDE.md
 CMakeCache.txt
 CMakeFiles/
 CMakeScripts/
@@ -51,3 +50,5 @@ install_manifest.txt
 # Models kept on this machine only: third-party characters and clips whose terms allow using them
 # in a game but not handing the files out on their own.
 asset/model/
+# Claude Code settings one person keeps for themselves; the shared ones are .claude/settings.json
+.claude/settings.local.json
