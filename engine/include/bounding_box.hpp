@@ -9,18 +9,18 @@ struct KUKI_ENGINE_API BoundingBox {
   glm::vec3 min{std::numeric_limits<float>::max()};
   glm::vec3 max{std::numeric_limits<float>::lowest()};
   BoundingBox GetWorldBounds(const glm::mat4 &) const;
-  /// @brief Whether the box has volume: a size above epsilon along every axis.
+  /// @brief Whether the box holds any point: false only for an empty one, as `BoundingBox{}` is, whose
+  /// minimum is above its maximum.
   ///
-  /// A flat box -- a plane's, a floor's -- has none and answers false, the same as an empty one.
+  /// It used to ask for volume -- a size above epsilon along every axis -- which a plane's box, a
+  /// floor's or a wall's, has not. Everything that asked it meant "are there bounds at all", so a
+  /// floor made of the `Plane` primitive was never culled and was left out of the sun's shadow fit,
+  /// and a flat node of a model never had its bounds copied from the import. Answering for volume
+  /// would also make a floor indistinguishable from a pool its game made with no bounds
+  /// (`PoolSettings::bounds`), which the probe volume's fit leaves out. A flat box is culled and
+  /// fitted like any other; one that is a single point is a thing whose caller must not divide by
+  /// its size.
   explicit operator bool() const;
-  /// @brief Whether the box holds no point at all, as `BoundingBox{}` does: its minimum is above its
-  /// maximum on some axis.
-  ///
-  /// Not the opposite of `operator bool`. A plane's box is flat, so it has no volume, but it holds the
-  /// plane; a pool made with `BoundingBox{}` is a game saying its contents have no bounds worth
-  /// fitting anything to. Telling the two apart is the only way to honour the second without
-  /// throwing out every floor and wall with it.
-  auto IsEmpty() const -> bool;
   static auto Calculate(std::span<const glm::vec3>) -> BoundingBox;
   static auto Calculate(std::span<const Vertex>) -> BoundingBox;
 };

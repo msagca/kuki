@@ -1,6 +1,5 @@
 #include <bounding_box.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <glm/ext/scalar_constants.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <primitive.hpp>
@@ -18,10 +17,7 @@ BoundingBox BoundingBox::GetWorldBounds(const glm::mat4 &transform) const {
   return bounds;
 }
 BoundingBox::operator bool() const {
-  return glm::all(glm::greaterThan(max - min, glm::vec3(glm::epsilon<float>())));
-}
-auto BoundingBox::IsEmpty() const -> bool {
-  return glm::any(glm::greaterThan(min, max));
+  return glm::all(glm::lessThanEqual(min, max));
 }
 auto BoundingBox::Calculate(std::span<const glm::vec3> vertices) -> BoundingBox {
   BoundingBox bounds{};

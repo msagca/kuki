@@ -2897,7 +2897,7 @@ auto DXRenderer::CollectProbeGeometry(Scene &) -> std::vector<DXProbeGeometry> {
       const auto *worlds = draw.table->GetColumn<WorldMatrix>();
       // A pool made with empty bounds is one its game said reaches the horizon. See `DXProbeGeometry`.
       // Empty, not merely flat: a floor's box has no height and still holds the floor.
-      const auto fits = !draw.table->bounds.IsEmpty();
+      const auto fits = static_cast<bool>(draw.table->bounds);
       for (size_t row = 0; worlds && row < draw.table->entities.size(); ++row)
         cache.probes.push_back({.entity = static_cast<uint64_t>(static_cast<long long>(draw.table->entities[row])) << 1 | kind, .vertices = mesh->vertices, .transform = worlds->components[row].matrix, .fits = fits});
     }
@@ -3200,7 +3200,9 @@ auto DXRenderer::BuildShadowMatrix(Scene &scene, float *out) const -> bool {
   });
   glm::mat4 view{1.f};
   glm::mat4 projection{1.f};
-  if (!sceneBounds) {
+  // A flat scene -- a floor alone -- has bounds to fit to; one that is a single point has no size to
+  // stand back from, and the light's own box is all there is.
+  if (!sceneBounds || sceneBounds.min == sceneBounds.max) {
     view = directional->GetView();
     projection = glm::orthoRH_ZO(-directional->orthoSize, directional->orthoSize, -directional->orthoSize, directional->orthoSize, directional->nearPlane, directional->farPlane);
   } else {
