@@ -576,6 +576,18 @@ if(${PROJECT_NAME_UPPER}_BUILD_TESTS)
   # and a test framework has no reason to be shared with anything.
   kuki_static_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/googletest")
   add_subdirectory(test)
+else()
+  # What a configure with tests on left behind. Every preset shares one build directory, and CMake
+  # neither rewrites nor removes the CTest files once testing is no longer enabled, so after a
+  # configure with tests on, the preset's own (tests off) went on finding the old lists: the stale
+  # `KukiTest` passed, and every compile-fail check failed building a target that was no longer
+  # there. The root file is the one CTest starts from, and without it a directory with tests off
+  # is what a fresh one is -- no tests, which the workflows' test step takes as success.
+  file(
+    REMOVE
+    "${CMAKE_CURRENT_BINARY_DIR}/CTestTestfile.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/test/CTestTestfile.cmake"
+  )
 endif()
 if(WIN32)
   set_property(
