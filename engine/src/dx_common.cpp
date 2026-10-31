@@ -114,7 +114,7 @@ auto DXDeviceAvailable() -> bool {
     ComPtr<ID3D12Device> device;
     const auto found = SelectDXDevice(factory.Get(), adapter, device);
     if (!found)
-      spdlog::info("[DX12] No adapter provides a feature level 11_0 device, so OpenGL is the default here");
+      spdlog::info("[DX12] No adapter provides a feature level 11_0 device, so nothing can draw here");
     return found;
   }();
   return available;

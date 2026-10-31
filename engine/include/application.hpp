@@ -166,8 +166,8 @@ public:
   auto GetDescription() const -> const ApplicationDescription &;
   /// @brief The live presentation surface, or null before startup has created it.
   ///
-  /// Backends downcast this to reach their own device -- `DXRenderer::GetContext` and the guard at
-  /// the top of `GLRenderer::RenderScene` are the two -- and nothing else should.
+  /// A backend downcasts this to reach its own device -- `DXRenderer::GetContext` does -- and nothing
+  /// else should.
   ///
   /// That is a convention and not a rule, which is worth saying plainly rather than leaving the
   /// sentence above to imply otherwise. It is public because those two renderers hold an
@@ -227,9 +227,6 @@ public:
   auto IsEntity(const EntityID) const -> bool;
   auto IsViewportHovered() const -> bool;
   auto ResolveModelInstance(const EntityID, const AssetID) -> void;
-  auto LoadComputeFromSource(const std::string_view, std::string = "") -> AssetID;
-  auto LoadShader(const std::filesystem::path &, const std::filesystem::path &, std::string name = "", const MaterialType = MaterialType::Unlit) -> AssetID;
-  auto LoadShaderFromSource(const std::string_view, const std::string_view, std::string name = "", const MaterialType = MaterialType::Unlit) -> AssetID;
   virtual auto GetSelectedEntity() const -> EntityID {
     return {};
   }

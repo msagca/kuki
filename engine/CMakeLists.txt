@@ -10,22 +10,12 @@ file(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 set(SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/shader")
-file(GLOB_RECURSE COMP_SOURCES CONFIGURE_DEPENDS "${SHADER_SOURCE_DIR}/*.comp")
-file(GLOB_RECURSE FRAG_SOURCES CONFIGURE_DEPENDS "${SHADER_SOURCE_DIR}/*.frag")
-file(GLOB_RECURSE GEOM_SOURCES CONFIGURE_DEPENDS "${SHADER_SOURCE_DIR}/*.geom")
-file(GLOB_RECURSE HLSL_SOURCES CONFIGURE_DEPENDS "${SHADER_SOURCE_DIR}/*.hlsl")
-file(GLOB_RECURSE TESC_SOURCES CONFIGURE_DEPENDS "${SHADER_SOURCE_DIR}/*.tesc")
-file(GLOB_RECURSE TESE_SOURCES CONFIGURE_DEPENDS "${SHADER_SOURCE_DIR}/*.tese")
-file(GLOB_RECURSE VERT_SOURCES CONFIGURE_DEPENDS "${SHADER_SOURCE_DIR}/*.vert")
-set(
-  SHADER_SOURCES
-  ${COMP_SOURCES}
-  ${FRAG_SOURCES}
-  ${GEOM_SOURCES}
-  ${HLSL_SOURCES}
-  ${TESC_SOURCES}
-  ${TESE_SOURCES}
-  ${VERT_SOURCES}
+# HLSL only. A backend that wants another language adds its glob here; one that can take HLSL
+# through dxc (SPIR-V for Vulkan) needs nothing new.
+file(
+  GLOB_RECURSE SHADER_SOURCES
+  CONFIGURE_DEPENDS
+  "${SHADER_SOURCE_DIR}/*.hlsl"
 )
 add_library(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES})
 if(KUKI_ENABLE_LINTING AND CLANG_TIDY_EXE)
@@ -64,10 +54,9 @@ target_include_directories(
 # that reached the asset manager, which was almost all of them.
 target_link_libraries(
   ${PROJECT_NAME}
-  PUBLIC OpenGL::GL glfw glm spdlog
+  PUBLIC glfw glm spdlog
   PRIVATE
     assimp
-    glad
     kaitai_image
     kaitai_struct_cpp_stl_runtime
     nlohmann_json
@@ -113,8 +102,8 @@ if(WIN32)
   )
 endif()
 # Listed so they show up in an IDE, and marked so nothing tries to compile them. Every one of
-# these is embedded as text by the custom command below and handed to a compiler at run time -- dxc
-# through dxcompiler.dll for the HLSL, the driver for the GLSL.
+# these is embedded as text by the custom command below and handed to a compiler at run time: dxc,
+# through dxcompiler.dll.
 #
 # The marking is not cosmetic. MSBuild assigns `.hlsl` to FxCompile on sight, so the Visual Studio
 # generator was calling FXC on shaders that have no `main` -- every entry point here is named for

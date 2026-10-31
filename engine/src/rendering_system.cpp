@@ -8,8 +8,6 @@
 #include <command_line.hpp>
 #include <cstdint>
 #include <cstdlib>
-#include <embedded_shaders.hpp>
-#include <gl_renderer.hpp>
 #ifdef KUKI_HAS_DIRECTX
 #include <dx_renderer.hpp>
 #endif
@@ -56,27 +54,6 @@ auto RenderingSystem::Start() -> void {
   // application to remember. The editor also sets it in its own `Start`, which is now a no-op that
   // repeats this -- but it is the thing that lets the panel change it afterwards, so it stays.
   SetToneMapper(EngineConfig::Load().toneMapper);
-  using namespace embedded_shader;
-  app.LoadComputeFromSource(brdf_lut_comp, "BRDF_LUT");
-  app.LoadComputeFromSource(cubemap_equirect_comp, "CubemapEquirect");
-  app.LoadComputeFromSource(equirect_cubemap_comp, "EquirectCubemap");
-  app.LoadComputeFromSource(irradiance_comp, "IrradianceMap");
-  app.LoadComputeFromSource(prefilter_comp, "PrefilterMap");
-  app.LoadComputeFromSource(sh_project_comp, "SHProject");
-  app.LoadShaderFromSource(lit_vert, lit_frag, "Lit", MaterialType::Lit);
-  app.LoadShaderFromSource(lit_skinned_vert, lit_frag, "LitSkinned", MaterialType::Lit);
-  app.LoadShaderFromSource(skybox_vert, skybox_frag, "Skybox");
-  app.LoadShaderFromSource(standard_instanced_vert, empty_frag, "ShadowMap");
-  app.LoadShaderFromSource(standard_m_vert, bloom_frag, "Bloom");
-  app.LoadShaderFromSource(standard_m_vert, blur_frag, "Blur");
-  app.LoadShaderFromSource(standard_m_vert, bright_pass_frag, "BrightPass");
-  app.LoadShaderFromSource(standard_m_vert, tone_mapping_frag, "ToneMapping");
-  app.LoadShaderFromSource(standard_m_vert, outline_frag, "Outline");
-  app.LoadShaderFromSource(standard_m_vert, pick_frag, "Pick");
-  app.LoadShaderFromSource(unlit_vert, unlit_frag, "Unlit");
-  app.LoadShaderFromSource(overlay_vert, overlay_frag, "Overlay");
-  if (activeRenderer)
-    activeRenderer->LoadAssets(AssetType::Shader);
   if (activeRenderer)
     activeRenderer->LoadAssets(AssetType::Mesh);
   const auto bloomWidth = std::max(1, screenWidth / 2);
@@ -453,17 +430,15 @@ auto RenderingSystem::SetRenderer(const RenderingAPI api) -> void {
   }
 #else
   case RenderingAPI::DirectX:
-    spdlog::warn("[RenderingSystem] DirectX is not available in this build, falling back to OpenGL");
     [[fallthrough]];
 #endif
   case RenderingAPI::Vulkan:
-    spdlog::warn("[RenderingSystem] Vulkan is not implemented, falling back to OpenGL");
-    [[fallthrough]];
-  default:
-    const auto index = static_cast<uint8_t>(RenderingAPI::OpenGL);
-    if (!renderers.at(index))
-      renderers[index] = std::make_unique<GLRenderer>(app);
-    activeRenderer = renderers[index].get();
+    // No renderer, so nothing is drawn. Not reached in practice: `GraphicsContext::Create` refuses
+    // the same APIs, and the application stops before any system starts. A second backend adds its
+    // renderer here, beside its context there.
+    spdlog::error("[RenderingSystem] There is no renderer for {} in this build", ToString(api));
+    activeRenderer = nullptr;
+    break;
   }
 }
 auto RenderingSystem::UpdateSkyboxLight(Scene &scene) -> void {

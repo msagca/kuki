@@ -1,5 +1,5 @@
-// Text drawn over the finished picture, in the window's own pixels. The counterpart of
-// `overlay.vert` and `overlay.frag`; see those for the shape, which is the same on both backends.
+// Text drawn over the finished picture, in the window's own pixels: one textured quad a glyph, laid
+// out by `Overlay` in pixels with y up from the bottom.
 struct OverlayConstants {
   float4x4 projection;
   float4 color;
@@ -24,7 +24,7 @@ PSInput VSMain(VSInput input) {
   return output;
 }
 float4 PSMain(PSInput input) : SV_TARGET {
-  // Only the alpha is read, exactly as the GLSL does: the atlas is white everywhere and carries
+  // Only the alpha is read: the atlas is white everywhere and carries
   // the glyph in its fourth channel, so the colour is entirely the caller's.
   float coverage = atlas.Sample(atlasSampler, input.texCoords).a;
   return float4(constants.color.rgb, constants.color.a * coverage);

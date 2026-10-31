@@ -153,15 +153,14 @@ public:
   auto SetProbeDebugView(const ProbeDebugView view) -> void { probeDebugView = view; }
   /// @brief What shapes the indirect lighting, held here for the reason the tone curve is.
   ///
-  /// Neither backend owns these: they are read into a constant buffer on one side and a uniform on
-  /// the other, and a backend swapped at runtime has to carry them across.
+  /// No backend owns these: each reads them into its own constants, and a backend swapped at runtime
+  /// has to carry them across.
   ///
-  /// The DirectX backend reads all of them. The OpenGL one reads the two terms it has a route for
-  /// -- `skyIntensity` scales its irradiance cubemap and `ambientFallback` is the flat ambient it
-  /// falls back on -- and ignores everything from `bounceIntensity` down, all of which describes a
-  /// probe field it does not have. `GetCapabilities().probeVolume` is what says which of those two
-  /// a build is looking at, and the editor hides the rest rather than drawing sliders that reach
-  /// nothing.
+  /// The Direct3D 12 backend reads all of them. A backend with no probe field reads only the two
+  /// terms it has a route for -- `skyIntensity` scales its irradiance cubemap and `ambientFallback`
+  /// is the flat ambient it falls back on -- as OpenGL's did. `GetCapabilities().probeVolume` is
+  /// what says which a build is looking at, and the editor hides the rest rather than drawing
+  /// sliders that reach nothing.
   auto GetIndirectLighting() const -> const IndirectLighting & { return indirect; }
   auto SetIndirectLighting(const IndirectLighting &settings) -> void { indirect = settings; }
   template <typename T>

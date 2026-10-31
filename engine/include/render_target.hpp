@@ -9,7 +9,7 @@ public:
   virtual ~RenderTarget() = default;
   /// @brief Backend handle for the colour texture, widened to the type ImGui takes.
   ///
-  /// A texture name under OpenGL, a GPU descriptor handle under D3D12.
+  /// A GPU descriptor handle under Direct3D 12; whatever another backend's Dear ImGui backend takes.
   ///
   /// @return Zero when the target has nothing displayable.
   virtual auto GetTextureHandle() const -> uint64_t {

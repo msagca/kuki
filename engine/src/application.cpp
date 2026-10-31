@@ -508,15 +508,6 @@ auto Application::IsEntity(const EntityID id) const -> bool {
 auto Application::IsViewportHovered() const -> bool {
   return viewportHovered;
 }
-auto Application::LoadComputeFromSource(const std::string_view source, std::string name) -> AssetID {
-  return assetManager.LoadComputeFromSource(source, std::move(name));
-}
-auto Application::LoadShader(const std::filesystem::path &vertPath, const std::filesystem::path &fragPath, std::string name, const MaterialType materialType) -> AssetID {
-  return assetManager.LoadShader(vertPath, fragPath, std::move(name), materialType);
-}
-auto Application::LoadShaderFromSource(const std::string_view vertSource, const std::string_view fragSource, std::string name, const MaterialType materialType) -> AssetID {
-  return assetManager.LoadShaderFromSource(vertSource, fragSource, std::move(name), materialType);
-}
 auto Application::LoadPrimitive(const std::string &name) -> void {
   if (assetManager.Get(name))
     return;

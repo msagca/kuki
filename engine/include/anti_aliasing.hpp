@@ -17,7 +17,7 @@ enum class AntiAliasingMode : uint8_t {
   /// Not a broken state: every pass that treats a multisampled target differently already asks the
   /// target how many samples it carries rather than assuming, so a one-sample scene goes through
   /// the frame intact. What it loses besides the smooth edges is the generosity at a silhouette
-  /// that picking gets from having four ids under a pixel -- see `pick.frag`.
+  /// that picking gets from having four ids under a pixel -- see `pick.hlsl`.
   None,
   MSAA2x,
   MSAA4x,

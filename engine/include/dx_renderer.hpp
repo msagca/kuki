@@ -183,22 +183,22 @@ struct DXParticleDraw {
 };
 /// @brief Direct3D 12 implementation of the engine renderer.
 ///
-/// Feature parity with `GLRenderer` is close. The scene draw is physically based and instanced,
-/// with the same directional, point and spot lights, the same shadow maps, skinning, the skybox,
-/// the post-processing passes, the outline, picking readback and asset previews.
+/// The engine's one backend. The scene draw is physically based and instanced a pool at a time,
+/// with directional, point and spot lights, shadow maps, skinning, the skybox, the post-processing
+/// passes, the outline, picking readback and asset previews.
 ///
-/// Image-based lighting is precomputed the same way: the environment is projected onto a cubemap,
-/// reduced to spherical harmonics for the diffuse irradiance, prefiltered by roughness for the
-/// specular reflection, and paired with an integrated split-sum lookup table. A scene with no
-/// skybox falls back to the analytic sky `lit.frag` uses when those maps are missing.
+/// Image-based lighting is precomputed: the environment is projected onto a cubemap, reduced to
+/// spherical harmonics for the diffuse irradiance, prefiltered by roughness for the specular
+/// reflection, and paired with an integrated split-sum lookup table. A scene with no skybox falls
+/// back to an analytic sky when those maps are missing.
 class KUKI_ENGINE_API DXRenderer final : public Renderer {
 public:
   DXRenderer(Application &);
   /// @brief Resolves the multisampled scene target into the single-sampled one.
   ///
-  /// The anti-aliasing is the multisampling itself; this pass only collapses the samples. That is
-  /// exactly what the OpenGL backend's blit between a multisampled and a single-sampled buffer
-  /// does, so there is no post-process filter missing here.
+  /// The anti-aliasing is the multisampling itself; this pass only collapses the samples -- what a
+  /// blit from a multisampled buffer to a single-sampled one does -- so there is no post-process
+  /// filter missing here.
   auto ApplyAntiAliasing(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyBloomEffect(std::span<std::string>, std::span<std::string>) -> void override;
   /// @brief Blurs the first input into the first output through a chain of single-axis passes.
@@ -237,7 +237,7 @@ public:
   /// stall is explicit and unavoidable without accepting a frame or two of latency.
   ///
   /// The resolve averages samples, so a pixel exactly on a silhouette can yield an id belonging to
-  /// neither object. This matches the OpenGL path's blit and is only wrong on edge pixels.
+  /// neither object. Only ever wrong on edge pixels.
   ///
   /// @return The entity under the pixel, or an invalid id when nothing was hit.
   auto PickEntity(const int, const int) -> EntityID override;
@@ -256,9 +256,9 @@ public:
   /// only place that can do it: a pass cannot rewind on entry without discarding what the passes
   /// before it recorded, since none of them have executed yet.
   ///
-  /// Render targets are deliberately left alone. The OpenGL backend uses this hook to return
-  /// transient resources to its pools, which makes the graph's recreate-every-frame pattern cheap
-  /// there. Direct3D 12 targets are persistent committed resources, so tearing them down here
+  /// Render targets are deliberately left alone. A backend with cheap transient resources could
+  /// return them to its pools here, as OpenGL's did, which makes the graph's recreate-every-frame
+  /// pattern cheap. Direct3D 12 targets are persistent committed resources, so tearing them down here
   /// would reallocate every target on every frame. `CreateTarget` already no-ops when a target
   /// exists with a matching description, so leaving them alone is both correct and free.
   auto PresentTarget(const std::string &) -> void override;
@@ -717,7 +717,7 @@ private:
   /// spot lights must be gathered in the same order the shadow pass used, since a spot light's
   /// shadow map is found by its index rather than by any identity of its own.
   ///
-  /// The last directional light in the scene wins, matching `GLRenderer::DrawMeshes`.
+  /// The last directional light in the scene wins.
   auto BuildFrameConstants(Scene &, const Camera &, const bool, DXFrameConstants &) const -> void;
   /// @brief Uploads the frame constants and returns the address to bind, or zero on failure.
   auto UploadFrameConstants(const DXFrameConstants &) -> D3D12_GPU_VIRTUAL_ADDRESS;
@@ -883,10 +883,9 @@ private:
   auto TransitionMip(ID3D12Resource *, const uint32_t, const uint32_t, const uint32_t, const D3D12_RESOURCE_STATES, const D3D12_RESOURCE_STATES) -> void;
   /// @brief Builds the environment maps the ambient term samples, from a skybox texture.
   ///
-  /// Runs the same sequence as the OpenGL backend: project the equirectangular source onto a cube,
-  /// filter its mip chain, reduce it to nine spherical harmonic coefficients for the diffuse
-  /// irradiance, prefilter it by roughness for the specular reflection, and integrate the
-  /// split-sum lookup table.
+  /// Projects the equirectangular source onto a cube, filters its mip chain, reduces it to nine
+  /// spherical harmonic coefficients for the diffuse irradiance, prefilters it by roughness for the
+  /// specular reflection, and integrates the split-sum lookup table.
   ///
   /// Dispatches are recorded and then waited on in one go, so this stalls the pipeline. It happens
   /// once per skybox texture, at load time.
@@ -954,7 +953,7 @@ private:
   /// flush the command list, which is why it happens before any pipeline state is bound.
   ///
   /// The light is fixed rather than taken from the scene, so an asset looks the same in the browser
-  /// no matter what the open scene happens to be lit by. This mirrors the OpenGL backend.
+  /// no matter what the open scene happens to be lit by.
   ///
   /// @return The cached target, or null when the asset has nothing to draw.
   auto RenderPreview(const AssetID, const std::vector<std::pair<const DXMesh *, const DXMaterial *>> &, const BoundingBox &) -> RenderTarget *;
@@ -963,8 +962,8 @@ private:
   /// @brief Builds the view and projection one spot light's shadow map is rendered with.
   ///
   /// The cone's full angle is widened slightly so the shadow map covers a little more than the lit
-  /// region, which keeps the cone's edge from sampling outside the map. Mirrors
-  /// `GLRenderer::FitSpotShadowFrustum`, with a zero-to-one projection for Direct3D's clip range.
+  /// region, which keeps the cone's edge from sampling outside the map. The projection is zero to
+  /// one, Direct3D's clip range.
   auto FitSpotShadowFrustum(const Light &, glm::mat4 &, glm::mat4 &) const -> void;
   /// @brief Fills the target with the environment behind the scene, before any geometry is drawn.
   ///
@@ -975,14 +974,13 @@ private:
   /// built from, so the background and the ambient light reflecting off the scene can only ever
   /// come from the same texels.
   ///
-  /// Falls back the way `skybox.frag` does: the procedural gradient when the scene has a skybox
-  /// entity but no environment map, and flat grey when it has no skybox entity at all.
+  /// Falls back to the procedural gradient when the scene has a skybox entity but no environment
+  /// map, and to flat grey when it has no skybox entity at all.
   auto DrawSkybox(const Camera &, const DXRenderTarget &) -> void;
   /// @brief Builds the light-space view-projection the shadow pass renders with.
   ///
-  /// Fits the frustum to the scene's world bounds the way `GLRenderer::FitShadowFrustum` does,
-  /// so the map's texels are spent on geometry that exists rather than on a fixed extent that is
-  /// either wasteful or clips the scene. Falls back to the light's own orthographic size when the
+  /// Fits the frustum to the scene's world bounds, so the map's texels are spent on geometry that
+  /// exists rather than on a fixed extent that is either wasteful or clips the scene. Falls back to the light's own orthographic size when the
   /// scene has no bounded geometry.
   ///
   /// Uses a zero-to-one orthographic projection, because Direct3D clips depth to [0,1] where

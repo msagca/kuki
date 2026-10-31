@@ -25,7 +25,6 @@ endif()
 # Vendored libraries that have no shared-build support of their own are built static whatever
 # BUILD_SHARED_LIBS says, so they end up inside whatever links them instead of becoming a DLL that
 # exports nothing. Windows hides every symbol by default, and these have no export annotations:
-# glad's API is function-pointer data (which CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS does not cover), and
 # the kaitai runtimes, whereami and tinyexr have none at all. Adding them would mean patching a
 # submodule, which is not ours to patch -- so they are linked in rather than shipped beside us.
 #
@@ -372,10 +371,6 @@ set(ASSIMP_INSTALL ON CACHE BOOL "")
 set(ASSIMP_INSTALL_PDB OFF CACHE BOOL "")
 set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/assimp")
-## opengl
-find_package(OpenGL REQUIRED)
-## glad
-kuki_static_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glad")
 ## directx 12 (windows only)
 if(WIN32)
   set(DXHEADERS_BUILD_TEST OFF CACHE BOOL "")
@@ -438,7 +433,6 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_tables.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_widgets.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_opengl3.cpp"
 )
 if(WIN32)
   list(
@@ -453,7 +447,7 @@ target_include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends"
 )
-target_link_libraries(imgui PUBLIC OpenGL::GL glfw)
+target_link_libraries(imgui PUBLIC glfw)
 if(WIN32)
   target_link_libraries(imgui PUBLIC kuki_d3d12)
 endif()

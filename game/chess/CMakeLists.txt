@@ -81,7 +81,7 @@ add_custom_command(
 )
 if(WIN32 AND DXCOMPILER_DLL AND DXIL_DLL)
   # The Direct3D 12 backend compiles its HLSL at runtime, so a game that might select that backend
-  # needs the compiler beside it exactly as the editor does. Without these it falls back to OpenGL.
+  # needs the compiler beside it exactly as the editor does. Without these it draws nothing.
   add_custom_command(
     TARGET ${PROJECT_NAME}
     POST_BUILD

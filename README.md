@@ -2,7 +2,7 @@
 
 A game engine written in C++23, made up of:
 
-- **KukiEngine**, the engine library: an archetype-based ECS fixed at compile time, a fixed-tick game loop with rebindable buttons and a gesture recognizer, skeletal animation with state machines and inverse kinematics, rollback networking, procedural generation (irregular grids, wave function collapse over any graph, noise), navigation meshes, flocking, and a render graph with Direct3D 12 and OpenGL backends (physically based lighting, image-based lighting, shadows, bloom, a computed sky with clouds and fog, anti-aliasing).
+- **KukiEngine**, the engine library: an archetype-based ECS fixed at compile time, a fixed-tick game loop with rebindable buttons and a gesture recognizer, skeletal animation with state machines and inverse kinematics, rollback networking, procedural generation (irregular grids, wave function collapse over any graph, noise), navigation meshes, flocking, and a render graph with a Direct3D 12 backend (physically based lighting, image-based lighting, shadows, bloom, a computed sky with clouds and fog, anti-aliasing).
 - **KukiEditor**, a [Dear ImGui](https://github.com/ocornut/imgui) editor for building, saving and playing scenes.
 
 ## Installation
@@ -18,12 +18,11 @@ A game engine written in C++23, made up of:
 
 - [Visual Studio](https://visualstudio.microsoft.com) 2022 (with the C++ workload and a Windows SDK)
 
-The Direct3D 12 backend compiles its shaders at runtime with `dxcompiler.dll` and `dxil.dll`, which are found in the Windows SDK and copied next to each executable. If they are missing, applications fall back to OpenGL.
+The Direct3D 12 backend compiles its shaders at runtime with `dxcompiler.dll` and `dxil.dll`, which are found in the Windows SDK and copied next to each executable. If they are missing, nothing is drawn.
 
 #### Linux
 
 - [Clang](https://llvm.org) or [GCC](https://gcc.gnu.org)
-- [Mesa 3D](https://mesa3d.org)
 - [Ninja](https://ninja-build.org)
 - [X.Org](https://www.x.org)
 
@@ -34,12 +33,12 @@ sudo apt update
 ```
 
 ```bash
-sudo apt install -y build-essential clang cmake git git-lfs libgl1-mesa-dev ninja-build xorg-dev
+sudo apt install -y build-essential clang cmake git git-lfs ninja-build xorg-dev
 ```
 
 > Your distribution's CMake may be older than 3.31; if so, install a newer one from [cmake.org](https://cmake.org/download/) or with `pip install cmake`.
 
-Linux builds use OpenGL. Continuous integration only builds on Windows at the moment, so Linux builds may break without notice.
+Direct3D 12 is the only graphics backend, so on Linux the engine and its windowless tests build, but the editor and the games stop at startup with no backend to draw with. Continuous integration only builds on Windows at the moment, so Linux builds may break without notice.
 
 ### Build Instructions
 

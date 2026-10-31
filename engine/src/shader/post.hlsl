@@ -55,9 +55,10 @@ float3 AgXContrast(float3 x) {
 // render target that applies the curve again. This pipeline writes to a linear target and encodes by
 // hand, so both of those steps are dropped rather than performed and immediately undone.
 //
-// The two rotations are written with the same coefficients in the same order as the OpenGL port, and
-// so must be multiplied with the vector on the left. A `float3x3` initialiser fills rows where GLSL's
-// `mat3` fills columns, which makes these each other's transpose; `mul(v, m)` cancels that out, and
+// The two rotations are written with the same coefficients in the same order as the GLSL they were
+// ported from (the OpenGL backend's), and so must be multiplied with the vector on the left. A
+// `float3x3` initialiser fills rows where GLSL's `mat3` fills columns, which makes these each
+// other's transpose; `mul(v, m)` cancels that out, and
 // `mul(m, v)` would silently apply the wrong rotation rather than fail to compile.
 float3 AgX(float3 radiance) {
   const float3x3 toAgX = float3x3(

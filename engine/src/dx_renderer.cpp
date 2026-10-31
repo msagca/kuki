@@ -3743,8 +3743,8 @@ auto DXRenderer::ApplyOverlay(std::span<std::string> inputs, std::span<std::stri
   vertexView.StrideInBytes = sizeof(Vertex);
   commandList->IASetVertexBuffers(0, 1, &vertexView);
   // The overlay lays its quads out in the target's pixels with y up from the bottom, which this
-  // maps straight onto clip space. The same matrix the OpenGL path builds, from the same call:
-  // nothing about it is one backend's rather than the other's.
+  // maps straight onto clip space. Nothing about the matrix is this backend's: another would build
+  // it from the same call.
   const auto projection = glm::ortho(.0f, static_cast<float>(destination.desc.width), .0f, static_cast<float>(destination.desc.height));
   DXOverlayConstants constants{};
   memcpy(constants.projection, glm::value_ptr(projection), sizeof(constants.projection));
