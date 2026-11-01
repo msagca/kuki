@@ -51,7 +51,7 @@ beside each executable -- without them nothing is drawn.
 ## Design principles
 
 They settle a choice before the architecture below does. A change that breaks one says why in its
-commit. Where the repo falls short of one, the gap is named.
+commit. Where the repo falls short of one, the shortfall is a GitHub issue, not a note here.
 
 - **Data first.** A component is plain, trivially copyable data -- no virtuals, owning pointers or
   containers -- so a table moves, snapshots and rolls back its rows as bytes. What varies in length
@@ -61,14 +61,13 @@ commit. Where the repo falls short of one, the gap is named.
 - **Behaviour is a system's.** Whatever runs -- every tick, every frame, on input -- is a `System`,
   working over tables through queries. A component has no method that changes it; a function that
   only computes from a component's data is a free function. An `Application` subclass only builds
-  its scene in `Start`. Gap: `Camera`'s and `Light`'s methods.
+  its scene in `Start`.
 - **Poll state, do not subscribe to events.** A system reads state on its own schedule: flags,
   counters, masks, a table's `version`, a queue it drains itself. What happened is recorded as data
   for whoever cares to read it (`ButtonMask`, an animator's fired events), not announced to
   subscribers -- a web of handlers runs in an order nobody chose and is hard to follow in a
   debugger. A callback may only compute a value its caller asks for (ground height, a seat's
-  buttons, a setting's get and set), never report that something happened. Gap:
-  `RegisterInputAction`'s callbacks, used by chess and the editor's camera.
+  buttons, a setting's get and set), never report that something happened.
 - **Data lives where it is used.** Upload to the GPU when data changes, not every frame; compute on
   the GPU what only the picture needs; copy columns as they lie (a pool's `WorldMatrix`); key cached
   GPU work on a table's `version` or an asset's `revision`. A readback says beside it why.
@@ -76,23 +75,19 @@ commit. Where the repo falls short of one, the gap is named.
   its commit; one that is not cheap is a graphics setting with a `RendererCapabilities` flag. Against
   the frame budget -- each game's own, in its `CLAUDE.md` -- the effect gives way.
 - **Low-poly by default**: flat-shaded, built with `MeshBuilder` or a script, unless a game's
-  `CLAUDE.md` says otherwise, and coloured by its vertices rather than textures. Gap: `Vertex` has
-  no colour yet, so colour is the material's.
+  `CLAUDE.md` says otherwise, and coloured by its vertices rather than textures.
 - **Variety from instances, not variants.** Vary the transforms and per-instance parameters (a tint)
   of one mesh and material -- one pool, one instanced draw -- rather than adding meshes or materials,
-  each a pool and a draw of its own. Gap: an instance has only its `WorldMatrix`, and skinned meshes
-  are drawn one at a time.
+  each a pool and a draw of its own.
 - **The engine keeps what more than one game could use**, in `engine/` and `namespace kuki`; a
   game's folder holds that game alone, in a namespace of its own. Code found general in a game is
-  moved, not copied. Gap: the games' systems are global, and the frontier's `CameraSystem` belongs in
-  the engine.
+  moved, not copied.
 - **Next to no UI over the game.** Only what a player would decide wrongly without, and the settings
   menu cannot hold, is shown: in the world where it can be (a building's outline on its cells), over
   the picture only where not (the state of a fight). Options, legends, debug views, merely
   interesting readouts and key hints are settings toggles or command-line flags.
 - **Every game plays from the keyboard alone.** Every action is a named binding
-  (`RegisterBinding`/`RegisterButton`); the mouse is a second way, never the only one. Gap: chess
-  (#16) and the frontier (#17); nothing enforces it (#18).
+  (`RegisterBinding`/`RegisterButton`); the mouse is a second way, never the only one.
 - **Rules are deterministic and windowless.** A game's rules are its `Tick`, in files compiled into
   the tests (`duel_sim.cpp`, `terrain.cpp`): the same state and buttons, or seed, give the same
   result on every machine, which rollback and shared maps stand on. No clock, `<random>`
@@ -204,8 +199,7 @@ duel's `Figure`) with `ModelNodeObject`/`MeshObject` children in the model's poo
 The update's invariants are in `entity_manager.hpp`. Scene singletons (`Component::IsSceneSingleton`,
 e.g. `IndirectLighting`, `AtmosphereSky`) describe the scene, not the entity holding them.
 
-A game's component is a struct, `KUKI_COMPONENT` and an archetype that has it; it is not saved with
-a scene yet, though the saved `"archetype"` names it. An engine component touches five places (the
+A game's component is a struct, `KUKI_COMPONENT` and an archetype that has it. An engine component touches five places (the
 `add-engine-component` skill); an enum shown in the editor needs `EnumTraits<T>` (`enum_traits.hpp`).
 
 ### Rendering
@@ -281,6 +275,11 @@ included.
   when editing nearby.
 - Commit messages: a lowercase imperative summary, then prose with the reasoning and measurements.
 - Binary assets (`.png`, `.ttf`, `.fbx`, `.hdr`, `.exr`, ...) are Git LFS.
+- `CLAUDE.md` says how things are and what the rules are; what is not done yet -- a rule the code
+  falls short of, a known bug, planned work -- is a GitHub issue, and is not noted here or in a
+  folder's `CLAUDE.md`. A note goes stale the day it is fixed and nobody remembers to delete it; an
+  issue is closed by the pull request that fixes it. Look at the open issues before starting work
+  in an area (`gh issue list`).
 - CI (`build-and-test.yml`) builds `Debug` with tests and runs `ctest` (Windows/cl) on a push to any
   branch but `main`. `main` is protected, kept in step with the remote and never worked on: work
   reaches it by pull request once `cmake (windows-latest)` passes on the head. A fix gets a GitHub
