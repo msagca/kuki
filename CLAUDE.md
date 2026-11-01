@@ -55,9 +55,20 @@ commit. Where the repo falls short of one, the gap is named.
 
 - **Data first.** A component is plain, trivially copyable data -- no virtuals, owning pointers or
   containers -- so a table moves, snapshots and rolls back its rows as bytes. What varies in length
-  is an asset's or a system-owned store's, reached by a handle; behaviour is a system's, run over
-  tables by queries. Gap: `Animator` and `Skeleton`, the only exemptions; once they are reworked a
-  `static_assert` refuses every component that is not trivially copyable.
+  is an asset's or a system-owned store's, reached by a handle. Gap: `Animator` and `Skeleton`, the
+  only exemptions; once they are reworked a `static_assert` refuses every component that is not
+  trivially copyable.
+- **Behaviour is a system's.** Whatever runs -- every tick, every frame, on input -- is a `System`,
+  working over tables through queries. A component has no method that changes it; a function that
+  only computes from a component's data is a free function. An `Application` subclass only builds
+  its scene in `Start`. Gap: `Camera`'s and `Light`'s methods, and `Animator`'s until it is reworked.
+- **Poll state, do not subscribe to events.** A system reads state on its own schedule: flags,
+  counters, masks, a table's `version`, a queue it drains itself. What happened is recorded as data
+  for whoever cares to read it (`ButtonMask`, an animator's fired events), not announced to
+  subscribers -- a web of handlers runs in an order nobody chose and is hard to follow in a
+  debugger. A callback may only compute a value its caller asks for (ground height, a seat's
+  buttons, a setting's get and set), never report that something happened. Gap:
+  `RegisterInputAction`'s callbacks, used by chess and the editor's camera.
 - **Data lives where it is used.** Upload to the GPU when data changes, not every frame; compute on
   the GPU what only the picture needs; copy columns as they lie (a pool's `WorldMatrix`); key cached
   GPU work on a table's `version` or an asset's `revision`. A readback says beside it why.

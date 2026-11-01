@@ -46,7 +46,6 @@ public:
   /// The one lifecycle entry point that is public, because `main` has to call something. The four
   /// hooks it drives are protected -- see the note on `Start`.
   auto Run() -> void;
-  Event<Scene &> OnSceneLoaded;
   auto AddChildEntity(const EntityID, const EntityID) -> bool;
   auto AlignView(const EntityID) -> void;
   /// @brief Makes an entity of an archetype in the active scene. See `EntityManager::Create`.
