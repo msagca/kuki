@@ -5,12 +5,29 @@
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_int2.hpp>
 #include <input_manager.hpp>
+#include <key.hpp>
 #include <span>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <trie.hpp>
 #include <utility>
 namespace kuki {
+// `Key` and `MouseButton` are GLFW's numbers under the engine's names, which is what lets a saved
+// binding and a trigger be read as either. Checked at each run of consecutive values, since the
+// enumerators between two checks follow from the first by counting.
+static_assert(std::to_underlying(Key::Space) == GLFW_KEY_SPACE);
+static_assert(std::to_underlying(Key::Apostrophe) == GLFW_KEY_APOSTROPHE);
+static_assert(std::to_underlying(Key::Slash) == GLFW_KEY_SLASH && std::to_underlying(Key::Comma) == GLFW_KEY_COMMA);
+static_assert(std::to_underlying(Key::Digit0) == GLFW_KEY_0 && std::to_underlying(Key::Digit9) == GLFW_KEY_9);
+static_assert(std::to_underlying(Key::Semicolon) == GLFW_KEY_SEMICOLON && std::to_underlying(Key::Equal) == GLFW_KEY_EQUAL);
+static_assert(std::to_underlying(Key::A) == GLFW_KEY_A && std::to_underlying(Key::Z) == GLFW_KEY_Z);
+static_assert(std::to_underlying(Key::RightBracket) == GLFW_KEY_RIGHT_BRACKET && std::to_underlying(Key::GraveAccent) == GLFW_KEY_GRAVE_ACCENT);
+static_assert(std::to_underlying(Key::Escape) == GLFW_KEY_ESCAPE && std::to_underlying(Key::End) == GLFW_KEY_END);
+static_assert(std::to_underlying(Key::CapsLock) == GLFW_KEY_CAPS_LOCK && std::to_underlying(Key::Pause) == GLFW_KEY_PAUSE);
+static_assert(std::to_underlying(Key::F1) == GLFW_KEY_F1 && std::to_underlying(Key::F12) == GLFW_KEY_F12);
+static_assert(std::to_underlying(Key::Keypad0) == GLFW_KEY_KP_0 && std::to_underlying(Key::KeypadEqual) == GLFW_KEY_KP_EQUAL);
+static_assert(std::to_underlying(Key::LeftShift) == GLFW_KEY_LEFT_SHIFT && std::to_underlying(Key::Menu) == GLFW_KEY_MENU);
+static_assert(std::to_underlying(MouseButton::Left) == GLFW_MOUSE_BUTTON_LEFT && std::to_underlying(MouseButton::Right) == GLFW_MOUSE_BUTTON_RIGHT && std::to_underlying(MouseButton::Middle) == GLFW_MOUSE_BUTTON_MIDDLE);
 static inline auto IsASCII(unsigned int codepoint) -> bool {
   return codepoint <= 0x7F;
 }
@@ -128,17 +145,6 @@ auto InputManager::RegisterButton(const std::string &name, const Trigger &trigge
   RegisterBinding(name, trigger, std::move(description), saved);
   buttonOrder.push_back(name);
   return static_cast<int>(buttonOrder.size() - 1);
-}
-auto InputManager::GetKeyAxis(const KeyAxis axis) const -> glm::ivec2 {
-  const auto arrows = axis == KeyAxis::Arrows;
-  const auto up = GetState(arrows ? GLFW_KEY_UP : GLFW_KEY_W);
-  const auto down = GetState(arrows ? GLFW_KEY_DOWN : GLFW_KEY_S);
-  const auto left = GetState(arrows ? GLFW_KEY_LEFT : GLFW_KEY_A);
-  const auto right = GetState(arrows ? GLFW_KEY_RIGHT : GLFW_KEY_D);
-  glm::ivec2 direction{};
-  direction.y = up ? (down ? 0 : 1) : (down ? -1 : 0);
-  direction.x = right ? (left ? 0 : 1) : (left ? -1 : 0);
-  return direction;
 }
 auto InputManager::SetEnabled(const InputKind kind, const bool enabled) -> void {
   if (kind != InputKind::Buttons)

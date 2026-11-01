@@ -33,7 +33,7 @@ using ModelNodeObject = Archetype<Transform, BoundingBox>;
 /// @brief One node of a placed model that carries a mesh: a mesh object in the pool of that model's
 /// mesh and material. Its own archetype when a model's mesh was named by handles of its own kind.
 using ModelMeshObject = MeshObject;
-/// @brief The entity a model is placed as, unless the game asks for another (`InstantiateAsset<A>`).
+/// @brief The entity a model is placed as, unless the game asks for another (`World::Instantiate<A>`).
 ///
 /// It stands for the model's top node: it takes that node's transform and bounds, and the nodes
 /// below come in as its children. A top node that carries a mesh brings it as a child of its own.

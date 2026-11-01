@@ -1,4 +1,3 @@
-#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <application.hpp>
 #include <bounding_box.hpp>
@@ -752,7 +751,7 @@ auto MapSystem::Update(const float) -> void {
     const auto focus = camera->GetFocus();
     camera->SetFocusHeight(map.GroundAt({focus.x, focus.z}));
   }
-  if (pathEnabled && app.IsInputPressed(GLFW_MOUSE_BUTTON_RIGHT) && cursor) {
+  if (pathEnabled && app.IsMousePressed(MouseButton::Right) && cursor) {
     const glm::vec2 point{cursor->x, cursor->z};
     if (!pathStart || !path.empty()) {
       pathStart = point;
@@ -773,10 +772,7 @@ auto MapSystem::Update(const float) -> void {
   DrawPanel();
 }
 auto MapSystem::DrawPanel() -> void {
-  const auto *context = app.GetGraphicsContext();
-  if (!context)
-    return;
-  const auto [width, height] = context->GetSurfaceSize();
+  const auto [width, height] = app.GetSurfaceSize();
   if (width <= 0 || height <= 0)
     return;
   const auto unit = static_cast<float>(height) / 1080.f;

@@ -174,34 +174,34 @@ auto AssetManager::Instantiate(const AssetID assetId, Scene &scene, const Compon
     return EntityID::Invalid;
   const auto *modelAsset = Get<ModelAsset>(assetId);
   if (!modelAsset)
-    return scene.CopyEntityFrom(prefabManager, prefabId);
+    return scene.Entities().CopyFrom(prefabManager, prefabId);
   if (!root[ComponentIdOf<Transform>]) {
     spdlog::error("[AssetManager] A model is placed by its root, and the root asked for has no transform to place it with");
     return EntityID::Invalid;
   }
   const auto name = prefabManager.GetName(prefabId);
-  const auto entityId = scene.CreateEntity(root, name);
+  const auto entityId = scene.Entities().Create(root, name);
   if (!entityId)
     return EntityID::Invalid;
-  scene.CopyEntityComponents(prefabManager, prefabId, entityId);
+  scene.Entities().CopyComponents(prefabManager, prefabId, entityId);
   // A top node that is a mesh has its bounds in its pool and no component to copy them from.
-  if (auto *bounds = scene.GetEntityComponent<BoundingBox>(entityId); bounds && !*bounds)
+  if (auto *bounds = scene.Entities().GetComponent<BoundingBox>(entityId); bounds && !*bounds)
     *bounds = prefabManager.GetBounds(prefabId);
   // A top node that is a mesh, under a root that is not drawn: the mesh comes in as a child of the
   // root, from the same pool, with the bounds the prefab's pool has.
   if (const auto pool = prefabManager.GetPool(prefabId); pool && !root[ComponentIdOf<Pooled>]) {
-    scene.CreatePool(MeshObject::Mask(), pool, {.bounds = prefabManager.GetBounds(prefabId)});
-    if (const auto meshId = scene.CreateEntity(MeshObject::Mask(), pool, name + " mesh"); meshId) {
-      scene.CopyEntityComponents(prefabManager, prefabId, meshId);
+    scene.Entities().CreatePool(MeshObject::Mask(), pool, {.bounds = prefabManager.GetBounds(prefabId)});
+    if (const auto meshId = scene.Entities().Create(MeshObject::Mask(), pool, name + " mesh"); meshId) {
+      scene.Entities().CopyComponents(prefabManager, prefabId, meshId);
       // Where the root is, rather than where the top node was relative to its parent: the root has
       // already taken that, and the mesh hangs from the root, which the next line makes its parent.
-      *scene.GetEntityComponent<Transform>(meshId) = Transform{};
-      scene.AddChildEntity(entityId, meshId);
+      *scene.Entities().GetComponent<Transform>(meshId) = Transform{};
+      scene.Entities().AddChild(entityId, meshId);
     }
   }
   prefabManager.ForEachChild(prefabId, [&](const EntityID childPrefabId) {
-    if (const auto childId = scene.CopyEntityFrom(prefabManager, childPrefabId); childId)
-      scene.AddChildEntity(entityId, childId);
+    if (const auto childId = scene.Entities().CopyFrom(prefabManager, childPrefabId); childId)
+      scene.Entities().AddChild(entityId, childId);
   });
   ResolveModelInstance(scene, entityId, *modelAsset, assetId);
   return entityId;
@@ -211,8 +211,8 @@ auto AssetManager::ResolveModelInstance(Scene &scene, const EntityID root, const
     return;
   std::unordered_map<std::string, EntityID> nameToEntityId;
   const auto Walk = [&](const EntityID id, const auto &self) -> void {
-    nameToEntityId.emplace(scene.GetEntityName(id), id);
-    scene.ForEachChildEntity(id, [&](const EntityID childId) {
+    nameToEntityId.emplace(scene.Entities().GetName(id), id);
+    scene.Entities().ForEachChild(id, [&](const EntityID childId) {
       self(childId, self);
     });
   };
@@ -222,9 +222,9 @@ auto AssetManager::ResolveModelInstance(Scene &scene, const EntityID root, const
     if (auto it = nameToEntityId.find(modelAsset.nodes[i].name); it != nameToEntityId.end())
       nodeEntities[i] = it->second;
   auto *rig = scene.ClaimRig(root);
-  auto *animator = scene.GetEntityComponent<Animator>(root);
+  auto *animator = scene.Entities().GetComponent<Animator>(root);
   if (!rig || !animator) {
-    spdlog::warn("[AssetManager] {} has clips, but was placed as an entity with no skeleton and animator to play them with -- place it as an archetype with `Animated`", scene.GetEntityName(root));
+    spdlog::warn("[AssetManager] {} has clips, but was placed as an entity with no skeleton and animator to play them with -- place it as an archetype with `Animated`", scene.Entities().GetName(root));
     return;
   }
   rig->nodes = std::move(nodeEntities);

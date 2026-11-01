@@ -291,8 +291,6 @@ private:
   float orbitYaw{};
   float orbitPitch{};
   float orbitDistance{};
-  kuki::InputManager::ActionID pressAction{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID releaseAction{kuki::InputManager::InvalidActionID};
   /// @brief The binding that starts a new game, R unless the player has rebound it.
   static constexpr const char *RESTART_BINDING = "Chess.Restart";
   /// @brief Centre of a square in world space, with `y` on the board's surface.

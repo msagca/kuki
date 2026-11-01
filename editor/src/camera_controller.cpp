@@ -1,11 +1,12 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <application.hpp>
+#include <application_internal.hpp>
 #include <camera.hpp>
 #include <camera_controller.hpp>
-#include <field.hpp>
 #include <camera_type.hpp>
 #include <entity_manager.hpp>
+#include <field.hpp>
 #include <glm/detail/type_vec2.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/quaternion_float.hpp>
@@ -20,6 +21,20 @@
 #include <utility>
 using namespace kuki;
 namespace {
+/// @brief Points the camera at an entity and backs off until its bounds fill the view. The editor's
+/// Focus binding; was `Scene::AlignView`, which nothing but this ever called.
+auto Frame(Application &app, const EntityID id) -> void {
+  constexpr auto ORIENTATION = glm::vec3{0.f};
+  constexpr auto DISTANCE_FACTOR = 2.f;
+  auto *camera = app.GetCamera();
+  if (!camera)
+    return;
+  const auto [transform, world] = app.GetEntityComponent<Transform, WorldMatrix>(id);
+  const auto bounds = Internal(app).GetEntityBounds(id);
+  if (!bounds || !transform || !world)
+    return;
+  camera->Frame(bounds.GetWorldBounds(world->matrix), transform->position, ORIENTATION, DISTANCE_FACTOR);
+}
 struct BindingDef {
   const char *label;
   const char *description;
@@ -90,56 +105,56 @@ auto CameraController::GetView() const -> const glm::mat4 & {
 }
 auto CameraController::Start() -> void {
   for (auto i = 0; i < BindingCount; ++i)
-    app.RegisterBinding(BindingName(i), InputManager::Trigger{kBindings[i].key, kBindings[i].mods}, kBindings[i].description);
-  rmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
-    if (!app.IsViewportHovered())
+    Internal(app).RegisterBinding(BindingName(i), InputManager::Trigger{kBindings[i].key, kBindings[i].mods}, kBindings[i].description);
+  rmbPressActionId = Internal(app).Input().RegisterAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
+    if (!Internal(app).IsViewportHovered())
       return;
     mouselook = true;
     mouseEnter = true;
-    app.SetCursorLocked(true);
+    Internal(app).SetCursorLocked(true);
   });
-  rmbReleaseActionId = app.RegisterInputAction(
+  rmbReleaseActionId = Internal(app).Input().RegisterAction(
     GLFW_MOUSE_BUTTON_RIGHT,
     [this]() {
       mouselook = false;
-      app.SetCursorLocked(false);
+      Internal(app).SetCursorLocked(false);
       const auto pos = app.GetMousePosition();
       ImGui::GetIO().AddMousePosEvent(pos.x, pos.y);
     },
     false);
-  lmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_LEFT, [this]() {
-    if (!app.IsViewportHovered() || ImGuizmo::IsOver() || ImGuizmo::IsUsing())
+  lmbPressActionId = Internal(app).Input().RegisterAction(GLFW_MOUSE_BUTTON_LEFT, [this]() {
+    if (!Internal(app).IsViewportHovered() || ImGuizmo::IsOver() || ImGuizmo::IsUsing())
       return;
-    if (const auto world = app.GetEntityComponent<WorldMatrix>(app.GetSelectedEntity()); world)
+    if (const auto world = app.GetEntityComponent<WorldMatrix>(Internal(app).GetSelectedEntity()); world)
       orbitPivot = glm::vec3(world->matrix[3]);
     else
       orbitPivot = camera.position + camera.forward * settings.orbitFallbackDistance;
     orbitDistance = glm::length(camera.position - orbitPivot);
     orbiting = true;
     mouseEnter = true;
-    app.SetCursorLocked(true);
+    Internal(app).SetCursorLocked(true);
   });
-  lmbReleaseActionId = app.RegisterInputAction(
+  lmbReleaseActionId = Internal(app).Input().RegisterAction(
     GLFW_MOUSE_BUTTON_LEFT,
     [this]() {
       orbiting = false;
-      app.SetCursorLocked(false);
+      Internal(app).SetCursorLocked(false);
       const auto pos = app.GetMousePosition();
       ImGui::GetIO().AddMousePosEvent(pos.x, pos.y);
     },
     false);
-  mmbPressActionId = app.RegisterInputAction(GLFW_MOUSE_BUTTON_MIDDLE, [this]() {
-    if (!app.IsViewportHovered())
+  mmbPressActionId = Internal(app).Input().RegisterAction(GLFW_MOUSE_BUTTON_MIDDLE, [this]() {
+    if (!Internal(app).IsViewportHovered())
       return;
     panning = true;
     mouseEnter = true;
-    app.SetCursorLocked(true);
+    Internal(app).SetCursorLocked(true);
   });
-  mmbReleaseActionId = app.RegisterInputAction(
+  mmbReleaseActionId = Internal(app).Input().RegisterAction(
     GLFW_MOUSE_BUTTON_MIDDLE,
     [this]() {
       panning = false;
-      app.SetCursorLocked(false);
+      Internal(app).SetCursorLocked(false);
       const auto pos = app.GetMousePosition();
       ImGui::GetIO().AddMousePosEvent(pos.x, pos.y);
     },
@@ -148,7 +163,7 @@ auto CameraController::Start() -> void {
 auto CameraController::Shutdown() -> void {
   for (const auto action : {rmbPressActionId, rmbReleaseActionId, lmbPressActionId, lmbReleaseActionId, mmbPressActionId, mmbReleaseActionId})
     if (action != InputManager::InvalidActionID)
-      app.UnregisterInputAction(action);
+      Internal(app).Input().UnregisterAction(action);
 }
 auto CameraController::Update(const float) -> void {
   auto dirty = false;
@@ -158,7 +173,7 @@ auto CameraController::Update(const float) -> void {
   dirty |= panning && UpdatePan(app);
   dirty |= UpdateZoom(app);
   if (app.IsBindingPressed(BindingName(Focus)))
-    app.AlignView(app.GetSelectedEntity());
+    Frame(app, Internal(app).GetSelectedEntity());
   camera.dirty += dirty;
   auto cameraPtr = app.GetEntityComponent<Camera>(entity);
   if (cameraPtr) {
@@ -233,9 +248,9 @@ auto CameraController::UpdatePan(Application &app) -> bool {
 }
 auto CameraController::UpdatePosition(Application &app) -> bool {
   constexpr auto WORLD_UP = glm::vec3(.0f, 1.f, .0f);
-  if (!app.IsViewportHovered() && !mouselook)
+  if (!Internal(app).IsViewportHovered() && !mouselook)
     return false;
-  if (app.IsSequenceInProgress())
+  if (Internal(app).Input().IsSequenceInProgress())
     return false;
   const auto deltaTime = app.DeltaTime();
   const auto boost = app.IsBindingHeld(BindingName(Boost));
@@ -288,7 +303,7 @@ auto CameraController::UpdateRotation(Application &app) -> bool {
 auto CameraController::UpdateZoom(Application &app) -> bool {
   static constexpr auto EPSILON = 1e-6f;
   static constexpr auto MIN_ORTHO_SIZE = .1f;
-  if (!app.IsViewportHovered() && !mouselook)
+  if (!Internal(app).IsViewportHovered() && !mouselook)
     return false;
   const auto scroll = app.GetScrollOffset().y;
   if (glm::abs(scroll) < EPSILON)

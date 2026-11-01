@@ -39,8 +39,11 @@ beside each executable -- without them nothing is drawn.
 
 ## Layout
 
-- `engine/` -- `KukiEngine`, linked by everything. Public headers in `include/`, included by bare
-  name (`#include <entity_manager.hpp>`).
+- `engine/` -- `KukiEngine`, linked by everything. Headers are included by bare name
+  (`#include <entity_manager.hpp>`): `include/` is what a game is given and a release installs;
+  `internal/` (the backend, the scene loader, shader constants, `ApplicationInternal`) is reached
+  only by the engine and, through `KukiEngineInternal`, the editor and tests. No `include/` header
+  may include an `internal/` one -- `KukiPublicHeaders`, built with the tests, fails if one does.
 - `editor/` -- `KukiEditor` (Dear ImGui), the only target linking imgui/imguizmo/file-browser.
 - `game/` -- a subdirectory with a `CMakeLists.txt` is a game, found without registration. It links
   `KukiEngine` alone and calls `kuki_report_binary(${PROJECT_NAME})`.
@@ -127,8 +130,11 @@ A tick reads the player as a `ButtonMask` (`GetButtons()`). A button is a rebind
 `RegisterButton`, its bit the registration order, latched so a tap shorter than a tick still shows.
 `GestureRecognizer` (`gesture.hpp`) turns masks into presses, chords, holds, releases and sequences
 in a small notation (`"left right punch"`, `"guard*30 -guard"`); it keeps nothing but the masks, so
-fed a peer's it reproduces the peer's gestures. `RegisterInputAction` is unrelated: untimed typed
-sequences for editor shortcuts.
+fed a peer's it reproduces the peer's gestures. A game's keys are `Key`s (`key.hpp`, GLFW's numbers
+under the engine's names, so glfw is private to the engine), given only as a binding's default; it
+reads no key directly. Mouse buttons are read directly (`IsMousePressed(MouseButton::Left)`). Typed
+sequences and callback actions (`InputManager::RegisterAction`) are the editor's, reached through
+`ApplicationInternal`.
 
 An `Animator` is plain data. Its states are an `AnimatorController` asset it names by id, shared by
 every animator on the same moves; without one it plays one clip by frame time (the editor's
@@ -161,10 +167,23 @@ Its sources define `Setup<Game>(Application &)`, `KUKI_GAME_MODULE(name, setup)`
 `KUKI_GAME_MAIN(AppClass)`; a shared build makes `<Target>Game.dll` and `KukiEngine.dll`. Games are
 always `Playing`; only the editor stops and pauses (`PlayState`).
 
-Scenes are built with `CreateEntity<A>`/`GetEntityComponent` or the builder in `game_builder.hpp`,
-which checks each call against the entity's archetype at compile time
+Scenes are built with the builder in `game_builder.hpp`, which checks each call against the
+entity's archetype at compile time
 (`ChessWorld::Game(app, "Chess").Scene("Main").Entity<MeshObject>("Pawn").Mesh("Cube")`) and, through
-`World::Game`, refuses an archetype the world does not declare.
+`World::Game`, refuses an archetype the world does not declare; entities made at run time come from
+`World::Create<A>`, which refuses one too. `Application` offers no unchecked creation.
+
+`Application`'s public surface is what a game calls, and only that: time, bindings and the mouse,
+assets, the active scene's entities, and the settings menu, overlay, preferences and network. What
+the engine's own code and the editor need besides -- the managers, the window, the graphics
+context, play states, the editor's selection, unchecked creation from a mask -- is
+`ApplicationInternal` (`internal/application_internal.hpp`), used as `Internal(app).Assets()`.
+Something a game needs goes on `Application`; something only the engine or editor needs goes there.
+
+A game never holds a `Scene` (`internal/scene.hpp`): it reads the camera with `GetCamera()` and a
+scene singleton with `GetSceneSingleton<T>()`, which refuses a component that is not one. `Scene`
+is only what it adds to its `EntityManager` -- the active camera and the rigs -- and every entity
+operation is the manager's, through `scene->Entities()`, under the manager's names.
 
 ### ECS
 
@@ -185,19 +204,20 @@ was handed afterwards.
 **Every drawn entity is in a pool** (`pool.hpp`). `Renderable` is only the tag `Pooled`; the mesh,
 material and bounds are the pool's, a `PoolKey` (a mesh or a model's mesh by index, and a material)
 with a table of its own. An archetype has one table for entities with no mesh yet and one per pool;
-queries visit them all. Create in a pool with `CreateEntity<A>(key)`, move with `MoveEntityToPool`
+queries visit them all. Create in a pool with `World::Create<A>(app, key)`, move with `MoveEntityToPool`
 (the builder's `.Mesh()`/`.Material()`), and give a pool bounds by making it with `CreatePool`
 (empty: never culled, and outside the shadow's and probes' fit). A table's `version` rises when a
 row comes, goes or moves. Direct3D 12 draws a pool as one instanced draw from its `WorldMatrix`
 column and culls per pool; skinned meshes are not culled.
 
-`InstantiateAsset<Root>(name)` places a model: a root entity (`ModelRoot`, or a game's own like the
+`World::Instantiate<Root>(app, name)` places a model: a root entity (`ModelRoot`, or a game's own like the
 duel's `Figure`) with `ModelNodeObject`/`MeshObject` children in the model's pools.
 
 `Transform` has no dirty bit and no world matrix: after writing `position`/`rotation`/`scale`, call
 `MarkTransformDirty` or the change is never applied, and read where something is from `WorldMatrix`.
 The update's invariants are in `entity_manager.hpp`. Scene singletons (`Component::IsSceneSingleton`,
-e.g. `IndirectLighting`, `AtmosphereSky`) describe the scene, not the entity holding them.
+e.g. `IndirectLighting`, `AtmosphereSky`) describe the scene, not the entity holding them, and a
+game reads one with `GetSceneSingleton<T>()`.
 
 A game's component is a struct, `KUKI_COMPONENT` and an archetype that has it. An engine component touches five places (the
 `add-engine-component` skill); an enum shown in the editor needs `EnumTraits<T>` (`enum_traits.hpp`).

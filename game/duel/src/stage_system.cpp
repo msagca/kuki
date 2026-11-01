@@ -1,4 +1,3 @@
-#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <application.hpp>
 #include <cctype>
@@ -9,7 +8,6 @@
 #include <duel_world.hpp>
 #include <light.hpp>
 #include <particle_emitter.hpp>
-#include <scene.hpp>
 #include <screen_effects.hpp>
 #include <settings_menu.hpp>
 #include <spdlog/spdlog.h>
@@ -51,7 +49,7 @@ auto StageSystem::PostStart() -> void {
       spdlog::warn("[Duel] There is no stage called {}, so the fight is in the alley", *name);
   }
   Build(chosen);
-  app.RegisterBinding(NEXT_BINDING, InputManager::Trigger{GLFW_KEY_TAB, 0}, "Next stage");
+  app.RegisterBinding(NEXT_BINDING, Key::Tab, "Next stage");
   std::vector<SettingsOption> stages;
   for (const auto *name : duel::STAGE_NAMES) {
     std::string label(name);
@@ -159,8 +157,8 @@ auto StageSystem::Storm(const float deltaTime) -> void {
   const auto *duel = dynamic_cast<Duel *>(&app);
   const auto flashing = !duel || duel->GetSystem<DuelSystem>()->IsFlashing();
   // Over what the fight has put there this frame, never under it.
-  if (auto scene = app.GetScene(); scene && flashing && brightness > .0f)
-    if (auto *effects = scene->GetAnyComponent<ScreenEffects>()) {
+  if (flashing && brightness > .0f)
+    if (auto *effects = app.GetSceneSingleton<ScreenEffects>()) {
       effects->flash = std::max(effects->flash, STRIKE_FLASH * brightness);
       effects->flashColor = {.85f, .9f, 1.f};
     }

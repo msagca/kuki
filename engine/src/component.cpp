@@ -30,7 +30,4 @@ auto Component::GetTypeName(const ComponentType type) -> std::string {
     return it->second;
   return {};
 }
-auto Component::IsSceneSingleton(const ComponentType type) -> bool {
-  return type == ComponentType::AntiAliasing || type == ComponentType::AtmosphereSky || type == ComponentType::IndirectLighting || type == ComponentType::PlanarReflection || type == ComponentType::ScreenEffects || type == ComponentType::Stylization || type == ComponentType::VolumetricClouds || type == ComponentType::VolumetricFog || type == ComponentType::Wind;
-}
 } // namespace kuki

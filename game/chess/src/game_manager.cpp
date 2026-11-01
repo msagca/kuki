@@ -1,4 +1,3 @@
-#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <application.hpp>
 #include <array>
@@ -317,6 +316,17 @@ auto GameManager::PostStart() -> void {
   Begin(app);
 }
 auto GameManager::Update(const float) -> void {
+  // Polled, where it used to be a pair of actions registered on the button: a callback ran in the
+  // middle of the input manager's event handling, captured `this`, and had to be unregistered by
+  // hand before the system went, or the next click called into a destroyed one. The release is
+  // read before the press so that a drag let go and a new click begun within one frame starts the
+  // new one; a click begun and let go within one frame ends with the button up, and is no drag.
+  if (app.IsMouseReleased(MouseButton::Left))
+    orbiting = false;
+  if (app.IsMousePressed(MouseButton::Left))
+    OnPress();
+  if (!app.IsMouseHeld(MouseButton::Left))
+    orbiting = false;
   Frame(app);
 }
 auto GameManager::Shutdown() -> void {
@@ -345,14 +355,9 @@ auto GameManager::Begin(Application &application) -> void {
   UpdateStanding();
   UpdateTitle();
   Refresh();
-  pressAction = app->RegisterInputAction(GLFW_MOUSE_BUTTON_LEFT, [this]() { OnPress(); });
-  releaseAction = app->RegisterInputAction(
-    GLFW_MOUSE_BUTTON_LEFT,
-    [this]() { orbiting = false; },
-    false);
   // A binding rather than an action on R, so that it is listed with the settings' controls and can
   // be moved. Escape is the settings menu's, which is also where quitting is now.
-  app->RegisterBinding(RESTART_BINDING, InputManager::Trigger{GLFW_KEY_R, 0}, "New game");
+  app->RegisterBinding(RESTART_BINDING, Key::R, "New game");
   AddSettings(application);
   spdlog::info("[Chess] Click a piece to select it, then a green square to move it; red marks a piece it can take; drag anywhere else to turn the board");
 }
@@ -547,13 +552,6 @@ auto GameManager::End(Application &application) -> void {
   // Written on the way out as well as on every change, so that a first run leaves a file behind
   // rather than only the runs that touched a setting.
   SaveSettings(application);
-  // Unregistered explicitly, because the actions capture `this` and the input manager outlives the
-  // system: a stale action would call into a destroyed one on the next click.
-  for (const auto action : {pressAction, releaseAction})
-    if (action != InputManager::InvalidActionID)
-      application.UnregisterInputAction(action);
-  pressAction = InputManager::InvalidActionID;
-  releaseAction = InputManager::InvalidActionID;
 }
 auto GameManager::Refresh() -> void {
   RefreshSquares();

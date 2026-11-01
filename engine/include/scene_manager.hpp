@@ -1,14 +1,18 @@
 #pragma once
+#include <concepts.hpp>
 #include <id.hpp>
 #include <kuki_engine_export.h>
 #include <manager.hpp>
-#include <scene.hpp>
+#include <memory>
 #include <string>
 #include <unordered_map>
 namespace kuki {
+class Scene;
 class KUKI_ENGINE_API SceneManager final : public Manager {
 public:
   SceneManager(Application &);
+  /// @brief Out of line, where `Scene` is complete: it is internal, and this header is not.
+  ~SceneManager();
   /// @brief Not copyable: it owns what it holds through `unique_ptr`.
   ///
   /// Explicit rather than left implicit because exporting a class from a shared library

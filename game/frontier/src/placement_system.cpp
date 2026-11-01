@@ -1,4 +1,3 @@
-#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <application.hpp>
 #include <camera_system.hpp>
@@ -16,7 +15,6 @@
 #include <placement_system.hpp>
 #include <props.hpp>
 #include <random.hpp>
-#include <scene.hpp>
 #include <spdlog/spdlog.h>
 #include <transform.hpp>
 #include <wind.hpp>
@@ -148,8 +146,7 @@ auto PlacementSystem::Demolish(const int id) -> void {
   placed[static_cast<size_t>(id)].reset();
 }
 auto PlacementSystem::Spin(const float dt) -> void {
-  auto scene = app.GetScene();
-  const auto *wind = scene ? scene->GetAnyComponent<Wind>() : nullptr;
+  const auto *wind = app.GetSceneSingleton<Wind>();
   const auto strength = wind ? wind->strength : 1.f;
   for (auto &entry : placed) {
     if (!entry || !entry->sails)
@@ -185,7 +182,7 @@ auto PlacementSystem::Update(const float deltaTime) -> void {
     if (app.IsBindingPressed(BuildBinding(i)))
       Select(selected == static_cast<int>(i) ? -1 : static_cast<int>(i));
   // A right click puts the building down again, as its key does. Escape is the settings menu's now.
-  if (selected >= 0 && app.IsInputPressed(GLFW_MOUSE_BUTTON_RIGHT))
+  if (selected >= 0 && app.IsMousePressed(MouseButton::Right))
     Select(-1);
   camera->SetTurnKeys(selected < 0);
   mapSystem->SetPathEnabled(selected < 0);
@@ -216,7 +213,7 @@ auto PlacementSystem::Update(const float deltaTime) -> void {
       }
     }
     mapSystem->Highlight(footprint, valid ? GOOD : BAD);
-    if (valid && app.IsInputPressed(GLFW_MOUSE_BUTTON_LEFT))
+    if (valid && app.IsMousePressed(MouseButton::Left))
       Build(selected, footprint, angle);
   } else {
     // Over a building, its cells; over anything else, the one cell.
@@ -260,10 +257,7 @@ auto PlacementSystem::DrawPanel() -> void {
   // and cancel is gone with the rest of the hints.
   if (selected < 0)
     return;
-  const auto *context = app.GetGraphicsContext();
-  if (!context)
-    return;
-  const auto [width, height] = context->GetSurfaceSize();
+  const auto [width, height] = app.GetSurfaceSize();
   if (width <= 0 || height <= 0)
     return;
   const auto unit = static_cast<float>(height) / 1080.f;

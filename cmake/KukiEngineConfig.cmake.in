@@ -5,10 +5,11 @@ include(CMakeFindDependencyMacro)
 # resolves those inside the library, and a static one carries them in the archive. See the comment
 # on target_link_libraries in engine/CMakeLists.txt for which is which and why.
 find_dependency(glm)
-find_dependency(glfw3)
 find_dependency(spdlog)
-# Private to the engine's code, but a shared library all the same, so a consumer's runtime loads it
-# and CMake carries it in the exported target. Nothing in the installed headers mentions Assimp.
+# Private to the engine's code, but shared libraries all the same, so a consumer's runtime loads
+# them and CMake carries them in the exported target. Nothing in the installed headers mentions
+# Assimp, and glfw only as the opaque `GLFWwindow`.
 find_dependency(assimp)
+find_dependency(glfw3)
 include("${CMAKE_CURRENT_LIST_DIR}/KukiEngineTargets.cmake")
 check_required_components(KukiEngine)

@@ -39,7 +39,7 @@ public:
   ///
   /// The sync is deliberately lopsided. Outwards it writes only the placement -- position, rotation
   /// and orthographic size -- and only when this controller's `dirty` counter is the newer of the
-  /// two, so a position set in the properties panel or by `AlignView` is not undone. Inwards it
+  /// two, so a position set in the properties panel or by the Focus binding is not undone. Inwards it
   /// copies the whole component every frame, because the component is the camera and this is a
   /// cache of it: anything the placement list does not mention belongs to somebody else and must
   /// not be written back from here.

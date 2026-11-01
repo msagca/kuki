@@ -9,21 +9,24 @@
 #include <graphics_context.hpp>
 #include <id.hpp>
 #include <input_manager.hpp>
+#include <key.hpp>
 #include <kuki_engine_export.h>
 #include <memory>
 #include <optional>
 #include <overlay.hpp>
 #include <preferences.hpp>
 #include <primitive.hpp>
-#include <scene.hpp>
+#include <rig.hpp>
 #include <scene_manager.hpp>
 #include <settings_menu.hpp>
 #include <shader_asset.hpp>
 #include <string_view>
 #include <system.hpp>
 #include <tick_clock.hpp>
+#include <utility>
 #include <vector>
 namespace kuki {
+class ApplicationInternal;
 class NetworkSystem;
 class RenderingSystem;
 /// @brief Whether the game in an application is running, as opposed to the application.
@@ -37,6 +40,20 @@ class RenderingSystem;
 enum class PlayState : uint8_t { Stopped,
   Playing,
   Paused };
+/// @brief What a game is given: its time, its input, its assets, its scene, and the few services
+/// every game has.
+///
+/// Kept to what a game calls, and that is a rule rather than a tidying. Everything here is in the
+/// installed headers and so is a promise to every game built against a release; what only the
+/// engine's own code and the editor reach -- the managers themselves, the window, play states, the
+/// editor's selection -- is `ApplicationInternal`'s, in a header that is not installed. A method a
+/// game has no use for was a second way to do something, or a way past a rule the engine keeps:
+/// raw keys past the bindings (every action is a named binding, rebindable), callbacks past the
+/// polling (`RegisterInputAction`), an unchecked archetype past the `World` that checks it.
+///
+/// Entities are made and visited through the game's `World` (`World::Create`, `World::ForEach`,
+/// the builder from `World::Game`), which refuses at compile time an archetype the game never
+/// declared; the unchecked versions underneath are private, and `World` is let in.
 class KUKI_ENGINE_API Application {
 public:
   Application(ApplicationDescription = {});
@@ -46,77 +63,10 @@ public:
   /// The one lifecycle entry point that is public, because `main` has to call something. The four
   /// hooks it drives are protected -- see the note on `Start`.
   auto Run() -> void;
-  auto AddChildEntity(const EntityID, const EntityID) -> bool;
-  auto AlignView(const EntityID) -> void;
-  /// @brief Makes an entity of an archetype in the active scene. See `EntityManager::Create`.
-  ///
-  /// A game that wants the archetype checked against its own at compile time goes through its
-  /// `World` instead (`World::Create`), which refuses one the game never declared.
-  template <IsArchetype A>
-  auto CreateEntity(std::string = "") -> EntityID;
-  auto CreateEntity(const ComponentMask &, std::string = "") -> EntityID;
-  /// @brief Makes an entity of a drawn archetype in the active scene, in the pool of a mesh and a
-  /// material, making the pool if it is the first. A pool made this way is given the mesh's bounds;
-  /// one made with `CreatePool` first keeps what it was given.
-  template <IsArchetype A>
-  auto CreateEntity(const PoolKey &, std::string = "") -> EntityID;
-  auto CreateEntity(const ComponentMask &, const PoolKey &, std::string = "") -> EntityID;
-  /// @brief Makes a pool of a drawn archetype in the active scene ahead of its entities. Bounds left
-  /// unset are the mesh's. See `PoolSettings`.
-  template <IsArchetype A>
-  auto CreatePool(const PoolKey &, PoolSettings = {}) -> bool;
-  auto CreatePool(const ComponentMask &, const PoolKey &, PoolSettings = {}) -> bool;
-  /// @brief Gives an entity of a drawn archetype another mesh or material by moving it to that
-  /// pool. See `EntityManager::MoveToPool`.
-  auto MoveEntityToPool(const EntityID, const PoolKey &) -> bool;
-  auto GetEntityPool(const EntityID) const -> PoolKey;
-  /// @brief An entity's bounds around its origin, its own or its pool's. See `EntityManager::GetBounds`.
-  auto GetEntityBounds(const EntityID) const -> BoundingBox;
-  /// @brief The bounds of what a pool key draws: its mesh's, or empty if the mesh is not loaded.
-  auto GetMeshBounds(const PoolKey &) -> BoundingBox;
-  auto CreateScene(std::string = "") -> SceneID;
-  /// @brief The archetypes every scene of this application is given when it is made.
-  ///
-  /// The engine's own, unless a `SystemApplication` was given a `World` that adds to them.
-  auto GetArchetypes() const -> const std::vector<ArchetypeSpec> &;
-  /// @brief Makes an existing scene the active one. False when nothing goes by that name.
-  auto SwitchScene(const std::string &) -> bool;
-  /// @brief Renames the window.
-  ///
-  /// Worth having for its own sake, and worth more than usual here: with no text rendering in the
-  /// engine, the title bar is the only place a game can put a line of status.
-  auto SetWindowTitle(const std::string &) -> void;
-  /// @brief Hands the asset manager something built rather than loaded, under a name.
-  ///
-  /// The route in for an asset that has no file to be loaded from: a mesh laid out in code, or a
-  /// texture generated at run time. `LoadAsset` cannot serve those -- it is keyed by path, and
-  /// there is no path -- which previously left a game with no way to make one at all.
-  ///
-  /// Give the asset an id from `MakeBuiltInAssetID` rather than a generated one where a scene may
-  /// come to reference it, for the reason that function sets out: a generated id differs every run,
-  /// and a saved scene naming one resolves to nothing.
-  ///
-  /// @return Whether it was taken. An asset already known by that id is left alone and refused.
-  auto AddAsset(std::unique_ptr<Asset>, std::string = "") -> bool;
-  auto DeleteEntities() -> void;
-  auto DeleteEntity(const EntityID) -> void;
+  /// @brief How long the frame being updated took, in seconds. For presentation; rules count ticks.
   auto DeltaTime() const -> float;
+  /// @brief Whether the game is running, paused by the settings menu, or (in an editor) stopped.
   auto GetPlayState() const -> PlayState;
-  /// @brief Changes whether the game is running.
-  ///
-  /// Leaving `Stopped` begins an input session and starts the tick count again from nought;
-  /// arriving at it ends the session, which undoes whatever the game bound and registered. See
-  /// `InputManager::BeginSession`. The scene is the caller's to save and put back.
-  auto SetPlayState(const PlayState) -> void;
-  /// @brief Asks for exactly one tick to be run on the next frame, for stepping while paused.
-  auto StepTick() -> void;
-  /// @brief Makes this application a host: a game asking to quit stops the game instead of the application.
-  ///
-  /// A game ends itself with `Quit` -- on Escape, usually. Hosted, that would close the editor
-  /// around it, so while a game is playing the request is kept for the host to collect with
-  /// `TakeStopRequest` and act on. Stopped, `Quit` still means quit.
-  auto SetHosting(const bool) -> void;
-  auto TakeStopRequest() -> bool;
   /// @brief The fixed step: how far through the next tick drawing is, which tick is running, how many
   /// make a second and how long one lasts.
   ///
@@ -132,64 +82,99 @@ public:
   auto TickRate() const -> int;
   auto TickTime() const -> float;
   auto SetTickRate(const int) -> void;
-  /// @brief How fast the tick clock runs against the wall clock, from just above nothing up to one.
+  /// @brief Registers a named binding, on the key the player last rebound it to if they did.
   ///
-  /// For a game played against another machine, which has to keep to the other's pace: one that
-  /// runs ahead can only wait for the other to catch up, and waiting is felt as a stall. Running
-  /// a little slow until the other has caught up is not. It does not change what a tick is, only
-  /// how often one is due, so the rules and everything counted in ticks are unaffected. Never above
-  /// one: a clock that ran fast would be a way to get further ahead of the other.
-  auto GetTickScale() const -> double;
-  auto SetTickScale(const double) -> void;
+  /// The key given is the default, which the settings menu's reset puts back. A rebinding is kept in
+  /// the preferences under `input.` and the name; see `SettingsMenu::SaveBindings`. A default is a
+  /// key alone: the player may rebind it to a key with modifiers, but a game does not start one
+  /// there, since a chord is the editor's kind of shortcut and not a game's kind of action.
+  auto RegisterBinding(const std::string &, const Key, std::string = "") -> void;
+  /// @brief Registers a binding that is also one of the game's buttons, on a rebound key as
+  /// `RegisterBinding` is. See `InputManager::RegisterButton`.
+  auto RegisterButton(const std::string &, const Key, std::string = "") -> int;
+  auto IsBindingHeld(const std::string &) const -> bool;
+  auto IsBindingPressed(const std::string &) const -> bool;
+  /// @brief Which registered buttons are down for the tick being run. See `InputManager::GetButtons`.
+  auto GetButtons() const -> uint32_t;
+  /// @brief Whether a mouse button is down now, went down this frame, or came up this frame.
+  ///
+  /// Read directly, since a mouse button cannot be rebound. There is no counterpart for keys: a key
+  /// is read through the binding it is the default of, which is what lets the player move it.
+  auto IsMouseHeld(const MouseButton) const -> bool;
+  auto IsMousePressed(const MouseButton) const -> bool;
+  auto IsMouseReleased(const MouseButton) const -> bool;
+  auto GetMousePosition() const -> glm::vec2;
+  auto GetScrollOffset() const -> glm::vec2;
+  /// @brief The window's size in the units `GetMousePosition` reports the cursor in, which is what a
+  /// cursor position is divided by to say where on the picture it is. Zeroes before there is a window.
+  auto GetWindowSize() const -> glm::ivec2;
+  /// @brief The size in pixels of what is presented to, which the overlay is laid out in. Zeroes
+  /// before there is a surface. Not the window's size: on a scaled display the two differ.
+  auto GetSurfaceSize() const -> std::pair<int, int>;
+  /// @brief Hands the asset manager something built rather than loaded, under a name.
+  ///
+  /// The route in for an asset that has no file to be loaded from: a mesh laid out in code, or a
+  /// texture generated at run time. `LoadAsset` cannot serve those -- it is keyed by path, and
+  /// there is no path -- which previously left a game with no way to make one at all.
+  ///
+  /// Give the asset an id from `MakeBuiltInAssetID` rather than a generated one where a scene may
+  /// come to reference it, for the reason that function sets out: a generated id differs every run,
+  /// and a saved scene naming one resolves to nothing.
+  ///
+  /// @return Whether it was taken. An asset already known by that id is left alone and refused.
+  auto AddAsset(std::unique_ptr<Asset>, std::string = "") -> bool;
+  template <IsAsset T>
+  auto LoadAsset(const std::filesystem::path &, std::string = "", const AssetID = {}) -> AssetID;
+  auto GetAsset(this auto &self, const AssetID) -> ConstCorrectPointer<decltype(self), Asset>;
+  auto GetAsset(this auto &self, const std::string &) -> ConstCorrectPointer<decltype(self), Asset>;
+  template <IsAsset T>
+  auto GetAsset(const AssetID) -> decltype(auto);
+  /// @brief The camera the active scene is drawn from: the one the builder made active, or else the
+  /// first there is. Null when there is none.
+  auto GetCamera() -> Camera *;
+  auto GetCamera() const -> const Camera *;
+  /// @brief One of the active scene's singletons -- `Wind`, `ScreenEffects`, `AtmosphereSky` and
+  /// the rest of what `Component::IsSceneSingleton` names -- or null when the scene has none.
+  ///
+  /// The whole of what a game wanted a scene for, besides its camera. A component that is not a
+  /// singleton is refused at compile time: there may be many, and "any one of them" is not an
+  /// answer a game can use. An entity's own component is `GetEntityComponent`, and many are
+  /// visited with `World::ForEach`.
+  template <IsComponent T>
+  auto GetSceneSingleton(this auto &self) -> ConstCorrectPointer<decltype(self), T>;
+  template <typename... T>
+  auto GetEntityComponent(this auto &, const EntityID) -> decltype(auto);
+  /// @brief Flags an entity's transform, and everything below it, for recomputation.
+  ///
+  /// Call after writing to a transform's position, rotation or scale; the component carries no
+  /// dirty bit of its own, so an unannounced change goes unapplied.
+  auto MarkTransformDirty(const EntityID) -> void;
+  auto IsEntity(const EntityID) const -> bool;
+  auto DeleteEntity(const EntityID) -> void;
+  auto AddChildEntity(const EntityID, const EntityID) -> bool;
+  auto GetEntityParent(const EntityID) const -> EntityID;
+  /// @brief Gives an entity of a drawn archetype another mesh or material by moving it to that
+  /// pool. See `EntityManager::MoveToPool`.
+  auto MoveEntityToPool(const EntityID, const PoolKey &) -> bool;
+  auto GetEntityPool(const EntityID) const -> PoolKey;
+  /// @brief The rig of a model's root in the active scene. See `Scene::GetRig`.
+  auto GetRig(const EntityID) -> Rig *;
+  /// @brief The entity under a point given in window coordinates, or an invalid id for empty space.
+  ///
+  /// Reads the picking buffer the scene pass fills, which is why it is exact rather than a ray cast
+  /// against bounding volumes: what it returns is the thing whose pixel is actually there.
+  ///
+  /// Takes window coordinates -- the space `GetMousePosition` reports in -- and converts to the
+  /// render target's texels here, because the two are only the same size by coincidence. The editor
+  /// does its own conversion instead, from a panel that is a third space again, and calls the
+  /// rendering system directly.
+  auto PickEntity(const glm::vec2 &) -> EntityID;
   /// @brief The network system, if this application has one, and null if it does not.
   ///
   /// Set by the system when it starts and cleared when it shuts down. A game that wants to be played
   /// over a network asks for it and falls back on running its own rules when there is none, which is
   /// the case in an editor that hosts the game without listing the system.
   auto GetNetwork() const -> NetworkSystem *;
-  auto SetNetwork(NetworkSystem *) -> void;
-  auto EntityHasChildren(const EntityID) const -> bool;
-  auto ForEachAsset(this auto &, const AssetType, auto &&) -> void;
-  auto ForEachAssetType(this auto &, auto &&) -> void;
-  auto ForEachChildEntity(this auto &, const EntityID, auto &&) -> void;
-  auto ForEachRootEntity(this auto &, auto &&) -> void;
-  /// @brief Which registered buttons are down for the tick being run. See `InputManager::GetButtons`.
-  auto GetButtons() const -> uint32_t;
-  auto GetButtonNames() const -> const std::vector<std::string> &;
-  /// @brief The direction a key quad is currently pointing, as -1, 0 or 1 per axis.
-  auto GetKeyAxis(const InputManager::KeyAxis) const -> glm::ivec2;
-  auto GetAsset(this auto &self, const AssetID) -> ConstCorrectPointer<decltype(self), Asset>;
-  auto GetAsset(this auto &self, const std::string &) -> ConstCorrectPointer<decltype(self), Asset>;
-  auto GetAssetName(const AssetID) const -> std::string;
-  auto GetAssetPath(const AssetID) const -> std::filesystem::path;
-  auto GetAssetType(const AssetID) const -> AssetType;
-  auto GetCamera(this auto &self, const std::string & = "") -> ConstCorrectPointer<decltype(self), Camera>;
-  auto GetDescription() const -> const ApplicationDescription &;
-  /// @brief The live presentation surface, or null before startup has created it.
-  ///
-  /// A backend downcasts this to reach its own device -- `DXRenderer::GetContext` does -- and nothing
-  /// else should.
-  ///
-  /// That is a convention and not a rule, which is worth saying plainly rather than leaving the
-  /// sentence above to imply otherwise. It is public because those two renderers hold an
-  /// `Application &` rather than deriving from one, so protected would not reach them and the
-  /// alternative is a friend declaration per backend, one of them behind `KUKI_HAS_DIRECTX`.
-  /// Public it therefore is, which means every system sees it too, and a system that downcasts to
-  /// `DXContext` and drives the command list itself will compile and appear to work.
-  ///
-  /// If that ever stops being hypothetical, the fix is not to hide this but to give the renderers
-  /// their context at construction, which is where they should have had it from.
-  auto GetGraphicsContext() const -> GraphicsContext *;
-  auto GetEntityComponent(const EntityID, const ComponentType) -> std::optional<ComponentVariant>;
-  auto GetEntityComponentTypes(const EntityID) const -> std::vector<ComponentType>;
-  auto GetEntityCount() const -> size_t;
-  auto GetEntityName(const EntityID) const -> std::string;
-  auto GetEntityParent(const EntityID) const -> EntityID;
-  auto GetEntitySignature(const EntityID) const -> ComponentMask;
-  auto GetMousePosition() const -> glm::vec2;
-  /// @brief The window's size in the units `GetMousePosition` reports the cursor in, which is what a
-  /// cursor position is divided by to say where on the picture it is. Zeroes before there is a window.
-  auto GetWindowSize() const -> glm::ivec2;
   /// @brief Named values this application keeps between runs. See `Preferences`.
   ///
   /// Loaded before `Start` and written back after the systems have shut down, so a system may read
@@ -215,130 +200,12 @@ public:
   /// Nothing is drawn until this succeeds -- `Overlay::DrawText` ignores a request made with no
   /// font, rather than queueing text that could never be set.
   auto SetOverlayFont(const std::filesystem::path &, const int = Font::DefaultPixelHeight) -> bool;
-  auto GetScene(this auto &, const std::string & = "") -> decltype(auto);
-  auto GetScrollOffset() const -> glm::vec2;
-  /// @brief Places an asset in the active scene: a model, as an entity of archetype `Root` with the
-  /// model's nodes below it, or a mesh as a `MeshObject`.
+  /// @brief Renames the window.
   ///
-  /// `Root` is `ModelRoot` unless the game wants its own components on the model's top entity, in
-  /// which case it declares an archetype with a transform and those, and passes it here. With
-  /// `Animated` among them the model's clips can be played. See `AssetManager::Instantiate`.
-  template <IsArchetype Root = ModelRoot>
-  auto InstantiateAsset(const AssetID) -> EntityID;
-  template <IsArchetype Root = ModelRoot>
-  auto InstantiateAsset(const std::string &) -> EntityID;
-  auto InstantiateAsset(const AssetID, const ComponentMask &) -> EntityID;
-  auto InstantiateAsset(const std::string &, const ComponentMask &) -> EntityID;
-  auto IsAssetLoaded(const AssetID) const -> bool;
-  auto IsEntity(const EntityID) const -> bool;
-  auto IsViewportHovered() const -> bool;
-  auto ResolveModelInstance(const EntityID, const AssetID) -> void;
-  virtual auto GetSelectedEntity() const -> EntityID {
-    return {};
-  }
-  virtual auto GetSelectedEntities() const -> std::vector<EntityID> {
-    const auto id = GetSelectedEntity();
-    if (!id)
-      return {};
-    return {id};
-  }
-  auto IsBindingHeld(const std::string &) const -> bool;
-  auto IsBindingPressed(const std::string &) const -> bool;
-  /// @brief Whether a key or mouse button is down now, this frame, or came up this frame.
-  ///
-  /// One trio rather than two. There used to be a `GetKey`/`GetKeyDown`/`GetKeyUp` and a
-  /// `GetButton`/`GetButtonDown`/`GetButtonUp`, and the six were three pairs of identical bodies:
-  /// keys and buttons share one `std::bitset<256>` per phase inside `InputManager`, indexed by
-  /// `GLFWInputToIndex`, so `GetKey(GLFW_MOUSE_BUTTON_LEFT)` did exactly what `GetButton` did. The
-  /// split promised a distinction the implementation never made, and the GLFW constant at the call
-  /// site already says which half of the space is meant.
-  ///
-  /// Named to match the `IsBinding...` pair above, which asks the same question of a bound name.
-  auto IsInputHeld(const int) const -> bool;
-  auto IsInputPressed(const int) const -> bool;
-  auto IsInputReleased(const int) const -> bool;
-  auto IsSequenceInProgress() const -> bool;
-  /// @brief Flags an entity's transform, and everything below it, for recomputation.
-  ///
-  /// Call after writing to a transform's position, rotation or scale; the component carries no
-  /// dirty bit of its own, so an unannounced change goes unapplied.
-  auto MarkTransformDirty(const EntityID) -> void;
-  /// @brief The rig of a model's root in the active scene. See `Scene::GetRig`.
-  auto GetRig(const EntityID) -> Rig *;
-  /// @brief The entity under a point given in window coordinates, or an invalid id for empty space.
-  ///
-  /// Reads the picking buffer the scene pass fills, which is why it is exact rather than a ray cast
-  /// against bounding volumes: what it returns is the thing whose pixel is actually there.
-  ///
-  /// Takes window coordinates -- the space `GetMousePosition` reports in -- and converts to the
-  /// render target's texels here, because the two are only the same size by coincidence. The editor
-  /// does its own conversion instead, from a panel that is a third space again, and calls the
-  /// rendering system directly.
-  auto PickEntity(const glm::vec2 &) -> EntityID;
-  /// @brief The id of the overlay text under a point in window coordinates, or `Overlay::NoHit`.
-  ///
-  /// The overlay's counterpart of `PickEntity`, and here for the same reason that one is: the
-  /// overlay is laid out in the render target's pixels and the mouse is reported in the window's,
-  /// and the two are only the same size by coincidence.
-  auto PickOverlay(const glm::vec2 &) -> int;
-  /// @brief Asks the loop to stop after the current frame.
-  ///
-  /// The polite half of what the window's close button does, and the only way a game can end
-  /// itself: `Status` is a question rather than an instruction, and closing the window was
-  /// previously the sole route to a false answer. Sets the same flag the close callback sets, so
-  /// shutdown runs exactly as it does when someone closes the window.
-  auto Quit() -> void;
-  /// @brief Registers a named binding, on the key the player last rebound it to if they did.
-  ///
-  /// The trigger given is the default, which the settings menu's reset puts back. A rebinding is
-  /// kept in the preferences under `input.` and the name; see `SettingsMenu::SaveBindings`.
-  auto RegisterBinding(const std::string &, const InputManager::Trigger &, std::string = "") -> void;
-  /// @brief Registers a binding that is also one of the game's buttons, on a rebound key as
-  /// `RegisterBinding` is. See `InputManager::RegisterButton`.
-  auto RegisterButton(const std::string &, const InputManager::Trigger &, std::string = "") -> int;
-  auto RegisterInputAction(const std::string &, InputAction, std::string = "") -> InputManager::ActionID;
-  auto RegisterInputAction(int, InputAction, bool = true) -> InputManager::ActionID;
-  auto RenameAsset(const AssetID, std::string = "") -> bool;
-  auto RenameEntity(const EntityID, std::string) -> bool;
-  auto SetActiveCamera(const EntityID, const std::string & = "") -> bool;
-  auto UnregisterInputAction(InputManager::ActionID) -> bool;
-  auto SetCursorLocked(bool) -> void;
-  /// @brief Turns keys, mouse buttons or both on or off. See `InputManager::SetEnabled`.
-  auto SetInputEnabled(const InputManager::InputKind, const bool) -> void;
-  auto SetViewportHovered(bool) -> void;
-  template <IsAsset... T>
-  auto ForEachAsset(this auto &, auto &&) -> void;
-  template <typename... T>
-  auto ForEachEntity(this auto &, auto &&) -> void;
-  template <IsArchetype A, typename... T>
-  auto ForEachEntityOf(this auto &, auto &&) -> void;
-  template <IsAsset T>
-  auto GetAsset(const AssetID) -> decltype(auto);
-  template <typename... T>
-  auto GetEntityComponent(this auto &, const EntityID) -> decltype(auto);
-  template <IsAsset T>
-  auto LoadAsset(const std::filesystem::path &, std::string = "", const AssetID = {}) -> AssetID;
-  template <IsAsset T>
-  auto LoadAssetAsync(const std::filesystem::path &, std::string = "", const AssetID = {}) -> AssetID;
+  /// Worth having for its own sake, and worth more than usual here: with no text rendering in the
+  /// engine, the title bar is the only place a game can put a line of status.
+  auto SetWindowTitle(const std::string &) -> void;
 protected:
-  GLFWwindow *window{};
-  std::unique_ptr<GraphicsContext> graphicsContext;
-  virtual auto GetRenderingSystem() -> RenderingSystem * {
-    return nullptr;
-  }
-  /// @brief The input manager, for a subclass that has to reach past what the facade forwards.
-  ///
-  /// Here for the editor, which owns the rebinding panel: reading out every binding's name and
-  /// description, capturing the next keystroke, and writing the result back is a settings screen's
-  /// job, not something an engine facade should carry. Those nine forwards used to be public, which
-  /// put a key-capture state machine in front of every system for the sake of one panel.
-  ///
-  /// Protected rather than public, and a manager rather than nine methods, because a subclass
-  /// reaching its own manager is a narrower hole than nine forwards that everything can see. It is
-  /// the same trade `GetRenderingSystem` above already makes.
-  auto GetInputManager() -> InputManager & {
-    return inputManager;
-  }
   /// @brief The hooks `Run` drives the application through, for a subclass to fill in.
   ///
   /// Protected rather than public, because nothing holding an `Application` has any business
@@ -358,23 +225,29 @@ protected:
   virtual auto Shutdown() -> void;
   /// @brief Whether the loop should run another frame.
   virtual auto Status() -> bool;
-  virtual auto StartSystems() -> void {}
-  virtual auto PostStartSystems() -> void {}
-  virtual auto UpdateSystems(const float) -> void {}
-  virtual auto TickSystems() -> void {}
-  virtual auto ShutdownSystems() -> void {}
   /// @brief Acts on the settings menu's input and queues it into the overlay, when it is enabled.
   ///
   /// For `SystemApplication::UpdateSystems` to call after every system has updated and late-updated
   /// and before anything is drawn, so the menu lies over whatever the systems queued.
+  ///
+  /// This and `SetArchetypes` are protected rather than private with `SystemApplication` a friend,
+  /// because befriending it would mean naming its constraint, `IsWorld`, which `world.hpp` declares
+  /// after including this header.
   auto UpdateSettingsMenu(const float) -> void;
   /// @brief Replaces the archetypes scenes are made with. For `SystemApplication`, before any scene is.
   auto SetArchetypes(std::vector<ArchetypeSpec>) -> void;
 private:
+  /// @brief The engine's own code and the editor, through the one door. See `ApplicationInternal`.
+  friend class ApplicationInternal;
   /// @brief The menu reaches past the facade: it takes the keyboard, lists and rebinds every binding,
   /// switches the window to fullscreen and sets the renderer's passes -- each a thing the facade
   /// keeps from a game on purpose, and each the whole of what a settings screen is for.
   friend class SettingsMenu;
+  /// @brief For the unchecked creation below, which `World` checks before it calls.
+  template <IsArchetype...>
+  friend struct World;
+  GLFWwindow *window{};
+  std::unique_ptr<GraphicsContext> graphicsContext;
   ApplicationDescription desc;
   AssetManager assetManager;
   Overlay overlay;
@@ -392,6 +265,47 @@ private:
   bool stopRequested{};
   bool stepRequested{};
   bool viewportHovered{};
+  /// @brief Private and virtual: `SystemApplication` and `Editor` say what they are, and only the
+  /// engine asks, through `ApplicationInternal`. Overriding does not need access.
+  virtual auto GetRenderingSystem() -> RenderingSystem * {
+    return nullptr;
+  }
+  virtual auto GetSelectedEntity() const -> EntityID {
+    return {};
+  }
+  virtual auto GetSelectedEntities() const -> std::vector<EntityID> {
+    const auto id = GetSelectedEntity();
+    if (!id)
+      return {};
+    return {id};
+  }
+  virtual auto StartSystems() -> void {}
+  virtual auto PostStartSystems() -> void {}
+  virtual auto UpdateSystems(const float) -> void {}
+  virtual auto TickSystems() -> void {}
+  virtual auto ShutdownSystems() -> void {}
+  /// @brief Makes an entity of an archetype, given as its mask, in the active scene, in the pool of
+  /// a mesh and a material when one is given, making the pool if it is the first. A pool made this
+  /// way is given the mesh's bounds; one made with `CreatePool` first keeps what it was given.
+  ///
+  /// Unchecked: any mask is taken. `World::Create` is the checked route, and the builder and the
+  /// scene loader, which have only a mask, reach these through `ApplicationInternal`.
+  auto CreateEntity(const ComponentMask &, std::string = "") -> EntityID;
+  auto CreateEntity(const ComponentMask &, const PoolKey &, std::string = "") -> EntityID;
+  /// @brief Makes a pool of a drawn archetype in the active scene ahead of its entities. Bounds left
+  /// unset are the mesh's. See `PoolSettings`.
+  auto CreatePool(const ComponentMask &, const PoolKey &, PoolSettings = {}) -> bool;
+  /// @brief Places an asset in the active scene: a model, as an entity of the root's archetype with
+  /// the model's nodes below it, or a mesh as a `MeshObject`. See `AssetManager::Instantiate`.
+  auto InstantiateAsset(const AssetID, const ComponentMask &) -> EntityID;
+  auto InstantiateAsset(const std::string &, const ComponentMask &) -> EntityID;
+  /// @brief The active scene's entities, or null when no scene is active. Out of line, so that this
+  /// header need not include `scene.hpp`, which is internal; what a game reaches of the entities is
+  /// what the templates above and `World` take from here.
+  auto ActiveEntities() -> EntityManager *;
+  auto ActiveEntities() const -> const EntityManager *;
+  /// @brief The bounds of what a pool key draws: its mesh's, or empty if the mesh is not loaded.
+  auto GetMeshBounds(const PoolKey &) -> BoundingBox;
   auto CreateWindow() -> bool;
   auto GetExePath() -> std::filesystem::path;
   /// @brief Builds one built-in mesh asset by name, if it is not already loaded.
@@ -407,10 +321,21 @@ private:
   auto PostUpdate() -> void;
   auto PreShutdown() -> void;
   auto SetWindowIcon() -> void;
+  /// @brief Asks the loop to stop after the current frame, or the host to stop the game. See
+  /// `ApplicationInternal::Quit`.
+  auto Quit() -> void;
+  /// @brief Changes whether the game is running. See `ApplicationInternal::SetPlayState`.
+  auto SetPlayState(const PlayState) -> void;
   /// @brief Takes the window to borderless fullscreen on the primary monitor, or back to a window.
   auto SetFullscreen(const bool) -> void;
+  /// @brief Registers a binding on a trigger that may carry modifiers, on the saved one if there
+  /// is one. Behind `RegisterBinding` here and in `ApplicationInternal`, which the editor's chorded
+  /// shortcuts go through.
+  auto RegisterTrigger(const std::string &, const InputManager::Trigger &, std::string) -> void;
   /// @brief The trigger a binding was last saved on, if it was.
   auto SavedBinding(const std::string &) const -> std::optional<InputManager::Trigger>;
+  /// @brief The overlay text under a point in window coordinates. See `ApplicationInternal::PickOverlay`.
+  auto PickOverlay(const glm::vec2 &) -> int;
   static auto CharCallback(GLFWwindow *, unsigned int) -> void;
   static auto CursorPosCallback(GLFWwindow *, double, double) -> void;
   static auto FramebufferSizeCallback(GLFWwindow *, int, int) -> void;
@@ -419,69 +344,17 @@ private:
   static auto ScrollCallback(GLFWwindow *, double, double) -> void;
   static auto WindowCloseCallback(GLFWwindow *) -> void;
 };
-auto Application::ForEachAsset(this auto &self, const AssetType type, auto &&func) -> void {
-  self.assetManager.ForEach(type, std::forward<decltype(func)>(func));
-}
-auto Application::ForEachAssetType(this auto &self, auto &&func) -> void {
-  self.assetManager.ForEachType(std::forward<decltype(func)>(func));
-}
-auto Application::ForEachChildEntity(this auto &self, const EntityID parent, auto &&func) -> void {
-  if (auto scene = self.GetScene(); scene)
-    scene->ForEachChildEntity(parent, std::forward<decltype(func)>(func));
-}
-auto Application::ForEachRootEntity(this auto &self, auto &&func) -> void {
-  if (auto scene = self.GetScene(); scene)
-    scene->ForEachRootEntity(std::forward<decltype(func)>(func));
-}
 auto Application::GetAsset(this auto &self, const AssetID id) -> ConstCorrectPointer<decltype(self), Asset> {
   return self.assetManager.Get(id);
 }
 auto Application::GetAsset(this auto &self, const std::string &name) -> ConstCorrectPointer<decltype(self), Asset> {
   return self.assetManager.Get(name);
 }
-auto Application::GetCamera(this auto &self, const std::string &name) -> ConstCorrectPointer<decltype(self), Camera> {
-  if (auto scene = self.GetScene(name); scene)
-    return scene->GetActiveCamera();
-  return nullptr;
-}
-auto Application::GetScene(this auto &self, const std::string &name) -> decltype(auto) {
-  return self.sceneManager.Get(name);
-}
-template <IsArchetype A>
-auto Application::CreateEntity(std::string name) -> EntityID {
-  return CreateEntity(A::Mask(), std::move(name));
-}
-template <IsArchetype A>
-auto Application::CreateEntity(const PoolKey &pool, std::string name) -> EntityID {
-  static_assert(A::template Has<Pooled>, "CreateEntity: only an archetype that is drawn -- one with `Renderable` in it -- has pools");
-  return CreateEntity(A::Mask(), pool, std::move(name));
-}
-template <IsArchetype A>
-auto Application::CreatePool(const PoolKey &pool, PoolSettings settings) -> bool {
-  static_assert(A::template Has<Pooled>, "CreatePool: only an archetype that is drawn -- one with `Renderable` in it -- has pools");
-  return CreatePool(A::Mask(), pool, std::move(settings));
-}
-template <IsArchetype Root>
-auto Application::InstantiateAsset(const AssetID id) -> EntityID {
-  return InstantiateAsset(id, Root::Mask());
-}
-template <IsArchetype Root>
-auto Application::InstantiateAsset(const std::string &name) -> EntityID {
-  return InstantiateAsset(name, Root::Mask());
-}
-template <IsAsset... T>
-auto Application::ForEachAsset(this auto &self, auto &&func) -> void {
-  self.assetManager.template ForEach<T...>(std::forward<decltype(func)>(func));
-}
-template <typename... T>
-auto Application::ForEachEntity(this auto &self, auto &&func) -> void {
-  if (auto scene = self.GetScene(); scene)
-    scene->template ForEachEntity<T...>(std::forward<decltype(func)>(func));
-}
-template <IsArchetype A, typename... T>
-auto Application::ForEachEntityOf(this auto &self, auto &&func) -> void {
-  if (auto scene = self.GetScene(); scene)
-    scene->template ForEachEntityOf<A, T...>(std::forward<decltype(func)>(func));
+template <IsComponent T>
+auto Application::GetSceneSingleton(this auto &self) -> ConstCorrectPointer<decltype(self), T> {
+  static_assert(Component::IsSceneSingleton(static_cast<ComponentType>(ComponentIdOf<T>)), "GetSceneSingleton: that component is not a scene singleton, so a scene may hold many -- read an entity's with GetEntityComponent, or visit them all with World::ForEach");
+  auto entities = self.ActiveEntities();
+  return entities ? entities->template GetAny<T>() : nullptr;
 }
 template <IsAsset T>
 auto Application::GetAsset(const AssetID id) -> decltype(auto) {
@@ -491,13 +364,13 @@ template <typename... T>
 auto Application::GetEntityComponent(this auto &self, const EntityID id) -> decltype(auto) {
   if constexpr (sizeof...(T) == 1) {
     using C = std::tuple_element_t<0, std::tuple<T...>>;
-    if (auto scene = self.GetScene(); scene)
-      return scene->template GetEntityComponent<T...>(id);
+    if (auto entities = self.ActiveEntities(); entities)
+      return entities->template GetComponent<T...>(id);
     else
       return static_cast<ConstCorrectPointer<decltype(self), C>>(nullptr);
   } else {
-    if (auto scene = self.GetScene(); scene)
-      return scene->template GetEntityComponent<T...>(id);
+    if (auto entities = self.ActiveEntities(); entities)
+      return entities->template GetComponent<T...>(id);
     else
       return std::tuple(self.template GetEntityComponent<T>(id)...);
   }
@@ -505,9 +378,5 @@ auto Application::GetEntityComponent(this auto &self, const EntityID id) -> decl
 template <IsAsset T>
 auto Application::LoadAsset(const std::filesystem::path &path, std::string name, const AssetID forcedId) -> AssetID {
   return assetManager.Load<T>(path, std::move(name), forcedId);
-}
-template <IsAsset T>
-auto Application::LoadAssetAsync(const std::filesystem::path &path, std::string name, const AssetID forcedId) -> AssetID {
-  return assetManager.LoadAsync<T>(path, std::move(name), forcedId);
 }
 } // namespace kuki

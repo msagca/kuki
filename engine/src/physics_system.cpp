@@ -1,4 +1,5 @@
 #include <application.hpp>
+#include <application_internal.hpp>
 #include <physics_system.hpp>
 #include <profiler.hpp>
 #include <system.hpp>
@@ -11,10 +12,10 @@ auto PhysicsSystem::Start() -> void {}
 auto PhysicsSystem::Tick() -> void {}
 auto PhysicsSystem::Update(const float) -> void {
   KUKI_PROFILE_SCOPE("Physics");
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   if (!scene)
     return;
-  scene->UpdateComponents<Transform>();
+  scene->Entities().UpdateComponents<Transform>();
 }
 auto PhysicsSystem::Shutdown() -> void {}
 } // namespace kuki

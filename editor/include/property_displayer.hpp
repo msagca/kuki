@@ -1,13 +1,12 @@
 #pragma once
-#include <field.hpp>
-#include <icons_lucide.hpp>
 #include <algorithm>
 #include <animator.hpp>
 #include <animator_controller.hpp>
 #include <anti_aliasing.hpp>
-#include <atmosphere_sky.hpp>
 #include <application.hpp>
+#include <application_internal.hpp>
 #include <array>
+#include <atmosphere_sky.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <cctype>
@@ -17,7 +16,9 @@
 #include <editor.hpp>
 #include <enum_traits.hpp>
 #include <exposure.hpp>
+#include <field.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <icons_lucide.hpp>
 #include <imgui.h>
 #include <indirect_lighting.hpp>
 #include <light.hpp>
@@ -25,10 +26,10 @@
 #include <material_type.hpp>
 #include <model_asset.hpp>
 #include <particle_presets.hpp>
+#include <planar_reflection.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
 #include <string>
-#include <planar_reflection.hpp>
 #include <stylization.hpp>
 #include <texture_handle.hpp>
 #include <wind.hpp>
@@ -141,11 +142,11 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
       auto created = std::make_unique<kuki::AnimatorController>(kuki::AssetID::Generate());
       created->states.push_back({.name = "state1", .loop = true});
       animator.controller = created->id;
-      app.AddAsset(std::move(created), app.GetAssetName(animator.modelAssetId) + " States");
+      app.AddAsset(std::move(created), Internal(app).Assets().GetName(animator.modelAssetId) + " States");
     }
     return;
   }
-  const auto controllerName = app.GetAssetName(controller->id);
+  const auto controllerName = Internal(app).Assets().GetName(controller->id);
   field::LabelText(ICON_LC_WORKFLOW " Controller", "%s", controllerName.empty() ? "(unnamed)" : controllerName.c_str());
   ImGui::SetItemTooltip("Where the states are kept. Every animator with the same controller shares them,\nso an edit here is an edit to all of them.");
   // Which clip a state plays has changed: where each clip was found in each model is worked out again.
@@ -163,7 +164,7 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
   // The models a clip could come from: every one that is loaded and has any, but for this one,
   // which is offered first under a name that says so.
   std::vector<const kuki::ModelAsset *> sources;
-  app.ForEachAsset(kuki::AssetType::Model, [&](const kuki::Asset *asset) {
+  Internal(app).Assets().ForEach(kuki::AssetType::Model, [&](const kuki::Asset *asset) {
     if (const auto *candidate = asset->As<kuki::ModelAsset>(); candidate && candidate != &model && !candidate->animations.empty())
       sources.push_back(candidate);
   });
@@ -187,7 +188,7 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
       for (const auto *source : sources)
         if (source->id == state.source)
           from = source;
-      const auto fromName = from == &model ? std::string("(this model)") : app.GetAssetName(from->id);
+      const auto fromName = from == &model ? std::string("(this model)") : Internal(app).Assets().GetName(from->id);
       if (field::BeginCombo(ICON_LC_BOX " Clip From", state.source && from == &model ? "(not loaded)" : fromName.c_str())) {
         if (ImGui::Selectable("(this model)", !state.source)) {
           state.source = {};
@@ -196,7 +197,7 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
         }
         for (const auto *source : sources) {
           ImGui::PushID(source);
-          if (ImGui::Selectable(app.GetAssetName(source->id).c_str(), source->id == state.source)) {
+          if (ImGui::Selectable(Internal(app).Assets().GetName(source->id).c_str(), source->id == state.source)) {
             state.source = source->id;
             state.clip.clear();
             Forget();
@@ -228,12 +229,12 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
       for (auto mixed = 0; mixed < static_cast<int>(state.blend.size()); ++mixed) {
         auto &entry = state.blend[mixed];
         ImGui::PushID(1000 + mixed);
-        const auto entryName = entry.source ? app.GetAssetName(entry.source) : std::string("(this model)");
+        const auto entryName = entry.source ? Internal(app).Assets().GetName(entry.source) : std::string("(this model)");
         ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * .65f);
         if (ImGui::BeginCombo("##From", entryName.empty() ? "(not loaded)" : entryName.c_str())) {
           for (const auto *source : sources) {
             ImGui::PushID(source);
-            if (ImGui::Selectable(app.GetAssetName(source->id).c_str(), source->id == entry.source)) {
+            if (ImGui::Selectable(Internal(app).Assets().GetName(source->id).c_str(), source->id == entry.source)) {
               entry.source = source->id;
               entry.clip.clear();
               Forget();
@@ -340,7 +341,7 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
 inline auto PickEntity(Editor &app, const char *label, kuki::EntityID &entity) -> void {
   static constexpr auto FIND_LENGTH = 64;
   static char find[FIND_LENGTH]{};
-  const auto name = entity ? app.GetEntityName(entity) : std::string("(none)");
+  const auto name = entity ? Internal(app).GetEntityName(entity) : std::string("(none)");
   if (field::BeginCombo(label, name.c_str(), ImGuiComboFlags_HeightLarge)) {
     if (ImGui::IsWindowAppearing())
       ImGui::SetKeyboardFocusHere();
@@ -351,7 +352,7 @@ inline auto PickEntity(Editor &app, const char *label, kuki::EntityID &entity) -
     if (wanted.empty() && ImGui::Selectable("(none)", !entity))
       entity = kuki::EntityID::Invalid;
     const auto Walk = [&](const kuki::EntityID id, const int depth, const std::string &top, const auto &self) -> void {
-      auto entityName = app.GetEntityName(id);
+      auto entityName = Internal(app).GetEntityName(id);
       auto lowered = entityName;
       std::ranges::transform(lowered, lowered.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
       if (wanted.empty() || lowered.find(wanted) != std::string::npos) {
@@ -361,11 +362,11 @@ inline auto PickEntity(Editor &app, const char *label, kuki::EntityID &entity) -
           entity = id;
         ImGui::PopID();
       }
-      app.ForEachChildEntity(id, [&](const kuki::EntityID child) {
+      Internal(app).ForEachChildEntity(id, [&](const kuki::EntityID child) {
         self(child, depth + 1, top.empty() ? entityName : top, self);
       });
     };
-    app.ForEachRootEntity([&](const kuki::EntityID id) {
+    Internal(app).ForEachRootEntity([&](const kuki::EntityID id) {
       Walk(id, 0, std::string{}, Walk);
     });
     ImGui::EndCombo();
@@ -445,7 +446,7 @@ inline auto DisplayAnimatorIK(Editor &app, kuki::Animator &animator, const kuki:
 }
 /// @brief An animator's clips: its states, or with none the one clip it plays and where it is in it.
 inline auto DisplayAnimatorClips(Editor &app, kuki::Animator *animator) -> void {
-  const auto modelName = app.GetAssetName(animator->modelAssetId);
+  const auto modelName = Internal(app).Assets().GetName(animator->modelAssetId);
   field::LabelText(ICON_LC_BOX " Model", "%s", modelName.empty() ? "(none)" : modelName.c_str());
   // The clip list comes from the model, so everything below it depends on that model being loaded.
   // Without it there is nothing to name the clips with and nothing to bound the scrub by, so the
@@ -530,7 +531,7 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   ImGui::BeginDisabled(active);
   auto makeActive = active;
   if (field::Toggle(ICON_LC_VIDEO, "Active", &makeActive) && makeActive)
-    app.SetActiveCamera(entity);
+    Internal(app).SetActiveCamera(entity);
   ImGui::EndDisabled();
   ImGui::SetItemTooltip("Whether this is the camera the scene is drawn through.\nDisabled when it already is: a scene always has one, so the way to\nchange it is to activate another rather than to deactivate this.");
   ImGui::Separator();
@@ -1215,7 +1216,7 @@ inline auto PropertyDisplayer::operator()<kuki::Pooled>(kuki::Pooled *) -> void 
     return;
   }
   const auto Name = [&](const kuki::AssetID id, const uint32_t index) {
-    auto name = id ? app.GetAssetName(id) : std::string("(none)");
+    auto name = id ? Internal(app).Assets().GetName(id) : std::string("(none)");
     if (index != kuki::PoolKey::NONE)
       name += " #" + std::to_string(index);
     return name;

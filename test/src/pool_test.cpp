@@ -11,7 +11,7 @@ auto Declare(EntityManager &manager) -> void {
   for (const auto &spec : EngineWorld::Specs())
     manager.Declare(spec);
 }
-auto Key(const char *mesh, const char *material = "") -> PoolKey {
+auto PoolOf(const char *mesh, const char *material = "") -> PoolKey {
   return {.mesh = MakeBuiltInAssetID(mesh), .material = *material ? MakeBuiltInAssetID(material) : AssetID{}};
 }
 auto Pools(const EntityManager &manager) -> std::vector<const ArchetypeTable *> {
@@ -23,8 +23,8 @@ auto Pools(const EntityManager &manager) -> std::vector<const ArchetypeTable *> 
 TEST(Pool, KeepsEachMeshAndMaterialsEntitiesTogether) {
   EntityManager manager;
   Declare(manager);
-  const auto rock = Key("rock", "stone");
-  const auto tree = Key("tree", "bark");
+  const auto rock = PoolOf("rock", "stone");
+  const auto tree = PoolOf("tree", "bark");
   std::vector<EntityID> rocks;
   for (auto i = 0; i < 3; ++i) {
     rocks.push_back(manager.Create<MeshObject>(rock));
@@ -43,30 +43,30 @@ TEST(Pool, KeepsEachMeshAndMaterialsEntitiesTogether) {
 TEST(Pool, MovesAnEntityToAnotherPoolAndKeepsItWhole) {
   EntityManager manager;
   Declare(manager);
-  const auto first = manager.Create<MeshObject>(Key("rock", "stone"), "first");
-  const auto second = manager.Create<MeshObject>(Key("rock", "stone"), "second");
+  const auto first = manager.Create<MeshObject>(PoolOf("rock", "stone"), "first");
+  const auto second = manager.Create<MeshObject>(PoolOf("rock", "stone"), "second");
   manager.GetComponent<Transform>(second)->position = {1.f, 2.f, 3.f};
-  ASSERT_TRUE(manager.MoveToPool(second, Key("rock", "moss")));
-  EXPECT_EQ(manager.GetPool(second), Key("rock", "moss")) << "given another material by moving";
+  ASSERT_TRUE(manager.MoveToPool(second, PoolOf("rock", "moss")));
+  EXPECT_EQ(manager.GetPool(second), PoolOf("rock", "moss")) << "given another material by moving";
   EXPECT_EQ(manager.GetName(second), "second") << "the same entity, by id and name";
   EXPECT_EQ(manager.GetComponent<Transform>(second)->position, glm::vec3(1.f, 2.f, 3.f)) << "and with its components";
-  EXPECT_EQ(manager.GetPool(first), Key("rock", "stone"));
+  EXPECT_EQ(manager.GetPool(first), PoolOf("rock", "stone"));
   for (const auto *pool : Pools(manager))
     EXPECT_EQ(pool->entities.size(), 1u) << "the pool it left closed up behind it";
-  EXPECT_FALSE(manager.MoveToPool(manager.Create<EmptyNode>(), Key("rock"))) << "an archetype that is not drawn has no pools";
+  EXPECT_FALSE(manager.MoveToPool(manager.Create<EmptyNode>(), PoolOf("rock"))) << "an archetype that is not drawn has no pools";
 }
 TEST(Pool, StaysOneBlockWhenAnEntityGoes) {
   EntityManager manager;
   Declare(manager);
   std::vector<EntityID> rocks;
   for (auto i = 0; i < 4; ++i)
-    rocks.push_back(manager.Create<MeshObject>(Key("rock")));
+    rocks.push_back(manager.Create<MeshObject>(PoolOf("rock")));
   manager.Delete(rocks[1]);
   const auto pools = Pools(manager);
   ASSERT_EQ(pools.size(), 1u);
   EXPECT_EQ(pools[0]->entities.size(), 3u);
   for (const auto id : {rocks[0], rocks[2], rocks[3]})
-    EXPECT_EQ(manager.GetPool(id), Key("rock")) << "the last row moved into the gap and is still found";
+    EXPECT_EQ(manager.GetPool(id), PoolOf("rock")) << "the last row moved into the gap and is still found";
 }
 TEST(Pool, CopiesIntoTheSamePoolWithItsBounds) {
   EntityManager prefabs;
@@ -74,19 +74,19 @@ TEST(Pool, CopiesIntoTheSamePoolWithItsBounds) {
   BoundingBox box;
   box.min = glm::vec3(-1.f);
   box.max = glm::vec3(1.f);
-  ASSERT_TRUE(prefabs.CreatePool(MeshObject::Mask(), Key("rock"), {.bounds = box}));
-  const auto prefab = prefabs.Create<MeshObject>(Key("rock"));
+  ASSERT_TRUE(prefabs.CreatePool(MeshObject::Mask(), PoolOf("rock"), {.bounds = box}));
+  const auto prefab = prefabs.Create<MeshObject>(PoolOf("rock"));
   EntityManager scene;
   Declare(scene);
   const auto placed = scene.CopyFrom(prefabs, prefab);
-  EXPECT_EQ(scene.GetPool(placed), Key("rock"));
+  EXPECT_EQ(scene.GetPool(placed), PoolOf("rock"));
   EXPECT_EQ(scene.GetBounds(placed).max, box.max) << "the pool made by the copy has the bounds the prefab's had";
 }
 TEST(Pool, RaisesItsVersionWhenAnEntityMoves) {
   EntityManager manager;
   Declare(manager);
-  const auto still = manager.Create<MeshObject>(Key("still"));
-  const auto moving = manager.Create<MeshObject>(Key("moving"));
+  const auto still = manager.Create<MeshObject>(PoolOf("still"));
+  const auto moving = manager.Create<MeshObject>(PoolOf("moving"));
   manager.UpdateComponents<Transform>();
   const auto Version = [&](const PoolKey &key) {
     uint64_t version{};
@@ -96,21 +96,21 @@ TEST(Pool, RaisesItsVersionWhenAnEntityMoves) {
     });
     return version;
   };
-  const auto stillBefore = Version(Key("still"));
-  const auto movingBefore = Version(Key("moving"));
+  const auto stillBefore = Version(PoolOf("still"));
+  const auto movingBefore = Version(PoolOf("moving"));
   manager.GetComponent<Transform>(moving)->position.x = 5.f;
   manager.MarkTransformDirty(moving);
   manager.UpdateComponents<Transform>();
-  EXPECT_EQ(Version(Key("still")), stillBefore) << "a pool none of whose entities moved is as it was";
-  EXPECT_GT(Version(Key("moving")), movingBefore);
+  EXPECT_EQ(Version(PoolOf("still")), stillBefore) << "a pool none of whose entities moved is as it was";
+  EXPECT_GT(Version(PoolOf("moving")), movingBefore);
   EXPECT_FLOAT_EQ(manager.GetComponent<WorldMatrix>(moving)->matrix[3].x, 5.f);
   (void)still;
 }
 TEST(Pool, IsVisitedByAQueryOverItsArchetype) {
   EntityManager manager;
   Declare(manager);
-  manager.Create<MeshObject>(Key("rock"));
-  manager.Create<MeshObject>(Key("tree"));
+  manager.Create<MeshObject>(PoolOf("rock"));
+  manager.Create<MeshObject>(PoolOf("tree"));
   manager.Create<MeshObject>();
   auto viaOf = 0;
   manager.ForEachOf<MeshObject, Transform>([&](const EntityID, Transform *) { ++viaOf; });

@@ -54,7 +54,9 @@ public:
   /// and in time whatever else is a property of the whole. An entity is only where such a thing is
   /// put so that it can be selected and edited like everything else, and two of them would be two
   /// answers to a question with one -- with nothing to say which the renderer should read.
-  static auto IsSceneSingleton(const ComponentType) -> bool;
+  static constexpr auto IsSceneSingleton(const ComponentType type) -> bool {
+    return type == ComponentType::AntiAliasing || type == ComponentType::AtmosphereSky || type == ComponentType::IndirectLighting || type == ComponentType::PlanarReflection || type == ComponentType::ScreenEffects || type == ComponentType::Stylization || type == ComponentType::VolumetricClouds || type == ComponentType::VolumetricFog || type == ComponentType::Wind;
+  }
 private:
   static const std::unordered_map<ComponentType, std::string> typeToName;
 };

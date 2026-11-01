@@ -3,11 +3,12 @@
 #include <animator.hpp>
 #include <animator_controller.hpp>
 #include <application.hpp>
+#include <application_internal.hpp>
 #include <cmath>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
-#include <glm/matrix.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/matrix.hpp>
 #include <inverse_kinematics.hpp>
 #include <model_asset.hpp>
 #include <profiler.hpp>
@@ -366,7 +367,7 @@ AnimationSystem::AnimationSystem(Application &app)
 void AnimationSystem::Start() {}
 auto AnimationSystem::Tick() -> void {
   KUKI_PROFILE_SCOPE("Animation");
-  app.ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
+  Internal(app).ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
     const auto *rig = app.GetRig(id);
     const auto *controller = animator ? app.GetAsset<AnimatorController>(animator->controller) : nullptr;
     if (!rig || !controller || controller->states.empty())
@@ -401,7 +402,7 @@ void AnimationSystem::Update(const float deltaTime) {
   const ModelLookup lookup = [this](const AssetID id) -> const ModelAsset * { return app.GetAsset<ModelAsset>(id); };
   preview.SetRate(app.TickRate());
   const auto previewTicks = stopped ? preview.Advance(deltaTime) : 0;
-  app.ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
+  Internal(app).ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
     auto *rig = app.GetRig(id);
     if (!animator || !rig)
       return;
@@ -468,7 +469,7 @@ void AnimationSystem::Update(const float deltaTime) {
 }
 auto AnimationSystem::LateUpdate(const float) -> void {
   KUKI_PROFILE_SCOPE("Inverse Kinematics");
-  app.ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
+  Internal(app).ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
     auto *rig = app.GetRig(id);
     // Not only where there are goals: one removed since the last frame leaves bones to be put back.
     if (!animator || !rig || (animator->ik.empty() && rig->held.empty()))

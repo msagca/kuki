@@ -1,6 +1,7 @@
 #include <animator.hpp>
 #include <animator_controller.hpp>
 #include <application.hpp>
+#include <application_internal.hpp>
 #include <atmosphere_sky.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
@@ -91,7 +92,7 @@ namespace {
   };
   auto GetComponentNames(const Application &app) -> ComponentNames {
     ComponentNames names;
-    for (const auto &spec : app.GetArchetypes())
+    for (const auto &spec : Internal(app).GetArchetypes())
       for (size_t index = 0; index < spec.ids.size(); ++index) {
         names.byId.emplace(spec.ids[index], std::string(spec.names[index]));
         names.byName.emplace(std::string(spec.names[index]), spec.ids[index]);
@@ -114,7 +115,7 @@ namespace {
     for (const auto type : SERIALIZED_TYPES)
       travelling.set(static_cast<size_t>(type));
     std::optional<ComponentMask> exact, wider;
-    for (const auto &spec : app.GetArchetypes()) {
+    for (const auto &spec : Internal(app).GetArchetypes()) {
       const auto kept = spec.mask & travelling;
       if (kept == saved && (!exact || spec.mask.count() < exact->count()))
         exact = spec.mask;
@@ -815,23 +816,23 @@ namespace {
   };
   auto SerializeEntity(Application &app, const EntityID id, std::unordered_set<AssetID> &referenced, const EntityOrder &order, const ComponentNames &names) -> json {
     json entity;
-    const auto name = app.GetEntityName(id);
+    const auto name = Internal(app).GetEntityName(id);
     entity["name"] = name;
     // Every component of the entity's archetype by name, the ones that are not written below as well
     // as the ones that are: the archetype is fixed when an entity is made, so the file has to say
     // which one to make it of, and the components it has values for are not enough to tell.
     auto archetype = json::array();
-    const auto signature = app.GetEntitySignature(id);
+    const auto signature = Internal(app).GetEntitySignature(id);
     for (size_t bit = 0; bit < MAX_COMPONENTS; ++bit)
       if (signature[bit])
         if (auto it = names.byId.find(static_cast<ComponentId>(bit)); it != names.byId.end())
           archetype.push_back(it->second);
     entity["archetype"] = std::move(archetype);
     auto components = json::object();
-    for (const auto type : app.GetEntityComponentTypes(id)) {
+    for (const auto type : Internal(app).GetEntityComponentTypes(id)) {
       if (!IsSerialized(type))
         continue;
-      if (auto variant = app.GetEntityComponent(id, type); variant.has_value())
+      if (auto variant = Internal(app).GetEntityComponent(id, type); variant.has_value())
         components[Component::GetTypeName(type)] = std::visit(ToJsonVisitor{referenced, order}, *variant);
     }
     entity["components"] = std::move(components);
@@ -842,7 +843,7 @@ namespace {
       entity["pool"] = ToJson(pool);
     }
     auto children = json::array();
-    app.ForEachChildEntity(id, [&](const EntityID childId) {
+    Internal(app).ForEachChildEntity(id, [&](const EntityID childId) {
       children.push_back(SerializeEntity(app, childId, referenced, order, names));
     });
     entity["children"] = std::move(children);
@@ -851,13 +852,13 @@ namespace {
   /// @brief Numbers every entity in the order `SerializeEntity` will write them: each one, then its children.
   auto Order(Application &app, const EntityID id, EntityOrder &order) -> void {
     order.emplace(id, static_cast<int>(order.size()));
-    app.ForEachChildEntity(id, [&](const EntityID childId) {
+    Internal(app).ForEachChildEntity(id, [&](const EntityID childId) {
       Order(app, childId, order);
     });
   }
   /// @brief Swaps the places in the file the goals were loaded with for the entities made from them.
   auto ResolveTargets(Application &app, const std::vector<EntityID> &created) -> void {
-    app.ForEachEntity<Animator>([&](const EntityID, Animator *animator) {
+    Internal(app).ForEachEntity<Animator>([&](const EntityID, Animator *animator) {
       for (auto &goal : animator->ik) {
         const auto place = static_cast<long long>(goal.target);
         goal.target = place >= 0 && place < static_cast<long long>(created.size()) ? created[place] : EntityID::Invalid;
@@ -908,7 +909,7 @@ namespace {
     }
     if (entityJson.contains("scripts"))
       spdlog::warn("[SceneSerializer] Entity '{}' names scripts, which are no longer a thing an entity can have; its behaviour belongs to a system now", name);
-    const auto id = known ? app.CreateEntity(mask, mask[ComponentIdOf<Pooled>] ? ReadPool(entityJson, remap) : PoolKey{}, name) : EntityID::Invalid;
+    const auto id = known ? Internal(app).CreateEntity(mask, mask[ComponentIdOf<Pooled>] ? ReadPool(entityJson, remap) : PoolKey{}, name) : EntityID::Invalid;
     if (!id)
       spdlog::error("[SceneSerializer] Entity '{}' is of an archetype this application does not declare, and was left out", name);
     created.push_back(id);
@@ -1019,7 +1020,7 @@ namespace {
   }
 } // namespace
 auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) -> bool {
-  if (!app.GetScene()) {
+  if (!Internal(app).GetScene()) {
     spdlog::error("[SceneSerializer] No active scene to save");
     return false;
   }
@@ -1030,23 +1031,23 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
   // on every frame and would forget the goals' turn anyway; one no clip moves would keep it, and
   // the next goal would start from there -- a hand reached out once, saved, and reaching from
   // wherever it was left ever after. Solved again on the next frame, before anything is drawn.
-  app.ForEachEntity<Animator>([&](const EntityID id, Animator *) {
+  Internal(app).ForEachEntity<Animator>([&](const EntityID id, Animator *) {
     if (auto *rig = app.GetRig(id); rig)
       UndoInverseKinematics(app, *rig);
   });
   EntityOrder order;
-  app.ForEachRootEntity([&](const EntityID id) {
+  Internal(app).ForEachRootEntity([&](const EntityID id) {
     Order(app, id, order);
   });
   const auto names = GetComponentNames(app);
-  app.ForEachRootEntity([&](const EntityID id) {
+  Internal(app).ForEachRootEntity([&](const EntityID id) {
     entities.push_back(SerializeEntity(app, id, referenced, order, names));
   });
   // Each controller once, however many animators share it, with the models its clips come from
   // named in the manifest so that they are loaded before it is played.
   auto controllers = json::array();
   std::unordered_set<AssetID> written;
-  app.ForEachEntity<Animator>([&](const EntityID, Animator *animator) {
+  Internal(app).ForEachEntity<Animator>([&](const EntityID, Animator *animator) {
     const auto *controller = animator->controller ? app.GetAsset<AnimatorController>(animator->controller) : nullptr;
     if (!controller || !written.insert(controller->id).second)
       return;
@@ -1057,7 +1058,7 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
         if (entry.source)
           referenced.insert(entry.source);
     }
-    controllers.push_back(ToJson(*controller, app.GetAssetName(controller->id)));
+    controllers.push_back(ToJson(*controller, Internal(app).Assets().GetName(controller->id)));
   });
   json sceneJson;
   sceneJson["name"] = scenePath.stem().string();
@@ -1075,9 +1076,9 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
   for (const auto &assetId : referenced) {
     json entry;
     entry["id"] = assetId;
-    entry["name"] = app.GetAssetName(assetId);
-    entry["type"] = static_cast<int>(app.GetAssetType(assetId));
-    const auto path = app.GetAssetPath(assetId);
+    entry["name"] = Internal(app).Assets().GetName(assetId);
+    entry["type"] = static_cast<int>(Internal(app).Assets().GetType(assetId));
+    const auto path = Internal(app).Assets().GetPath(assetId);
     // With forward slashes whatever wrote it: `lexically_normal` turns them into the platform's own,
     // and a scene saved on Windows would otherwise name its assets by paths no other system reads.
     entry["path"] = path.empty() ? std::string{} : path.lexically_normal().generic_string();
@@ -1122,16 +1123,16 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) 
         if (!pathStr.empty()) {
           switch (static_cast<AssetType>(entry.value("type", 0))) {
           case AssetType::Material:
-            runtimeId = app.LoadAssetAsync<MaterialAsset>(pathStr, name, savedId);
+            runtimeId = Internal(app).Assets().LoadAsync<MaterialAsset>(pathStr, name, savedId);
             break;
           case AssetType::Model:
-            runtimeId = app.LoadAssetAsync<ModelAsset>(pathStr, name, savedId);
+            runtimeId = Internal(app).Assets().LoadAsync<ModelAsset>(pathStr, name, savedId);
             break;
           case AssetType::Shader:
-            runtimeId = app.LoadAssetAsync<ShaderAsset>(pathStr, name, savedId);
+            runtimeId = Internal(app).Assets().LoadAsync<ShaderAsset>(pathStr, name, savedId);
             break;
           case AssetType::Texture:
-            runtimeId = app.LoadAssetAsync<TextureAsset>(pathStr, name, savedId);
+            runtimeId = Internal(app).Assets().LoadAsync<TextureAsset>(pathStr, name, savedId);
             break;
           default:
             break;
@@ -1158,7 +1159,7 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) 
       ReadController(entry, *controller, remap);
       app.AddAsset(std::move(controller), entry.value("name", std::string{}));
     }
-  app.DeleteEntities();
+  Internal(app).DeleteEntities();
   std::vector<EntityID> created;
   const auto names = GetComponentNames(app);
   if (sceneJson.contains("entities"))
@@ -1171,11 +1172,11 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) 
   // writes into the skeleton the entity was made with now, but the walk is no place to be calling
   // back into the asset manager from either way.
   std::vector<std::pair<EntityID, AssetID>> instances;
-  app.ForEachEntity<Animator>([&](const EntityID id, Animator *animator) {
+  Internal(app).ForEachEntity<Animator>([&](const EntityID id, Animator *animator) {
     instances.emplace_back(id, animator->modelAssetId);
   });
   for (const auto &[id, model] : instances)
-    app.ResolveModelInstance(id, model);
+    Internal(app).ResolveModelInstance(id, model);
   spdlog::info("[SceneSerializer] Loaded scene: {}", scenePath.string());
   return true;
 }

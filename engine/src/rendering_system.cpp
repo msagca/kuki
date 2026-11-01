@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <anti_aliasing.hpp>
 #include <application.hpp>
+#include <application_internal.hpp>
 #include <array>
 #include <asset_type.hpp>
 #include <atmosphere_sky.hpp>
@@ -37,7 +38,7 @@ namespace kuki {
 RenderingSystem::RenderingSystem(Application &app)
   : System(std::in_place_type<RenderingSystem>, app) {}
 auto RenderingSystem::Start() -> void {
-  SetRenderer(app.GetDescription().api);
+  SetRenderer(Internal(app).GetDescription().api);
   {
     const auto arguments = GetCommandLineArguments();
     if (const auto path = GetFlagValue(arguments, CAPTURE_FLAG))
@@ -218,7 +219,7 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   fps = times.size();
   ++frameCounter;
   KUKI_PROFILE_SCOPE("Rendering");
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   if (!scene) {
     // Drained here as well as at the end, so that a frame with nothing to draw into still finishes
     // the queue rather than letting it accumulate. See the note at the bottom of this function.
@@ -234,7 +235,7 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   // It belongs here regardless of that. The world matrices are an input to drawing in the same way
   // the camera's view matrix is, they have to be current at this exact point in the frame, and the
   // dirty tracking in `EntityManager` makes a second flush after physics almost free.
-  scene->UpdateComponents<Transform, Camera>();
+  scene->Entities().UpdateComponents<Transform, Camera>();
   // Here because this system is in every application and runs every frame, which is all a sweep
   // asks of where it is done: a model removed during the frame keeps its rig until the next.
   scene->SweepRigs();
@@ -243,7 +244,7 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   // several frames running, so a single request at startup is recorded and never applied. Asking
   // every frame also means a resized window needs no callback of its own.
   if (presentEnabled)
-    if (const auto *context = app.GetGraphicsContext(); context) {
+    if (const auto *context = Internal(app).GetGraphicsContext(); context) {
       const auto [surfaceWidth, surfaceHeight] = context->GetSurfaceSize();
       if (surfaceWidth > 0 && surfaceHeight > 0)
         SetResolution(surfaceWidth, surfaceHeight);
@@ -258,12 +259,12 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   // safe to skip: the defaults are already there from construction, and a backend swapped at runtime
   // carries its settings across because they never stopped living on `Renderer`.
   if (activeRenderer) {
-    if (const auto *settings = scene->GetAnyComponent<IndirectLighting>())
+    if (const auto *settings = scene->Entities().GetAny<IndirectLighting>())
       activeRenderer->SetIndirectLighting(*settings);
     activeRenderer->SetLightingQuality(lightingQuality);
     // From the active camera, so that switching cameras switches the view. The renderer keeps
     // reading its own member, which is now a copy of whichever camera is currently looking.
-    if (const auto *camera = scene->GetCamera()) {
+    if (const auto *camera = scene->GetActiveCamera()) {
       activeRenderer->SetLightingDebugView(camera->lightingDebugView);
       activeRenderer->SetProbeDebugView(camera->probeDebugView);
     }
@@ -280,7 +281,7 @@ auto RenderingSystem::Update(float deltaTime) -> void {
     // The override, where one is set, is the player's choice and stands in for the scene's -- and
     // reaches a scene with no such component too, since it is about the machine and not the scene.
     if (renderGraph) {
-      const auto *antiAliasing = scene->GetAnyComponent<AntiAliasing>();
+      const auto *antiAliasing = scene->Entities().GetAny<AntiAliasing>();
       if (antiAliasingOverride)
         renderGraph->SetTargetSamples(*activeRenderer, "SceneMulti", SampleCount(*antiAliasingOverride));
       else if (antiAliasing)
@@ -318,7 +319,7 @@ auto RenderingSystem::Update(float deltaTime) -> void {
       };
       for (const auto root : profiler.GetRoots())
         Report(root, Report);
-      app.Quit();
+      Internal(app).Quit();
     }
   }
   // Emptied by the frame that drew it, which is what makes the overlay immediate mode: a caption
@@ -474,17 +475,17 @@ auto RenderingSystem::UpdateSkyboxLight(Scene &scene) -> void {
   // is the light that decides what the sky looks like rather than the reverse. Adopting a light
   // here would mean the sun moved because the sky changed, which is backwards, and the guard below
   // could not catch it -- there is no asset id to have already been handled.
-  if (scene.GetAnyComponent<AtmosphereSky>())
+  if (scene.Entities().GetAny<AtmosphereSky>())
     return;
   AssetID skyboxAsset{};
   EntityID skyboxEntity{};
-  scene.ForEachEntity<SkyboxHandle>([&](const EntityID id, const SkyboxHandle *handle) {
+  scene.Entities().ForEach<SkyboxHandle>([&](const EntityID id, const SkyboxHandle *handle) {
     if (skyboxAsset || !handle->assetId)
       return;
     skyboxAsset = handle->assetId;
     skyboxEntity = id;
   });
-  if (!skyboxAsset || skyboxAsset == derivedSkyboxAsset || !app.IsAssetLoaded(skyboxAsset))
+  if (!skyboxAsset || skyboxAsset == derivedSkyboxAsset || !Internal(app).Assets().IsLoaded(skyboxAsset))
     return;
   auto textureAsset = app.GetAsset<TextureAsset>(skyboxAsset);
   if (!textureAsset)
@@ -492,7 +493,7 @@ auto RenderingSystem::UpdateSkyboxLight(Scene &scene) -> void {
   derivedSkyboxAsset = skyboxAsset;
   // Into a light the sky's entity already has, and not one added to it: an entity's components are
   // its archetype's. It used to be added, which made this the renderer changing a scene's entities.
-  auto light = scene.GetEntityComponent<Light>(skyboxEntity);
+  auto light = scene.Entities().GetComponent<Light>(skyboxEntity);
   if (!light) {
     spdlog::info("[RenderingSystem] The sky's entity has no light to adopt a sun into; give its archetype one for that");
     return;
@@ -540,8 +541,8 @@ auto RenderingSystem::UpdatePendingResolution(const int width, const int height)
 auto RenderingSystem::SetResolution(const int width, const int height) -> void {
   if (width > 0 && height > 0)
     UpdatePendingResolution(width, height);
-  if (auto scene = app.GetScene(); scene)
-    if (auto camera = scene->GetCamera(); camera) {
+  if (auto scene = Internal(app).GetScene(); scene)
+    if (auto camera = scene->GetActiveCamera(); camera) {
       const auto aspectRatio = static_cast<float>(screenWidth) / screenHeight;
       if (camera->aspectRatio != aspectRatio) {
         camera->aspectRatio = aspectRatio;

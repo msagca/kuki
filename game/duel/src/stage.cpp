@@ -18,7 +18,6 @@
 #include <particle_emitter.hpp>
 #include <particle_presets.hpp>
 #include <planar_reflection.hpp>
-#include <scene.hpp>
 #include <spdlog/spdlog.h>
 #include <stage.hpp>
 #include <string>
@@ -160,11 +159,6 @@ namespace {
     // From behind the fighters is from -Z; the light then travels towards +Z, down and across.
     return -glm::normalize(glm::vec3(std::sin(a) * std::cos(e), std::sin(e), -std::cos(a) * std::cos(e)));
   }
-  template <typename T>
-  auto Singleton(Application &app) -> T * {
-    auto scene = app.GetScene();
-    return scene ? scene->GetAnyComponent<T>() : nullptr;
-  }
   auto Sun(Application &app) -> Light * {
     Light *sun{};
     DuelWorld::ForEach<Light>(app, [&](const EntityID, Light *light) {
@@ -254,23 +248,22 @@ namespace {
       stage.sunColour = air.sunColour;
       stage.sunIntensity = air.sunIntensity;
     }
-    if (auto *sky = Singleton<AtmosphereSky>(app)) {
+    if (auto *sky = app.GetSceneSingleton<AtmosphereSky>()) {
       sky->sunIntensity = air.skyIntensity;
       sky->sunDiscIntensity = air.sunDisc;
     }
-    if (auto *lighting = Singleton<IndirectLighting>(app))
+    if (auto *lighting = app.GetSceneSingleton<IndirectLighting>())
       lighting->ambientFallback = air.ambientFallback;
-    if (auto *fog = Singleton<VolumetricFog>(app))
+    if (auto *fog = app.GetSceneSingleton<VolumetricFog>())
       *fog = air.fog;
-    if (auto *clouds = Singleton<VolumetricClouds>(app))
+    if (auto *clouds = app.GetSceneSingleton<VolumetricClouds>())
       *clouds = air.clouds;
-    if (auto *look = Singleton<Stylization>(app))
+    if (auto *look = app.GetSceneSingleton<Stylization>())
       *look = air.look;
-    if (auto *ground = Singleton<PlanarReflection>(app))
+    if (auto *ground = app.GetSceneSingleton<PlanarReflection>())
       *ground = air.ground;
-    if (auto scene = app.GetScene())
-      if (auto *camera = scene->GetCamera())
-        camera->exposure = air.exposure;
+    if (auto *camera = app.GetCamera())
+      camera->exposure = air.exposure;
   }
   auto BuildAlley(Application &app, StageScene &stage) -> void {
     stage.storm = true;

@@ -37,6 +37,21 @@ target_include_directories(
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/kuki>"
 )
+# `internal/` is the engine's own and is never installed: the backend, the scene loader, the
+# shader constants, and `ApplicationInternal`, the half of the application a game is not given. The
+# editor and the tests are built from this tree and reach it through `KukiEngineInternal`; a game
+# reaches `include/` alone, which is all a release ships. Nothing in `include/` may include a header
+# from here -- `KukiPublicHeaders` below fails to build if one does.
+target_include_directories(
+  ${PROJECT_NAME}
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/internal"
+)
+add_library(KukiEngineInternal INTERFACE)
+target_include_directories(
+  KukiEngineInternal
+  INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/internal"
+)
+target_link_libraries(KukiEngineInternal INTERFACE ${PROJECT_NAME})
 # PUBLIC is exactly what a consumer's own code needs, which is now a short list. Everything else
 # is an implementation detail this library happens to be built with, and saying so is what lets a
 # shared build resolve it internally: private link dependencies of a SHARED library do not
@@ -45,18 +60,21 @@ target_include_directories(
 # them -- the distinction only pays off once this is a DLL.)
 #
 # glm is in the API: `Transform`, `Camera` and `Light` are written in its vector and quaternion
-# types. glfw is in the API too, less obviously -- `RegisterInputAction` and `IsInputHeld` take
-# GLFW key codes, so a game writing `GLFW_KEY_ESCAPE` needs its header. spdlog is here because
-# every consumer so far logs with it and expects to keep doing so.
+# types. spdlog is here because every consumer so far logs with it and expects to keep doing so.
+# glfw is not, though it was: games named their keys by GLFW's constants, so each needed its
+# header. They name them by `Key` now (`key.hpp`, GLFW's numbers under the engine's names), and the
+# installed headers mention glfw only as the opaque `GLFWwindow` -- the editor, which drives Dear
+# ImGui's GLFW backend, links it for itself.
 #
 # The rest became private when `asset_manager.hpp` stopped declaring Assimp types and defining its
 # loaders inline; before that, assimp, nlohmann, stb and tinyexr were all reachable from any header
 # that reached the asset manager, which was almost all of them.
 target_link_libraries(
   ${PROJECT_NAME}
-  PUBLIC glfw glm spdlog
+  PUBLIC glm spdlog
   PRIVATE
     assimp
+    glfw
     kaitai_image
     kaitai_struct_cpp_stl_runtime
     nlohmann_json
@@ -65,9 +83,8 @@ target_link_libraries(
     whereami
 )
 if(WIN32)
-  # The Direct3D headers are private: `dx_context.hpp` and friends are implementation, and the one
-  # backend header a consumer does reach -- `dx_material.hpp`, named by `ComponentVariant` -- needs
-  # nothing from the SDK. What does have to be public is the define, because a consumer compiles its
+  # The Direct3D headers are private: `dx_context.hpp` and friends are implementation, in
+  # `internal/`, and no installed header reaches one. What does have to be public is the define, because a consumer compiles its
   # own `#ifdef KUKI_HAS_DIRECTX` against the same answer this library was built with; disagreeing
   # about it silently produces a binary with no Direct3D backend and no diagnostic.
   #
@@ -169,8 +186,8 @@ else()
     "KukiEngine: static build, so no CMake package is generated. Configure with -DBUILD_SHARED_LIBS=ON for a find_package(KukiEngine) install."
   )
 endif()
-# `model_import.hpp` is deliberately absent: it declares Assimp types and exists only so the asset
-# manager's own header need not. Nothing outside this library includes it.
+# `include/` whole and nothing else. What a game is not to reach is in `internal/`, so there is no
+# list of exclusions to keep in step -- `model_import.hpp`, which declares Assimp types, was one.
 install(
   DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/kuki"
@@ -178,7 +195,6 @@ install(
   FILES_MATCHING
   PATTERN "*.hpp"
   PATTERN "*.h"
-  PATTERN "model_import.hpp" EXCLUDE
 )
 # Generated, and referenced by 66 of the installed headers, so it ships with them. The embedded
 # shader header is generated too but included by no public header, so it stays behind.

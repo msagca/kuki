@@ -16,7 +16,6 @@
 #include <mesh_asset.hpp>
 #include <model_asset.hpp>
 #include <queue>
-#include <scene.hpp>
 #include <shader_asset.hpp>
 #include <skybox_handle.hpp>
 #include <string>
@@ -27,6 +26,7 @@
 #include <unordered_set>
 #include <utility>
 namespace kuki {
+class Scene;
 /// @brief What a material or a texture asset is as a prefab: a handle to it and nothing else.
 ///
 /// Only ever in the asset manager's own entity manager, which is the one place they are made. A

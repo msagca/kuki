@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <application.hpp>
+#include <application_internal.hpp>
 #include <command_line.hpp>
 #include <network_system.hpp>
 #include <spdlog/spdlog.h>
@@ -15,7 +16,7 @@ NetworkSystem::NetworkSystem(Application &app)
 void NetworkSystem::Start() {
   // Here and not in the constructor. The application builds its systems as temporaries and moves
   // them into place, so an address taken at construction is one that is gone by the time it is used.
-  app.SetNetwork(this);
+  Internal(app).SetNetwork(this);
   std::string error;
   const auto arguments = GetCommandLineArguments();
   options = ParseNetworkOptions(arguments, error);
@@ -25,7 +26,7 @@ void NetworkSystem::Start() {
 }
 void NetworkSystem::Shutdown() {
   End();
-  app.SetNetwork(nullptr);
+  Internal(app).SetNetwork(nullptr);
 }
 auto NetworkSystem::SetProtocol(const uint32_t value) -> void {
   protocol = value;
@@ -62,7 +63,7 @@ auto NetworkSystem::End() -> void {
   netplay.reset();
   // Back to the clock's own pace, which a match that ended while this machine was slowing would
   // otherwise leave it at.
-  app.SetTickScale(1.);
+  Internal(app).SetTickScale(1.);
 }
 auto NetworkSystem::GetNetplay() const -> const Netplay * {
   return netplay.get();
@@ -75,7 +76,7 @@ auto NetworkSystem::Tick() -> void {
     return;
   netplay->Step(app.GetButtons(), app.TickTime());
   if (netplay->IsOnline())
-    app.SetTickScale(netplay->GetTickScale());
+    Internal(app).SetTickScale(netplay->GetTickScale());
 }
 void NetworkSystem::Update(const float) {
   if (!netplay || !showStatus)

@@ -9,7 +9,6 @@
 #include <map_system.hpp>
 #include <material_handle.hpp>
 #include <props.hpp>
-#include <scene.hpp>
 #include <transform.hpp>
 #include <wind.hpp>
 using namespace kuki;
@@ -113,8 +112,7 @@ auto FlockSystem::Update(const float deltaTime) -> void {
     Spawn();
   }
   const auto dt = std::min(deltaTime, .05f);
-  auto scene = app.GetScene();
-  const auto *wind = scene ? scene->GetAnyComponent<Wind>() : nullptr;
+  const auto *wind = app.GetSceneSingleton<Wind>();
   glm::vec3 air{};
   if (wind && glm::length(wind->direction) > 1e-4f) {
     const auto d = glm::normalize(wind->direction);

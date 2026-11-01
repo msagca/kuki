@@ -62,26 +62,28 @@ struct World {
   template <IsArchetype A>
   static auto Create(Application &app, std::string name = "") -> EntityID {
     static_assert(Has<A>, "World::Create: this world does not declare that archetype, so no scene of it can hold one");
-    return app.CreateEntity<A>(std::move(name));
+    return app.CreateEntity(A::Mask(), std::move(name));
   }
   /// @brief Makes an entity of one of the world's drawn archetypes in the pool of a mesh and a
   /// material. See `Application::CreateEntity`.
   template <IsArchetype A>
   static auto Create(Application &app, const PoolKey &pool, std::string name = "") -> EntityID {
     static_assert(Has<A>, "World::Create: this world does not declare that archetype, so no scene of it can hold one");
-    return app.CreateEntity<A>(pool, std::move(name));
+    static_assert(A::template Has<Pooled>, "World::Create: only an archetype that is drawn -- one with `Renderable` in it -- has pools");
+    return app.CreateEntity(A::Mask(), pool, std::move(name));
   }
   /// @brief Makes a pool of one of the world's drawn archetypes ahead of its entities.
   template <IsArchetype A>
   static auto CreatePool(Application &app, const PoolKey &pool, PoolSettings settings = {}) -> bool {
     static_assert(Has<A>, "World::CreatePool: this world does not declare that archetype");
-    return app.CreatePool<A>(pool, std::move(settings));
+    static_assert(A::template Has<Pooled>, "World::CreatePool: only an archetype that is drawn -- one with `Renderable` in it -- has pools");
+    return app.CreatePool(A::Mask(), pool, std::move(settings));
   }
   /// @brief Places a model with a root of one of the world's archetypes. See `AssetManager::Instantiate`.
   template <IsArchetype Root = ModelRoot>
   static auto Instantiate(Application &app, const std::string &asset) -> EntityID {
     static_assert(Has<Root>, "World::Instantiate: this world does not declare that archetype for a model's root");
-    return app.InstantiateAsset<Root>(asset);
+    return app.InstantiateAsset(asset, Root::Mask());
   }
   /// @brief Calls `func(id, components...)` for every entity of the active scene the query matches.
   ///
@@ -93,9 +95,12 @@ struct World {
   static auto ForEach(Application &app, auto &&func) -> void {
     static_assert(IsQuery<Q...>, "World::ForEach: every parameter must be a component, Optional<component> or Without<component>; at least one must be required; and none may be both required and excluded");
     static_assert(Matches<Q...>, "World::ForEach: no archetype of this world has every component this query requires and none it excludes, so it could never visit anything");
+    auto *entities = app.ActiveEntities();
+    if (!entities)
+      return;
     ForEachType(Archetypes{}, [&]<typename A>() {
       if constexpr (QueryMatches<Q...>(A::bits))
-        app.ForEachEntityOf<A, Q...>(func);
+        entities->template ForEachOf<A, Q...>(func);
     });
   }
   /// @brief One component of an entity of the active scene, or null if the entity has none.
