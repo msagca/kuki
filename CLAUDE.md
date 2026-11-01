@@ -1,438 +1,271 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code in this repository. This file holds what nearly every change needs; the
+rest is read where it is used:
 
-It holds what nearly every change needs. The rest is kept where it is used, so it is read only then:
-
-- `editor/CLAUDE.md`, `game/duel/CLAUDE.md`, `game/frontier/CLAUDE.md`, `engine/src/shader/CLAUDE.md`
-  are loaded when files in those folders are.
-- Step-by-step recipes are skills in `.claude/skills/`: `capture` (build a target and look at what it
-  draws), `add-engine-component`, `add-render-pass`, `add-compile-fail-check`.
-- `.claude/settings.json` runs hooks: an edited C++ file has the lines that changed clang-formatted
-  (only those -- some files have drifted from `.clang-format`, and reformatting a whole file would
-  bury a change in noise), an edited CMake file is formatted with gersemi, and `external/` cannot be
-  edited.
+- `editor/`, `game/duel/`, `game/frontier/` and `engine/src/shader/` have a `CLAUDE.md` of their
+  own, loaded with the files there.
+- Recipes are skills in `.claude/skills/`: `capture`, `add-engine-component`, `add-render-pass`,
+  `add-compile-fail-check`.
+- Hooks (`.claude/settings.json`) clang-format only the changed lines of an edited C++ file (some
+  files have drifted from `.clang-format`), format CMake with gersemi, and block edits to `external/`.
 
 ## Build, run, test
 
-Submodules under `external/` are required: `git submodule update --init --recursive`.
-
-All presets share one binary directory (`build/`), so switching presets reconfigures in place.
-
 ```bash
-cmake --workflow Release          # configure + build + test + package
-cmake --workflow Debug            # configure + build + test (CI runs these steps with tests on)
-cmake --preset Debug && cmake --build --preset Debug   # iterate without packaging
-```
-
-Preset names: `Debug`, `Release` (default generator), `MSVC` with `MSVC-Debug`/`MSVC-Release` build
-presets (Visual Studio), `Clang-Debug`/`Clang-Release` (Ninja + clang).
-
-Presets set `KUKI_BUILD_GAMES=ON` and `KUKI_BUILD_TESTS=OFF`. Tests are opt-in, and cover the parts
-with no window behind them -- the tick, gestures, the ECS, rollback and networking, the duel's rules.
-`test/compile_fail/*.cpp` are the mistakes the engine promises to refuse at compile time, each passing
-only if the compiler prints the message on its first line (the `add-compile-fail-check` skill).
-
-```bash
+git submodule update --init --recursive                # external/ is required
+cmake --workflow Release                               # configure + build + test + package
+cmake --workflow Debug                                 # configure + build + test
+cmake --preset Debug && cmake --build --preset Debug   # iterate
 cmake --preset Debug -DKUKI_BUILD_TESTS=ON && cmake --build --preset Debug
-ctest --test-dir build --output-on-failure
-ctest --test-dir build -R <TestName>      # single test; gtest_discover_tests registers one per case
+ctest --test-dir build --output-on-failure [-R <TestName>]   # one test per gtest case
 ```
 
-Linting is opt-in too: `-DKUKI_ENABLE_LINTING=ON` attaches clang-tidy (bugprone/performance/
-portability/clang-analyzer) to every target, header-filtered to each target's own `include/`.
+Presets: `Debug`, `Release`, `MSVC` (built with `MSVC-Debug`/`MSVC-Release`), `Clang-Debug`/
+`Clang-Release` (Ninja). All share `build/`, so switching reconfigures in place. Games are on and
+tests off (`KUKI_BUILD_TESTS`); the tests cover what has no window -- the tick, gestures, the ECS,
+rollback, networking, the duel's rules. A `test/compile_fail/*.cpp` passes only if the compiler
+prints its expected message on the first line. `-DKUKI_ENABLE_LINTING=ON` attaches clang-tidy.
 
-Executables land in `build/editor/`, `build/game/<name>/`, `build/test/`; each target prints its
-path at the end of its build. A game's folder gets fresh DLLs from its `<Target>Runtime` target, not
-from building the game alone -- build both, or the game runs against the engine from before.
+Executables land in `build/editor/`, `build/game/<name>/`, `build/test/`. A game's folder gets fresh
+DLLs from its `<Target>Runtime` target: build both, or the game runs against the old engine.
+`--capture <file.png>` saves the frame after `--capture-frame <n>` (300) and quits -- how to see
+what a build draws (the `capture` skill). Assets are staged beside the binary and found through
+`ResolvePath` against the executable's directory, never the working directory.
 
-`--capture <file.png>` saves the frame drawn after `--capture-frame <n>` frames (300 by default) and
-quits (Direct3D 12 only). It is how to see what a build draws without anyone at the screen (the
-`capture` skill). Assets are staged next to the binary by post-build copies, and are resolved through
-`ResolvePath` against the executable's directory — never the working directory.
-
-On Windows the Direct3D 12 backend compiles HLSL at runtime through `dxcompiler.dll`/`dxil.dll`,
-found in the Windows SDK at configure time and copied beside each executable. Without them no
-shader compiles and nothing is drawn. Direct3D 12 is the only backend: OpenGL was removed, and a
-machine or build without Direct3D 12 stops at startup saying so, rather than falling back.
+Direct3D 12 is the only backend; without it the application stops at startup. HLSL is compiled at
+run time by `dxcompiler.dll`/`dxil.dll`, found in the Windows SDK at configure time and copied
+beside each executable -- without them nothing is drawn.
 
 ## Layout
 
-- `engine/` — `KukiEngine`, the library everything else links. Public headers in `include/`,
-  included by bare filename (`#include <entity_manager.hpp>`).
-- `editor/` — `KukiEditor`, a Dear ImGui application built on the engine. The only target that
-  links imgui/imguizmo/file-browser.
-- `game/` — one directory per game, discovered automatically: a subdirectory with a
-  `CMakeLists.txt` is a game and needs no registration anywhere. A game links `KukiEngine` alone
-  and must call `kuki_report_binary(${PROJECT_NAME})` itself.
-- `test/` — gtest binary linking the engine, plus the duel's rules and the frontier's map compiled in.
-- `external/` — submodules; never patched. Vendored-library quirks are worked around in the root
-  `CMakeLists.txt`, which documents each one at length.
+- `engine/` -- `KukiEngine`, linked by everything. Public headers in `include/`, included by bare
+  name (`#include <entity_manager.hpp>`).
+- `editor/` -- `KukiEditor` (Dear ImGui), the only target linking imgui/imguizmo/file-browser.
+- `game/` -- a subdirectory with a `CMakeLists.txt` is a game, found without registration. It links
+  `KukiEngine` alone and calls `kuki_report_binary(${PROJECT_NAME})`.
+- `test/` -- gtest, with the duel's rules and the frontier's map compiled in.
+- `external/` -- submodules, never patched; their quirks are worked around, and explained, in the
+  root `CMakeLists.txt`.
 
 ## Design principles
 
-These settle a choice between two ways of doing something before anything in the architecture
-below does. A principle the compiler checks names its check; the others are for whoever writes or
-reviews the change to hold, and a change that breaks one says why in its commit.
+They settle a choice before the architecture below does. A change that breaks one says why in its
+commit. Where the repo falls short of one, the gap is named.
 
-- **Data first.** A component is plain data laid out for the passes that read it: no virtual
-  functions, no owning pointers, no containers -- trivially copyable, so that a table can move,
-  snapshot and roll back its rows as bytes. Whatever varies in length (a pose, a list of nodes, a
-  state machine) belongs to an asset or to a store a system owns, and the component holds an id or
-  a handle into it. Behaviour is a system's, run over whole tables through queries, not a method
-  called on one entity at a time. `Animator` and `Skeleton` do not meet this yet and are the only
-  components allowed containers until they are reworked; then a `static_assert` with a compile-fail
-  check refuses any component that is not trivially copyable. Do not add a third.
-- **Data lives where it is used.** What the GPU reads every frame is uploaded when it changes and
-  stays there, and reading anything back is the exception, explained beside it. Compute on the GPU
-  what only the picture needs (wind displacement, particles); copy columns as they lie rather than
-  gathering per entity (a pool's `WorldMatrix` column); key cached GPU work on a table's `version`
-  or an asset's `revision` instead of rebuilding it.
-- **Performance before looks.** An effect is judged first by what it costs, measured
-  (`KUKI_PROFILE_SCOPE`) and stated in its commit. One that is not cheap is a graphics setting
-  with a `RendererCapabilities` flag. When an effect and the frame budget disagree the effect gives
-  way: a cheaper approximation, a lower resolution, or off by default. The budget is a game's own,
-  stated in its `CLAUDE.md`.
-- **Low-poly unless a game says otherwise.** A game is flat-shaded low-poly geometry, built with
-  `MeshBuilder` or generated by a script, unless its own `CLAUDE.md` names another style. Colour
-  is the vertices' rather than a texture's: nothing to sample, nothing to upload but the mesh, and
-  one material for a model of many colours. `Vertex` has no colour yet, so until it does colour is
-  the material's.
-- **Variety from instances, not variants.** Things that should look different are one mesh and
-  material drawn many times with different transforms and per-instance parameters (a tint) --
-  scaled, turned, tilted, placed, shaded -- which is one pool and one instanced draw. A mesh or
-  material made only for variety splits a pool, and every pool is a draw of its own. Make a variant
-  only when nothing per instance can make the difference. An instance has only its `WorldMatrix`
-  yet, and skinned meshes are drawn one at a time, so for now this holds for transforms of unskinned
-  meshes.
-- **The engine keeps what more than one game could use.** What is not one game's rules, content or
-  look -- a camera, a kind of input, a generator, a system another genre would want -- is written in
-  `engine/`, in `namespace kuki`, with its header in `engine/include/`. A game's folder holds that
-  game alone, in a namespace of its own (`duel`, `frontier`). Something written in a game and found
-  to be general is moved to the engine, not copied. Only the games' worlds and rules are in their
-  namespaces yet; their systems are global, and the frontier's `CameraSystem` is a strategy camera
-  any such game would want.
-- **Next to no UI over the game.** Only what a player cannot understand the game without, and that
-  cannot live in the settings menu, is shown: ask whether a player would decide wrongly without it.
-  What passes is drawn in the world where it can be -- a building's outline on the cells it will
-  take rather than a panel saying which -- and over the picture only where it cannot, as the state
-  of a fight. An option, a readout that is merely interesting, a legend, a debug view or a key hint
-  is the settings menu's (a toggle on the game's page) or a command-line flag's -- see "The settings
-  menu, and no text that is a hint" below.
-- **Every game plays from the keyboard alone.** Every action is a named binding a key can trigger
-  (`RegisterBinding`/`RegisterButton`). The mouse may be a second way to do something, never the
-  only one: a game that picks with the cursor also moves a selection with keys. Chess (#16) and the
-  frontier (#17) do not meet this yet, and nothing enforces it (#18).
-- **Rules are deterministic and run without a window.** A game's rules are its `Tick`, in files
-  that open no window and are compiled into the tests (`duel_sim.cpp`, `terrain.cpp`): the same
-  state and the same buttons, or the same seed, make the same result on every machine. Rollback and
-  sharing a map by its seed both stand on this, so no clock, no `<random>` distribution, no
-  unordered iteration and nothing a frame drew may reach a rule.
-- **Refuse mistakes at compile time.** A misuse the engine can refuse when it compiles is refused
-  then -- a `static_assert` or a constraint with a message saying what to do instead -- and not
-  found at run time. Each such promise has a check in `test/compile_fail/` (the
-  `add-compile-fail-check` skill).
-- **Content is made by code.** Meshes, maps, stages and characters are built in code
-  (`MeshBuilder`, the procedural generators) or by a script kept in the repo and run by hand
-  (`tools/make_fighter.py`, `tools/make_stages.py`) rather than modelled by hand. A change is then a
-  diff someone can read, variety is a seed or a parameter, and LFS carries only what a script
-  wrote.
-- **No allocation on the hot path.** A system's `Tick`, `Update` and `LateUpdate` do not allocate
-  on the heap once the scene is running: buffers are sized at start or kept and reused, and grow
-  rarely. `Animator` does not meet this yet (its `events` are strings, made every tick).
+- **Data first.** A component is plain, trivially copyable data -- no virtuals, owning pointers or
+  containers -- so a table moves, snapshots and rolls back its rows as bytes. What varies in length
+  is an asset's or a system-owned store's, reached by a handle; behaviour is a system's, run over
+  tables by queries. Gap: `Animator` and `Skeleton`, the only exemptions; once they are reworked a
+  `static_assert` refuses every component that is not trivially copyable.
+- **Data lives where it is used.** Upload to the GPU when data changes, not every frame; compute on
+  the GPU what only the picture needs; copy columns as they lie (a pool's `WorldMatrix`); key cached
+  GPU work on a table's `version` or an asset's `revision`. A readback says beside it why.
+- **Performance before looks.** An effect's cost is measured (`KUKI_PROFILE_SCOPE`) and stated in
+  its commit; one that is not cheap is a graphics setting with a `RendererCapabilities` flag. Against
+  the frame budget -- each game's own, in its `CLAUDE.md` -- the effect gives way.
+- **Low-poly by default**: flat-shaded, built with `MeshBuilder` or a script, unless a game's
+  `CLAUDE.md` says otherwise, and coloured by its vertices rather than textures. Gap: `Vertex` has
+  no colour yet, so colour is the material's.
+- **Variety from instances, not variants.** Vary the transforms and per-instance parameters (a tint)
+  of one mesh and material -- one pool, one instanced draw -- rather than adding meshes or materials,
+  each a pool and a draw of its own. Gap: an instance has only its `WorldMatrix`, and skinned meshes
+  are drawn one at a time.
+- **The engine keeps what more than one game could use**, in `engine/` and `namespace kuki`; a
+  game's folder holds that game alone, in a namespace of its own. Code found general in a game is
+  moved, not copied. Gap: the games' systems are global, and the frontier's `CameraSystem` belongs in
+  the engine.
+- **Next to no UI over the game.** Only what a player would decide wrongly without, and the settings
+  menu cannot hold, is shown: in the world where it can be (a building's outline on its cells), over
+  the picture only where not (the state of a fight). Options, legends, debug views, merely
+  interesting readouts and key hints are settings toggles or command-line flags.
+- **Every game plays from the keyboard alone.** Every action is a named binding
+  (`RegisterBinding`/`RegisterButton`); the mouse is a second way, never the only one. Gap: chess
+  (#16) and the frontier (#17); nothing enforces it (#18).
+- **Rules are deterministic and windowless.** A game's rules are its `Tick`, in files compiled into
+  the tests (`duel_sim.cpp`, `terrain.cpp`): the same state and buttons, or seed, give the same
+  result on every machine, which rollback and shared maps stand on. No clock, `<random>`
+  distribution, unordered iteration or anything drawn reaches a rule.
+- **Refuse mistakes at compile time**, by a `static_assert` or constraint whose message says what to
+  do instead, each with a check in `test/compile_fail/`.
+- **Content is made by code**: `MeshBuilder`, the generators, or a script in the repo run by hand
+  (`tools/make_fighter.py`, `tools/make_stages.py`), not modelled by hand -- a change is a readable
+  diff, variety is a seed, and LFS holds only what a script wrote.
+- **No heap allocation on the hot path** (`Tick`, `Update`, `LateUpdate`) once a scene runs: buffers
+  are sized at start and reused. Gap: `Animator`'s event names, made every tick.
 
 ## Architecture
 
-### Application lifecycle
+### Application and systems
 
-`Application` (`engine/include/application.hpp`) is the facade: window, input, assets, scenes,
-preferences, overlay. `Run()` is the only public lifecycle entry point; `Start`/`Update`/
-`Shutdown`/`Status` are protected hooks a subclass overrides.
-
-`SystemApplication<World, Systems...>` composes what a given application is made of as template
-parameters: its `World` (every archetype its entities can be, see ECS below) and the systems it
-runs, in order. Chess is `SystemApplication<ChessWorld, GameManager, RenderingSystem>`; the duel is
+`Application` (`application.hpp`) is the facade -- window, input, assets, scenes, preferences,
+overlay -- with `Run()` public and `Start`/`Update`/`Shutdown`/`Status` as protected hooks.
+`SystemApplication<World, Systems...>` names an application's archetypes and its systems in order:
 `SystemApplication<DuelWorld, AnimationSystem, NetworkSystem, DuelSystem, RenderingSystem>`.
-`RenderingSystem` must be in the list (`static_assert`). Every system's `Start` runs before the
-application's own `Start` (where a game loads assets and builds its scene), and every `PostStart`
-after it -- a game's own system begins in `PostStart`, when its scene exists.
+`RenderingSystem` is required. Every system's `Start` runs before the application's (where a game
+loads assets and builds its scene) and every `PostStart` after it, which is where a game's own
+system begins. There are no scripts: a game's behaviour is its own `System`.
 
-There are no scripts. Game behaviour is a game's own `System`, compiled into the game and listed in
-its application: it owns the match's state, finds its entities with queries, and draws from
-`Update`. An application is therefore a small subclass: see `game/chess/include/chess.hpp` and
-`game/duel/include/duel.hpp`.
+Command-line flags are declared: a system lists `static constexpr std::array FLAGS` of `Flag`
+(`command_line.hpp`), and `SystemApplication::FLAGS` joins them with `ENGINE_FLAGS`, refusing a
+repeated name at compile time. Read them with `HasFlag`/`GetFlagValue` on
+`GetCommandLineArguments()`; `--help` lists them, and an undeclared argument is warned about.
 
-Command-line flags are declared, not scanned for: a system that reads any lists them as
-`static constexpr std::array FLAGS` of `Flag` (`command_line.hpp`), and `SystemApplication::FLAGS`
-joins every system's with the engine's and the editor's (`ENGINE_FLAGS`) and `static_assert`s that
-no two share a name. Read them with `HasFlag`/`GetFlagValue` on `GetCommandLineArguments()`.
-`--help` lists them all; an argument nothing declares is warned about at startup.
+### Tick, input and animation
 
-### Fixed tick and input
+A frame calls `System::Tick` zero or more times, each standing for `Application::TickTime()` (1/60 s
+by default, `tick_clock.hpp`), then `Update` once with the frame's length, then `LateUpdate` before
+anything is drawn. Rules go in `Tick`; presentation in `Update`, blending by `TickAlpha()`.
 
-A frame runs two things. `System::Tick` is called a whole number of times -- none,
-one or several -- each standing for `Application::TickTime()` seconds (sixty a second by default,
-`TickClock` in `tick_clock.hpp`), and then `Update` is called once with the frame's own length.
-Game rules go in `Tick`, which must leave the same state given the same state and the same buttons;
-presentation goes in `Update`, which may blend by `TickAlpha()`.
+A tick reads the player as a `ButtonMask` (`GetButtons()`). A button is a rebindable binding from
+`RegisterButton`, its bit the registration order, latched so a tap shorter than a tick still shows.
+`GestureRecognizer` (`gesture.hpp`) turns masks into presses, chords, holds, releases and sequences
+in a small notation (`"left right punch"`, `"guard*30 -guard"`); it keeps nothing but the masks, so
+fed a peer's it reproduces the peer's gestures. `RegisterInputAction` is unrelated: untimed typed
+sequences for editor shortcuts.
 
-A tick reads the player as one `ButtonMask` from `Application::GetButtons()`. A button is a named,
-rebindable binding registered with `RegisterButton`, whose bit is its registration order; the mask
-is latched per tick so a tap shorter than a tick still shows for one. `GestureRecognizer`
-(`gesture.hpp`) turns a run of masks into presses, chords, holds, releases and sequences, counted
-in ticks and written in a small notation (`"left right punch"`, `"guard*30 -guard"`). It keeps no
-state but the masks, so one per player, fed the masks a peer sent, reproduces that peer's gestures.
+An `Animator` without `states` plays one clip by frame time (the editor's preview). With states it
+is stepped by the tick (`StepAnimator`): a state plays a clip, fires named events, and goes to its
+`next` when a clip that does not loop ends; the game changes state with `Play`. `rootNode`'s travel
+is taken out of the pose and reported as `rootDelta`. The pose is sampled in `Update` and
+crossfaded. List `AnimationSystem` before a game's system for it to see a tick's events that tick.
+IK goals (`IKGoal`: `Reach`, `Aim`; `inverse_kinematics.hpp`) are solved in
+`AnimationSystem::LateUpdate`, top of the skeleton down, from the restored pose (`IKHeld`), and are
+never saved into it; a goal's `target` is saved as an entity index and resolved after load.
 
-An `Animator` with no `states` plays one clip by frame time, as the editor's preview does. With
-states it is stepped by the tick (`StepAnimator`): a state plays a clip, fires named events on the
-ticks they give, and goes to its `next` when a clip that does not loop ends; the game changes state
-with `Play`. `rootNode` takes that node's travel out of the pose and reports it per tick in
-`rootDelta`. The pose is sampled in `Update` between the last two ticks and crossfaded from whatever
-was showing. List `AnimationSystem` before a game's own system for the game to see a tick's events
-in that tick. `game/duel` uses all of it (`game/duel/CLAUDE.md`).
+### Settings menu
 
-Inverse kinematics is presentation too: an animator's `ik` goals (`IKGoal`: `Reach` puts a bone on a
-point by bending its parent and grandparent, `Aim` turns a bone and some parents to face one) are
-solved in `AnimationSystem::LateUpdate` -- `System::LateUpdate` runs after every `Update` and before
-`RenderingSystem` draws -- so they see where the game's systems put things this frame. Goals are solved from
-the top of the skeleton down, the pose is restored before each solve (`IKHeld`), and a scene is
-saved without the goals' turns. A goal's `target` entity is saved as its place in the file's entity
-order and resolved after load. The maths is `SolveTwoBone`/`SolveAim` in `inverse_kinematics.hpp`.
+Every game has a `SettingsMenu` (`settings_menu.hpp`; off in the editor through
+`ApplicationDescription::settingsMenu`), opened and closed by Escape, the `Settings` binding,
+registered first. Its pages are the game's (`GetSettingsMenu().AddChoice/AddToggle/AddAction(
+SettingsPage::Game, ...)`), graphics (saved in `EngineConfig`) and controls (every binding,
+rebindable, saved in `Preferences` as `input.<name>`). Quitting is the menu's; a game does not quit
+on Escape. While it is open the game hears no input, held input is released, and a game not online
+is `Paused` -- a clock in `Update` checks `GetPlayState`. `--settings <page>` opens it for a capture.
+Mouse buttons are read directly and cannot be rebound.
 
-The older `RegisterInputAction` sequences are a different thing: typed characters with no timing,
-used for editor shortcuts.
+### Games and scenes
 
-### The settings menu, and no text that is a hint
+A game is a library plus the launcher every game shares, `cmake/game_main.cpp` (`kuki_add_game`).
+Its sources define `Setup<Game>(Application &)`, `KUKI_GAME_MODULE(name, setup)` and
+`KUKI_GAME_MAIN(AppClass)`; a shared build makes `<Target>Game.dll` and `KukiEngine.dll`. Games are
+always `Playing`; only the editor stops and pauses (`PlayState`).
 
-Every game has `SettingsMenu` (`settings_menu.hpp`, owned by `Application`, off in the editor through
-`ApplicationDescription::settingsMenu`): Escape -- the `Settings` binding, registered first -- opens
-and closes it over the dimmed picture, in the overlay's text, hanging from the top of the window;
-while it is open nothing else the overlay was given is drawn, and the arrow keys reach every line of
-it, the row of pages included. Its pages are the game's own
-(`GetSettingsMenu().AddChoice/AddToggle/AddAction(SettingsPage::Game, ...)`, each a get, a set and an
-optional visible), the engine's graphics (saved in `EngineConfig`: display, vsync, anti-aliasing,
-shadows, bloom, fog and clouds, reflections, a frame-rate counter), and the controls: every binding
-in registration order, rebindable (Enter or a click to change, Delete or a right click to clear,
-Backspace to restore one's default), saved in the game's `Preferences` as `input.<name>` and taken at
-registration (`RegisterBinding`/`RegisterButton`). Quitting is its footer's; a game does not quit
-itself on Escape. While it is open the game hears no keys, buttons, wheel or typed characters, what it
-held is released (`InputManager::ReleaseAll`), and a game that is not online is `Paused` -- a clock
-that runs in `Update` should check `GetPlayState`. `--settings <page>` starts with it open, for a
-capture.
-
-So a game puts no key hints on its scene: a key a game reads is a named binding with a description,
-which is what the controls page lists, and an option a game offers belongs on its page, not drawn
-over the picture. Mouse buttons are read directly; the menu cannot capture them.
-
-### Games as libraries, and building scenes
-
-A game is a library plus a launcher (`kuki_add_game` in the root `CMakeLists.txt`). Its sources hold
-a `Setup<Game>(Application &)` that loads assets and builds the scene, `KUKI_GAME_MODULE(name,
-setup)` and `KUKI_GAME_MAIN(AppClass)`; the executable is `cmake/game_main.cpp` for every game.
-Under `BUILD_SHARED_LIBS` the library is `<Target>Game.dll` and the engine is `KukiEngine.dll`; a
-static build compiles the sources into the executable. The editor no longer hosts games
-(`editor/CLAUDE.md`).
-
-`Application` has a `PlayState` (`Stopped`/`Playing`/`Paused`). Games are always `Playing`; only
-the editor stops and pauses.
-
-Scene content is built either through the engine calls (`CreateEntity<A>`, `GetEntityComponent`) or
-the fluent builder in `game_builder.hpp`, which names each entity's archetype and checks every call
-against it at compile time: `ChessWorld::Game(app, "Chess").Scene("Main").Entity<CameraObject>("Camera").ActiveCamera().Entity<MeshObject>("Pawn").Mesh("Cube")`.
-`.Mesh()` on an entity of an archetype that is not drawn, or `.With<T>()` for a `T` its archetype lacks, does not
-compile. `World::Game` also refuses an archetype the world does not declare; plain `kuki::Game(app)`
-checks that only at run time.
+Scenes are built with `CreateEntity<A>`/`GetEntityComponent` or the builder in `game_builder.hpp`,
+which checks each call against the entity's archetype at compile time
+(`ChessWorld::Game(app, "Chess").Scene("Main").Entity<MeshObject>("Pawn").Mesh("Cube")`) and, through
+`World::Game`, refuses an archetype the world does not declare.
 
 ### ECS
 
-Archetype storage, with the archetypes fixed at compile time. An archetype is a type,
-`Archetype<Transform, Renderable, Seat>` (`archetype.hpp`), whose parts are components or bundles of
-them (`Components<...>`; the engine's are `Renderable`, `Animated` in `engine_archetypes.hpp`). An
-archetype with a `Transform` is given a `WorldMatrix` beside it without naming it. An entity is made of one -- `CreateEntity<A>` -- and keeps it: **nothing
-adds a component to an entity or removes one**. A component is a type with `ComponentTraits`: the
-engine's are declared in `component_traits.hpp`, and a game declares its own with
-`KUKI_COMPONENT(Type, index)`, taking ids from `FIRST_GAME_COMPONENT`. Using an undeclared type as a
-component is a compile error.
+Archetypes are fixed at compile time: `Archetype<Transform, Renderable, Seat>` (`archetype.hpp`),
+made of components or bundles (`Renderable`, `Animated` in `engine_archetypes.hpp`); a `Transform`
+brings a `WorldMatrix`. An entity keeps its archetype -- **nothing adds or removes a component**. A
+component needs `ComponentTraits`: the engine's are in `component_traits.hpp`, a game's come from
+`KUKI_COMPONENT(Type, index)` (ids from `FIRST_GAME_COMPONENT`). A game's `World<As...>`
+(`world.hpp`) is `EngineArchetypes` plus its own, refuses repeated archetypes and ids, and gives
+every scene its archetypes. Removing an entity swaps its table's last row into the gap.
 
-A game's `World<As...>` (`world.hpp`) is the engine's archetypes (`EngineArchetypes`) plus its own.
-It `static_assert`s that no two archetypes have the same components and no two components share an
-id, and every scene of the application is given its archetypes when made (`SceneManager::Create`);
-an `EntityManager` holds only archetypes it was told about (`Declare`), each a table of type-erased
-columns made where the archetype's type is known, so a game's components are stored like the
-engine's. Removing an entity swaps the last row of its table into the gap.
+`ForEach<Q...>` visits archetypes with every required component; `Optional<T>` gives a
+possibly-null pointer, `Without<T>` excludes. `World::ForEach<Q...>(app, f)` also refuses a query
+nothing matches and visits only matching archetypes. `Delete` during a query waits for its end;
+`Create` does not, so a callback that creates in the archetype it is visiting must not use what it
+was handed afterwards.
 
-Queries go through `ForEach<Q...>`, which visits the archetypes whose signature has every required
-component. `Optional<T>` reads a component where it exists without narrowing (a possibly-null
-pointer); `Without<T>` skips archetypes that have it. A query over a non-component, or one requiring
-nothing, does not compile. `World::ForEach<Q...>(app, f)` goes further: it refuses a query no
-archetype of the world matches, and visits only the archetypes the compiler found to match
-(`EntityManager::ForEachOf<A, Q...>`). `Delete` during a query waits for it to end; `Create` does
-not, so a callback that creates in the archetype it is visiting must not use what it was handed after.
+**Every drawn entity is in a pool** (`pool.hpp`). `Renderable` is only the tag `Pooled`; the mesh,
+material and bounds are the pool's, a `PoolKey` (a mesh or a model's mesh by index, and a material)
+with a table of its own. An archetype has one table for entities with no mesh yet and one per pool;
+queries visit them all. Create in a pool with `CreateEntity<A>(key)`, move with `MoveEntityToPool`
+(the builder's `.Mesh()`/`.Material()`), and give a pool bounds by making it with `CreatePool`
+(empty: never culled, and outside the shadow's and probes' fit). A table's `version` rises when a
+row comes, goes or moves. Direct3D 12 draws a pool as one instanced draw from its `WorldMatrix`
+column and culls per pool; skinned meshes are not culled.
 
-**Every drawn entity is in a pool** (`pool.hpp`). A drawn archetype has `Renderable`, which is the
-tag `Pooled` and nothing else: the mesh, the material, the bounds and what a backend resolved them to
-are its pool's, not the entity's. A pool is a `PoolKey` (a mesh, or a model's mesh by index, and a
-material) and is a table of its own, so an archetype has its own table -- where an entity with no
-mesh yet sits, undrawn -- and one more per pool; `ForEachOf` and `ForEach` visit them all. Make an
-entity in one with `CreateEntity<A>(key)` (`World::Create<A>(app, key)`), give it another mesh or
-material with `MoveEntityToPool` (the builder's `.Mesh()`/`.Material()` do), make one ahead with
-`CreatePool` to give it bounds of its own (empty: never culled, and out of the shadow's and the probe
-volume's fit). A table's `version` rises when a row comes, goes or moves, which is how a renderer
-keeps what it worked out from a pool. The Direct3D 12 backend draws a pool as one instanced draw from its `WorldMatrix`
-column, copied as it lies, once a frame for every pass (`ResolvePools`, `PreparePools`); it culls a
-pool at a time and skinned meshes not at all.
+`InstantiateAsset<Root>(name)` places a model: a root entity (`ModelRoot`, or a game's own like the
+duel's `Figure`) with `ModelNodeObject`/`MeshObject` children in the model's pools.
 
-A model is placed with `InstantiateAsset<Root>(name)`: the root is an entity of archetype `Root`
-(`ModelRoot` unless the game wants its own components on it, as the duel's `Figure` does) standing for
-the model's top node, with the nodes below as `ModelNodeObject`/`MeshObject` children, each mesh in
-the pool of the model's mesh and material.
+`Transform` has no dirty bit and no world matrix: after writing `position`/`rotation`/`scale`, call
+`MarkTransformDirty` or the change is never applied, and read where something is from `WorldMatrix`.
+The update's invariants are in `entity_manager.hpp`. Scene singletons (`Component::IsSceneSingleton`,
+e.g. `IndirectLighting`, `AtmosphereSky`) describe the scene, not the entity holding them.
 
-`Transform` carries no dirty bit, and no world matrix: that is the `WorldMatrix` component, written
-by the transform update -- read where something is from it. After writing `position`/`rotation`/
-`scale`, call `MarkTransformDirty` or the change is never applied. The transform update
-is a linear pass over a preorder-flattened cache with packed dirty bits; the comments in
-`entity_manager.hpp` explain the invariants that pass depends on.
-
-Some components are scene singletons (`Component::IsSceneSingleton`) — `IndirectLighting`,
-`AntiAliasing`, `AtmosphereSky` describe the scene, not the entity holding them.
-
-**Adding a game's component** is a struct and a `KUKI_COMPONENT(Type, index)` line beside it, then
-an archetype in the game's `World` that has it. Game components are not saved with a scene yet (the
-serializer writes the engine's), though a saved entity's `"archetype"` names them.
-
-**Adding an engine component** touches five places, in order; the `add-engine-component` skill lists
-them. The column factory, the variants and the run-time `GetComponent(EntityID, ComponentType)` are
-generated from the list. A new enum shown in the editor needs an `EnumTraits<T>` specialization in
-`enum_traits.hpp`.
+A game's component is a struct, `KUKI_COMPONENT` and an archetype that has it; it is not saved with
+a scene yet, though the saved `"archetype"` names it. An engine component touches five places (the
+`add-engine-component` skill); an enum shown in the editor needs `EnumTraits<T>` (`enum_traits.hpp`).
 
 ### Rendering
 
-Three layers, each replaceable independently:
+- `GraphicsContext` (`graphics_context.hpp`) owns the surface: device, `BeginFrame`, `Present`,
+  resize. `Create(RenderingAPI)` returns null, stopping the application, for a backend not built.
+- `Renderer` (`renderer.hpp`) has one method per pass plus target management; `DXRenderer`
+  (`dx_*.cpp`) is the only one. `GetCapabilities()` (by default nothing) lets the editor hide
+  controls that reach nothing.
+- `RenderGraph` (`render_graph.hpp`) orders passes by named inputs and outputs and allocates the
+  targets; `RenderingSystem::Start` builds it with `RenderGraphBuilder`. `AddResource` declares
+  something ordered on but not allocated.
 
-- `GraphicsContext` (`graphics_context.hpp`) owns the presentation surface: window hints, device,
-  `BeginFrame`, `Present`, resize. `Create(RenderingAPI)` is the only place that names every
-  backend, and returns null -- which stops the application -- for one this build has not got.
-- `Renderer` (`renderer.hpp`) is the backend interface — one method per render pass plus target
-  management. Implemented by `DXRenderer` (`dx_*.cpp`), the only backend.
-  `GetCapabilities()` reports what a backend can actually do so the editor hides controls that
-  reach nothing; it defaults to "none of it".
-- `RenderGraph` (`render_graph.hpp`) declares passes with named inputs and outputs, resolves the
-  edges, topologically flattens them, and allocates/resizes the targets. The graph, the same for
-  every backend, is assembled in `RenderingSystem::Start` (`rendering_system.cpp`) with
-  `RenderGraphBuilder`. `AddResource` declares something the graph orders on but does not allocate
-  (the probe field's structured buffer).
+A disabled pass runs a bypass instead of leaving the graph, so nothing reads a stale image. After
+the scene pass: resolve, `Ink`, `PlanarReflection`, `Particles`, volumetric fog, bloom, the editor's
+outline, tone mapping, `Stylize`, `Overlay`. The cel look is a material's `toon` (banded by the
+scene's `Stylization`), `Ink`'s outlines (from prepass depth, skinned meshes included) and
+`Stylize`, which grades the picture and applies `ScreenEffects` -- a scene singleton a game writes
+every frame for flashes, impact frames, speed lines and smears, never saved.
 
-A disabled pass still executes — it runs a bypass that leaves its output harmless — rather than
-being dropped from the graph, which would leave consumers reading last frame's image.
+A new pass follows the `add-render-pass` skill. A new backend (Vulkan) is its own `GraphicsContext`
+and `Renderer`, cases in `GraphicsContext::Create`, `RenderingSystem::SetRenderer` and `IsAvailable`
+(`engine_config.cpp`), an ImGui backend in the editor and its `RendererCapabilities`; the HLSL
+reaches it through dxc `-spirv`, given `SHADER_DEFINITIONS`.
 
-The chain after the scene pass is: resolve, `Ink`, `PlanarReflection`, `Particles`, the volumetric
-fog, the bloom chain, the editor's outline, tone mapping, `Stylize`, `Overlay`. The look of a cel is
-three of those and the scene shader (`RendererCapabilities::stylization`): a material's `toon`
-blends physical shading into the bands the scene's `Stylization` describes, `Ink` finds outlines
-and folds in the prepass depth (which holds skinned meshes too), and `Stylize` grades the tone-mapped picture and applies the scene's `ScreenEffects` --
-a scene singleton a game writes every frame for flashes, impact frames, speed lines and smears, and
-which is never saved. `PlanarReflection` mirrors one level surface in screen space (wet ground,
-puddles, rain rings). Particles have a box shape, a facing (camera, velocity streak, flat), a sprite
-(soft, ring, petal), turbulence and an unsorted alpha blend, which is what the weather is made of.
+Shaders are HLSL (Shader Model 6) in `engine/src/shader/`, embedded as strings and compiled at run
+time, so editing one is a rebuild. Constants shared with C++ are `SHADER_DEFINITIONS`
+(`shader_definitions.hpp`); the rest is in `engine/src/shader/CLAUDE.md`.
 
-**Adding a render pass** touches the enum, the renderer's interface and both its switches, the
-backend and the graph; the `add-render-pass` skill lists them.
+`Wind` (`wind.hpp`) is a scene singleton; a material's `MaterialFallback::sway` and `waves` say how
+much of it a surface takes. Both are displaced in the vertex shader by `Displace`, kept word for
+word in `scene.hlsl` and `shadow.hlsl` so shadows and the prepass (and so the ink) move too; the
+depth passes set them as root constants per pool.
 
-**Adding a backend** (Vulkan is the one named) is a `GraphicsContext` and a `Renderer` of its own,
-a case in `GraphicsContext::Create`, `RenderingSystem::SetRenderer` and `IsAvailable`
-(`engine_config.cpp`), its Dear ImGui backend beside Direct3D 12's in the editor, and its
-`RendererCapabilities`. HLSL can reach it through dxc (`-spirv`), so the shaders need not be
-rewritten; `SHADER_DEFINITIONS` must reach its compiler too.
+A `MeshAsset` whose `revision` rises is uploaded again and its ray-tracing structure dropped: that
+cache is keyed by `DXMesh` address, and a stale entry reads freed memory.
 
-### Shaders
+### Procedural generation
 
-HLSL (Shader Model 6), all under `engine/src/shader/`, embedded into the build as strings and
-compiled at runtime -- so editing a shader is a rebuild, not a recompile of any C++ that uses it. Constants both sides must agree on live once in C++ (`SHADER_DEFINITIONS` in
-`shader_definitions.hpp`). The rest is in `engine/src/shader/CLAUDE.md`.
-
-### Procedural generation, navigation and flocking
-
-Windowless and deterministic -- the same inputs make the same thing on every machine, which is what
-lets two players share a map by its seed. `Random` (`random.hpp`) is a PCG32 written out because
-`<random>`'s distributions differ between standard libraries; `GradientNoise`/`FractalNoise`/
-`RidgedNoise` (`noise.hpp`) hash their lattice instead of using a table.
-
-`IrregularGrid` (`irregular_grid.hpp`) is a plane cut into convex cells with however many neighbours
-each one's shape gives it. `Voronoi` grows one from Poisson-disc points with Lloyd relaxation and
-shrinks short sides to keep neighbour counts in `GridSettings`' range (4 to 8). The constructor takes
-any polygons that share corners. It also does point location (a bucket grid), sides, corner-cells, and
-`Footprint`: the cells a shape covers when put down at a point and turned to any angle, which is how
-a freely rotated building of several cells finds its cells on a grid that has no "east".
-
-`WaveFunctionCollapse` (`wave_function_collapse.hpp`) is the simple tiled model taken off the grid:
-`WaveRules` say which tiles may be across a side (with optional side kinds for directional rules),
-`WaveGraph` is any adjacency (`FromGrid`), `Restrict` fixes what a node may be, and `Bias` scales a
-tile's weight per node, which is how a noise field shapes the result while the rules keep it
-consistent. A contradiction is mended by local repair (unsettle round the failed node, rebuild,
-widen if it fails again), not by backtracking; the header says why.
-
-`NavMesh` (`nav_mesh.hpp`) is A* over convex polygons plus a funnel string-pull, with a cost and a
-blocked flag per polygon; `FromGrid` makes polygon `i` cell `i`, so a map's movement layer is a cost
-per cell. `Flock` (`flock.hpp`) is boids with a height band over a caller's ground. `MeshBuilder`
-(`mesh_builder.hpp`) puts flat-shaded low-poly meshes together: faces, fans, frustums, boxes, gables,
-rocks. `game/frontier` is built from all of it (`game/frontier/CLAUDE.md`).
-
-A `MeshAsset` whose `revision` is raised is uploaded again, which also drops the mesh's ray-tracing
-structure -- it is cached by `DXMesh` address, and a stale one reads freed memory.
-
-### Wind
-
-`Wind` (`wind.hpp`) is a scene singleton: a direction, a strength, gusts rolling along it, a flutter,
-and waves. A material takes as much as its `MaterialFallback::sway` (bend per height above the
-entity's origin squared) and `waves` (heave, shaded faceted) ask. Both are displaced in the vertex
-shader by one `Displace` function kept word for word in `scene.hlsl` and `shadow.hlsl`, so shadows
-and the prepass (and so the ink) move with the surface. The depth passes set a pool's sway and
-waves as root constants before its draw, since they bind no material. Direct3D 12 only
-(`RendererCapabilities::wind`).
+Windowless and deterministic, so a map can be shared by its seed. `Random` (`random.hpp`) is a PCG32
+written out because `<random>`'s distributions differ between standard libraries; `noise.hpp` hashes
+its lattice. `IrregularGrid` (`irregular_grid.hpp`, grown by `Voronoi`) is a plane of convex cells
+with point location, sides, and `Footprint` (the cells a shape covers at any angle).
+`WaveFunctionCollapse` runs over any `WaveGraph` with `Restrict` and `Bias`, mending contradictions
+by local repair. `NavMesh` is A* and a funnel over convex polygons with a cost each (`FromGrid`:
+polygon `i` is cell `i`). `Flock` is boids; `MeshBuilder` puts flat-shaded meshes together.
 
 ### Assets and scenes
 
-`AssetManager` keys assets by `AssetID` (a 128-bit UUID). Assets with no file behind them go in via
-`Application::AddAsset`; give those a `MakeBuiltInAssetID` so a saved scene can still resolve them
-across runs. Primitives (`Cube`, `Plane`, …) are loaded at startup.
+Assets are keyed by `AssetID` (a 128-bit UUID). One with no file goes in through
+`Application::AddAsset` with a `MakeBuiltInAssetID`, so saved scenes still resolve it. A scene is
+`<name>.json` plus a `<name>.assets.json` manifest; materials are `.mat` JSON; the editor's scenes
+are in `editor/src/scene/`. An entity is saved with its `"archetype"` and loaded as it if the
+application declares it (older files are guessed from their components); one undeclared is reported
+and skipped.
 
-Scenes serialize to JSON: `<name>.json` for entities and components, `<name>.assets.json` as a
-sidecar manifest of the assets it references. Materials are standalone `.mat` JSON files.
-Editor scenes live in `editor/src/scene/`. Each entity records its `"archetype"` (every component
-name, saved or not), and loading makes it of that archetype if the application declares one; a file
-from before guesses the archetype from the components it holds. An entity of an undeclared archetype
-is reported and left out.
-
-Two persistence layers that are easy to confuse: `EngineConfig` (`kuki.config.json`, installation-
-wide — graphics backend, tone mapper, the settings menu's graphics) and `Preferences`
-(per-application named values, loaded before `Start` and written after shutdown; rebound keys too).
+`EngineConfig` (`kuki.config.json`) is installation-wide: backend, tone mapper, graphics settings.
+`Preferences` are per application, loaded before `Start` and written after shutdown, rebound keys
+included.
 
 ## Conventions
 
-- Every macro the engine defines is in `engine/include/macros.hpp`, which says what is
-  deliberately kept elsewhere: configuration of third-party libraries (`GLM_ENABLE_EXPERIMENTAL`,
-  `GLFW_INCLUDE_NONE`, `NOMINMAX`, `WIN32_LEAN_AND_MEAN`) is `target_compile_definitions` in
-  `engine/CMakeLists.txt`, a single-header library's `..._IMPLEMENTATION` stays in its one source
-  file, and what shaders are compiled with is `SHADER_DEFINITIONS`. A constant is a `constexpr`, not
-  a macro.
-
-- C++23 with no compiler extensions. The codebase leans on deducing this (`auto f(this auto &self)`
-  for const-correct accessors, see `ConstCorrectPointer`/`ConstBasedValue` in `concepts.hpp`),
-  trailing return types everywhere (`auto Foo() -> void`), and `<bitset>`-based masks sized from
-  the last enumerator.
-- `.clang-format` sets `ColumnLimit: 0` — lines are not wrapped, one statement per line, and
-  `MaxEmptyLinesToKeep: 0` means no blank lines inside function bodies.
-- CMake is formatted with gersemi (`.gersemirc`, 2-space indent).
-- Comments in this codebase explain *why*, at length, and often record what was tried before. Match
-  that register when touching commented code; do not strip these comments when editing nearby.
-- Commit messages are lowercase imperative summaries with substantial prose bodies explaining the
-  reasoning and measurements behind a change.
-- Binary assets (`.png`, `.ttf`, `.fbx`, `.hdr`, `.exr`, …) are Git LFS.
-- CI (`.github/workflows/build-and-test.yml`) configures the `Debug` preset with
-  `KUKI_BUILD_TESTS=ON`, builds and runs `ctest` on a push to any branch but `main` (Windows/cl
-  only for now). `main` is protected: work goes on a branch and reaches `main`
-  by a pull request, which can merge once the `cmake (windows-latest)` check has passed on its head.
-- Local `main` is kept in step with the remote's and never worked on. Fixing a problem: open a
-  GitHub issue for it, fix it on a branch of its own, and merge that branch (its pull request closes
-  the issue). Other work needs no issue and goes on a local branch of its own, which reaches `main`
-  by a pull request like everything else.
+- C++23 without extensions: deducing this for const-correct accessors (`concepts.hpp`), trailing
+  return types (`auto Foo() -> void`), `<bitset>` masks sized from the last enumerator. A constant is
+  a `constexpr`, not a macro.
+- Every engine macro is in `macros.hpp`. Third-party configuration (`NOMINMAX`,
+  `GLM_ENABLE_EXPERIMENTAL`, ...) is `target_compile_definitions` in `engine/CMakeLists.txt`, and a
+  single-header library's `..._IMPLEMENTATION` stays in its one source file.
+- `.clang-format`: `ColumnLimit: 0` (no wrapping, one statement per line) and
+  `MaxEmptyLinesToKeep: 0` (no blank lines in bodies). CMake: gersemi, 2-space indent.
+- Comments explain *why*, at length, often with what was tried before; match them, and keep them
+  when editing nearby.
+- Commit messages: a lowercase imperative summary, then prose with the reasoning and measurements.
+- Binary assets (`.png`, `.ttf`, `.fbx`, `.hdr`, `.exr`, ...) are Git LFS.
+- CI (`build-and-test.yml`) builds `Debug` with tests and runs `ctest` (Windows/cl) on a push to any
+  branch but `main`. `main` is protected, kept in step with the remote and never worked on: work
+  reaches it by pull request once `cmake (windows-latest)` passes on the head. A fix gets a GitHub
+  issue and a branch whose pull request closes it; other work needs no issue.
