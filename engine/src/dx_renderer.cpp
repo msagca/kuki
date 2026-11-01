@@ -1,3 +1,4 @@
+#include <application_internal.hpp>
 #include <dx_renderer.hpp>
 #ifdef KUKI_HAS_DIRECTX
 #include <algorithm>
@@ -43,7 +44,7 @@ namespace {
   /// @brief The scene's wind as the scene shader and the depth shader both read it. See
   /// `DXFrameConstants::wind`.
   auto PackWind(Scene &scene, const float time, float (&wind)[4], float (&gust)[4], float (&waves)[4]) -> void {
-    const auto *source = scene.GetAnyComponent<Wind>();
+    const auto *source = scene.Entities().GetAny<Wind>();
     if (!source)
       return;
     const auto length = glm::length(source->direction);
@@ -245,7 +246,7 @@ auto HashAtmosphere(const AtmosphereSky &sky, const glm::vec3 &sunDirection) -> 
 /// arbitrary choice, but the one that leaves a sky somebody can see rather than a black one.
 auto SunDirection(Scene &scene) -> glm::vec3 {
   const Light *directional{};
-  scene.ForEachEntity<Light>([&](const EntityID, const Light *light) {
+  scene.Entities().ForEach<Light>([&](const EntityID, const Light *light) {
     if (!directional && light && light->type == LightType::Directional)
       directional = light;
   });
@@ -288,7 +289,7 @@ auto HashProbeTuning(const DXFrameConstants &constants) -> size_t {
 DXRenderer::DXRenderer(Application &app)
   : Renderer(std::in_place_type<DXRenderer>, app) {}
 auto DXRenderer::GetContext() const -> DXContext * {
-  return dynamic_cast<DXContext *>(app.GetGraphicsContext());
+  return dynamic_cast<DXContext *>(Internal(app).GetGraphicsContext());
 }
 auto DXRenderer::AllocateTarget(DXRenderTarget &target, const TargetDescription &desc, const std::string &name) -> bool {
   auto context = GetContext();
@@ -594,7 +595,7 @@ auto DXRenderer::EnsureMesh(const AssetID assetId) -> DXMesh * {
   }
   RetireUploadBuffer(std::move(mesh.vertexBuffer));
   RetireUploadBuffer(std::move(mesh.indexBuffer));
-  mesh = UploadMeshData(meshAsset->mesh, app.GetAssetName(assetId));
+  mesh = UploadMeshData(meshAsset->mesh, Internal(app).Assets().GetName(assetId));
   mesh.revision = meshAsset->revision;
   return mesh ? &mesh : nullptr;
 }
@@ -851,7 +852,7 @@ auto DXRenderer::EnsureTexture(const AssetID assetId) -> DXTexture * {
   if (!textureAsset)
     return nullptr;
   auto &texture = assetToTexture[assetId];
-  texture = UploadTextureData(textureAsset->texture, app.GetAssetName(assetId));
+  texture = UploadTextureData(textureAsset->texture, Internal(app).Assets().GetName(assetId));
   if (texture)
     ReleaseTexturePixels(textureAsset->texture);
   return texture ? &texture : nullptr;
@@ -1470,19 +1471,19 @@ auto DXRenderer::MarchClouds(std::span<std::string> inputs, std::span<std::strin
   auto destinationIt = nameToTarget.find(outputs[0]);
   if (!commandList || !device || destinationIt == nameToTarget.end() || !destinationIt->second.resource)
     return;
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   if (!scene)
     return;
-  const auto *clouds = scene->GetAnyComponent<VolumetricClouds>();
+  const auto *clouds = scene->Entities().GetAny<VolumetricClouds>();
   if (!clouds)
     return;
   // An atmosphere and a sky built from it. Both are required rather than worked around: the cloud
   // reads its sunlight out of that atmosphere's transmittance table and its ambient out of that
   // sky's cubemap, and inventing either would give a cloud that does not belong to the sky it is in.
-  const auto *sky = scene->GetAnyComponent<AtmosphereSky>();
+  const auto *sky = scene->Entities().GetAny<AtmosphereSky>();
   if (!sky || !environmentReady || !environmentAtmosphere || !transmittanceLUT || !skyboxCubemap)
     return;
-  auto camera = scene->GetCamera();
+  auto camera = scene->GetActiveCamera();
   if (!camera)
     return;
   auto &destination = destinationIt->second;
@@ -1558,8 +1559,8 @@ auto DXRenderer::ApplyVolumetricFog(std::span<std::string> inputs, std::span<std
   // frame's lights.
   const auto frameConstantAddress = std::exchange(sceneFrameConstantAddress, D3D12_GPU_VIRTUAL_ADDRESS{});
   auto context = GetContext();
-  auto scene = app.GetScene();
-  const auto *fog = scene ? scene->GetAnyComponent<VolumetricFog>() : nullptr;
+  auto scene = Internal(app).GetScene();
+  const auto *fog = scene ? scene->Entities().GetAny<VolumetricFog>() : nullptr;
   auto *commandList = context ? context->GetCommandList() : nullptr;
   auto *device = context ? context->GetDevice() : nullptr;
   // Every one of these is an ordinary outcome rather than a failure: a scene with no air in it, or
@@ -1568,7 +1569,7 @@ auto DXRenderer::ApplyVolumetricFog(std::span<std::string> inputs, std::span<std
     BypassCopy(inputs, outputs);
     return;
   }
-  auto camera = scene->GetCamera();
+  auto camera = scene->GetActiveCamera();
   auto destinationIt = nameToTarget.find(outputs[0]);
   if (!camera || destinationIt == nameToTarget.end() || !destinationIt->second.resource || destinationIt->second.rtvIndex == DXDescriptorHeap::InvalidIndex) {
     BypassCopy(inputs, outputs);
@@ -1619,7 +1620,7 @@ auto DXRenderer::ApplyVolumetricFog(std::span<std::string> inputs, std::span<std
     BypassCopy(inputs, outputs);
     return;
   }
-  const auto *sky = scene->GetAnyComponent<AtmosphereSky>();
+  const auto *sky = scene->Entities().GetAny<AtmosphereSky>();
   const auto hasAtmosphere = sky && environmentReady && environmentAtmosphere && sunTransmittanceLUT;
   const auto hasClouds = cloudsReady && cloudSource;
   DXVolumetricConstants constants{};
@@ -1727,12 +1728,12 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
   // standing, which is exactly what a scene with no emitters in it should hand on.
   BypassCopy(inputs, outputs);
   auto context = GetContext();
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   auto *commandList = context ? context->GetCommandList() : nullptr;
   auto *device = context ? context->GetDevice() : nullptr;
   if (!commandList || !device || !scene || outputs.empty())
     return;
-  auto camera = scene->GetCamera();
+  auto camera = scene->GetActiveCamera();
   auto destinationIt = nameToTarget.find(outputs[0]);
   if (!camera || destinationIt == nameToTarget.end() || !destinationIt->second.resource || destinationIt->second.rtvIndex == DXDescriptorHeap::InvalidIndex)
     return;
@@ -1788,7 +1789,7 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
   //
   // With no sun there is nothing to shade by, and the particles are left the colour they were given.
   const Light *sun{};
-  scene->ForEachEntity<Light>([&](const EntityID, const Light *light) {
+  scene->Entities().ForEach<Light>([&](const EntityID, const Light *light) {
     if (!sun && light && light->type == LightType::Directional)
       sun = light;
   });
@@ -1796,7 +1797,7 @@ auto DXRenderer::DrawParticles(std::span<std::string> inputs, std::span<std::str
   const auto sunRadiance = sun ? sun->diffuse * sun->intensity * glm::one_over_pi<float>() : glm::vec3(.0f);
   const auto ambient = sun ? sun->ambient : glm::vec3(1.f);
   auto computeBound = false;
-  scene->ForEachEntity<ParticleEmitter, WorldMatrix>([&](const EntityID id, const ParticleEmitter *emitter, const WorldMatrix *transform) {
+  scene->Entities().ForEach<ParticleEmitter, WorldMatrix>([&](const EntityID id, const ParticleEmitter *emitter, const WorldMatrix *transform) {
     const auto capacity = std::clamp(emitter->capacity, 1u, PARTICLE_MAX_CAPACITY);
     auto &pool = particlePools[id];
     if (!pool.buffer || pool.capacity != capacity) {
@@ -2076,9 +2077,9 @@ auto DXRenderer::DrawStylizePass(std::span<std::string> inputs, std::span<std::s
   return true;
 }
 auto DXRenderer::ApplyPlanarReflection(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
-  auto scene = app.GetScene();
-  const auto *surface = scene ? scene->GetAnyComponent<PlanarReflection>() : nullptr;
-  const auto *camera = scene ? scene->GetCamera() : nullptr;
+  auto scene = Internal(app).GetScene();
+  const auto *surface = scene ? scene->Entities().GetAny<PlanarReflection>() : nullptr;
+  const auto *camera = scene ? scene->GetActiveCamera() : nullptr;
   auto context = GetContext();
   auto *commandList = context ? context->GetCommandList() : nullptr;
   if (!surface || !camera || !commandList || surface->strength <= .0f || lightingDebugView != LightingDebugView::None) {
@@ -2129,9 +2130,9 @@ auto DXRenderer::ApplyPlanarReflection(std::span<std::string> inputs, std::span<
   commandList->DrawInstanced(3, 1, 0, 0);
 }
 auto DXRenderer::ApplyInk(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
-  auto scene = app.GetScene();
-  const auto *style = scene ? scene->GetAnyComponent<Stylization>() : nullptr;
-  const auto *camera = scene ? scene->GetCamera() : nullptr;
+  auto scene = Internal(app).GetScene();
+  const auto *style = scene ? scene->Entities().GetAny<Stylization>() : nullptr;
+  const auto *camera = scene ? scene->GetActiveCamera() : nullptr;
   // No lines over a debug view, which is a picture of a number: a line across it would be a second
   // number nobody asked for. Nor with no camera to say what the depth means, or nothing to draw.
   if (!style || !camera || style->inkThickness <= .0f || lightingDebugView != LightingDebugView::None || camera->type != CameraType::Perspective) {
@@ -2151,9 +2152,9 @@ auto DXRenderer::ApplyInk(std::span<std::string> inputs, std::span<std::string> 
     BypassCopy(inputs, outputs);
 }
 auto DXRenderer::ApplyStylize(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
-  auto scene = app.GetScene();
-  const auto *style = scene ? scene->GetAnyComponent<Stylization>() : nullptr;
-  const auto *effects = scene ? scene->GetAnyComponent<ScreenEffects>() : nullptr;
+  auto scene = Internal(app).GetScene();
+  const auto *style = scene ? scene->Entities().GetAny<Stylization>() : nullptr;
+  const auto *effects = scene ? scene->Entities().GetAny<ScreenEffects>() : nullptr;
   stylizeTime += std::clamp(app.DeltaTime(), .0f, .25f);
   if ((!style && !effects) || lightingDebugView != LightingDebugView::None) {
     BypassCopy(inputs, outputs);
@@ -2481,7 +2482,7 @@ auto DXRenderer::BuildEnvironmentMaps(const AssetID assetId, const DXTexture *eq
   if (atmosphere)
     spdlog::info("[DXRenderer] Precomputed image-based lighting from the atmosphere");
   else
-    spdlog::info("[DXRenderer] Precomputed image-based lighting for {}", app.GetAssetName(assetId));
+    spdlog::info("[DXRenderer] Precomputed image-based lighting for {}", Internal(app).Assets().GetName(assetId));
   return true;
 }
 auto DXRenderer::EnsureInstanceCapacity(const uint64_t bytes) -> bool {
@@ -2587,7 +2588,7 @@ auto DXRenderer::CollectSkinnedDraws(Scene &scene, const Camera *) -> std::vecto
           rig = found;
           break;
         }
-        ancestorId = scene.GetParent(ancestorId);
+        ancestorId = scene.Entities().GetParent(ancestorId);
       }
       DXSkinnedDraw draw{};
       draw.mesh = pool.mesh;
@@ -2603,7 +2604,7 @@ auto DXRenderer::CollectSkinnedDraws(Scene &scene, const Camera *) -> std::vecto
           const auto boneEntityId = rig->nodes[bone.nodeIndex];
           if (!boneEntityId)
             continue;
-          if (auto boneTransform = scene.GetEntityComponent<WorldMatrix>(boneEntityId); boneTransform)
+          if (auto boneTransform = scene.Entities().GetComponent<WorldMatrix>(boneEntityId); boneTransform)
             draw.bones[i] = boneTransform->matrix * bone.offsetMatrix;
         }
       draws.push_back(std::move(draw));
@@ -2677,7 +2678,7 @@ auto DXRenderer::ResolvePoolMaterial(const PoolKey &pool) -> const DXMaterial * 
     fallback.textureMask = MaskForTextures(textures);
     type = materialAsset->type;
   } else {
-    if (!app.IsAssetLoaded(pool.material))
+    if (!Internal(app).Assets().IsLoaded(pool.material))
       return nullptr;
     const auto *modelAsset = app.GetAsset<ModelAsset>(pool.material);
     if (!modelAsset || pool.materialIndex >= modelAsset->materials.size())
@@ -2706,8 +2707,8 @@ auto DXRenderer::ResolvePools(Scene &scene) -> void {
     poolCache.clear();
     poolCacheScene = &scene;
   }
-  const auto *camera = scene.GetCamera();
-  scene.ForEachPool([&](const ArchetypeTable &table) {
+  const auto *camera = scene.GetActiveCamera();
+  scene.Entities().ForEachPool([&](const ArchetypeTable &table) {
     const auto &pool = table.pool;
     DXPoolDraw draw{};
     draw.table = &table;
@@ -2719,7 +2720,7 @@ auto DXRenderer::ResolvePools(Scene &scene) -> void {
         if (auto fallback = app.GetAsset("Cube"); fallback)
           resident = fallback->id;
       draw.mesh = EnsureMesh(resident);
-    } else if (app.IsAssetLoaded(pool.mesh))
+    } else if (Internal(app).Assets().IsLoaded(pool.mesh))
       draw.mesh = EnsureModelMesh(pool.mesh, pool.meshIndex);
     if (!draw.mesh || !*draw.mesh)
       return;
@@ -2994,7 +2995,7 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
   const Light *directional{};
   auto pointCount = 0u;
   auto spotCount = 0u;
-  scene.ForEachEntity<Light>([&](const EntityID, const Light *light) {
+  scene.Entities().ForEach<Light>([&](const EntityID, const Light *light) {
     switch (light->type) {
     case LightType::Directional:
       directional = light;
@@ -3044,7 +3045,7 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
   for (auto i = 0u; i < spotShadowCount && i < MAX_SPOT_LIGHTS; ++i)
     memcpy(constants.spotLightViewProjection[i], glm::value_ptr(spotShadowViewProjection[i]), sizeof(float) * 16);
   auto hasSkybox = false;
-  scene.ForEachEntity<SkyboxHandle>([&](const EntityID, const SkyboxHandle *) {
+  scene.Entities().ForEach<SkyboxHandle>([&](const EntityID, const SkyboxHandle *) {
     hasSkybox = true;
   });
   constants.counts[0] = pointCount;
@@ -3071,7 +3072,7 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
   // scene with no `Stylization` gets its defaults, so a material that asks for bands still has them.
   {
     static constexpr Stylization fallback{};
-    const auto *style = scene.GetAnyComponent<Stylization>();
+    const auto *style = scene.Entities().GetAny<Stylization>();
     const auto &look = style ? *style : fallback;
     constants.toon[0] = static_cast<float>(std::clamp(look.bands, 1u, 8u));
     constants.toon[1] = std::max(look.bandSoftness, 1.0e-4f);
@@ -3109,7 +3110,7 @@ auto DXRenderer::DrawSkybox(const Camera &camera, const DXRenderTarget &target) 
   if (!context)
     return;
   auto *commandList = context->GetCommandList();
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   if (!commandList || !scene || !EnsureComputeFallbacks())
     return;
   const auto samples = static_cast<uint32_t>(target.desc.samples > 0 ? target.desc.samples : 1);
@@ -3121,7 +3122,7 @@ auto DXRenderer::DrawSkybox(const Camera &camera, const DXRenderTarget &target) 
   const auto inverseViewProjection = glm::inverse(camera.transform.projection * rotation);
   memcpy(constants.inverseViewProjection, glm::value_ptr(inverseViewProjection), sizeof(constants.inverseViewProjection));
   const SkyboxHandle *skybox{};
-  scene->ForEachEntity<SkyboxHandle>([&](const EntityID, const SkyboxHandle *handle) {
+  scene->Entities().ForEach<SkyboxHandle>([&](const EntityID, const SkyboxHandle *handle) {
     if (!skybox)
       skybox = handle;
   });
@@ -3131,7 +3132,7 @@ auto DXRenderer::DrawSkybox(const Camera &camera, const DXRenderTarget &target) 
   // that asked for it is the whole of the request. What is checked instead is that the cubemap
   // currently holds the sky this scene is asking for, which `environmentAtmosphere` being non-zero
   // and unchanged is exactly the statement of.
-  const auto *sky = scene->GetAnyComponent<AtmosphereSky>();
+  const auto *sky = scene->Entities().GetAny<AtmosphereSky>();
   const auto built = environmentReady && skyboxTableIndex != DXDescriptorHeap::InvalidIndex;
   if (sky) {
     constants.useGradient = 1u;
@@ -3175,7 +3176,7 @@ auto DXRenderer::BuildShadowMatrix(Scene &scene, float *out) const -> bool {
   if (!out)
     return false;
   const Light *directional{};
-  scene.ForEachEntity<Light>([&](const EntityID, const Light *light) {
+  scene.Entities().ForEach<Light>([&](const EntityID, const Light *light) {
     if (light->type == LightType::Directional)
       directional = light;
   });
@@ -3189,7 +3190,7 @@ auto DXRenderer::BuildShadowMatrix(Scene &scene, float *out) const -> bool {
       sceneBounds.min = glm::min(sceneBounds.min, draw.bounds.min);
       sceneBounds.max = glm::max(sceneBounds.max, draw.bounds.max);
     }
-  scene.ForEachEntity<BoundingBox, WorldMatrix>([&](const EntityID, const BoundingBox *box, const WorldMatrix *transform) {
+  scene.Entities().ForEach<BoundingBox, WorldMatrix>([&](const EntityID, const BoundingBox *box, const WorldMatrix *transform) {
     // An empty box says nothing about where anything is, and taken into the world its corners are
     // infinities that swallow every real box. A drawn entity's bounds are its pool's, gathered above;
     // what is left here is a model's root and nodes.
@@ -3284,10 +3285,10 @@ auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> 
   auto context = GetContext();
   if (!context)
     return;
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   if (!scene)
     return;
-  auto camera = scene->GetCamera();
+  auto camera = scene->GetActiveCamera();
   if (!camera)
     return;
   // Every pool, seen or not: a probe standing behind the camera needs the acceleration structure to
@@ -3326,10 +3327,10 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   if (!commandList || targetIt == nameToTarget.end() || !targetIt->second.resource)
     return;
   auto &target = targetIt->second;
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   if (!scene)
     return;
-  auto camera = scene->GetCamera();
+  auto camera = scene->GetActiveCamera();
   if (!camera)
     return;
   if (!EnsureDepthBuffer(target))
@@ -3641,10 +3642,10 @@ auto DXRenderer::CreateDepthPrepass(std::span<std::string>, std::span<std::strin
   auto &target = targetIt->second;
   if (target.dsvIndex == DXDescriptorHeap::InvalidIndex)
     return;
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   if (!scene)
     return;
-  auto camera = scene->GetCamera();
+  auto camera = scene->GetActiveCamera();
   if (!camera)
     return;
   const auto pipeline = pipelines.GetShadowPipeline(context->GetDevice());
@@ -3803,7 +3804,7 @@ auto DXRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::stri
       colorSource = &it->second;
   }
   auto &destination = destinationIt->second;
-  const auto selected = app.GetSelectedEntities();
+  const auto selected = Internal(app).GetSelectedEntities();
   if (!colorSource || !idSource || selected.empty()) {
     PassThrough();
     return;
@@ -3857,7 +3858,7 @@ auto DXRenderer::CreateShadowMap(std::span<std::string>, std::span<std::string> 
   auto &target = targetIt->second;
   if (target.dsvIndex == DXDescriptorHeap::InvalidIndex)
     return;
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   if (!scene)
     return;
   DXShadowConstants constants{};
@@ -3896,11 +3897,11 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
   auto &target = targetIt->second;
   if (target.layerDsvIndices.empty())
     return;
-  auto scene = app.GetScene();
+  auto scene = Internal(app).GetScene();
   if (!scene)
     return;
   std::vector<const Light *> spotLights;
-  scene->ForEachEntity<Light>([&](const EntityID, const Light *light) {
+  scene->Entities().ForEach<Light>([&](const EntityID, const Light *light) {
     if (light->type == LightType::Spot && spotLights.size() < MAX_SPOT_LIGHTS)
       spotLights.push_back(light);
   });
@@ -4071,7 +4072,7 @@ auto DXRenderer::EnsureSceneResources(Scene &scene) -> void {
   // holding both is saying it wants a computed sky, and the texture it also names is what it had
   // before. Removing the component is what goes back to the photograph, which is why this is a
   // precedence and not a warning.
-  if (const auto *sky = scene.GetAnyComponent<AtmosphereSky>()) {
+  if (const auto *sky = scene.Entities().GetAny<AtmosphereSky>()) {
     const auto sunDirection = SunDirection(scene);
     if (const auto key = HashAtmosphere(*sky, sunDirection); key != environmentAtmosphere)
       if (!BuildEnvironmentMaps({}, nullptr, sky, sunDirection)) {
@@ -4081,8 +4082,8 @@ auto DXRenderer::EnsureSceneResources(Scene &scene) -> void {
       }
     return;
   }
-  scene.ForEachEntity<SkyboxHandle>([&](const EntityID, const SkyboxHandle *handle) {
-    if (!handle->assetId || !app.IsAssetLoaded(handle->assetId))
+  scene.Entities().ForEach<SkyboxHandle>([&](const EntityID, const SkyboxHandle *handle) {
+    if (!handle->assetId || !Internal(app).Assets().IsLoaded(handle->assetId))
       return;
     auto texture = EnsureTexture(handle->assetId);
     if (!texture || (environmentReady && !environmentAtmosphere && environmentAsset == handle->assetId))
@@ -4100,7 +4101,7 @@ auto DXRenderer::LoadScene(Scene &scene) -> void {
   // Picked up once a frame here rather than read in the pass that needs it, because the post chain
   // is handed target names and nothing else. A scene with no camera keeps whatever was last set,
   // which is the same thing it draws with.
-  if (const auto camera = scene.GetCamera(); camera)
+  if (const auto camera = scene.GetActiveCamera(); camera)
     exposure = camera->GetExposureStops();
   // Once a frame, here, because every pass that moves a surface by the wind has to see one clock.
   windTime += std::clamp(app.DeltaTime(), .0f, .25f);
@@ -4263,7 +4264,7 @@ auto DXRenderer::RenderPreview(const AssetID assetId, const std::vector<std::pai
     return nullptr;
   auto &target = assetToPreviewTarget[assetId];
   const TargetDescription desc{.format = TargetFormat::RGBA16, .width = previewSize, .height = previewSize};
-  if (!AllocateTarget(target, desc, "Preview " + app.GetAssetName(assetId)) || !EnsureDepthBuffer(target))
+  if (!AllocateTarget(target, desc, "Preview " + Internal(app).Assets().GetName(assetId)) || !EnsureDepthBuffer(target))
     return nullptr;
   const auto pipeline = pipelines.GetScenePipeline(context->GetDevice(), TargetFormatToRTVDXGI(desc.format), 1);
   if (!pipeline || !*pipeline)
@@ -4344,7 +4345,7 @@ auto DXRenderer::RenderPreview(const AssetID assetId, const std::vector<std::pai
       commandList->DrawInstanced(mesh->vertexCount, 1, 0, 0);
   }
   Transition(target, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-  spdlog::info("[DXRenderer] Created preview for asset: {}", app.GetAssetName(assetId));
+  spdlog::info("[DXRenderer] Created preview for asset: {}", Internal(app).Assets().GetName(assetId));
   return &target;
 }
 auto DXRenderer::PreviewAsset(const AssetID assetId) -> RenderTarget * {

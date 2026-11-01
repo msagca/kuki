@@ -1,4 +1,3 @@
-#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <application.hpp>
 #include <camera.hpp>
@@ -8,7 +7,6 @@
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/matrix.hpp>
-#include <scene.hpp>
 using namespace kuki;
 namespace {
 constexpr float NEAREST = 6.f;
@@ -53,8 +51,7 @@ auto CameraSystem::GetDistance() const -> float {
   return distance;
 }
 auto CameraSystem::Update(const float deltaTime) -> void {
-  auto scene = app.GetScene();
-  auto *camera = scene ? scene->GetCamera() : nullptr;
+  auto *camera = app.GetCamera();
   if (!camera)
     return;
   const auto dt = std::min(deltaTime, .1f);
@@ -83,12 +80,12 @@ auto CameraSystem::Update(const float deltaTime) -> void {
   if (const auto scroll = app.GetScrollOffset().y; scroll != .0f)
     targetDistance = std::clamp(targetDistance * std::pow(.88f, scroll), NEAREST, FURTHEST);
   const auto cursor = app.GetMousePosition();
-  if (app.IsInputPressed(GLFW_MOUSE_BUTTON_MIDDLE)) {
+  if (app.IsMousePressed(MouseButton::Middle)) {
     dragging = true;
     dragFrom = cursor;
   }
   if (dragging) {
-    if (!app.IsInputHeld(GLFW_MOUSE_BUTTON_MIDDLE))
+    if (!app.IsMouseHeld(MouseButton::Middle))
       dragging = false;
     else {
       const auto delta = cursor - dragFrom;
@@ -112,8 +109,7 @@ auto CameraSystem::Update(const float deltaTime) -> void {
   ++camera->dirty;
 }
 auto CameraSystem::CursorRay() const -> std::pair<glm::vec3, glm::vec3> {
-  auto scene = app.GetScene();
-  const auto *camera = scene ? scene->GetCamera() : nullptr;
+  const auto *camera = app.GetCamera();
   const auto window = app.GetWindowSize();
   if (!camera || window.x <= 0 || window.y <= 0)
     return {{}, {.0f, -1.f, .0f}};

@@ -37,12 +37,6 @@ public:
   enum class InputKind : uint8_t { Keys,
     Buttons,
     All };
-  /// @brief A quad of keys read as a two-axis direction.
-  ///
-  /// The two quads had a method each and the two methods were the same nine lines with four
-  /// different key codes in them, which is what makes this a parameter rather than a name.
-  enum class KeyAxis : uint8_t { Arrows,
-    WASD };
   InputManager(Application &);
   auto BeginKeyCapture() -> void;
   /// @brief Marks the start of a stretch whose bindings, buttons and actions are to be undone.
@@ -75,11 +69,6 @@ public:
   auto GetButtons() const -> uint32_t;
   auto GetButtonNames() const -> const std::vector<std::string> &;
   auto GetInactivityTime() const -> double;
-  /// @brief The direction a key quad is currently pointing, as -1, 0 or 1 per axis.
-  ///
-  /// Opposing keys held together read as nought on that axis rather than as whichever was pressed
-  /// first, which is the behaviour both quads had and is what keeps a stuck key from steering.
-  auto GetKeyAxis(const KeyAxis) const -> glm::ivec2;
   auto GetMousePosition() const -> glm::vec2;
   auto GetScrollOffset() const -> glm::vec2;
   auto GetSequenceDescription(const std::string &) const -> std::string;

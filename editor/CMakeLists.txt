@@ -31,7 +31,7 @@ target_include_directories(
 )
 target_link_libraries(
   ${PROJECT_NAME}
-  PRIVATE KukiEngine imgui imgui_filebrowser imguizmo
+  PRIVATE KukiEngineInternal glfw imgui imgui_filebrowser imguizmo
 )
 if(WIN32)
   # Declared here rather than inherited from the engine: this target includes `dx_context.hpp` and

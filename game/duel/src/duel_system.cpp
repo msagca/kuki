@@ -1,4 +1,3 @@
-#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <animator.hpp>
 #include <animator_controller.hpp>
@@ -18,7 +17,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/matrix.hpp>
 #include <glm/trigonometric.hpp>
-#include <graphics_context.hpp>
 #include <light.hpp>
 #include <light_type.hpp>
 #include <model_asset.hpp>
@@ -26,7 +24,6 @@
 #include <overlay.hpp>
 #include <particle_emitter.hpp>
 #include <particle_presets.hpp>
-#include <scene.hpp>
 #include <screen_effects.hpp>
 #include <settings_menu.hpp>
 #include <skeleton.hpp>
@@ -74,11 +71,11 @@ DuelSystem::DuelSystem(Application &app)
 auto DuelSystem::PostStart() -> void {
   // The order is the order of the bits, and the names below it are the same buttons in the same
   // order under the short names the gestures are written with.
-  app.RegisterButton("Duel.Left", InputManager::Trigger{GLFW_KEY_A, 0}, "Step left");
-  app.RegisterButton("Duel.Right", InputManager::Trigger{GLFW_KEY_D, 0}, "Step right");
-  app.RegisterButton("Duel.Punch", InputManager::Trigger{GLFW_KEY_J, 0}, "Punch");
-  app.RegisterButton("Duel.Kick", InputManager::Trigger{GLFW_KEY_K, 0}, "Kick");
-  app.RegisterBinding(START_BINDING, InputManager::Trigger{GLFW_KEY_ENTER, 0}, "Fight");
+  app.RegisterButton("Duel.Left", Key::A, "Step left");
+  app.RegisterButton("Duel.Right", Key::D, "Step right");
+  app.RegisterButton("Duel.Punch", Key::J, "Punch");
+  app.RegisterButton("Duel.Kick", Key::K, "Kick");
+  app.RegisterBinding(START_BINDING, Key::Enter, "Fight");
   // Presentation only, so carried into every match. See `StartFight`. The flags are for a run, and
   // win over what was saved without overwriting it.
   const auto &preferences = app.GetPreferences();
@@ -326,12 +323,10 @@ auto DuelSystem::UpdateSelect(const float deltaTime) -> void {
   DrawSelect();
 }
 auto DuelSystem::DrawSelect() -> void {
-  const auto *context = app.GetGraphicsContext();
-  auto scene = app.GetScene();
-  const auto *camera = scene ? scene->GetCamera() : nullptr;
-  if (!context || !camera)
+  const auto *camera = app.GetCamera();
+  if (!camera)
     return;
-  const auto [surfaceWidth, surfaceHeight] = context->GetSurfaceSize();
+  const auto [surfaceWidth, surfaceHeight] = app.GetSurfaceSize();
   if (surfaceWidth <= 0 || surfaceHeight <= 0)
     return;
   const auto width = static_cast<float>(surfaceWidth);
@@ -532,8 +527,7 @@ auto DuelSystem::Update(const float) -> void {
   DrawHud();
 }
 auto DuelSystem::ShowImpact(const float deltaTime) -> void {
-  auto scene = app.GetScene();
-  auto *effects = scene ? scene->GetAnyComponent<ScreenEffects>() : nullptr;
+  auto *effects = app.GetSceneSingleton<ScreenEffects>();
   if (!effects)
     return;
   // Written whole every frame, so whatever the last blow left is gone once it is over. The stage's
@@ -560,7 +554,7 @@ auto DuelSystem::ShowImpact(const float deltaTime) -> void {
   effects->radialBlur = .55f * s * Fade(.22f);
   effects->aberration = 9.f * s * Fade(.3f);
   // Centred where the blow landed, as the picture sees it.
-  if (const auto *camera = scene->GetCamera()) {
+  if (const auto *camera = app.GetCamera()) {
     const auto clip = camera->transform.projection * camera->transform.view * glm::vec4(hitPoint, 1.f);
     if (clip.w > .0f)
       effects->focus = {clip.x / clip.w * .5f + .5f, .5f - clip.y / clip.w * .5f};
@@ -579,8 +573,7 @@ auto DuelSystem::MoveCamera(const float deltaTime) -> void {
   AimCamera({(a + b) * .5f, 1.05f, .0f}, distance, deltaTime);
 }
 auto DuelSystem::AimCamera(const glm::vec3 &focus, const float distance, const float deltaTime) -> void {
-  auto scene = app.GetScene();
-  auto *camera = scene ? scene->GetCamera() : nullptr;
+  auto *camera = app.GetCamera();
   if (!camera)
     return;
   // Placed where it belongs on the first frame rather than eased there from wherever the scene was
@@ -598,10 +591,7 @@ auto DuelSystem::AimCamera(const glm::vec3 &focus, const float distance, const f
   ++camera->dirty;
 }
 auto DuelSystem::DrawHud() -> void {
-  const auto *context = app.GetGraphicsContext();
-  if (!context)
-    return;
-  const auto [surfaceWidth, surfaceHeight] = context->GetSurfaceSize();
+  const auto [surfaceWidth, surfaceHeight] = app.GetSurfaceSize();
   if (surfaceWidth <= 0 || surfaceHeight <= 0)
     return;
   const auto width = static_cast<float>(surfaceWidth);

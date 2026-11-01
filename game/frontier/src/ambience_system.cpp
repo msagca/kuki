@@ -1,4 +1,3 @@
-#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <ambience_system.hpp>
 #include <controls.hpp>
@@ -15,7 +14,6 @@
 #include <noise.hpp>
 #include <particle_emitter.hpp>
 #include <props.hpp>
-#include <scene.hpp>
 #include <volumetric_clouds.hpp>
 #include <wind.hpp>
 using namespace kuki;
@@ -51,10 +49,7 @@ auto AmbienceSystem::Update(const float deltaTime) -> void {
   Sun();
 }
 auto AmbienceSystem::Weather() -> void {
-  auto scene = app.GetScene();
-  if (!scene)
-    return;
-  auto *wind = scene->GetAnyComponent<Wind>();
+  auto *wind = app.GetSceneSingleton<Wind>();
   if (!wind)
     return;
   // Turning through about a quarter of the compass over a minute or two, and rising and falling
@@ -70,7 +65,7 @@ auto AmbienceSystem::Weather() -> void {
   wind->flutterAmount = .2f;
   // Higher waves in a stronger wind, a little behind it, as a sea is.
   wind->waveHeight = .1f + .06f * strength;
-  if (auto *clouds = scene->GetAnyComponent<VolumetricClouds>()) {
+  if (auto *clouds = app.GetSceneSingleton<VolumetricClouds>()) {
     clouds->windDirection = wind->direction;
     clouds->windSpeed = .008f + .008f * strength;
   }
@@ -88,9 +83,6 @@ auto AmbienceSystem::Weather() -> void {
     foam->fallback.albedo.w = .42f + .2f * std::sin(clock * 1.1f) + .08f * std::sin(clock * 2.9f + 1.f);
 }
 auto AmbienceSystem::Sun() -> void {
-  auto scene = app.GetScene();
-  if (!scene)
-    return;
   Light *sun{};
   FrontierWorld::ForEach<Light>(app, [&](const EntityID, Light *light) {
     if (!sun && light->type == LightType::Directional)
@@ -110,6 +102,6 @@ auto AmbienceSystem::Sun() -> void {
   sun->specular = colour;
   sun->intensity = 1.2f + 2.4f * std::clamp(height * 2.f, .0f, 1.f);
   sun->ambient = Mix({.12f, .08f, .12f}, {.16f, .17f, .2f}, height * 2.f);
-  if (auto *sky = scene->GetAnyComponent<AtmosphereSky>())
+  if (auto *sky = app.GetSceneSingleton<AtmosphereSky>())
     sky->sunIntensity = 6.f + 8.f * std::clamp(height * 2.f, .0f, 1.f);
 }

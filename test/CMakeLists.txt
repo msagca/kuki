@@ -20,7 +20,8 @@ target_include_directories(
   ${PROJECT_NAME}
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngine gtest)
+# glfw for `input_trigger_test.cpp`, which writes triggers in GLFW's numbers as saved preferences do.
+target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngineInternal glfw gtest)
 # The rules of the duel game, compiled in as they are. They know nothing of a window or a scene,
 # which is the point of them, so they are tested the way the engine's windowless parts are. The
 # game's own library cannot be linked instead: it is only built with the games, and holds the
@@ -44,6 +45,32 @@ target_include_directories(
   PRIVATE "${CMAKE_SOURCE_DIR}/game/frontier/include"
 )
 kuki_stage_runtime(${PROJECT_NAME})
+# Every installed header in one translation unit, compiled with what a game is given and nothing
+# more: `KukiEngine` alone, so `engine/internal/` is not on the include path and glfw's headers are
+# not either. It fails to build if a public header includes an internal one, or names something
+# from a library a game does not link -- either of which would build here, where everything is on
+# the path, and break the first game built against a release. Built with the tests, which is where
+# CI builds it.
+file(
+  GLOB KUKI_PUBLIC_HEADERS
+  CONFIGURE_DEPENDS
+  "${CMAKE_SOURCE_DIR}/engine/include/*.hpp"
+)
+set(KUKI_PUBLIC_HEADERS_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/public_headers.cpp")
+set(KUKI_PUBLIC_HEADERS_TEXT "")
+foreach(header ${KUKI_PUBLIC_HEADERS})
+  get_filename_component(name "${header}" NAME)
+  string(APPEND KUKI_PUBLIC_HEADERS_TEXT "#include <${name}>
+")
+endforeach()
+file(
+  CONFIGURE
+  OUTPUT "${KUKI_PUBLIC_HEADERS_SOURCE}"
+  CONTENT "${KUKI_PUBLIC_HEADERS_TEXT}"
+)
+add_library(KukiPublicHeaders OBJECT "${KUKI_PUBLIC_HEADERS_SOURCE}")
+target_link_libraries(KukiPublicHeaders PRIVATE KukiEngine)
+add_dependencies(${PROJECT_NAME} KukiPublicHeaders)
 # Mistakes the engine promises to refuse at compile time: an archetype a world never declared, a
 # query no archetype answers, a component an entity was not made with, two flags of one name. A
 # promise like that is only kept if something breaks when it stops being, and the thing that breaks

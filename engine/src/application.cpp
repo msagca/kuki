@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <application.hpp>
 #include <application_description.hpp>
+#include <application_internal.hpp>
 #include <array>
 #include <asset_type.hpp>
 #include <bounding_box.hpp>
@@ -114,7 +115,7 @@ auto Application::PreStart() -> void {
     desc.fullscreen = config.fullscreen;
     desc.vsync = config.vsync;
     // First, so it heads the list on the controls page, and claims Escape before any game can.
-    RegisterBinding(SettingsMenu::BINDING, {GLFW_KEY_ESCAPE, 0}, "Open or close the settings");
+    RegisterBinding(SettingsMenu::BINDING, Key::Escape, "Open or close the settings");
   }
   if (!CreateWindow())
     return;
@@ -204,15 +205,6 @@ auto Application::SetPlayState(const PlayState state) -> void {
     inputManager.EndSession();
   playState = state;
 }
-auto Application::StepTick() -> void {
-  stepRequested = true;
-}
-auto Application::SetHosting(const bool value) -> void {
-  hosting = value;
-}
-auto Application::TakeStopRequest() -> bool {
-  return std::exchange(stopRequested, false);
-}
 auto Application::Quit() -> void {
   if (hosting && playState != PlayState::Stopped) {
     stopRequested = true;
@@ -280,53 +272,42 @@ auto Application::CreateWindow() -> bool {
   return true;
 }
 auto Application::AddChildEntity(const EntityID parent, const EntityID child) -> bool {
-  if (auto scene = GetScene(); scene)
-    return scene->AddChildEntity(parent, child);
+  if (auto scene = sceneManager.Get(); scene)
+    return scene->Entities().AddChild(parent, child);
   return false;
 }
-auto Application::AlignView(const EntityID id) -> void {
-  auto scene = sceneManager.Get();
-  if (!scene)
-    return;
-  scene->AlignView(id);
-}
 auto Application::CreateEntity(const ComponentMask &mask, std::string name) -> EntityID {
-  if (auto scene = GetScene(); scene)
-    return scene->CreateEntity(mask, std::move(name));
+  if (auto scene = sceneManager.Get(); scene)
+    return scene->Entities().Create(mask, std::move(name));
   return EntityID::Invalid;
 }
 auto Application::CreateEntity(const ComponentMask &mask, const PoolKey &pool, std::string name) -> EntityID {
-  auto scene = GetScene();
+  auto scene = sceneManager.Get();
   if (!scene)
     return EntityID::Invalid;
-  if (pool && !scene->HasPool(mask, pool))
+  if (pool && !scene->Entities().HasPool(mask, pool))
     CreatePool(mask, pool);
-  return scene->CreateEntity(mask, pool, std::move(name));
+  return scene->Entities().Create(mask, pool, std::move(name));
 }
 auto Application::CreatePool(const ComponentMask &mask, const PoolKey &pool, PoolSettings settings) -> bool {
-  auto scene = GetScene();
+  auto scene = sceneManager.Get();
   if (!scene)
     return false;
   if (!settings.bounds)
     settings.bounds = GetMeshBounds(pool);
-  return scene->CreatePool(mask, pool, settings);
+  return scene->Entities().CreatePool(mask, pool, settings);
 }
 auto Application::MoveEntityToPool(const EntityID id, const PoolKey &pool) -> bool {
-  auto scene = GetScene();
+  auto scene = sceneManager.Get();
   if (!scene)
     return false;
-  if (const auto mask = scene->GetEntitySignature(id); pool && !scene->HasPool(mask, pool))
+  if (const auto mask = scene->Entities().GetSignature(id); pool && !scene->Entities().HasPool(mask, pool))
     CreatePool(mask, pool);
-  return scene->MoveEntityToPool(id, pool);
+  return scene->Entities().MoveToPool(id, pool);
 }
 auto Application::GetEntityPool(const EntityID id) const -> PoolKey {
-  if (auto scene = GetScene(); scene)
-    return scene->GetEntityPool(id);
-  return {};
-}
-auto Application::GetEntityBounds(const EntityID id) const -> BoundingBox {
-  if (auto scene = GetScene(); scene)
-    return scene->GetEntityBounds(id);
+  if (auto scene = sceneManager.Get(); scene)
+    return scene->Entities().GetPool(id);
   return {};
 }
 auto Application::GetMeshBounds(const PoolKey &pool) -> BoundingBox {
@@ -339,17 +320,24 @@ auto Application::GetMeshBounds(const PoolKey &pool) -> BoundingBox {
     return BoundingBox::Calculate(model->meshes[pool.meshIndex].mesh.vertices);
   return {};
 }
-auto Application::GetArchetypes() const -> const std::vector<ArchetypeSpec> & {
-  return archetypes;
-}
 auto Application::SetArchetypes(std::vector<ArchetypeSpec> value) -> void {
   archetypes = std::move(value);
 }
-auto Application::CreateScene(std::string name) -> SceneID {
-  return sceneManager.Create(std::move(name));
+auto Application::GetCamera() -> Camera * {
+  auto scene = sceneManager.Get();
+  return scene ? scene->GetActiveCamera() : nullptr;
 }
-auto Application::SwitchScene(const std::string &name) -> bool {
-  return sceneManager.Switch(name);
+auto Application::GetCamera() const -> const Camera * {
+  const auto scene = sceneManager.Get();
+  return scene ? scene->GetActiveCamera() : nullptr;
+}
+auto Application::ActiveEntities() -> EntityManager * {
+  auto scene = sceneManager.Get();
+  return scene ? &scene->Entities() : nullptr;
+}
+auto Application::ActiveEntities() const -> const EntityManager * {
+  const auto scene = sceneManager.Get();
+  return scene ? &scene->Entities() : nullptr;
 }
 auto Application::SetWindowTitle(const std::string &title) -> void {
   if (window)
@@ -374,13 +362,9 @@ auto Application::SetOverlayFont(const std::filesystem::path &path, const int pi
   overlay.SetAtlasAssetId(id);
   return true;
 }
-auto Application::DeleteEntities() -> void {
-  if (auto scene = GetScene(); scene)
-    scene->DeleteEntities();
-}
 auto Application::DeleteEntity(const EntityID id) -> void {
-  if (auto scene = GetScene(); scene)
-    scene->DeleteEntity(id);
+  if (auto scene = sceneManager.Get(); scene)
+    scene->Entities().Delete(id);
 }
 auto Application::DeltaTime() const -> float {
   return deltaTime;
@@ -400,26 +384,14 @@ auto Application::TickTime() const -> float {
 auto Application::GetNetwork() const -> NetworkSystem * {
   return network;
 }
-auto Application::SetNetwork(NetworkSystem *value) -> void {
-  network = value;
-}
-auto Application::GetTickScale() const -> double {
-  return tickScale;
-}
-auto Application::SetTickScale(const double scale) -> void {
-  tickScale = std::clamp(scale, .1, 1.);
-}
 auto Application::SetTickRate(const int rate) -> void {
   tickClock.SetRate(rate);
 }
 auto Application::GetButtons() const -> uint32_t {
   return inputManager.GetButtons();
 }
-auto Application::GetButtonNames() const -> const std::vector<std::string> & {
-  return inputManager.GetButtonNames();
-}
-auto Application::RegisterButton(const std::string &name, const InputManager::Trigger &trigger, std::string description) -> int {
-  return inputManager.RegisterButton(name, trigger, std::move(description), SavedBinding(name));
+auto Application::RegisterButton(const std::string &name, const Key key, std::string description) -> int {
+  return inputManager.RegisterButton(name, {std::to_underlying(key), 0}, std::move(description), SavedBinding(name));
 }
 auto Application::SavedBinding(const std::string &name) const -> std::optional<InputManager::Trigger> {
   const auto key = "input." + name;
@@ -427,65 +399,19 @@ auto Application::SavedBinding(const std::string &name) const -> std::optional<I
     return std::nullopt;
   return ParseTrigger(preferences.GetString(key));
 }
-auto Application::EntityHasChildren(const EntityID id) const -> bool {
-  if (auto scene = GetScene(); scene)
-    return scene->EntityHasChildren(id);
-  return false;
-}
-auto Application::GetAssetName(const AssetID id) const -> std::string {
-  return assetManager.GetName(id);
-}
-auto Application::GetAssetPath(const AssetID id) const -> std::filesystem::path {
-  return assetManager.GetPath(id);
-}
-auto Application::GetAssetType(const AssetID id) const -> AssetType {
-  return assetManager.GetType(id);
-}
-auto Application::GetDescription() const -> const ApplicationDescription & {
-  return desc;
-}
-auto Application::GetGraphicsContext() const -> GraphicsContext * {
-  return graphicsContext.get();
-}
-auto Application::GetEntityComponent(const EntityID id, const ComponentType type) -> std::optional<ComponentVariant> {
-  if (auto scene = GetScene(); scene)
-    return scene->GetEntityComponent(id, type);
-  return std::nullopt;
-}
-auto Application::GetEntityComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
-  if (auto scene = GetScene(); scene)
-    return scene->GetEntityComponentTypes(id);
-  return {};
-}
-auto Application::GetEntityCount() const -> size_t {
-  if (auto scene = GetScene(); scene)
-    return scene->GetEntityCount();
-  return 0;
-}
-auto Application::GetEntityName(const EntityID id) const -> std::string {
-  if (auto scene = GetScene(); scene)
-    return scene->GetEntityName(id);
-  return "";
-}
 auto Application::GetEntityParent(const EntityID id) const -> EntityID {
-  if (auto scene = GetScene(); scene)
-    return scene->GetParent(id);
+  if (auto scene = sceneManager.Get(); scene)
+    return scene->Entities().GetParent(id);
   return EntityID::Invalid;
 }
-auto Application::GetKeyAxis(const InputManager::KeyAxis axis) const -> glm::ivec2 {
-  return inputManager.GetKeyAxis(axis);
+auto Application::IsMouseHeld(const MouseButton button) const -> bool {
+  return inputManager.GetState(std::to_underlying(button));
 }
-auto Application::IsInputHeld(const int input) const -> bool {
-  return inputManager.GetState(input);
+auto Application::IsMousePressed(const MouseButton button) const -> bool {
+  return inputManager.IsPressed(std::to_underlying(button));
 }
-auto Application::IsInputPressed(const int input) const -> bool {
-  return inputManager.IsPressed(input);
-}
-auto Application::IsInputReleased(const int input) const -> bool {
-  return inputManager.IsReleased(input);
-}
-auto Application::SetInputEnabled(const InputManager::InputKind kind, const bool enabled) -> void {
-  inputManager.SetEnabled(kind, enabled);
+auto Application::IsMouseReleased(const MouseButton button) const -> bool {
+  return inputManager.IsReleased(std::to_underlying(button));
 }
 auto Application::GetMousePosition() const -> glm::vec2 {
   return inputManager.GetMousePosition();
@@ -496,41 +422,26 @@ auto Application::GetWindowSize() const -> glm::ivec2 {
     glfwGetWindowSize(window, &size.x, &size.y);
   return size;
 }
+auto Application::GetSurfaceSize() const -> std::pair<int, int> {
+  return graphicsContext ? graphicsContext->GetSurfaceSize() : std::pair<int, int>{};
+}
 auto Application::GetScrollOffset() const -> glm::vec2 {
   return inputManager.GetScrollOffset();
 }
 auto Application::InstantiateAsset(const AssetID id, const ComponentMask &root) -> EntityID {
-  if (auto scene = GetScene(); scene)
+  if (auto scene = sceneManager.Get(); scene)
     return assetManager.Instantiate(id, *scene, root);
   return EntityID::Invalid;
 }
 auto Application::InstantiateAsset(const std::string &name, const ComponentMask &root) -> EntityID {
-  if (auto scene = GetScene(); scene)
+  if (auto scene = sceneManager.Get(); scene)
     return assetManager.Instantiate(name, *scene, root);
   return EntityID::Invalid;
 }
-auto Application::GetEntitySignature(const EntityID id) const -> ComponentMask {
-  if (auto scene = GetScene(); scene)
-    return scene->GetEntitySignature(id);
-  return {};
-}
-auto Application::IsAssetLoaded(const AssetID id) const -> bool {
-  return assetManager.IsLoaded(id);
-}
-auto Application::ResolveModelInstance(const EntityID root, const AssetID modelAssetId) -> void {
-  auto scene = GetScene();
-  if (!scene)
-    return;
-  if (auto modelAsset = GetAsset<ModelAsset>(modelAssetId); modelAsset)
-    assetManager.ResolveModelInstance(*scene, root, *modelAsset, modelAssetId);
-}
 auto Application::IsEntity(const EntityID id) const -> bool {
-  if (auto scene = GetScene(); scene)
-    return scene->IsEntity(id);
+  if (auto scene = sceneManager.Get(); scene)
+    return scene->Entities().IsEntity(id);
   return false;
-}
-auto Application::IsViewportHovered() const -> bool {
-  return viewportHovered;
 }
 auto Application::LoadPrimitive(const std::string &name) -> void {
   if (assetManager.Get(name))
@@ -569,17 +480,11 @@ auto Application::IsBindingHeld(const std::string &name) const -> bool {
 auto Application::IsBindingPressed(const std::string &name) const -> bool {
   return inputManager.IsBindingPressed(name);
 }
-auto Application::IsSequenceInProgress() const -> bool {
-  return inputManager.IsSequenceInProgress();
+auto Application::RegisterBinding(const std::string &name, const Key key, std::string description) -> void {
+  RegisterTrigger(name, {std::to_underlying(key), 0}, std::move(description));
 }
-auto Application::RegisterBinding(const std::string &name, const InputManager::Trigger &trigger, std::string description) -> void {
+auto Application::RegisterTrigger(const std::string &name, const InputManager::Trigger &trigger, std::string description) -> void {
   inputManager.RegisterBinding(name, trigger, std::move(description), SavedBinding(name));
-}
-auto Application::RegisterInputAction(const std::string &trigger, InputAction action, std::string description) -> InputManager::ActionID {
-  return inputManager.RegisterAction(trigger, std::move(action), std::move(description));
-}
-auto Application::RegisterInputAction(int trigger, InputAction action, bool press) -> InputManager::ActionID {
-  return inputManager.RegisterAction(trigger, std::move(action), press);
 }
 auto Application::PickEntity(const glm::vec2 &position) -> EntityID {
   auto *renderingSystem = GetRenderingSystem();
@@ -610,39 +515,33 @@ auto Application::PickOverlay(const glm::vec2 &position) -> int {
   return overlay.HitTest({position.x / windowWidth * targetWidth, position.y / windowHeight * targetHeight});
 }
 auto Application::MarkTransformDirty(const EntityID id) -> void {
-  if (auto scene = GetScene(); scene)
-    scene->MarkTransformDirty(id);
+  if (auto scene = sceneManager.Get(); scene)
+    scene->Entities().MarkTransformDirty(id);
 }
 auto Application::GetRig(const EntityID id) -> Rig * {
-  auto scene = GetScene();
+  auto scene = sceneManager.Get();
   return scene ? scene->GetRig(id) : nullptr;
 }
-auto Application::RenameAsset(const AssetID id, std::string name) -> bool {
-  return assetManager.Rename(id, std::move(name));
+auto ApplicationInternal::SetTickScale(const double scale) -> void {
+  app.tickScale = std::clamp(scale, .1, 1.);
 }
-auto Application::RenameEntity(const EntityID id, std::string name) -> bool {
-  if (auto scene = GetScene(); scene)
-    return scene->RenameEntity(id, std::move(name));
-  return false;
-}
-auto Application::SetActiveCamera(const EntityID id, const std::string &sceneName) -> bool {
-  if (auto scene = GetScene(sceneName); scene)
-    return scene->SetActiveCamera(id);
-  return false;
-}
-auto Application::SetCursorLocked(bool locked) -> void {
-  glfwSetInputMode(window, GLFW_CURSOR, locked ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+auto ApplicationInternal::SetCursorLocked(const bool locked) -> void {
+  glfwSetInputMode(app.window, GLFW_CURSOR, locked ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
   if (!locked) {
     double x, y;
-    glfwGetCursorPos(window, &x, &y);
-    inputManager.CursorPosCallback(window, x, y);
+    glfwGetCursorPos(app.window, &x, &y);
+    app.inputManager.CursorPosCallback(app.window, x, y);
   }
 }
-auto Application::SetViewportHovered(bool hovered) -> void {
-  viewportHovered = hovered;
+auto ApplicationInternal::CreateScene(std::string name) -> SceneID {
+  return app.sceneManager.Create(std::move(name));
 }
-auto Application::UnregisterInputAction(const InputManager::ActionID id) -> bool {
-  return inputManager.UnregisterAction(id);
+auto ApplicationInternal::ResolveModelInstance(const EntityID root, const AssetID modelAssetId) -> void {
+  auto scene = app.sceneManager.Get();
+  if (!scene)
+    return;
+  if (auto modelAsset = app.GetAsset<ModelAsset>(modelAssetId); modelAsset)
+    app.assetManager.ResolveModelInstance(*scene, root, *modelAsset, modelAssetId);
 }
 auto Application::GetExePath() -> std::filesystem::path {
   return GetLaunchPath();

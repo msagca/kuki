@@ -95,6 +95,8 @@ namespace builder {
   KUKI_ENGINE_API auto SetMesh(BuilderStack &, const AssetID) -> void;
   /// @brief Moves the current entity to the pool of the mesh it has and this material.
   KUKI_ENGINE_API auto SetMaterial(BuilderStack &, const AssetID) -> void;
+  /// @brief Makes the current entity's camera the one the active scene is drawn from.
+  KUKI_ENGINE_API auto MakeActiveCamera(BuilderStack &) -> void;
 } // namespace builder
 template <typename W>
 class SceneBuilder;
@@ -177,8 +179,7 @@ public:
   /// @brief Makes this entity's camera the one the renderer draws from.
   auto ActiveCamera() -> EntityBuilder {
     static_assert(A::template Has<Camera>, "ActiveCamera: this entity's archetype has no Camera -- make it as a `CameraObject`");
-    if (const auto id = stack->Current(); id)
-      stack->app.SetActiveCamera(id);
+    builder::MakeActiveCamera(*stack);
     return *this;
   }
   /// @brief Hands one of the entity's components to a callable to fill in.

@@ -14,7 +14,6 @@
 #include <render_pass.hpp>
 #include <render_target.hpp>
 #include <renderer_capabilities.hpp>
-#include <scene.hpp>
 #include <scene_manager.hpp>
 #include <shader.hpp>
 #include <shader_asset.hpp>
@@ -22,6 +21,7 @@
 #include <target_description.hpp>
 #include <tone_mapper.hpp>
 namespace kuki {
+class Scene;
 class KUKI_ENGINE_API Renderer {
 public:
   virtual ~Renderer() = default;

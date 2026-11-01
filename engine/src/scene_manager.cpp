@@ -1,4 +1,5 @@
 #include <application.hpp>
+#include <application_internal.hpp>
 #include <concepts.hpp>
 #include <id.hpp>
 #include <manager.hpp>
@@ -9,6 +10,7 @@
 #include <string>
 #include <utility>
 namespace kuki {
+SceneManager::~SceneManager() = default;
 SceneManager::SceneManager(Application &app)
   : Manager(app) {}
 auto SceneManager::Create(std::string name) -> SceneID {
@@ -18,8 +20,8 @@ auto SceneManager::Create(std::string name) -> SceneID {
   auto scene = std::make_unique<Scene>(id);
   // Every archetype the application will make entities of, before any is made. A scene learns of
   // no archetype after this, so one left out here is one the scene cannot hold.
-  for (const auto &spec : app.GetArchetypes())
-    scene->Declare(spec);
+  for (const auto &spec : Internal(app).GetArchetypes())
+    scene->Entities().Declare(spec);
   idToScene[id] = std::move(scene);
   nameToId[name] = id;
   idToName[id] = std::move(name);

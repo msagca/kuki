@@ -4,14 +4,11 @@
 #endif
 #include <GLFW/glfw3.h>
 #include <algorithm>
-#include <launch_path.hpp>
-#include <iterator>
-#include <fstream>
-#include <cctype>
 #include <animator.hpp>
 #include <anti_aliasing.hpp>
 #include <application.hpp>
 #include <application_description.hpp>
+#include <application_internal.hpp>
 #include <array>
 #include <asset.hpp>
 #include <asset_type.hpp>
@@ -19,6 +16,7 @@
 #include <camera.hpp>
 #include <camera_controller.hpp>
 #include <camera_type.hpp>
+#include <cctype>
 #include <component.hpp>
 #include <cstdint>
 #include <editor.hpp>
@@ -26,18 +24,21 @@
 #include <enum_traits.hpp>
 #include <field.hpp>
 #include <filesystem>
+#include <fstream>
 #include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <icons_lucide.hpp>
 #include <id.hpp>
 #include <imgui_file_browser.hpp>
 #include <imgui_impl_glfw.h>
-#include <icons_lucide.hpp>
 #include <imgui_internal.h>
 #include <imguizmo.hpp>
+#include <iterator>
 #include <key_binding_widget.hpp>
+#include <launch_path.hpp>
 #include <light.hpp>
 #include <limits>
 #include <material_asset.hpp>
@@ -467,11 +468,11 @@ auto EndWindow() -> void {
 } // namespace
 Editor::Editor()
   : SystemApplication({.name = "Kuki Editor", .iconPath = "image/kuki.ico", .api = EngineConfig::Load().api, .settingsMenu = false}) {
-  context.pendingApi = GetDescription().api;
+  context.pendingApi = Internal(*this).GetDescription().api;
   // Before anything starts, so that no tick is run on the scene merely for being open. An
   // application is playing unless told otherwise, which is right for a game and wrong for this.
-  SetPlayState(PlayState::Stopped);
-  for (const auto &spec : GetArchetypes())
+  Internal(*this).SetPlayState(PlayState::Stopped);
+  for (const auto &spec : Internal(*this).GetArchetypes())
     entityClipboard.Declare(spec);
 }
 auto Editor::SaveGraphicsConfig() -> void {
@@ -495,24 +496,23 @@ auto Editor::Start() -> void {
   }
   LoadDefaultScene();
   for (auto i = 0; i < ShortcutCount; ++i)
-    RegisterBinding(ShortcutName(i), InputManager::Trigger{kShortcuts[i].key, kShortcuts[i].mods}, kShortcuts[i].description);
+    Internal(*this).RegisterBinding(ShortcutName(i), InputManager::Trigger{kShortcuts[i].key, kShortcuts[i].mods}, kShortcuts[i].description);
   // Mouse look grabs the cursor and hides it from Dear ImGui, so it may only start over the game
   // view. The panels float on top of that view now, and a right click on one of them belongs to the
   // panel: its own context menus would never see the press otherwise.
-  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
-    if (!IsViewportHovered())
+  Internal(*this).Input().RegisterAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
+    if (!Internal(*this).IsViewportHovered())
       return;
     mouselookActive = true;
-    SetCursorLocked(true);
+    Internal(*this).SetCursorLocked(true);
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
   });
-  RegisterInputAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
+  Internal(*this).Input().RegisterAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
     if (!mouselookActive)
       return;
     mouselookActive = false;
-    SetCursorLocked(false);
-    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
-  }, false);
+    Internal(*this).SetCursorLocked(false);
+    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
   // The three view groups -- which graph target is shown, which shading step the scene pass writes
   // out, and what the probes are drawn as -- are independent, and each key here sets only its own.
   // Selecting within a group replaces what that group held; nothing else is touched.
@@ -526,9 +526,7 @@ auto Editor::Start() -> void {
   // here, `None` in the shading list, `Off` in the probe cycle.
   for (const auto &def : kDebugViewSequences) {
     const std::string targetName = def.targetName;
-    RegisterInputAction(def.sequence, [this, targetName]() {
-      context.debugViewTarget = targetName;
-    }, def.description);
+    Internal(*this).Input().RegisterAction(def.sequence, [this, targetName]() { context.debugViewTarget = targetName; }, def.description);
   }
   // Not registered at all on a backend whose scene shader has no branch for them, rather than
   // registered and left to do nothing. A key that changes a label and leaves the picture alone is
@@ -539,13 +537,12 @@ auto Editor::Start() -> void {
     if (!context.capabilities.lightingDebugViews)
       break;
     const auto view = def.view;
-    RegisterInputAction(def.sequence, [this, view]() {
+    Internal(*this).Input().RegisterAction(def.sequence, [this, view]() {
       if (auto *camera = GetCamera())
-        camera->lightingDebugView = view;
-    }, def.description);
+        camera->lightingDebugView = view; }, def.description);
   }
   if (context.capabilities.probeVolume) {
-    RegisterInputAction("vp", [this]() {
+    Internal(*this).Input().RegisterAction("vp", [this]() {
       auto *camera = GetCamera();
       if (!camera)
         return;
@@ -555,8 +552,7 @@ auto Editor::Start() -> void {
       // failed. Wrapping through `Off` keeps the way out on the same key it came in on.
       const auto &names = EnumTraits<ProbeDebugView>::GetNames();
       const auto next = (static_cast<size_t>(camera->probeDebugView) + 1) % names.size();
-      camera->probeDebugView = static_cast<ProbeDebugView>(next);
-    }, "Step through the irradiance probe visualisations");
+      camera->probeDebugView = static_cast<ProbeDebugView>(next); }, "Step through the irradiance probe visualisations");
   }
 }
 auto Editor::Update(const float deltaTime) -> void {
@@ -572,7 +568,7 @@ auto Editor::Update(const float deltaTime) -> void {
 }
 auto Editor::Shutdown() -> void {
 #ifdef KUKI_HAS_DIRECTX
-  if (auto *dx = dynamic_cast<DXContext *>(GetGraphicsContext()); dx) {
+  if (auto *dx = dynamic_cast<DXContext *>(Internal(*this).GetGraphicsContext()); dx) {
     dx->WaitForGPU();
     ImGui_ImplDX12_Shutdown();
     gImGuiSrvHeap = nullptr;
@@ -585,59 +581,59 @@ auto Editor::SetInputCaptureActive(bool active) -> void {
   context.state = active ? EditorState::RebindingKey : EditorState::Normal;
 }
 auto Editor::GetFPS() -> size_t {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+  if (auto renderingSystem = Internal(*this).GetRenderingSystem(); renderingSystem)
     return renderingSystem->GetFPS();
   return 0;
 }
 auto Editor::GetPreviewSize() -> int {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+  if (auto renderingSystem = Internal(*this).GetRenderingSystem(); renderingSystem)
     return renderingSystem->GetPreviewSize();
   return 0;
 }
 auto Editor::PreviewAsset(const AssetID id) -> RenderTarget * {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+  if (auto renderingSystem = Internal(*this).GetRenderingSystem(); renderingSystem)
     return renderingSystem->PreviewAsset(id);
   return nullptr;
 }
 auto Editor::SetPreviewSize(const int size) -> void {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+  if (auto renderingSystem = Internal(*this).GetRenderingSystem(); renderingSystem)
     renderingSystem->SetPreviewSize(size);
 }
 auto Editor::SetResolution(const int width, const int height) -> void {
-  if (auto renderingSystem = GetRenderingSystem(); renderingSystem)
+  if (auto renderingSystem = Internal(*this).GetRenderingSystem(); renderingSystem)
     renderingSystem->SetResolution(width, height);
 }
 auto Editor::HasComponentAnywhere(const ComponentType type) const -> bool {
-  if (auto scene = GetScene(); scene)
-    return scene->HasComponentAnywhere(type);
+  if (auto scene = Internal(*this).GetScene(); scene)
+    return scene->Entities().HasComponentAnywhere(type);
   return false;
 }
 auto Editor::BeginKeyCapture() -> void {
-  GetInputManager().BeginKeyCapture();
+  Internal(*this).Input().BeginKeyCapture();
 }
 auto Editor::PollKeyCapture() -> InputManager::CaptureOutcome {
-  return GetInputManager().PollKeyCapture();
+  return Internal(*this).Input().PollKeyCapture();
 }
 auto Editor::GetBinding(const std::string &name) -> InputManager::Trigger {
-  return GetInputManager().GetBinding(name);
+  return Internal(*this).Input().GetBinding(name);
 }
 auto Editor::SetBinding(const std::string &name, const InputManager::Trigger &trigger) -> void {
-  GetInputManager().SetBinding(name, trigger);
+  Internal(*this).Input().SetBinding(name, trigger);
 }
 auto Editor::GetTriggerName(const InputManager::Trigger &trigger) -> std::string {
-  return GetInputManager().GetTriggerName(trigger);
+  return Internal(*this).Input().GetTriggerName(trigger);
 }
 auto Editor::GetBindingNames() -> const std::vector<std::string> & {
-  return GetInputManager().GetBindingNames();
+  return Internal(*this).Input().GetBindingNames();
 }
 auto Editor::GetBindingDescription(const std::string &name) -> std::string {
-  return GetInputManager().GetBindingDescription(name);
+  return Internal(*this).Input().GetBindingDescription(name);
 }
 auto Editor::GetSequenceNames() -> const std::vector<std::string> & {
-  return GetInputManager().GetSequenceNames();
+  return Internal(*this).Input().GetSequenceNames();
 }
 auto Editor::GetSequenceDescription(const std::string &sequence) -> std::string {
-  return GetInputManager().GetSequenceDescription(sequence);
+  return Internal(*this).Input().GetSequenceDescription(sequence);
 }
 auto Editor::GetSelectedEntity() const -> EntityID {
   return context.selectedEntityId;
@@ -654,7 +650,7 @@ auto Editor::InitImGui() -> void {
   // The panels float over a full screen game view, so dragging must start on the title bar: without
   // this a drag that begins on empty panel space would move the window instead of reaching the tool.
   io.ConfigWindowsMoveFromTitleBarOnly = true;
-  auto fontPath = std::filesystem::path{GetDescription().path / "font/Inter-VariableFont_opsz,wght.ttf"}.string();
+  auto fontPath = std::filesystem::path{Internal(*this).GetDescription().path / "font/Inter-VariableFont_opsz,wght.ttf"}.string();
   // The text font is told to leave the icons' codepoints alone. They are in the Private Use Area,
   // which is nobody's, and Inter draws things of its own there -- circled digits, ticks in circles
   // -- and in a merged font the first font to have a glyph is the one that draws it. Left as it
@@ -674,7 +670,7 @@ auto Editor::InitImGui() -> void {
   // Lucide draws in a square that sits on the baseline, which puts an icon visibly higher than the
   // middle of the lower-case letters beside it. Lowered by a tenth of the size to sit level.
   icons.GlyphOffset.y = FONT_SIZE * .1f;
-  const auto iconPath = std::filesystem::path{GetDescription().path / "font/lucide.ttf"}.string();
+  const auto iconPath = std::filesystem::path{Internal(*this).GetDescription().path / "font/lucide.ttf"}.string();
   if (!io.Fonts->AddFontFromFileTTF(iconPath.c_str(), FONT_SIZE, &icons))
     spdlog::warn("[Editor] The icon font did not load from {}, so icons will show as missing glyphs", iconPath);
   auto &style = ImGui::GetStyle();
@@ -690,8 +686,8 @@ auto Editor::InitImGui() -> void {
   style.Colors[ImGuiCol_TitleBgActive].w = TITLE_ALPHA;
   style.Colors[ImGuiCol_TitleBgCollapsed].w = TITLE_ALPHA;
 #ifdef KUKI_HAS_DIRECTX
-  if (auto *dx = dynamic_cast<DXContext *>(GetGraphicsContext()); dx) {
-    ImGui_ImplGlfw_InitForOther(window, true);
+  if (auto *dx = dynamic_cast<DXContext *>(Internal(*this).GetGraphicsContext()); dx) {
+    ImGui_ImplGlfw_InitForOther(Internal(*this).GetWindow(), true);
     gImGuiSrvHeap = &dx->GetSRVHeap();
     ImGui_ImplDX12_InitInfo info{};
     info.Device = dx->GetDevice();
@@ -711,8 +707,8 @@ auto Editor::InitImGui() -> void {
 }
 auto Editor::LoadDefaultScene() -> void {
   const auto sceneName = "Main";
-  CreateScene(sceneName);
-  const auto scenePath = GetDescription().path / DEFAULT_SCENE_FILE;
+  Internal(*this).CreateScene(sceneName);
+  const auto scenePath = Internal(*this).GetDescription().path / DEFAULT_SCENE_FILE;
   if (!SceneSerializer::Load(*this, scenePath)) {
     spdlog::error("[Editor] Failed to load default scene: {}", scenePath.string());
     return;
@@ -725,7 +721,7 @@ auto Editor::UpdateIO() -> void {
   if (context.state != stateOld) {
     stateOld = context.state;
     const auto typing = context.state == EditorState::Rename || context.state == EditorState::RebindingKey;
-    SetInputEnabled(InputManager::InputKind::Keys, !typing);
+    Internal(*this).Input().SetEnabled(InputManager::InputKind::Keys, !typing);
     if (context.state != EditorState::Normal) {
       context.keyState.reset();
       context.pressState.reset();
@@ -751,7 +747,7 @@ auto Editor::UpdateIO() -> void {
 auto Editor::UpdateView() -> void {
   const auto wasPicking = context.state == EditorState::PickingAsset;
 #ifdef KUKI_HAS_DIRECTX
-  const auto usingDX = dynamic_cast<DXContext *>(GetGraphicsContext()) != nullptr;
+  const auto usingDX = dynamic_cast<DXContext *>(Internal(*this).GetGraphicsContext()) != nullptr;
   if (usingDX)
     ImGui_ImplDX12_NewFrame();
 #endif
@@ -769,14 +765,14 @@ auto Editor::UpdateView() -> void {
   DisplayHelp();
   // After the frame's panels rather than where the request was made, which was inside a system: the
   // scene it is in is about to be replaced.
-  if (TakeStopRequest())
+  if (Internal(*this).TakeStopRequest())
     EndPlay();
   if (wasPicking && context.state == EditorState::PickingAsset && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
     context.state = EditorState::Normal;
   ImGui::Render();
 #ifdef KUKI_HAS_DIRECTX
   if (usingDX) {
-    auto *dx = static_cast<DXContext *>(GetGraphicsContext());
+    auto *dx = static_cast<DXContext *>(Internal(*this).GetGraphicsContext());
     if (auto *commandList = dx->GetCommandList(); commandList) {
       const auto rtv = dx->GetBackBufferRTV();
       commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
@@ -836,9 +832,9 @@ auto Editor::DisplayAssetBrowser(const float previewSize) -> void {
     assets.push_back(asset);
   };
   if (picking)
-    ForEachAsset(context.pickingAssetType, CollectAsset);
+    Internal(*this).Assets().ForEach(context.pickingAssetType, CollectAsset);
   else
-    ForEachAssetType([this, &CollectAsset](const AssetType type, const std::string &) { ForEachAsset(type, CollectAsset); });
+    Internal(*this).Assets().ForEachType([this, &CollectAsset](const AssetType type, const std::string &) { Internal(*this).Assets().ForEach(type, CollectAsset); });
   const auto DisplayContextMenu = [this] {
     if (ImGui::BeginPopupContextWindow("AssetBrowserMenu", POPUP_WINDOW_FLAGS)) {
       if (ImGui::MenuItem("Import")) {
@@ -864,7 +860,7 @@ auto Editor::DisplayAssetBrowser(const float previewSize) -> void {
       const auto column = static_cast<int>(i) / rowsPerColumn;
       const auto row = static_cast<int>(i) % rowsPerColumn;
       ImGui::SetCursorPos(ImVec2(column * LIST_ITEM_WIDTH, row * rowHeight));
-      const auto name = GetAssetName(id);
+      const auto name = Internal(*this).Assets().GetName(id);
       ImGui::PushID(static_cast<int>(id));
       const auto selected = ImGui::Selectable(name.c_str(), false, ImGuiSelectableFlags_None, ImVec2(selectableWidth, 0.f));
       if (picking && selected)
@@ -893,7 +889,7 @@ auto Editor::DisplayAssetBrowser(const float previewSize) -> void {
     ImGui::BeginChild("##AssetThumbnails", ImVec2(0.f, 0.f), false);
     for (size_t i = 0; i < assets.size(); ++i) {
       const auto id = assets[i]->id;
-      const auto name = GetAssetName(id);
+      const auto name = Internal(*this).Assets().GetName(id);
       if (i % columnCount != 0)
         ImGui::SameLine();
       ImGui::PushID(static_cast<int>(id));
@@ -927,13 +923,13 @@ auto Editor::DisplayAssetBrowser(const float previewSize) -> void {
     else {
       const auto ext = filepath.extension();
       if (ext == ".vert" || ext == ".frag" || ext == ".comp")
-        LoadAssetAsync<ShaderAsset>(filepath);
+        Internal(*this).Assets().LoadAsync<ShaderAsset>(filepath);
       else if (ext == ".gltf" || ext == ".glb" || ext == ".fbx")
-        LoadAssetAsync<ModelAsset>(filepath);
+        Internal(*this).Assets().LoadAsync<ModelAsset>(filepath);
       else if (ext == ".hdr" || ext == ".exr")
-        LoadAssetAsync<TextureAsset>(filepath);
+        Internal(*this).Assets().LoadAsync<TextureAsset>(filepath);
       else if (ext == ".mat")
-        LoadAssetAsync<MaterialAsset>(filepath);
+        Internal(*this).Assets().LoadAsync<MaterialAsset>(filepath);
     }
     fileBrowser.ClearSelected();
   }
@@ -990,13 +986,13 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
   static char newName[NAME_LENGTH] = "";
   static auto renameBufferOwner = EntityID::Invalid;
   auto nodeFlags = ImGuiTreeNodeFlags(TREE_NODE_FLAGS);
-  if (!EntityHasChildren(id))
+  if (!Internal(*this).EntityHasChildren(id))
     nodeFlags |= ImGuiTreeNodeFlags_Leaf;
   if (context.selectedEntities.contains(id))
     nodeFlags |= ImGuiTreeNodeFlags_Selected;
   if (context.state == EditorState::Rename && context.renamedEntityId == id) {
     if (renameBufferOwner != id) {
-      const auto currentName = GetEntityName(id);
+      const auto currentName = Internal(*this).GetEntityName(id);
       strncpy(newName, currentName.c_str(), NAME_LENGTH - 1);
       newName[NAME_LENGTH - 1] = '\0';
       renameBufferOwner = id;
@@ -1008,7 +1004,7 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
     if (renamed) {
       std::string nameStr = newName;
       if (!nameStr.empty())
-        RenameEntity(id, nameStr);
+        Internal(*this).RenameEntity(id, nameStr);
     }
     if (renamed || ImGui::IsItemDeactivated()) {
       context.state = EditorState::Normal;
@@ -1018,9 +1014,9 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
     ImGui::PopItemWidth();
     return;
   }
-  const auto entityName = GetEntityName(id);
+  const auto entityName = Internal(*this).GetEntityName(id);
   const auto entityNameCStr = entityName.c_str();
-  const auto nodeOpen = ImGui::TreeNodeEx(static_cast<const void *>(id), nodeFlags, "%s %s", EntityIcon(GetEntityComponentTypes(id)), entityNameCStr);
+  const auto nodeOpen = ImGui::TreeNodeEx(static_cast<const void *>(id), nodeFlags, "%s %s", EntityIcon(Internal(*this).GetEntityComponentTypes(id)), entityNameCStr);
   displayedEntitiesNext.push_back(id);
   const auto doubleClicked = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
   const auto focused = ImGui::IsItemFocused();
@@ -1081,7 +1077,7 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
   // window of its own and the row would no longer be the last thing drawn.
   if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
     ImGui::SetDragDropPayload("##EntityPayload", &id, sizeof(EntityID));
-    ImGui::Text("%s %s", EntityIcon(GetEntityComponentTypes(id)), entityNameCStr);
+    ImGui::Text("%s %s", EntityIcon(Internal(*this).GetEntityComponentTypes(id)), entityNameCStr);
     ImGui::EndDragDropSource();
   }
   if (ImGui::BeginPopup("##EntityContextMenu")) {
@@ -1096,7 +1092,7 @@ auto Editor::DisplayEntity(const EntityID id) -> void {
     ImGui::EndPopup();
   }
   if (nodeOpen) {
-    ForEachChildEntity(id, [&](const EntityID childId) {
+    Internal(*this).ForEachChildEntity(id, [&](const EntityID childId) {
       ImGui::PushID(static_cast<int>(childId));
       DisplayEntity(childId);
       ImGui::PopID();
@@ -1132,7 +1128,7 @@ auto Editor::DisplayHierarchy() -> void {
   }
   displayedEntitiesNext.clear();
   entityContextMenuTriggered = false;
-  ForEachRootEntity([this](const EntityID id) {
+  Internal(*this).ForEachRootEntity([this](const EntityID id) {
     ImGui::PushID(static_cast<int>(id));
     DisplayEntity(id);
     ImGui::PopID();
@@ -1152,11 +1148,11 @@ auto Editor::DisplayHierarchy() -> void {
         if (ImGui::MenuItem(IconLabel(kind.icon, kind.label).c_str())) {
           auto id = EntityID::Invalid;
           if (kind.asset) {
-            id = InstantiateAsset(kind.asset);
+            id = Internal(*this).InstantiateAsset(kind.asset, ModelRoot::Mask());
             if (id)
-              RenameEntity(id, kind.label);
+              Internal(*this).RenameEntity(id, kind.label);
           } else
-            id = CreateEntity(kind.mask(), kind.label);
+            id = Internal(*this).CreateEntity(kind.mask(), kind.label);
           context.state = EditorState::Rename;
           context.renamedEntityId = id;
           spdlog::info("[Editor] Created a new {}", kind.label);
@@ -1233,7 +1229,7 @@ auto Editor::AttachSettingsEntity() -> EntityID {
   // Made as an `EditorSettings` when there is none, which has every setting on it; one found already
   // is whatever it was made as, and keeps it.
   auto id = EntityID::Invalid;
-  ForEachEntity<IndirectLighting>([&id](const EntityID entity, IndirectLighting *) {
+  Internal(*this).ForEachEntity<IndirectLighting>([&id](const EntityID entity, IndirectLighting *) {
     if (!id)
       id = entity;
   });
@@ -1243,20 +1239,20 @@ auto Editor::AttachSettingsEntity() -> EntityID {
 }
 auto Editor::AttachCameraController() -> EntityID {
   auto cameraId = EntityID::Invalid;
-  ForEachEntity<Camera>([&cameraId](const EntityID id, Camera *) {
+  Internal(*this).ForEachEntity<Camera>([&cameraId](const EntityID id, Camera *) {
     if (!cameraId)
       cameraId = id;
   });
   if (!cameraId)
     return cameraId;
   context.cameraEntity = cameraId;
-  SetActiveCamera(cameraId);
+  Internal(*this).SetActiveCamera(cameraId);
   if (auto *controller = GetSystem<CameraController>(); controller)
     controller->SetEntity(cameraId);
   return cameraId;
 }
 auto Editor::CopySelectedEntities() -> void {
-  auto scene = GetScene();
+  auto scene = Internal(*this).GetScene();
   if (!scene || context.selectedEntities.empty())
     return;
   entityClipboard.Clear();
@@ -1270,19 +1266,19 @@ auto Editor::CopySelectedEntities() -> void {
       }
     if (ancestorSelected)
       continue;
-    if (const auto clipboardId = scene->CopyEntityTo(id, entityClipboard); clipboardId)
+    if (const auto clipboardId = scene->Entities().CopyTo(id, entityClipboard); clipboardId)
       entityClipboardRoots.emplace_back(clipboardId, GetEntityParent(id));
   }
   spdlog::info("[Editor] Copied {} entities", entityClipboardRoots.size());
 }
 auto Editor::PasteEntities() -> void {
-  auto scene = GetScene();
+  auto scene = Internal(*this).GetScene();
   if (!scene || entityClipboardRoots.empty())
     return;
   context.selectedEntities.clear();
   context.selectedEntityId = EntityID::Invalid;
   for (const auto &[clipboardId, originalParent] : entityClipboardRoots) {
-    const auto newId = scene->CopyEntityFrom(entityClipboard, clipboardId);
+    const auto newId = scene->Entities().CopyFrom(entityClipboard, clipboardId);
     if (!newId)
       continue;
     if (originalParent && IsEntity(originalParent))
@@ -1410,9 +1406,9 @@ auto Editor::DisplayMenuBar() -> void {
   if (play)
     BeginPlay();
   else if (pause)
-    SetPlayState(state == PlayState::Paused ? PlayState::Playing : PlayState::Paused);
+    Internal(*this).SetPlayState(state == PlayState::Paused ? PlayState::Playing : PlayState::Paused);
   else if (stepped)
-    StepTick();
+    Internal(*this).StepTick();
   else if (stop)
     EndPlay();
   if (state != PlayState::Stopped) {
@@ -1456,7 +1452,7 @@ auto Editor::DisplayHelp() -> void {
 #else
   Row("Build", "Debug");
 #endif
-  Row("Graphics", std::string(ToString(GetDescription().api)).c_str());
+  Row("Graphics", std::string(ToString(Internal(*this).GetDescription().api)).c_str());
   if (field::Fold("Licence: MIT", false, false))
     Licence("Kuki", texts.back());
   ImGui::SeparatorText("Made with");
@@ -1504,12 +1500,12 @@ auto Editor::BeginPlay() -> void {
     playSnapshot.clear();
     return;
   }
-  SetPlayState(PlayState::Playing);
+  Internal(*this).SetPlayState(PlayState::Playing);
 }
 auto Editor::EndPlay() -> void {
   if (GetPlayState() == PlayState::Stopped)
     return;
-  SetPlayState(PlayState::Stopped);
+  Internal(*this).SetPlayState(PlayState::Stopped);
   if (!playSnapshot.empty())
     LoadScene(playSnapshot);
 }
@@ -1583,7 +1579,7 @@ auto Editor::DisplayProperties() -> void {
     EndWindow();
     return;
   }
-  auto componentTypes = GetEntityComponentTypes(context.selectedEntityId);
+  auto componentTypes = Internal(*this).GetEntityComponentTypes(context.selectedEntityId);
   for (auto i = 0; i < componentTypes.size(); ++i) {
     const auto componentType = componentTypes[i];
     if (IsHandleComponent(componentType))
@@ -1607,7 +1603,7 @@ auto Editor::DisplayProperties() -> void {
       ImGui::SetItemTooltip("The graphics backend that is running cannot act on this component.");
     }
     if (open) {
-      auto componentOpt = GetEntityComponent(context.selectedEntityId, componentType);
+      auto componentOpt = Internal(*this).GetEntityComponent(context.selectedEntityId, componentType);
       if (componentOpt.has_value())
         DisplayProperties(componentOpt.value());
     }
@@ -1640,7 +1636,7 @@ auto Editor::DisplayScene() -> void {
   ImGui::Begin("Scene", nullptr, SCENE_WINDOW_FLAGS);
   ImGui::PopStyleColor();
   ImGui::PopStyleVar(2);
-  SetViewportHovered(ImGui::IsWindowHovered());
+  Internal(*this).SetViewportHovered(ImGui::IsWindowHovered());
   if (IsBindingPressed(ShortcutName(ToggleFPS)))
     context.showFPS = !context.showFPS;
   auto renderingSystem = GetSystem<RenderingSystem>();
@@ -1656,11 +1652,11 @@ auto Editor::DisplayScene() -> void {
       ImGui::Image(static_cast<ImTextureID>(sceneTarget->GetTextureHandle()), ImVec2(res.first, res.second), flip ? FLIP_UV0 : UV0, flip ? FLIP_UV1 : UV1);
       const auto imageMin = ImGui::GetItemRectMin();
       const auto imageMax = ImGui::GetItemRectMax();
-      if (ImGui::IsItemHovered() && IsInputPressed(GLFW_MOUSE_BUTTON_LEFT) && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
+      if (ImGui::IsItemHovered() && IsMousePressed(MouseButton::Left) && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
         pickPressPos = GetMousePosition();
         trackingClick = true;
       }
-      if (trackingClick && IsInputReleased(GLFW_MOUSE_BUTTON_LEFT)) {
+      if (trackingClick && IsMouseReleased(MouseButton::Left)) {
         trackingClick = false;
         const auto releasePos = GetMousePosition();
         const auto dx = releasePos.x - pickPressPos.x;
@@ -1699,7 +1695,7 @@ auto Editor::DisplayScene() -> void {
   if (ImGui::BeginDragDropTarget()) {
     if (auto payload = ImGui::AcceptDragDropPayload("##SpawnPayload")) {
       const auto assetIdPtr = static_cast<const AssetID *>(payload->Data);
-      InstantiateAsset(*assetIdPtr);
+      Internal(*this).InstantiateAsset(*assetIdPtr, ModelRoot::Mask());
       ImGui::SetWindowFocus();
     }
     ImGui::EndDragDropTarget();
@@ -1780,7 +1776,7 @@ auto Editor::DisplaySettings() -> void {
   }
   ImGui::Separator();
   ImGui::TextUnformatted("Graphics");
-  const auto activeApi = GetDescription().api;
+  const auto activeApi = Internal(*this).GetDescription().api;
   if (field::BeginCombo("Rendering API", std::string(ToString(context.pendingApi)).c_str())) {
     for (const auto api : {RenderingAPI::DirectX, RenderingAPI::Vulkan}) {
       const auto available = IsAvailable(api);

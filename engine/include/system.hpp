@@ -1,7 +1,6 @@
 #pragma once
 #include <concepts.hpp>
 #include <kuki_engine_export.h>
-#include <scene.hpp>
 #include <typeindex>
 namespace kuki {
 class Application;
