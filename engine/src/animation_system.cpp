@@ -10,6 +10,7 @@
 #include <inverse_kinematics.hpp>
 #include <model_asset.hpp>
 #include <profiler.hpp>
+#include <rig.hpp>
 #include <skeleton.hpp>
 #include <string_view>
 #include <system.hpp>
@@ -292,23 +293,33 @@ auto StepAnimator(Animator &animator, const ModelAsset &model, const int tickRat
   else
     animator.finished = true;
 }
-auto PoseAnimator(Animator &animator, const ModelAsset &model, const int tickRate, const float alpha, const ModelLookup &lookup) -> void {
+auto PoseAnimator(Animator &animator, Rig &rig, const ModelAsset &model, const int tickRate, const float alpha, const ModelLookup &lookup) -> void {
   if (animator.state < 0 || animator.state >= static_cast<int>(animator.states.size()))
     return;
   auto &state = animator.states[animator.state];
+  // A state entered since the last frame fades out of the pose that frame showed, which is still
+  // the rig's. The first time there is none, and so nothing to fade out of.
+  if (rig.entries != animator.entries) {
+    rig.entries = animator.entries;
+    rig.fadeFrom = rig.pose;
+  }
   // One tick behind the newest and `alpha` of the way on from there: between the last two states
   // the rules have reached, which is the only stretch of time both ends of are known.
   const auto shown = std::max(.0f, static_cast<float>(animator.stateTicks) - 1.f + alpha);
-  std::vector<BonePose> pose(model.nodes.size());
+  // Written over in place, frame after frame, so that drawing a pose allocates nothing once the
+  // buffers have grown to the model's size.
+  auto &pose = rig.pose;
   if (!state.blend.empty()) {
     const auto bracket = BlendBracket(state, model, lookup);
     if (!bracket.low)
       return;
     auto phase = animator.previousPhase + alpha * (animator.phase - animator.previousPhase);
     phase -= std::floor(phase);
+    pose.assign(model.nodes.size(), BonePose{});
     SampleInto(pose, *bracket.low, *bracket.lowNodes, phase * bracket.low->duration, model, animator.rootNode);
     if (bracket.high != bracket.low && bracket.weight > .0f) {
-      std::vector<BonePose> other(model.nodes.size());
+      auto &other = rig.scratch;
+      other.assign(model.nodes.size(), BonePose{});
       SampleInto(other, *bracket.high, *bracket.highNodes, phase * bracket.high->duration, model, animator.rootNode);
       for (size_t node = 0; node < pose.size(); ++node) {
         // A bone only one of the two moves is blended with where the model has it, which is where
@@ -322,27 +333,28 @@ auto PoseAnimator(Animator &animator, const ModelAsset &model, const int tickRat
     if (!clip)
       return;
     const auto length = static_cast<float>(LengthTicks(state, *clip, tickRate));
+    pose.assign(model.nodes.size(), BonePose{});
     SampleInto(pose, *clip, state.nodes, ClipTime(state, *clip, tickRate, state.loop ? std::fmod(shown, length) : shown), model, animator.rootNode);
   }
   const auto progress = animator.fadeTicks > 0 ? std::clamp(shown / static_cast<float>(animator.fadeTicks), .0f, 1.f) : 1.f;
   const auto weight = progress * progress * (3.f - 2.f * progress);
   if (weight < 1.f)
-    for (size_t node = 0; node < pose.size() && node < animator.fadeFrom.size(); ++node) {
-      if (!animator.fadeFrom[node].set)
+    for (size_t node = 0; node < pose.size() && node < rig.fadeFrom.size(); ++node) {
+      if (!rig.fadeFrom[node].set)
         continue;
       // A bone the last clip moved and this one does not is faded back to where the model has it,
       // instead of being left wherever the last clip happened to leave it.
-      pose[node] = Blend(animator.fadeFrom[node], pose[node].set ? pose[node] : BindPose(model.nodes[node]), weight);
+      pose[node] = Blend(rig.fadeFrom[node], pose[node].set ? pose[node] : BindPose(model.nodes[node]), weight);
     }
-  animator.pose = std::move(pose);
 }
 AnimationSystem::AnimationSystem(Application &app)
   : System(std::in_place_type<AnimationSystem>, app) {}
 void AnimationSystem::Start() {}
 auto AnimationSystem::Tick() -> void {
   KUKI_PROFILE_SCOPE("Animation");
-  app.ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *skeleton) {
-    if (!animator || !skeleton || animator->states.empty())
+  app.ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
+    const auto *rig = app.GetRig(id);
+    if (!animator || !rig || animator->states.empty())
       return;
     const auto *model = app.GetAsset<ModelAsset>(animator->modelAssetId);
     if (!model)
@@ -354,10 +366,10 @@ auto AnimationSystem::Tick() -> void {
     // free to have scaled or stood on end -- a model in centimetres under a node that shrinks it
     // by a hundred is the usual case. Taken through that parent into the world, and back out
     // through the entity's own facing, it is the distance the entity should move along its own axes.
-    for (size_t node = 0; node < model->nodes.size() && node < skeleton->nodeEntities.size(); ++node) {
+    for (size_t node = 0; node < model->nodes.size() && node < rig->nodes.size(); ++node) {
       if (model->nodes[node].name != animator->rootNode)
         continue;
-      const auto *parent = app.GetEntityComponent<WorldMatrix>(app.GetEntityParent(skeleton->nodeEntities[node]));
+      const auto *parent = app.GetEntityComponent<WorldMatrix>(app.GetEntityParent(rig->nodes[node]));
       const auto *self = app.GetEntityComponent<WorldMatrix>(id);
       if (!parent || !self)
         break;
@@ -374,8 +386,9 @@ void AnimationSystem::Update(const float deltaTime) {
   const ModelLookup lookup = [this](const AssetID id) -> const ModelAsset * { return app.GetAsset<ModelAsset>(id); };
   preview.SetRate(app.TickRate());
   const auto previewTicks = stopped ? preview.Advance(deltaTime) : 0;
-  app.ForEachEntity<Animator, Skeleton>([&](const EntityID, Animator *animator, Skeleton *skeleton) {
-    if (!animator || !skeleton)
+  app.ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
+    auto *rig = app.GetRig(id);
+    if (!animator || !rig)
       return;
     auto modelAsset = app.GetAsset<ModelAsset>(animator->modelAssetId);
     if (!modelAsset)
@@ -387,18 +400,18 @@ void AnimationSystem::Update(const float deltaTime) {
       const auto previewing = stopped && animator->playing;
       for (auto tick = 0; previewing && tick < previewTicks; ++tick)
         StepAnimator(*animator, *modelAsset, app.TickRate(), lookup);
-      PoseAnimator(*animator, *modelAsset, app.TickRate(), stopped ? (previewing ? preview.Alpha() : 1.f) : app.TickAlpha(), lookup);
+      PoseAnimator(*animator, *rig, *modelAsset, app.TickRate(), stopped ? (previewing ? preview.Alpha() : 1.f) : app.TickAlpha(), lookup);
       if (animator->state >= 0 && animator->state < static_cast<int>(animator->states.size()))
         animator->clipIndex = animator->states[animator->state].clipIndex;
-      for (size_t node = 0; node < animator->pose.size() && node < skeleton->nodeEntities.size(); ++node) {
-        const auto &bone = animator->pose[node];
-        auto *transform = bone.set && skeleton->nodeEntities[node] ? app.GetEntityComponent<Transform>(skeleton->nodeEntities[node]) : nullptr;
+      for (size_t node = 0; node < rig->pose.size() && node < rig->nodes.size(); ++node) {
+        const auto &bone = rig->pose[node];
+        auto *transform = bone.set && rig->nodes[node] ? app.GetEntityComponent<Transform>(rig->nodes[node]) : nullptr;
         if (!transform)
           continue;
         transform->position = bone.position;
         transform->rotation = bone.rotation;
         transform->scale = bone.scale;
-        app.MarkTransformDirty(skeleton->nodeEntities[node]);
+        app.MarkTransformDirty(rig->nodes[node]);
       }
       return;
     }
@@ -419,9 +432,9 @@ void AnimationSystem::Update(const float deltaTime) {
       }
     }
     for (const auto &channel : clip.channels) {
-      if (channel.nodeIndex >= skeleton->nodeEntities.size())
+      if (channel.nodeIndex >= rig->nodes.size())
         continue;
-      const auto boneEntityId = skeleton->nodeEntities[channel.nodeIndex];
+      const auto boneEntityId = rig->nodes[channel.nodeIndex];
       if (!boneEntityId)
         continue;
       auto *transform = app.GetEntityComponent<Transform>(boneEntityId);
@@ -439,12 +452,13 @@ void AnimationSystem::Update(const float deltaTime) {
 }
 auto AnimationSystem::LateUpdate(const float) -> void {
   KUKI_PROFILE_SCOPE("Inverse Kinematics");
-  app.ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *skeleton) {
+  app.ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
+    auto *rig = app.GetRig(id);
     // Not only where there are goals: one removed since the last frame leaves bones to be put back.
-    if (!animator || !skeleton || (animator->ik.empty() && animator->ikHeld.empty()))
+    if (!animator || !rig || (animator->ik.empty() && rig->held.empty()))
       return;
     if (const auto *model = app.GetAsset<ModelAsset>(animator->modelAssetId); model)
-      ApplyInverseKinematics(app, id, *animator, *skeleton, *model);
+      ApplyInverseKinematics(app, id, *animator, *rig, *model);
   });
 }
 void AnimationSystem::Shutdown() {}

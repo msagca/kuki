@@ -1204,7 +1204,9 @@ template <>
 inline auto PropertyDisplayer::operator()<kuki::Skeleton>(kuki::Skeleton *skeleton) -> void {
   if (!skeleton)
     return;
-  auto nodeCount = static_cast<int>(skeleton->nodeEntities.size());
+  // The nodes are the rig's, which the scene keeps; the component holds only where.
+  const auto *rig = context.selectedEntities.empty() ? nullptr : app.GetRig(*context.selectedEntities.begin());
+  auto nodeCount = rig ? static_cast<int>(rig->nodes.size()) : 0;
   field::InputInt("Node Count", &nodeCount, 0, 0, ImGuiInputTextFlags_ReadOnly);
 }
 template <>

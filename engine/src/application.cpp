@@ -613,6 +613,10 @@ auto Application::MarkTransformDirty(const EntityID id) -> void {
   if (auto scene = GetScene(); scene)
     scene->MarkTransformDirty(id);
 }
+auto Application::GetRig(const EntityID id) -> Rig * {
+  auto scene = GetScene();
+  return scene ? scene->GetRig(id) : nullptr;
+}
 auto Application::RenameAsset(const AssetID id, std::string name) -> bool {
   return assetManager.Rename(id, std::move(name));
 }

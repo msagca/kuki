@@ -1022,8 +1022,9 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
   // on every frame and would forget the goals' turn anyway; one no clip moves would keep it, and
   // the next goal would start from there -- a hand reached out once, saved, and reaching from
   // wherever it was left ever after. Solved again on the next frame, before anything is drawn.
-  app.ForEachEntity<Animator>([&](const EntityID, Animator *animator) {
-    UndoInverseKinematics(app, *animator);
+  app.ForEachEntity<Animator>([&](const EntityID id, Animator *) {
+    if (auto *rig = app.GetRig(id); rig)
+      UndoInverseKinematics(app, *rig);
   });
   EntityOrder order;
   app.ForEachRootEntity([&](const EntityID id) {

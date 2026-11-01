@@ -68,6 +68,22 @@ auto Scene::CopyEntityComponents(const EntityManager &other, const EntityID from
 }
 auto Scene::DeleteEntities() -> void {
   entityManager.Clear();
+  rigs.Clear();
+}
+auto Scene::GetRig(const EntityID id) -> Rig * {
+  const auto *skeleton = GetEntityComponent<Skeleton>(id);
+  return skeleton ? rigs.Find(skeleton->rig, id) : nullptr;
+}
+auto Scene::GetRig(const EntityID id) const -> const Rig * {
+  const auto *skeleton = GetEntityComponent<Skeleton>(id);
+  return skeleton ? rigs.Find(skeleton->rig, id) : nullptr;
+}
+auto Scene::ClaimRig(const EntityID id) -> Rig * {
+  auto *skeleton = GetEntityComponent<Skeleton>(id);
+  return skeleton ? &rigs.Claim(skeleton->rig, id) : nullptr;
+}
+auto Scene::SweepRigs() -> void {
+  rigs.Sweep([this](const EntityID id) { return entityManager.IsEntity(id); });
 }
 auto Scene::DeleteEntity(const EntityID id) -> bool {
   return entityManager.Delete(id);

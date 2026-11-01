@@ -263,6 +263,8 @@ public:
   /// Call after writing to a transform's position, rotation or scale; the component carries no
   /// dirty bit of its own, so an unannounced change goes unapplied.
   auto MarkTransformDirty(const EntityID) -> void;
+  /// @brief The rig of a model's root in the active scene. See `Scene::GetRig`.
+  auto GetRig(const EntityID) -> Rig *;
   /// @brief The entity under a point given in window coordinates, or an invalid id for empty space.
   ///
   /// Reads the picking buffer the scene pass fills, which is why it is exact rather than a ray cast

@@ -371,13 +371,13 @@ auto DuelSystem::GetAnimator(const int player) -> Animator * {
 auto DuelSystem::FindBone(const int player, const std::string &name) -> EntityID {
   auto bone = EntityID::Invalid;
   ForEachFigure([&](const int seat, const EntityID id, Animator &animator, Transform &) {
-    const auto *skeleton = seat == player ? DuelWorld::Get<Skeleton>(app, id) : nullptr;
-    const auto *model = skeleton ? app.GetAsset<ModelAsset>(animator.modelAssetId) : nullptr;
+    const auto *rig = seat == player ? app.GetRig(id) : nullptr;
+    const auto *model = rig ? app.GetAsset<ModelAsset>(animator.modelAssetId) : nullptr;
     if (!model)
       return;
-    for (size_t node = 0; node < model->nodes.size() && node < skeleton->nodeEntities.size(); ++node)
+    for (size_t node = 0; node < model->nodes.size() && node < rig->nodes.size(); ++node)
       if (model->nodes[node].name == name)
-        bone = skeleton->nodeEntities[node];
+        bone = rig->nodes[node];
   });
   return bone;
 }
@@ -432,14 +432,14 @@ auto DuelSystem::SyncAnimators() -> void {
 }
 auto DuelSystem::CheckRootSpace() -> void {
   ForEachFigure([&](const int player, const EntityID id, Animator &animator, Transform &) {
-    const auto *skeleton = player == 0 ? DuelWorld::Get<Skeleton>(app, id) : nullptr;
-    const auto *model = skeleton ? app.GetAsset<ModelAsset>(animator.modelAssetId) : nullptr;
+    const auto *rig = player == 0 ? app.GetRig(id) : nullptr;
+    const auto *model = rig ? app.GetAsset<ModelAsset>(animator.modelAssetId) : nullptr;
     if (!model)
       return;
-    for (size_t node = 0; node < model->nodes.size() && node < skeleton->nodeEntities.size(); ++node) {
+    for (size_t node = 0; node < model->nodes.size() && node < rig->nodes.size(); ++node) {
       if (model->nodes[node].name != ROOT_NODE)
         continue;
-      const auto *parent = app.GetEntityComponent<WorldMatrix>(app.GetEntityParent(skeleton->nodeEntities[node]));
+      const auto *parent = app.GetEntityComponent<WorldMatrix>(app.GetEntityParent(rig->nodes[node]));
       const auto *self = app.GetEntityComponent<WorldMatrix>(id);
       if (!parent || !self)
         return;

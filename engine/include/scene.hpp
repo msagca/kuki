@@ -6,6 +6,8 @@
 #include <entity_manager.hpp>
 #include <id.hpp>
 #include <kuki_engine_export.h>
+#include <rig.hpp>
+#include <slot_store.hpp>
 #include <string>
 namespace kuki {
 class KUKI_ENGINE_API Scene {
@@ -57,6 +59,15 @@ public:
   /// dirty bit of its own, so an unannounced change goes unapplied.
   auto MarkTransformDirty(const EntityID) -> void;
   auto RenameEntity(const EntityID, std::string) -> bool;
+  /// @brief The rig of a model's root, through its `Skeleton`. Null for an entity with no skeleton,
+  /// or whose skeleton was never given one.
+  auto GetRig(const EntityID) -> Rig *;
+  auto GetRig(const EntityID) const -> const Rig *;
+  /// @brief The rig of a model's root, given one first if it has none. Null for an entity with no skeleton.
+  auto ClaimRig(const EntityID) -> Rig *;
+  /// @brief Empties the rigs of entities that have gone, for others to take. `RenderingSystem` does
+  /// it once a frame; nothing tells the scene when a model is removed.
+  auto SweepRigs() -> void;
   auto SetActiveCamera(const EntityID) -> bool;
   template <typename... T>
   auto EntityHasComponent(const EntityID) const -> bool;
@@ -73,6 +84,7 @@ public:
 private:
   EntityManager entityManager{};
   EntityID activeCameraId{};
+  SlotStore<Rig> rigs;
 };
 auto Scene::ForEachChildEntity(this auto &self, const EntityID id, auto &&func) -> void {
   self.entityManager.ForEachChild(id, std::forward<decltype(func)>(func));

@@ -8,7 +8,7 @@
 #include <glm/trigonometric.hpp>
 #include <inverse_kinematics.hpp>
 #include <model_asset.hpp>
-#include <skeleton.hpp>
+#include <rig.hpp>
 #include <transform.hpp>
 #include <vector>
 namespace kuki {
@@ -48,7 +48,7 @@ namespace {
     Application &app;
     const EntityID self;
     Animator &animator;
-    const Skeleton &skeleton;
+    Rig &rig;
     const ModelAsset &model;
     /// @brief Where an entity is in the world as its transforms stand now.
     ///
@@ -72,7 +72,7 @@ namespace {
       return -1;
     }
     auto EntityOf(const int node) const -> EntityID {
-      return node >= 0 && node < static_cast<int>(skeleton.nodeEntities.size()) ? skeleton.nodeEntities[node] : EntityID::Invalid;
+      return node >= 0 && node < static_cast<int>(rig.nodes.size()) ? rig.nodes[node] : EntityID::Invalid;
     }
     auto Point(const IKGoal &goal) const -> glm::vec3 {
       if (goal.target && app.GetEntityComponent<Transform>(goal.target))
@@ -84,8 +84,8 @@ namespace {
       auto *transform = app.GetEntityComponent<Transform>(bone);
       if (!transform)
         return;
-      if (std::ranges::none_of(animator.ikHeld, [&](const IKHeld &held) { return held.bone == bone; }))
-        animator.ikHeld.push_back({bone, transform->rotation, transform->rotation});
+      if (std::ranges::none_of(rig.held, [&](const IKHeld &held) { return held.bone == bone; }))
+        rig.held.push_back({bone, transform->rotation, transform->rotation});
       transform->rotation = rotation;
       app.MarkTransformDirty(bone);
     }
@@ -217,25 +217,25 @@ auto SolveAim(const glm::vec3 &direction, const glm::vec3 &wanted, const float l
     return full;
   return glm::slerp(IDENTITY, full, std::max(.0f, limit) / angle);
 }
-auto UndoInverseKinematics(Application &app, Animator &animator) -> void {
-  for (const auto &held : animator.ikHeld)
+auto UndoInverseKinematics(Application &app, Rig &rig) -> void {
+  for (const auto &held : rig.held)
     if (auto *transform = app.GetEntityComponent<Transform>(held.bone); transform && transform->rotation == held.solved) {
       transform->rotation = held.posed;
       app.MarkTransformDirty(held.bone);
     }
-  animator.ikHeld.clear();
+  rig.held.clear();
 }
-auto ApplyInverseKinematics(Application &app, const EntityID self, Animator &animator, const Skeleton &skeleton, const ModelAsset &model) -> void {
+auto ApplyInverseKinematics(Application &app, const EntityID self, Animator &animator, Rig &rig, const ModelAsset &model) -> void {
   // What the goals did last frame is undone first wherever nothing has undone it since. See
   // `IKHeld` for why this matters.
-  UndoInverseKinematics(app, animator);
+  UndoInverseKinematics(app, rig);
   // From the top of the skeleton down rather than in the order they are listed. A goal turns bones
   // and everything hanging from them, so one solved after another that turns a bone further down
   // its tree would carry that one's answer away with it: a head turned by the chest, after a hand
   // was put on a point, takes the hand off the point. Solved the other way round, each one sees
   // what those above it have done and finishes where it meant to. Goals at the same depth do not
   // reach one another, and keep the order they were listed in.
-  Solver solver{app, self, animator, skeleton, model};
+  Solver solver{app, self, animator, rig, model};
   std::vector<std::pair<int, const IKGoal *>> order;
   for (const auto &goal : animator.ik)
     order.emplace_back(solver.Depth(goal), &goal);
@@ -250,7 +250,7 @@ auto ApplyInverseKinematics(Application &app, const EntityID self, Animator &ani
     else
       solver.Reach(goal, weight);
   }
-  for (auto &held : animator.ikHeld)
+  for (auto &held : rig.held)
     if (const auto *transform = app.GetEntityComponent<Transform>(held.bone); transform)
       held.solved = transform->rotation;
 }

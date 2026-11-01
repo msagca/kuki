@@ -192,8 +192,9 @@ struct KUKI_ENGINE_API Animator {
   ///
   /// `position += rotation * rootDelta` moves the entity as the clip meant.
   glm::vec3 rootDelta{};
-  std::vector<BonePose> pose;
-  std::vector<BonePose> fadeFrom;
+  /// @brief How many times a state has been entered. Counted so that drawing can tell a state began
+  /// since the last frame, and fade into it from the pose that was showing (`Rig::entries`).
+  uint32_t entries{};
   int fadeTicks{};
   /// @brief How far through its cycle a blended state is, from 0 up to 1, and where it was a tick ago.
   float phase{};
@@ -201,7 +202,6 @@ struct KUKI_ENGINE_API Animator {
   /// @brief Points for bones to reach or to face, solved after the pose from the top of the
   /// skeleton down, so that no goal moves a bone another has already put in place. See `IKGoal`.
   std::vector<IKGoal> ik;
-  std::vector<IKHeld> ikHeld;
   /// @brief Enters a state by name. Answers false if there is none by that name.
   ///
   /// Asking for the state already playing does nothing unless told to restart it, so a game can

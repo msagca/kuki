@@ -219,13 +219,13 @@ auto AssetManager::ResolveModelInstance(Scene &scene, const EntityID root, const
   for (auto i = 0u; i < modelAsset.nodes.size(); ++i)
     if (auto it = nameToEntityId.find(modelAsset.nodes[i].name); it != nameToEntityId.end())
       nodeEntities[i] = it->second;
-  auto *skeleton = scene.GetEntityComponent<Skeleton>(root);
+  auto *rig = scene.ClaimRig(root);
   auto *animator = scene.GetEntityComponent<Animator>(root);
-  if (!skeleton || !animator) {
+  if (!rig || !animator) {
     spdlog::warn("[AssetManager] {} has clips, but was placed as an entity with no skeleton and animator to play them with -- place it as an archetype with `Animated`", scene.GetEntityName(root));
     return;
   }
-  skeleton->nodeEntities = std::move(nodeEntities);
+  rig->nodes = std::move(nodeEntities);
   animator->modelAssetId = modelAssetId;
   animator->clipIndex = 0;
   animator->time = 0.f;

@@ -3,6 +3,7 @@
 #include <asset.hpp>
 #include <gtest/gtest.h>
 #include <model_asset.hpp>
+#include <rig.hpp>
 #include <string>
 #include <vector>
 using namespace kuki;
@@ -116,53 +117,57 @@ TEST(Animator, ReportsTheRootsTravelWithoutGoingBackRoundALoop) {
   EXPECT_NEAR(travelled, 4.f, 1e-3f);
 }
 TEST(Animator, HoldsTheRootInPlaceInThePose) {
+  Rig rig;
   const auto model = MakeModel();
   auto animator = MakeAnimator();
   for (auto tick = 0; tick < 31; ++tick)
     StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  ASSERT_EQ(animator.pose.size(), 2u);
-  ASSERT_TRUE(animator.pose[0].set);
-  EXPECT_NEAR(animator.pose[0].position.z, .0f, 1e-4f);
-  EXPECT_NEAR(animator.pose[0].position.y, .5f, 1e-4f);
-  EXPECT_FALSE(animator.pose[1].set);
+  PoseAnimator(animator, rig, model, RATE, .0f);
+  ASSERT_EQ(rig.pose.size(), 2u);
+  ASSERT_TRUE(rig.pose[0].set);
+  EXPECT_NEAR(rig.pose[0].position.z, .0f, 1e-4f);
+  EXPECT_NEAR(rig.pose[0].position.y, .5f, 1e-4f);
+  EXPECT_FALSE(rig.pose[1].set);
 }
 TEST(Animator, DrawsBetweenTheLastTwoTicks) {
+  Rig rig;
   const auto model = MakeModel();
   auto animator = MakeAnimator();
   animator.Play("stay");
   for (auto tick = 0; tick < 31; ++tick)
     StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  EXPECT_NEAR(animator.pose[1].position.z, 2.f, 1e-3f);
-  PoseAnimator(animator, model, RATE, .5f);
-  EXPECT_NEAR(animator.pose[1].position.z, 2.f + 4.f / 120.f, 1e-3f);
+  PoseAnimator(animator, rig, model, RATE, .0f);
+  EXPECT_NEAR(rig.pose[1].position.z, 2.f, 1e-3f);
+  PoseAnimator(animator, rig, model, RATE, .5f);
+  EXPECT_NEAR(rig.pose[1].position.z, 2.f + 4.f / 120.f, 1e-3f);
 }
 TEST(Animator, FadesFromThePoseThatWasShowing) {
+  Rig rig;
   const auto model = MakeModel();
   auto animator = MakeAnimator();
   animator.Play("stay");
   for (auto tick = 0; tick < 60; ++tick)
     StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, 1.f);
-  EXPECT_NEAR(animator.pose[1].position.z, 4.f, 1e-3f);
+  PoseAnimator(animator, rig, model, RATE, 1.f);
+  EXPECT_NEAR(rig.pose[1].position.z, 4.f, 1e-3f);
   // Into a state whose clip does not move the arm at all: it has to come back to where the model
   // has it, over the fade, rather than stay out or snap.
   animator.Play("walk");
   EXPECT_EQ(animator.fadeTicks, 6);
   StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  EXPECT_NEAR(animator.pose[1].position.z, 4.f, 1e-3f);
+  PoseAnimator(animator, rig, model, RATE, .0f);
+  EXPECT_NEAR(rig.pose[1].position.z, 4.f, 1e-3f);
   for (auto tick = 0; tick < 3; ++tick)
     StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  EXPECT_NEAR(animator.pose[1].position.z, 2.f, 1e-3f);
+  PoseAnimator(animator, rig, model, RATE, .0f);
+  EXPECT_NEAR(rig.pose[1].position.z, 2.f, 1e-3f);
   for (auto tick = 0; tick < 3; ++tick)
     StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  EXPECT_FALSE(animator.pose[1].set);
+  PoseAnimator(animator, rig, model, RATE, .0f);
+  EXPECT_FALSE(rig.pose[1].set);
 }
 TEST(Animator, PlaysAClipFromAnotherModelByBoneName) {
+  Rig rig;
   const auto model = MakeModel();
   // A second file that holds a clip and a skeleton and no mesh: the same bones under the same
   // names, listed the other way round and with one this model does not have, and a clip called
@@ -193,10 +198,10 @@ TEST(Animator, PlaysAClipFromAnotherModelByBoneName) {
   EXPECT_EQ(animator.states[0].clipIndex, 0);
   EXPECT_EQ(animator.states[0].nodes, (std::vector<int>{1, -1, 0}));
   EXPECT_NEAR(travelled, 1.5f + 3.f / 60.f, 1e-3f);
-  PoseAnimator(animator, model, RATE, .0f, lookup);
-  ASSERT_EQ(animator.pose.size(), 2u);
-  EXPECT_NEAR(animator.pose[1].position.z, 3.f, 1e-3f);
-  EXPECT_NEAR(animator.pose[0].position.z, .0f, 1e-4f);
+  PoseAnimator(animator, rig, model, RATE, .0f, lookup);
+  ASSERT_EQ(rig.pose.size(), 2u);
+  EXPECT_NEAR(rig.pose[1].position.z, 3.f, 1e-3f);
+  EXPECT_NEAR(rig.pose[0].position.z, .0f, 1e-4f);
   // Without anything to find the other model by, the state has no clip and nothing moves.
   Animator stranded;
   stranded.states.push_back({.name = "wave", .source = source, .loop = true});
@@ -204,6 +209,7 @@ TEST(Animator, PlaysAClipFromAnotherModelByBoneName) {
   EXPECT_EQ(stranded.stateTicks, 0);
 }
 TEST(Animator, BlendsTwoGaitsInStepAndTravelsBetweenThem) {
+  Rig rig;
   const auto model = MakeModel();
   // A walk of one second that goes two units and a run of half a second that goes three, as two
   // clips of one model. Both swing the arm out and back once a cycle, to different heights.
@@ -250,6 +256,6 @@ TEST(Animator, BlendsTwoGaitsInStepAndTravelsBetweenThem) {
   for (auto tick = 0; tick < 11; ++tick)
     StepAnimator(animator, model, RATE, lookup);
   EXPECT_NEAR(animator.phase, 11.f / 45.f, 1e-4f);
-  PoseAnimator(animator, model, RATE, 1.f, lookup);
-  EXPECT_NEAR(animator.pose[1].position.y, 1.f + 2.f * (11.f / 45.f) * 2.f, 1e-3f);
+  PoseAnimator(animator, rig, model, RATE, 1.f, lookup);
+  EXPECT_NEAR(rig.pose[1].position.y, 1.f + 2.f * (11.f / 45.f) * 2.f, 1e-3f);
 }

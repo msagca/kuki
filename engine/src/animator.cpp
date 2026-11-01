@@ -46,8 +46,8 @@ auto Animator::Enter(const int index) -> void {
   finished = false;
   phase = .0f;
   previousPhase = .0f;
-  // Nothing has been drawn yet the first time, and there is nothing to fade out of.
-  fadeFrom = pose;
-  fadeTicks = pose.empty() ? 0 : states[index].fade;
+  // The pose to fade out of is taken when the next frame is drawn, which sees the count move on.
+  ++entries;
+  fadeTicks = states[index].fade;
 }
 } // namespace kuki
