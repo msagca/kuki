@@ -1,81 +1,14 @@
 #pragma once
+#include <cstdint>
+#include <fixed_string.hpp>
+#include <fixed_vector.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <id.hpp>
 #include <kuki_engine_export.h>
-#include <string>
 #include <string_view>
-#include <vector>
 namespace kuki {
-/// @brief Something a state says on one of its ticks, by name, for the game to act on.
-///
-/// The tick is counted from the state being entered, in the application's fixed ticks and not in
-/// the clip's own time, so it means the same moment on every machine however the clip is sampled.
-/// In a state that loops it is counted from the start of each time round.
-struct AnimationEvent {
-  int tick{};
-  std::string name;
-};
-/// @brief One of the clips a blended state mixes, and the value at which it is the whole of the mix.
-///
-/// A blend lays its clips out along a number -- how fast, usually -- and plays whichever two the
-/// state's value falls between, mixed by how far along it is from one to the other. So a walk at 1
-/// and a run at 4 make a jog at 2.5. `source` and `clip` name the clip as a state's own do.
-struct BlendClip {
-  AssetID source{};
-  std::string clip;
-  float at{};
-  int clipIndex{-1};
-  std::vector<int> nodes;
-};
-/// @brief One thing an animator can be doing: a clip, how it is played, and what follows it.
-struct AnimationState {
-  std::string name;
-  /// @brief The model the clip is in, where that is not the animator's own.
-  ///
-  /// A character and its clips are often separate files: one with the mesh and the skeleton, and
-  /// one a clip with only the skeleton in it. Named here, the clip is taken from that other model
-  /// and played on this one's skeleton, bone for bone by name -- the two files do not have to list
-  /// their nodes in the same order, only to call them the same things. A bone the clip names and
-  /// this skeleton lacks is skipped.
-  ///
-  /// Left empty, the clip is one of the animator's own model's.
-  AssetID source{};
-  /// @brief The clip's name in the model it comes from. A name as an exporter prefixes it --
-  /// `Armature|Punch` -- is matched by the part after the bar as well.
-  ///
-  /// Empty takes the model's first clip, which is the only way to ask for one when a tool has given
-  /// every clip it exports the same name. Then the file is what tells them apart.
-  std::string clip;
-  bool loop{};
-  float speed{1.f};
-  /// @brief How many ticks the pose takes to arrive from whatever was showing when this was entered.
-  int fade{6};
-  /// @brief The state entered when this one's clip runs out. Empty holds the last pose instead.
-  std::string next;
-  std::vector<AnimationEvent> events;
-  /// @brief Clips to mix in place of the one above, by `value`. Empty for a state that plays one clip.
-  ///
-  /// With any here the state is a blend: `source` and `clip` are not used, and what plays is the
-  /// two of these that `value` lies between. All of them are played at one shared pace -- a cycle
-  /// lasts as long as the mix of the two clips' own lengths -- so that the same point of the stride
-  /// is showing in both and nothing slides. That is only as good as the clips agree about where a
-  /// cycle starts: every one should be a single cycle beginning on the same foot.
-  ///
-  /// An event's tick in a blend is counted from entering the state and not round each cycle, since
-  /// a cycle is no fixed number of ticks when its length depends on the value.
-  std::vector<BlendClip> blend;
-  /// @brief Where along its blend this state is. The game sets it; nothing here changes it.
-  float value{};
-  /// @brief The clip's index in the model, looked up from the name the first time it is wanted.
-  int clipIndex{-1};
-  /// @brief For each of the clip's channels, the node of the animator's model it moves, or -1.
-  ///
-  /// Worked out with the index above and kept beside it. For a clip of the model's own this repeats
-  /// what each channel already says; for one from another model it is the matching by name, done
-  /// once rather than on every frame.
-  std::vector<int> nodes;
-};
+struct AnimatorController;
 /// @brief What an inverse kinematics goal does with the bones it is given.
 ///
 /// `Reach` takes three: a bone, its parent and its parent's parent -- a foot, a shin and a thigh, or
@@ -99,11 +32,11 @@ enum class IKKind {
 /// The point is `offset`, either in the world or, with a `target`, in that entity's own space so
 /// that it follows it. A target can be any entity at all, the bone of another skeleton included.
 struct IKGoal {
-  /// @brief What the game calls the goal by, to find it with `Animator::FindGoal`.
-  std::string name;
+  /// @brief What the game calls the goal by, to find it with `FindGoal`.
+  FixedString<32> name;
   IKKind kind{IKKind::Reach};
   /// @brief The node of the animator's model that is to arrive at the point or to face it.
-  std::string bone;
+  FixedString<64> bone;
   EntityID target{EntityID::Invalid};
   glm::vec3 offset{};
   /// @brief How much of the correction is made, from none of it to all. The way to bring one in.
@@ -146,48 +79,45 @@ struct BonePose {
   /// @brief Whether anything has been written here. A node no clip has touched has no pose to blend from.
   bool set{};
 };
+/// @brief How many goals one animator can have. A character reaching with both hands, planting both
+/// feet and watching something with its head is five.
+inline constexpr size_t MAX_IK_GOALS = 6;
 /// @brief Plays a model's clips on the skeleton beside it.
 ///
-/// Two ways, and which one depends on whether there are any states.
+/// Two ways, and which one depends on whether it has a `controller` with any states.
 ///
 /// With none it is what it always was: one clip by index, advanced by the frame's own length. That
 /// is the editor's preview, and what a model dropped into a scene does by default.
 ///
-/// With states it is a small machine stepped by the fixed tick. It is in one state at a time; a
-/// state plays a clip, fires its events on the ticks they name, and at the end of a clip that does
+/// With states it is a small machine stepped by the fixed tick (`StepAnimator`), whose states are
+/// the controller's and shared with every animator on the same moves. It is in one state at a time;
+/// a state plays a clip, fires its events on the ticks they name, and at the end of a clip that does
 /// not loop goes on to its `next`. Anything else that changes the state is the game calling `Play`.
-/// There are deliberately no conditions or parameters for transitions to be written in: what a
-/// character may do next, and when, is a rule of the game, and a rule kept in two places is kept
-/// in neither.
 ///
-/// What a tick decides and what a frame draws are kept apart. `state`, `stateTicks`, `events` and
+/// What a tick decides and what a frame draws are kept apart. `state`, `stateTicks`, `fired` and
 /// `rootDelta` are the first kind: whole numbers of ticks, the same on every machine. The pose is
-/// the second: sampled in `Update`, between two ticks, blended across a fade. Nothing a tick reads
-/// depends on it.
-struct KUKI_ENGINE_API Animator {
+/// the second: sampled in `Update`, between two ticks, blended across a fade, and kept in the
+/// model's `Rig` since it is as long as the model has nodes. Nothing a tick reads depends on it.
+///
+/// Plain data, trivially copyable: everything that varies in length is the controller's or the
+/// rig's, so the animator can be copied, snapshotted and rolled back as the bytes it is.
+struct Animator {
   AssetID modelAssetId{};
+  /// @brief The states it can be in (`AnimatorController`). None plays one clip by frame time.
+  AssetID controller{};
   int clipIndex{-1};
   float time{};
   bool playing{true};
   bool loop{true};
-  std::vector<AnimationState> states;
-  /// @brief The node whose travel across the ground is taken out of the pose and handed to the game.
-  ///
-  /// A walk made by an animator moves forward in the clip. Played as it is, the character strides
-  /// away from its entity and snaps back when the clip comes round. Named here, that node is held
-  /// where the clip starts it and its movement each tick is reported in `rootDelta`, for the game to
-  /// apply to the entity -- or not to, at a wall. Along the ground only: height stays in the pose,
-  /// where a jump is easier to author.
-  ///
-  /// Empty leaves the clip alone.
-  std::string rootNode;
   int state{-1};
   /// @brief How many ticks the current state has been stepped.
   int stateTicks{};
   /// @brief Whether a state with no `next` has reached the end of its clip.
   bool finished{};
-  /// @brief The names of the events the last tick fired. Replaced every tick.
-  std::vector<std::string> events;
+  /// @brief The state whose events the last tick fired, and which of them: bit `i` is its `i`th
+  /// event. Replaced every tick; asked of with `Fired`.
+  int firedState{-1};
+  uint32_t fired{};
   /// @brief How far the root node travelled during the last tick, in the entity's own axes.
   ///
   /// `position += rotation * rootDelta` moves the entity as the clip meant.
@@ -199,26 +129,28 @@ struct KUKI_ENGINE_API Animator {
   /// @brief How far through its cycle a blended state is, from 0 up to 1, and where it was a tick ago.
   float phase{};
   float previousPhase{};
+  /// @brief Where along its blend the current state is (`AnimationState::blend`). The game sets it.
+  float blend{};
   /// @brief Points for bones to reach or to face, solved after the pose from the top of the
   /// skeleton down, so that no goal moves a bone another has already put in place. See `IKGoal`.
-  std::vector<IKGoal> ik;
-  /// @brief Enters a state by name. Answers false if there is none by that name.
-  ///
-  /// Asking for the state already playing does nothing unless told to restart it, so a game can
-  /// say "walk" on every tick the key is down without the walk beginning again each time.
-  ///
-  /// The change is immediate as far as the tick is concerned -- `state` is the new one when this
-  /// returns -- and gradual as far as the eye is: the pose showing at this moment is kept and faded
-  /// out of. Kept rather than left playing, so that leaving a state part way through its own fade
-  /// starts from what is on screen and nothing jumps.
-  auto Play(const std::string_view, const bool = false) -> bool;
-  /// @brief Sets where along its blend a state is, by the state's name. False if there is none.
-  auto SetBlend(const std::string_view, const float) -> bool;
-  auto Fired(const std::string_view) const -> bool;
-  /// @brief The goal by that name, or null.
-  auto FindGoal(const std::string_view) -> IKGoal *;
-  auto FindState(const std::string_view) const -> int;
-  auto GetStateName() const -> std::string_view;
-  auto Enter(const int) -> void;
+  FixedVector<IKGoal, MAX_IK_GOALS> ik;
 };
+/// @brief Enters a state by its place in the controller, from its first tick.
+///
+/// The change is immediate as far as the tick is concerned -- `state` is the new one when this
+/// returns -- and gradual as far as the eye is: the pose showing at this moment is kept and faded
+/// out of. Kept rather than left playing, so that leaving a state part way through its own fade
+/// starts from what is on screen and nothing jumps.
+KUKI_ENGINE_API auto Enter(Animator &, const AnimatorController &, const int) -> void;
+/// @brief Enters a state by name. Answers false if there is none by that name.
+///
+/// Asking for the state already playing does nothing unless told to restart it, so a game can
+/// say "walk" on every tick the key is down without the walk beginning again each time.
+KUKI_ENGINE_API auto Play(Animator &, const AnimatorController &, const std::string_view, const bool restart = false) -> bool;
+/// @brief Whether the last tick fired an event by that name.
+KUKI_ENGINE_API auto Fired(const Animator &, const AnimatorController &, const std::string_view) -> bool;
+/// @brief The name of the state the animator is in, or empty.
+KUKI_ENGINE_API auto GetStateName(const Animator &, const AnimatorController &) -> std::string_view;
+/// @brief The goal by that name, or null.
+KUKI_ENGINE_API auto FindGoal(Animator &, const std::string_view) -> IKGoal *;
 } // namespace kuki

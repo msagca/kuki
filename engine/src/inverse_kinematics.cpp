@@ -2,6 +2,7 @@
 #include <animator.hpp>
 #include <application.hpp>
 #include <cmath>
+#include <fixed_vector.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -9,7 +10,9 @@
 #include <inverse_kinematics.hpp>
 #include <model_asset.hpp>
 #include <rig.hpp>
+#include <string_view>
 #include <transform.hpp>
+#include <utility>
 #include <vector>
 namespace kuki {
 namespace {
@@ -65,7 +68,7 @@ namespace {
       }
       return world;
     }
-    auto Node(const std::string &name) const -> int {
+    auto Node(const std::string_view name) const -> int {
       for (size_t node = 0; node < model.nodes.size(); ++node)
         if (model.nodes[node].name == name)
           return static_cast<int>(node);
@@ -236,10 +239,14 @@ auto ApplyInverseKinematics(Application &app, const EntityID self, Animator &ani
   // what those above it have done and finishes where it meant to. Goals at the same depth do not
   // reach one another, and keep the order they were listed in.
   Solver solver{app, self, animator, rig, model};
-  std::vector<std::pair<int, const IKGoal *>> order;
+  // Sorted in place, by insertion, which keeps goals at the same depth in their order and allocates
+  // nothing: there are never more than a handful.
+  FixedVector<std::pair<int, const IKGoal *>, MAX_IK_GOALS> order;
   for (const auto &goal : animator.ik)
-    order.emplace_back(solver.Depth(goal), &goal);
-  std::ranges::stable_sort(order, {}, &std::pair<int, const IKGoal *>::first);
+    order.push_back({solver.Depth(goal), &goal});
+  for (size_t i = 1; i < order.size(); ++i)
+    for (auto j = i; j > 0 && order[j - 1].first > order[j].first; --j)
+      std::swap(order[j - 1], order[j]);
   for (const auto &[depth, pointer] : order) {
     const auto &goal = *pointer;
     const auto weight = std::clamp(goal.weight, .0f, 1.f);

@@ -47,13 +47,15 @@
 ///
 /// At namespace scope, once, in a header every user of the type includes. `Index` counts from 0 and
 /// is the game's to hand out; two of a game's components given the same one are caught where its
-/// `World` is declared, which is a compile error naming both.
+/// `World` is declared, which is a compile error naming both. After the type's definition: a
+/// component must be trivially copyable, and that is checked here, where the type is complete.
 #define KUKI_COMPONENT(Type, Index) \
   template <> \
   struct kuki::ComponentTraits<Type> { \
     static constexpr ::kuki::ComponentId id = ::kuki::FIRST_GAME_COMPONENT + (Index); \
     static constexpr std::string_view name = #Type; \
     static_assert((Index) >= 0 && ::kuki::FIRST_GAME_COMPONENT + (Index) < ::kuki::MAX_COMPONENTS, "a game component's index is out of range"); \
+    static_assert(::kuki::IsPlainData<Type>(), "a component must be trivially copyable"); \
   }
 /// @brief Declares one of the engine's own components, ahead of its definition, with the id its
 /// `ComponentType` enumerator gives it. Inside `namespace kuki`, and for the engine alone: a game's

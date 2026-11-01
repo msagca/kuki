@@ -7,13 +7,6 @@
 #include <ostream>
 #include <transform.hpp>
 namespace kuki {
-auto Transform::operator=(const Transform &other) -> Transform & {
-  position = other.position;
-  rotation = other.rotation;
-  scale = other.scale;
-  local = other.local;
-  return *this;
-}
 auto Transform::Update() -> void {
   const auto I = glm::mat4(1.f);
   const auto T = glm::translate(I, position);

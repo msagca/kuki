@@ -7,6 +7,7 @@
 #include <macros.hpp>
 #include <string_view>
 #include <type_list.hpp>
+#include <type_traits>
 namespace kuki {
 /// @brief A component's bit in an archetype's signature.
 using ComponentId = uint8_t;
@@ -31,6 +32,17 @@ concept IsComponent = requires {
   { ComponentTraits<T>::id } -> std::convertible_to<ComponentId>;
   { ComponentTraits<T>::name } -> std::convertible_to<std::string_view>;
 };
+/// @brief Whether a type is fit to be a component: plain data, copied as the bytes it is.
+///
+/// A table moves its rows when an entity goes, a rollback snapshots them, and a copy of an entity
+/// is a copy of its row; none of it is right for a type that owns memory elsewhere. What varies in
+/// length belongs to an asset or a `SlotStore`, and the component holds an id or a handle to it.
+/// A function rather than a variable so that the message names the type it was asked about.
+template <typename T>
+consteval auto IsPlainData() -> bool {
+  static_assert(std::is_trivially_copyable_v<T>, "a component must be trivially copyable -- keep what varies in length in an asset or a SlotStore and hold a handle to it");
+  return std::is_trivially_copyable_v<T>;
+}
 template <IsComponent T>
 inline constexpr ComponentId ComponentIdOf = ComponentTraits<T>::id;
 /// @brief The signature bits of a set of components, as a number the compiler can compare.

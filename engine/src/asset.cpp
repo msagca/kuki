@@ -1,3 +1,4 @@
+#include <animator_controller.hpp>
 #include <asset.hpp>
 #include <asset_type.hpp>
 #include <cstdint>
@@ -16,19 +17,22 @@ const std::unordered_map<AssetType, std::string> Asset::typeToName = {
   {AssetType::Mesh, "Mesh"},
   {AssetType::Model, "Model"},
   {AssetType::Shader, "Shader"},
-  {AssetType::Texture, "Texture"}};
+  {AssetType::Texture, "Texture"},
+  {AssetType::Controller, "Controller"}};
 const std::unordered_map<AssetType, std::type_index> Asset::typeToTypeIndex = {
   {AssetType::Material, typeid(MaterialAsset)},
   {AssetType::Mesh, typeid(MeshAsset)},
   {AssetType::Model, typeid(ModelAsset)},
   {AssetType::Shader, typeid(ShaderAsset)},
-  {AssetType::Texture, typeid(TextureAsset)}};
+  {AssetType::Texture, typeid(TextureAsset)},
+  {AssetType::Controller, typeid(AnimatorController)}};
 const std::unordered_map<std::type_index, AssetType> Asset::typeIndexToType = {
   {typeid(MaterialAsset), AssetType::Material},
   {typeid(MeshAsset), AssetType::Mesh},
   {typeid(ModelAsset), AssetType::Model},
   {typeid(ShaderAsset), AssetType::Shader},
-  {typeid(TextureAsset), AssetType::Texture}};
+  {typeid(TextureAsset), AssetType::Texture},
+  {typeid(AnimatorController), AssetType::Controller}};
 auto Asset::GetType() const -> AssetType {
   return GetType(typeIndex);
 }

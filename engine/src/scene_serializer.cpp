@@ -1,4 +1,5 @@
 #include <animator.hpp>
+#include <animator_controller.hpp>
 #include <application.hpp>
 #include <atmosphere_sky.hpp>
 #include <bounding_box.hpp>
@@ -400,32 +401,69 @@ namespace {
   using EntityOrder = std::unordered_map<EntityID, int>;
   auto ToJson(const Animator &a, const EntityOrder &order) -> json {
     json j{{"modelAssetId", a.modelAssetId}, {"clipIndex", a.clipIndex}, {"time", a.time}, {"playing", a.playing}, {"loop", a.loop}};
-    // What the states are, and not which one is playing or how far in: a scene is saved as it was
-    // set up, and one that came back half way through a punch would be a surprise to load.
-    if (!a.rootNode.empty())
-      j["rootNode"] = a.rootNode;
-    if (!a.states.empty()) {
-      auto states = json::array();
-      for (const auto &state : a.states) {
-        auto events = json::array();
-        for (const auto &event : state.events)
-          events.push_back({{"tick", event.tick}, {"name", event.name}});
-        auto blend = json::array();
-        for (const auto &entry : state.blend)
-          blend.push_back({{"source", entry.source}, {"clip", entry.clip}, {"at", entry.at}});
-        states.push_back({{"name", state.name}, {"blend", std::move(blend)}, {"source", state.source}, {"clip", state.clip}, {"loop", state.loop}, {"speed", state.speed}, {"fade", state.fade}, {"next", state.next}, {"events", std::move(events)}});
-      }
-      j["states"] = std::move(states);
-    }
+    // Which states it has, and not which one is playing or how far in: a scene is saved as it was
+    // set up, and one that came back half way through a punch would be a surprise to load. The
+    // states themselves are the controller's, written once for every animator that shares them.
+    if (a.controller)
+      j["controller"] = a.controller;
     if (!a.ik.empty()) {
       auto goals = json::array();
       for (const auto &goal : a.ik) {
         const auto target = order.find(goal.target);
-        goals.push_back({{"name", goal.name}, {"kind", static_cast<int>(goal.kind)}, {"bone", goal.bone}, {"target", target != order.end() ? target->second : -1}, {"offset", {goal.offset.x, goal.offset.y, goal.offset.z}}, {"weight", goal.weight}, {"bend", {goal.bend.x, goal.bend.y, goal.bend.z}}, {"holdRotation", goal.holdRotation}, {"axis", {goal.axis.x, goal.axis.y, goal.axis.z}}, {"chain", goal.chain}, {"limit", goal.limit}});
+        goals.push_back({{"name", std::string(goal.name.View())}, {"kind", static_cast<int>(goal.kind)}, {"bone", std::string(goal.bone.View())}, {"target", target != order.end() ? target->second : -1}, {"offset", {goal.offset.x, goal.offset.y, goal.offset.z}}, {"weight", goal.weight}, {"bend", {goal.bend.x, goal.bend.y, goal.bend.z}}, {"holdRotation", goal.holdRotation}, {"axis", {goal.axis.x, goal.axis.y, goal.axis.z}}, {"chain", goal.chain}, {"limit", goal.limit}});
       }
       j["ik"] = std::move(goals);
     }
     return j;
+  }
+  auto ToJson(const AnimatorController &c, const std::string &name) -> json {
+    json j{{"id", c.id}, {"name", name}};
+    if (!c.rootNode.empty())
+      j["rootNode"] = c.rootNode;
+    auto states = json::array();
+    for (const auto &state : c.states) {
+      auto events = json::array();
+      for (const auto &event : state.events)
+        events.push_back({{"tick", event.tick}, {"name", event.name}});
+      auto blend = json::array();
+      for (const auto &entry : state.blend)
+        blend.push_back({{"source", entry.source}, {"clip", entry.clip}, {"at", entry.at}});
+      states.push_back({{"name", state.name}, {"blend", std::move(blend)}, {"source", state.source}, {"clip", state.clip}, {"loop", state.loop}, {"speed", state.speed}, {"fade", state.fade}, {"next", state.next}, {"events", std::move(events)}});
+    }
+    j["states"] = std::move(states);
+    return j;
+  }
+  /// @brief Reads a controller's root and states, from a controller as written now or from an
+  /// animator as it was written before controllers, which held both under the same keys.
+  auto ReadController(const json &j, AnimatorController &c, const std::unordered_map<AssetID, AssetID> &remap) -> void {
+    if (j.contains("rootNode"))
+      j.at("rootNode").get_to(c.rootNode);
+    if (!j.contains("states") || !j.at("states").is_array())
+      return;
+    for (const auto &entry : j.at("states")) {
+      AnimationState state;
+      state.name = entry.value("name", std::string{});
+      state.clip = entry.value("clip", std::string{});
+      if (entry.contains("source"))
+        state.source = Remap(remap, entry.at("source").get<AssetID>());
+      if (entry.contains("blend") && entry.at("blend").is_array())
+        for (const auto &mixed : entry.at("blend")) {
+          BlendClip clip;
+          if (mixed.contains("source"))
+            clip.source = Remap(remap, mixed.at("source").get<AssetID>());
+          clip.clip = mixed.value("clip", std::string{});
+          clip.at = mixed.value("at", .0f);
+          state.blend.push_back(std::move(clip));
+        }
+      state.loop = entry.value("loop", false);
+      state.speed = entry.value("speed", 1.f);
+      state.fade = entry.value("fade", state.fade);
+      state.next = entry.value("next", std::string{});
+      if (entry.contains("events") && entry.at("events").is_array())
+        for (const auto &event : entry.at("events"))
+          state.events.push_back({event.value("tick", 0), event.value("name", std::string{})});
+      c.states.push_back(std::move(state));
+    }
   }
   auto FromJson(const json &j, Animator &a) -> void {
     if (j.contains("modelAssetId"))
@@ -438,33 +476,8 @@ namespace {
       j.at("playing").get_to(a.playing);
     if (j.contains("loop"))
       j.at("loop").get_to(a.loop);
-    if (j.contains("rootNode"))
-      j.at("rootNode").get_to(a.rootNode);
-    if (j.contains("states") && j.at("states").is_array())
-      for (const auto &entry : j.at("states")) {
-        AnimationState state;
-        state.name = entry.value("name", std::string{});
-        state.clip = entry.value("clip", std::string{});
-        if (entry.contains("source"))
-          entry.at("source").get_to(state.source);
-        if (entry.contains("blend") && entry.at("blend").is_array())
-          for (const auto &mixed : entry.at("blend")) {
-            BlendClip clip;
-            if (mixed.contains("source"))
-              mixed.at("source").get_to(clip.source);
-            clip.clip = mixed.value("clip", std::string{});
-            clip.at = mixed.value("at", .0f);
-            state.blend.push_back(std::move(clip));
-          }
-        state.loop = entry.value("loop", false);
-        state.speed = entry.value("speed", 1.f);
-        state.fade = entry.value("fade", state.fade);
-        state.next = entry.value("next", std::string{});
-        if (entry.contains("events") && entry.at("events").is_array())
-          for (const auto &event : entry.at("events"))
-            state.events.push_back({event.value("tick", 0), event.value("name", std::string{})});
-        a.states.push_back(std::move(state));
-      }
+    if (j.contains("controller"))
+      j.at("controller").get_to(a.controller);
     // The target is read as the place in the file it was saved as, and left that way until every
     // entity has been made and there is an id to give it. See `ResolveTargets`.
     if (j.contains("ik") && j.at("ik").is_array())
@@ -485,7 +498,8 @@ namespace {
         Vector("axis", goal.axis);
         goal.chain = entry.value("chain", goal.chain);
         goal.limit = entry.value("limit", goal.limit);
-        a.ik.push_back(std::move(goal));
+        if (!a.ik.push_back(goal))
+          spdlog::warn("[SceneSerializer] An animator has more than {} inverse kinematics goals; the rest are left out", MAX_IK_GOALS);
       }
   }
   auto ToJson(const VolumetricClouds &c) -> json {
@@ -777,13 +791,6 @@ namespace {
     auto operator()(Animator *a) const -> json {
       if (a->modelAssetId)
         referenced.insert(a->modelAssetId);
-      for (const auto &state : a->states) {
-        if (state.source)
-          referenced.insert(state.source);
-        for (const auto &entry : state.blend)
-          if (entry.source)
-            referenced.insert(entry.source);
-      }
       return ToJson(*a, order);
     }
     auto operator()(MaterialHandle *h) const -> json {
@@ -968,12 +975,13 @@ namespace {
             break;
           FromJson(componentJson, *a);
           a->modelAssetId = Remap(remap, a->modelAssetId);
-          for (auto &state : a->states) {
-            if (state.source)
-              state.source = Remap(remap, state.source);
-            for (auto &entry : state.blend)
-              if (entry.source)
-                entry.source = Remap(remap, entry.source);
+          // A scene from before controllers kept the states in the animator. They become a
+          // controller of this animator's own, which the scene names when it is next saved.
+          if (componentJson.contains("states") && !a->controller) {
+            auto controller = std::make_unique<AnimatorController>(AssetID::Generate());
+            ReadController(componentJson, *controller, remap);
+            a->controller = controller->id;
+            app.AddAsset(std::move(controller), name + " States");
           }
           break;
         }
@@ -1034,8 +1042,27 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
   app.ForEachRootEntity([&](const EntityID id) {
     entities.push_back(SerializeEntity(app, id, referenced, order, names));
   });
+  // Each controller once, however many animators share it, with the models its clips come from
+  // named in the manifest so that they are loaded before it is played.
+  auto controllers = json::array();
+  std::unordered_set<AssetID> written;
+  app.ForEachEntity<Animator>([&](const EntityID, Animator *animator) {
+    const auto *controller = animator->controller ? app.GetAsset<AnimatorController>(animator->controller) : nullptr;
+    if (!controller || !written.insert(controller->id).second)
+      return;
+    for (const auto &state : controller->states) {
+      if (state.source)
+        referenced.insert(state.source);
+      for (const auto &entry : state.blend)
+        if (entry.source)
+          referenced.insert(entry.source);
+    }
+    controllers.push_back(ToJson(*controller, app.GetAssetName(controller->id)));
+  });
   json sceneJson;
   sceneJson["name"] = scenePath.stem().string();
+  if (!controllers.empty())
+    sceneJson["controllers"] = std::move(controllers);
   sceneJson["entities"] = std::move(entities);
   std::ofstream sceneFile(scenePath);
   if (!sceneFile) {
@@ -1120,6 +1147,17 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) 
     }
   } else
     spdlog::warn("[SceneSerializer] No asset manifest found: {}", manifestPath.string());
+  // Kept under the ids they were saved with, so the animators that name them find them. One the
+  // application already has -- a game's own, made in code -- is left as the game made it.
+  if (sceneJson.contains("controllers") && sceneJson.at("controllers").is_array())
+    for (const auto &entry : sceneJson.at("controllers")) {
+      const auto id = entry.contains("id") ? entry.at("id").get<AssetID>() : AssetID{};
+      if (!id || app.GetAsset(id))
+        continue;
+      auto controller = std::make_unique<AnimatorController>(id);
+      ReadController(entry, *controller, remap);
+      app.AddAsset(std::move(controller), entry.value("name", std::string{}));
+    }
   app.DeleteEntities();
   std::vector<EntityID> created;
   const auto names = GetComponentNames(app);

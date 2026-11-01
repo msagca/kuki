@@ -1,5 +1,6 @@
 #pragma once
 #include <animator.hpp>
+#include <animator_controller.hpp>
 #include <array>
 #include <cstdint>
 #include <glm/ext/matrix_float3x3.hpp>
@@ -64,6 +65,10 @@ struct Impact {
 auto ScriptedButtons(const int, const int64_t) -> kuki::ButtonMask;
 /// @brief The states a figure moves between, in the order of `State`.
 auto DuelStates() -> std::vector<kuki::AnimationState>;
+/// @brief The node of a fighter whose travel along the floor is the figure's to take.
+inline constexpr std::string_view ROOT_NODE = "Root";
+/// @brief `DuelStates` with the root, as one controller: what the rules step and the scene draws.
+auto DuelController(const kuki::AssetID = kuki::AssetID::Invalid) -> kuki::AnimatorController;
 /// @brief How a root node's travel is turned into distance along the floor.
 ///
 /// A clip moves the root in the space of whatever the root hangs from, which an importer is free to
@@ -110,6 +115,8 @@ private:
   int tickRate;
   glm::mat3 rootSpace;
   std::array<Fighter, PLAYERS> fighters;
+  /// The states both figures move between. Their own, not the scene's: the rules run without one.
+  kuki::AnimatorController controller;
   std::array<kuki::Animator, PLAYERS> animators;
   /// One for each player, local or not: they keep nothing but the masks, so each is a function of
   /// what its player pressed.

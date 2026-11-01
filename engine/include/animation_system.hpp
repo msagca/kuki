@@ -6,6 +6,7 @@
 #include <tick_clock.hpp>
 namespace kuki {
 struct Animator;
+struct AnimatorController;
 struct ModelAsset;
 struct Rig;
 /// @brief How the animation code asks for a model it was not handed: by id, null if there is none.
@@ -21,9 +22,9 @@ using ModelLookup = std::function<const ModelAsset *(const AssetID)>;
 ///
 /// The last argument finds a model by id, for a state whose clip is in another model than the
 /// animator's own. Left out, such a state has no clip and holds still.
-KUKI_ENGINE_API auto StepAnimator(Animator &, const ModelAsset &, const int, const ModelLookup & = {}) -> void;
+KUKI_ENGINE_API auto StepAnimator(Animator &, const AnimatorController &, const ModelAsset &, const int, const ModelLookup & = {}) -> void;
 /// @brief Fills a rig's pose for drawing, `alpha` of the way from the last tick to the next.
-KUKI_ENGINE_API auto PoseAnimator(Animator &, Rig &, const ModelAsset &, const int, const float, const ModelLookup & = {}) -> void;
+KUKI_ENGINE_API auto PoseAnimator(Animator &, Rig &, const AnimatorController &, const ModelAsset &, const int, const float, const ModelLookup & = {}) -> void;
 class KUKI_ENGINE_API AnimationSystem final : public System {
 public:
   AnimationSystem(Application &);

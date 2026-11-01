@@ -37,9 +37,9 @@ auto Relative(const ButtonMask mask, const float facing) -> ButtonMask {
   const auto right = mask >> Right & 1u;
   return (mask & ~(1u << Left | 1u << Right)) | left << Right | right << Left;
 }
-auto Go(Animator &animator, const int state, const bool restart = false) -> void {
+auto Go(const AnimatorController &controller, Animator &animator, const int state, const bool restart = false) -> void {
   if (restart || animator.state != state)
-    animator.Enter(state);
+    Enter(animator, controller, state);
 }
 } // namespace
 auto ScriptedButtons(const int player, const int64_t tick) -> ButtonMask {
@@ -68,6 +68,12 @@ auto DuelStates() -> std::vector<AnimationState> {
     {.name = "hit", .clip = "Hit", .fade = 2, .next = "idle"},
   };
 }
+auto DuelController(const AssetID id) -> AnimatorController {
+  AnimatorController controller(id);
+  controller.states = DuelStates();
+  controller.rootNode = ROOT_NODE;
+  return controller;
+}
 auto RootSpace(const ModelAsset &model, const std::string_view rootNode) -> glm::mat3 {
   auto root = -1;
   for (size_t index = 0; index < model.nodes.size(); ++index)
@@ -95,16 +101,14 @@ auto RootSpace(const ModelAsset &model, const std::string_view rootNode) -> glm:
   return scale * glm::mat3(between);
 }
 DuelSim::DuelSim(const ModelAsset &model, const int tickRate, const glm::mat3 &rootSpace)
-  : model(model), tickRate(tickRate), rootSpace(rootSpace) {
+  : model(model), tickRate(tickRate), rootSpace(rootSpace), controller(DuelController()) {
   const std::vector<std::string> names{"left", "right", "punch", "kick"};
   for (auto player = 0; player < PLAYERS; ++player) {
     auto &recognizer = gestures[player];
     punch = recognizer.Add("punch", "punch", names);
     kick = recognizer.Add("kick", "kick", names);
     lunge = recognizer.Add("lunge", "right right", names, 12);
-    animators[player].states = DuelStates();
-    animators[player].rootNode = "Root";
-    animators[player].Enter(Idle);
+    Enter(animators[player], controller, Idle);
   }
   fighters[0] = {.position = -1.6f, .previous = -1.6f, .facing = 1.f};
   fighters[1] = {.position = 1.6f, .previous = 1.6f, .facing = -1.f};
@@ -144,7 +148,7 @@ auto DuelSim::Advance(const int64_t, const std::span<const ButtonMask> buttons, 
   // What the animations did this tick first, since that has already happened: travel, and any blow
   // that landed. Then what each figure starts next, which the animator takes up on the tick after.
   for (auto &animator : animators) {
-    StepAnimator(animator, model, tickRate);
+    StepAnimator(animator, controller, model, tickRate);
     animator.rootDelta = rootSpace * animator.rootDelta;
   }
   std::array<ButtonMask, PLAYERS> held{};
@@ -174,13 +178,13 @@ auto DuelSim::Advance(const int64_t, const std::span<const ButtonMask> buttons, 
       continue;
     const auto direction = static_cast<int>(held[player] >> Right & 1u) - static_cast<int>(held[player] >> Left & 1u);
     if (wantsLunge[player])
-      Go(animator, Lunge);
+      Go(controller, animator, Lunge);
     else if (wantsKick[player])
-      Go(animator, Kicking);
+      Go(controller, animator, Kicking);
     else if (wantsPunch[player])
-      Go(animator, Punching);
+      Go(controller, animator, Punching);
     else
-      Go(animator, direction > 0 ? Walk : direction < 0 ? Back : Idle);
+      Go(controller, animator, direction > 0 ? Walk : direction < 0 ? Back : Idle);
   }
   ++tick;
 }
@@ -191,7 +195,7 @@ auto DuelSim::Step(const int player) -> void {
   // The walk is the only clip there is for stepping, and it only goes forwards. Stepping back is
   // the same stride with the travel turned round.
   fighter.position += fighter.facing * animator.rootDelta.z * (animator.state == Back ? -1.f : 1.f);
-  if (!animator.Fired("hit"))
+  if (!Fired(animator, controller, "hit"))
     return;
   if (animator.state == Kicking)
     Strike(player, KICK_REACH, KICK_HEIGHT);
@@ -219,7 +223,7 @@ auto DuelSim::Strike(const int player, const float reach, const float height) ->
   if (!landed)
     return;
   ++fighter.hits;
-  Go(animators[1 - player], Hit, true);
+  Go(controller, animators[1 - player], Hit, true);
 }
 auto DuelSim::Save(std::vector<std::byte> &out) const -> void {
   StateWriter writer(out);

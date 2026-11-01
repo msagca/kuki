@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <animator.hpp>
+#include <animator_controller.hpp>
 #include <application.hpp>
 #include <asset.hpp>
 #include <asset_manager.hpp>
@@ -59,7 +60,8 @@ const std::unordered_map<std::type_index, AssetType> AssetManager::typeIndexToAs
   {typeid(MeshAsset), AssetType::Mesh},
   {typeid(ModelAsset), AssetType::Model},
   {typeid(ShaderAsset), AssetType::Shader},
-  {typeid(TextureAsset), AssetType::Texture}};
+  {typeid(TextureAsset), AssetType::Texture},
+  {typeid(AnimatorController), AssetType::Controller}};
 AssetManager::AssetManager(Application &app)
   : Manager(app) {
   prefabManager.Declare<MaterialPrefab>();
@@ -192,7 +194,7 @@ auto AssetManager::Instantiate(const AssetID assetId, Scene &scene, const Compon
     if (const auto meshId = scene.CreateEntity(MeshObject::Mask(), pool, name + " mesh"); meshId) {
       scene.CopyEntityComponents(prefabManager, prefabId, meshId);
       // Where the root is, rather than where the top node was relative to its parent: the root has
-      // already taken that, and the mesh hangs from the root.
+      // already taken that, and the mesh hangs from the root, which the next line makes its parent.
       *scene.GetEntityComponent<Transform>(meshId) = Transform{};
       scene.AddChildEntity(entityId, meshId);
     }
