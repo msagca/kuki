@@ -1,5 +1,6 @@
 #include <animation_system.hpp>
 #include <animator.hpp>
+#include <animator_controller.hpp>
 #include <animator_state.hpp>
 #include <asset.hpp>
 #include <gesture.hpp>
@@ -80,16 +81,17 @@ TEST(AnimatorTick, PutBackItStepsOnExactlyAsItDidBefore) {
   punch.duration = 15.f;
   punch.ticksPerSecond = 30.f;
   model.animations = {walk, punch};
+  AnimatorController controller;
+  controller.rootNode = "Root";
+  controller.states.push_back({.name = "walk", .clip = "Walk", .loop = true, .events = {{15, "step"}}});
+  controller.states.push_back({.name = "punch", .clip = "Punch", .next = "walk", .events = {{5, "hit"}}});
   Animator animator;
-  animator.rootNode = "Root";
-  animator.states.push_back({.name = "walk", .clip = "Walk", .loop = true, .events = {{15, "step"}}});
-  animator.states.push_back({.name = "punch", .clip = "Punch", .next = "walk", .events = {{5, "hit"}}});
   const auto run = [&](const int from, const int to) {
     std::vector<std::byte> trace;
     for (auto tick = from; tick < to; ++tick) {
       if (tick % 70 == 30)
-        animator.Play("punch", true);
-      StepAnimator(animator, model, 60);
+        Play(animator, controller, "punch", true);
+      StepAnimator(animator, controller, model, 60);
       StateWriter writer(trace);
       SaveAnimatorTick(writer, animator);
     }

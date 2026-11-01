@@ -7,7 +7,7 @@ namespace kuki {
 class Application;
 struct Animator;
 struct ModelAsset;
-struct Skeleton;
+struct Rig;
 /// @brief The two turns that put the end of a two-bone limb on a point, both in world space.
 ///
 /// `mid` is made first, at the middle joint, with the limb where it was; `root` after it, at the
@@ -38,11 +38,11 @@ KUKI_ENGINE_API auto SolveAim(const glm::vec3 &direction, const glm::vec3 &wante
 /// Works on the bones' entities as the frame has left them, going up through their parents for
 /// where they are in the world rather than trusting the world matrices, which were last brought up
 /// to date before this frame's pose was written.
-KUKI_ENGINE_API auto ApplyInverseKinematics(Application &, const EntityID, Animator &, const Skeleton &, const ModelAsset &) -> void;
+KUKI_ENGINE_API auto ApplyInverseKinematics(Application &, const EntityID, Animator &, Rig &, const ModelAsset &) -> void;
 /// @brief Puts back what the goals turned, wherever nothing else has moved it since.
 ///
 /// The bones stay as the pose has them until the goals are next solved. For what must not see the
 /// goals' work as if it were the pose: a scene being saved, which would otherwise keep the turn
 /// of every bone no clip moves, and load it back as where that bone rests.
-KUKI_ENGINE_API auto UndoInverseKinematics(Application &, Animator &) -> void;
+KUKI_ENGINE_API auto UndoInverseKinematics(Application &, Rig &) -> void;
 } // namespace kuki

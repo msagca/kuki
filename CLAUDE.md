@@ -55,13 +55,13 @@ commit. Where the repo falls short of one, the gap is named.
 
 - **Data first.** A component is plain, trivially copyable data -- no virtuals, owning pointers or
   containers -- so a table moves, snapshots and rolls back its rows as bytes. What varies in length
-  is an asset's or a system-owned store's, reached by a handle. Gap: `Animator` and `Skeleton`, the
-  only exemptions; once they are reworked a `static_assert` refuses every component that is not
-  trivially copyable.
+  is an asset's or a `SlotStore`'s, reached by an id or a handle; a short name or list with a
+  ceiling is a `FixedString`/`FixedVector`. `IsPlainData` refuses any other component at compile
+  time, the engine's in `component.hpp` and a game's in `KUKI_COMPONENT`.
 - **Behaviour is a system's.** Whatever runs -- every tick, every frame, on input -- is a `System`,
   working over tables through queries. A component has no method that changes it; a function that
   only computes from a component's data is a free function. An `Application` subclass only builds
-  its scene in `Start`. Gap: `Camera`'s and `Light`'s methods, and `Animator`'s until it is reworked.
+  its scene in `Start`. Gap: `Camera`'s and `Light`'s methods.
 - **Poll state, do not subscribe to events.** A system reads state on its own schedule: flags,
   counters, masks, a table's `version`, a queue it drains itself. What happened is recorded as data
   for whoever cares to read it (`ButtonMask`, an animator's fired events), not announced to
@@ -103,7 +103,7 @@ commit. Where the repo falls short of one, the gap is named.
   (`tools/make_fighter.py`, `tools/make_stages.py`), not modelled by hand -- a change is a readable
   diff, variety is a seed, and LFS holds only what a script wrote.
 - **No heap allocation on the hot path** (`Tick`, `Update`, `LateUpdate`) once a scene runs: buffers
-  are sized at start and reused. Gap: `Animator`'s event names, made every tick.
+  are sized at start and reused.
 
 ## Architecture
 
@@ -135,12 +135,16 @@ in a small notation (`"left right punch"`, `"guard*30 -guard"`); it keeps nothin
 fed a peer's it reproduces the peer's gestures. `RegisterInputAction` is unrelated: untimed typed
 sequences for editor shortcuts.
 
-An `Animator` without `states` plays one clip by frame time (the editor's preview). With states it
-is stepped by the tick (`StepAnimator`): a state plays a clip, fires named events, and goes to its
-`next` when a clip that does not loop ends; the game changes state with `Play`. `rootNode`'s travel
-is taken out of the pose and reported as `rootDelta`. The pose is sampled in `Update` and
-crossfaded. List `AnimationSystem` before a game's system for it to see a tick's events that tick.
-IK goals (`IKGoal`: `Reach`, `Aim`; `inverse_kinematics.hpp`) are solved in
+An `Animator` is plain data. Its states are an `AnimatorController` asset it names by id, shared by
+every animator on the same moves; without one it plays one clip by frame time (the editor's
+preview). With states it is stepped by the tick (`StepAnimator`): a state plays a clip, fires
+events (`fired`, a mask over the state's events, read with `Fired`), and goes to its `next` when a
+clip that does not loop ends; the game changes state with `Play(animator, controller, name)`. The
+controller's `rootNode` travel is taken out of the pose and reported as `rootDelta`. The pose is
+sampled in `Update` into the model's `Rig` -- its nodes' entities, pose, fade and IK hold, kept by
+the scene in a `SlotStore` (`Scene::GetRig`, swept each frame) -- and crossfaded. List
+`AnimationSystem` before a game's system for it to see a tick's events that tick. IK goals (up to
+`MAX_IK_GOALS`; `Reach`, `Aim`; `inverse_kinematics.hpp`) are solved in
 `AnimationSystem::LateUpdate`, top of the skeleton down, from the restored pose (`IKHeld`), and are
 never saved into it; a goal's `target` is saved as an entity index and resolved after load.
 
@@ -253,8 +257,9 @@ polygon `i` is cell `i`). `Flock` is boids; `MeshBuilder` puts flat-shaded meshe
 
 Assets are keyed by `AssetID` (a 128-bit UUID). One with no file goes in through
 `Application::AddAsset` with a `MakeBuiltInAssetID`, so saved scenes still resolve it. A scene is
-`<name>.json` plus a `<name>.assets.json` manifest; materials are `.mat` JSON; the editor's scenes
-are in `editor/src/scene/`. An entity is saved with its `"archetype"` and loaded as it if the
+`<name>.json` plus a `<name>.assets.json` manifest; materials are `.mat` JSON; animator controllers
+are written once into the scene's `"controllers"` (an animator from before them, holding its own
+states, gets a controller of its own on load); the editor's scenes are in `editor/src/scene/`. An entity is saved with its `"archetype"` and loaded as it if the
 application declares it (older files are guessed from their components); one undeclared is reported
 and skipped.
 

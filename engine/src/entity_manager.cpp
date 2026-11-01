@@ -98,10 +98,13 @@ auto EntityManager::CopyComponents(const EntityManager &other, const EntityID fr
     if (const auto *sourceColumn = sourceTable->GetColumn(static_cast<ComponentId>(id)))
       if (auto *destinationColumn = destinationTable->GetColumn(static_cast<ComponentId>(id)))
         destinationColumn->CopyRow(*sourceColumn, source->second.row, destination->second.row);
-  // A copied transform still names the parent it had over there, which is not an entity here. The
-  // hierarchy is put back by whoever is copying it, with `AddChild`.
-  if (auto *transform = GetComponent<Transform>(to); transform && !idToParent.contains(to))
-    transform->parent = EntityID::Invalid;
+  // A copied transform still names the parent it had over there, which is not an entity here. It
+  // takes the one it has here, or none; the hierarchy is put back by whoever is copying it, with
+  // `AddChild`.
+  if (auto *transform = GetComponent<Transform>(to); transform) {
+    const auto parent = idToParent.find(to);
+    transform->parent = parent != idToParent.end() ? parent->second : EntityID::Invalid;
+  }
   return sourceTable->signature & ~destinationTable->signature;
 }
 auto EntityManager::Create(const ComponentMask &mask, std::string name) -> EntityID {

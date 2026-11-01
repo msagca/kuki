@@ -19,13 +19,11 @@ struct KUKI_ENGINE_API Transform {
   glm::vec3 scale{1.0f};
   EntityID parent{EntityID::Invalid};
   glm::mat4 local{1.0f};
-  /// @brief Copies the transform's local state.
-  ///
-  /// Deliberately does not copy the parent ID, so assigning to a transform keeps it attached to its current parent.
-  ///
-  /// Does not mark anything dirty, because a transform no longer carries that bit: `EntityManager`
-  /// keeps it, packed, beside the update order.
-  Transform &operator=(const Transform &);
+  // No copy assignment of its own. It used to copy everything but `parent`, so that assigning a
+  // transform kept it where it hung -- which made the component not trivially copyable, and made
+  // a table that moved a row into a deleted entity's place leave the old entity's parent behind.
+  // `EntityManager` keeps the hierarchy (`idToParent`) and sets `parent` from it wherever a row
+  // comes from elsewhere; assigning a whole transform now copies the whole transform.
   /// @brief Works `local` out from the position, rotation and scale.
   void Update();
   /// @brief Takes a new parent, or none, whose world matrix is `parent`.

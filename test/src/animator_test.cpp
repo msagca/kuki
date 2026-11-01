@@ -1,8 +1,10 @@
 #include <animation_system.hpp>
 #include <animator.hpp>
+#include <animator_controller.hpp>
 #include <asset.hpp>
 #include <gtest/gtest.h>
 #include <model_asset.hpp>
+#include <rig.hpp>
 #include <string>
 #include <vector>
 using namespace kuki;
@@ -33,47 +35,50 @@ auto MakeModel() -> ModelAsset {
   model.animations = {walk, punch};
   return model;
 }
-auto MakeAnimator() -> Animator {
-  Animator animator;
-  animator.rootNode = "Root";
-  animator.states.push_back({.name = "walk", .clip = "Walk", .loop = true, .events = {{15, "step"}}});
-  animator.states.push_back({.name = "punch", .clip = "Punch", .fade = 4, .next = "walk", .events = {{0, "start"}, {20, "hit"}}});
-  animator.states.push_back({.name = "stay", .clip = "Punch"});
-  return animator;
+auto MakeController() -> AnimatorController {
+  AnimatorController controller;
+  controller.rootNode = "Root";
+  controller.states.push_back({.name = "walk", .clip = "Walk", .loop = true, .events = {{15, "step"}}});
+  controller.states.push_back({.name = "punch", .clip = "Punch", .fade = 4, .next = "walk", .events = {{0, "start"}, {20, "hit"}}});
+  controller.states.push_back({.name = "stay", .clip = "Punch"});
+  return controller;
 }
 } // namespace
 TEST(Animator, EntersItsFirstStateAndFindsAPrefixedClip) {
   const auto model = MakeModel();
-  auto animator = MakeAnimator();
-  StepAnimator(animator, model, RATE);
-  EXPECT_EQ(animator.GetStateName(), "walk");
-  EXPECT_EQ(animator.states[0].clipIndex, 0);
+  const auto controller = MakeController();
+  Animator animator;
+  StepAnimator(animator, controller, model, RATE);
+  EXPECT_EQ(GetStateName(animator, controller), "walk");
+  EXPECT_EQ(controller.Bind(model)[0].clip.clipIndex, 0);
   EXPECT_EQ(animator.stateTicks, 1);
 }
 TEST(Animator, FiresAnEventOnItsTickEachTimeRoundALoop) {
   const auto model = MakeModel();
-  auto animator = MakeAnimator();
+  const auto controller = MakeController();
+  Animator animator;
   std::vector<int> fired;
   for (auto tick = 0; tick < 180; ++tick) {
-    StepAnimator(animator, model, RATE);
-    if (animator.Fired("step"))
+    StepAnimator(animator, controller, model, RATE);
+    if (Fired(animator, controller, "step"))
       fired.push_back(tick);
   }
   EXPECT_EQ(fired, (std::vector<int>{15, 75, 135}));
 }
 TEST(Animator, GoesOnToTheNextStateWhenAClipEnds) {
   const auto model = MakeModel();
-  auto animator = MakeAnimator();
-  StepAnimator(animator, model, RATE);
-  ASSERT_TRUE(animator.Play("punch"));
+  const auto controller = MakeController();
+  Animator animator;
+  StepAnimator(animator, controller, model, RATE);
+  ASSERT_TRUE(Play(animator, controller, "punch"));
   auto start = -1, hit = -1, back = -1;
   for (auto tick = 0; tick < 70 && back < 0; ++tick) {
-    StepAnimator(animator, model, RATE);
-    if (animator.Fired("start"))
+    StepAnimator(animator, controller, model, RATE);
+    if (Fired(animator, controller, "start"))
       start = tick;
-    if (animator.Fired("hit"))
+    if (Fired(animator, controller, "hit"))
       hit = tick;
-    if (animator.GetStateName() == "walk")
+    if (GetStateName(animator, controller) == "walk")
       back = tick;
   }
   EXPECT_EQ(start, 0);
@@ -83,32 +88,35 @@ TEST(Animator, GoesOnToTheNextStateWhenAClipEnds) {
 }
 TEST(Animator, HoldsAtTheEndOfAStateWithNothingAfterIt) {
   const auto model = MakeModel();
-  auto animator = MakeAnimator();
-  animator.Play("stay");
+  const auto controller = MakeController();
+  Animator animator;
+  Play(animator, controller, "stay");
   for (auto tick = 0; tick < 59; ++tick)
-    StepAnimator(animator, model, RATE);
+    StepAnimator(animator, controller, model, RATE);
   EXPECT_FALSE(animator.finished);
-  StepAnimator(animator, model, RATE);
+  StepAnimator(animator, controller, model, RATE);
   EXPECT_TRUE(animator.finished);
-  EXPECT_EQ(animator.GetStateName(), "stay");
+  EXPECT_EQ(GetStateName(animator, controller), "stay");
 }
 TEST(Animator, RestartsOnlyWhenAsked) {
   const auto model = MakeModel();
-  auto animator = MakeAnimator();
+  const auto controller = MakeController();
+  Animator animator;
   for (auto tick = 0; tick < 10; ++tick)
-    StepAnimator(animator, model, RATE);
-  EXPECT_TRUE(animator.Play("walk"));
+    StepAnimator(animator, controller, model, RATE);
+  EXPECT_TRUE(Play(animator, controller, "walk"));
   EXPECT_EQ(animator.stateTicks, 10);
-  EXPECT_TRUE(animator.Play("walk", true));
+  EXPECT_TRUE(Play(animator, controller, "walk", true));
   EXPECT_EQ(animator.stateTicks, 0);
-  EXPECT_FALSE(animator.Play("nothing"));
+  EXPECT_FALSE(Play(animator, controller, "nothing"));
 }
 TEST(Animator, ReportsTheRootsTravelWithoutGoingBackRoundALoop) {
   const auto model = MakeModel();
-  auto animator = MakeAnimator();
+  const auto controller = MakeController();
+  Animator animator;
   auto travelled = .0f;
   for (auto tick = 0; tick < 120; ++tick) {
-    StepAnimator(animator, model, RATE);
+    StepAnimator(animator, controller, model, RATE);
     EXPECT_GE(animator.rootDelta.z, .0f);
     EXPECT_EQ(animator.rootDelta.y, .0f);
     travelled += animator.rootDelta.z;
@@ -116,53 +124,60 @@ TEST(Animator, ReportsTheRootsTravelWithoutGoingBackRoundALoop) {
   EXPECT_NEAR(travelled, 4.f, 1e-3f);
 }
 TEST(Animator, HoldsTheRootInPlaceInThePose) {
+  Rig rig;
   const auto model = MakeModel();
-  auto animator = MakeAnimator();
+  const auto controller = MakeController();
+  Animator animator;
   for (auto tick = 0; tick < 31; ++tick)
-    StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  ASSERT_EQ(animator.pose.size(), 2u);
-  ASSERT_TRUE(animator.pose[0].set);
-  EXPECT_NEAR(animator.pose[0].position.z, .0f, 1e-4f);
-  EXPECT_NEAR(animator.pose[0].position.y, .5f, 1e-4f);
-  EXPECT_FALSE(animator.pose[1].set);
+    StepAnimator(animator, controller, model, RATE);
+  PoseAnimator(animator, rig, controller, model, RATE, .0f);
+  ASSERT_EQ(rig.pose.size(), 2u);
+  ASSERT_TRUE(rig.pose[0].set);
+  EXPECT_NEAR(rig.pose[0].position.z, .0f, 1e-4f);
+  EXPECT_NEAR(rig.pose[0].position.y, .5f, 1e-4f);
+  EXPECT_FALSE(rig.pose[1].set);
 }
 TEST(Animator, DrawsBetweenTheLastTwoTicks) {
+  Rig rig;
   const auto model = MakeModel();
-  auto animator = MakeAnimator();
-  animator.Play("stay");
+  const auto controller = MakeController();
+  Animator animator;
+  Play(animator, controller, "stay");
   for (auto tick = 0; tick < 31; ++tick)
-    StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  EXPECT_NEAR(animator.pose[1].position.z, 2.f, 1e-3f);
-  PoseAnimator(animator, model, RATE, .5f);
-  EXPECT_NEAR(animator.pose[1].position.z, 2.f + 4.f / 120.f, 1e-3f);
+    StepAnimator(animator, controller, model, RATE);
+  PoseAnimator(animator, rig, controller, model, RATE, .0f);
+  EXPECT_NEAR(rig.pose[1].position.z, 2.f, 1e-3f);
+  PoseAnimator(animator, rig, controller, model, RATE, .5f);
+  EXPECT_NEAR(rig.pose[1].position.z, 2.f + 4.f / 120.f, 1e-3f);
 }
 TEST(Animator, FadesFromThePoseThatWasShowing) {
+  Rig rig;
   const auto model = MakeModel();
-  auto animator = MakeAnimator();
-  animator.Play("stay");
+  const auto controller = MakeController();
+  Animator animator;
+  Play(animator, controller, "stay");
   for (auto tick = 0; tick < 60; ++tick)
-    StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, 1.f);
-  EXPECT_NEAR(animator.pose[1].position.z, 4.f, 1e-3f);
+    StepAnimator(animator, controller, model, RATE);
+  PoseAnimator(animator, rig, controller, model, RATE, 1.f);
+  EXPECT_NEAR(rig.pose[1].position.z, 4.f, 1e-3f);
   // Into a state whose clip does not move the arm at all: it has to come back to where the model
   // has it, over the fade, rather than stay out or snap.
-  animator.Play("walk");
+  Play(animator, controller, "walk");
   EXPECT_EQ(animator.fadeTicks, 6);
-  StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  EXPECT_NEAR(animator.pose[1].position.z, 4.f, 1e-3f);
+  StepAnimator(animator, controller, model, RATE);
+  PoseAnimator(animator, rig, controller, model, RATE, .0f);
+  EXPECT_NEAR(rig.pose[1].position.z, 4.f, 1e-3f);
   for (auto tick = 0; tick < 3; ++tick)
-    StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  EXPECT_NEAR(animator.pose[1].position.z, 2.f, 1e-3f);
+    StepAnimator(animator, controller, model, RATE);
+  PoseAnimator(animator, rig, controller, model, RATE, .0f);
+  EXPECT_NEAR(rig.pose[1].position.z, 2.f, 1e-3f);
   for (auto tick = 0; tick < 3; ++tick)
-    StepAnimator(animator, model, RATE);
-  PoseAnimator(animator, model, RATE, .0f);
-  EXPECT_FALSE(animator.pose[1].set);
+    StepAnimator(animator, controller, model, RATE);
+  PoseAnimator(animator, rig, controller, model, RATE, .0f);
+  EXPECT_FALSE(rig.pose[1].set);
 }
 TEST(Animator, PlaysAClipFromAnotherModelByBoneName) {
+  Rig rig;
   const auto model = MakeModel();
   // A second file that holds a clip and a skeleton and no mesh: the same bones under the same
   // names, listed the other way round and with one this model does not have, and a clip called
@@ -182,28 +197,31 @@ TEST(Animator, PlaysAClipFromAnotherModelByBoneName) {
   clips.animations = {wave};
   const auto source = MakeBuiltInAssetID("test/clips");
   const ModelLookup lookup = [&](const AssetID id) { return id == source ? &clips : nullptr; };
+  AnimatorController controller;
+  controller.rootNode = "Root";
+  controller.states.push_back({.name = "wave", .source = source, .loop = true});
   Animator animator;
-  animator.rootNode = "Root";
-  animator.states.push_back({.name = "wave", .source = source, .loop = true});
   auto travelled = .0f;
   for (auto tick = 0; tick < 31; ++tick) {
-    StepAnimator(animator, model, RATE, lookup);
+    StepAnimator(animator, controller, model, RATE, lookup);
     travelled += animator.rootDelta.z;
   }
-  EXPECT_EQ(animator.states[0].clipIndex, 0);
-  EXPECT_EQ(animator.states[0].nodes, (std::vector<int>{1, -1, 0}));
+  EXPECT_EQ(controller.Bind(model)[0].clip.clipIndex, 0);
+  EXPECT_EQ(controller.Bind(model)[0].clip.nodes, (std::vector<int>{1, -1, 0}));
   EXPECT_NEAR(travelled, 1.5f + 3.f / 60.f, 1e-3f);
-  PoseAnimator(animator, model, RATE, .0f, lookup);
-  ASSERT_EQ(animator.pose.size(), 2u);
-  EXPECT_NEAR(animator.pose[1].position.z, 3.f, 1e-3f);
-  EXPECT_NEAR(animator.pose[0].position.z, .0f, 1e-4f);
+  PoseAnimator(animator, rig, controller, model, RATE, .0f, lookup);
+  ASSERT_EQ(rig.pose.size(), 2u);
+  EXPECT_NEAR(rig.pose[1].position.z, 3.f, 1e-3f);
+  EXPECT_NEAR(rig.pose[0].position.z, .0f, 1e-4f);
   // Without anything to find the other model by, the state has no clip and nothing moves.
+  AnimatorController strandedController;
+  strandedController.states.push_back({.name = "wave", .source = source, .loop = true});
   Animator stranded;
-  stranded.states.push_back({.name = "wave", .source = source, .loop = true});
-  StepAnimator(stranded, model, RATE);
+  StepAnimator(stranded, strandedController, model, RATE);
   EXPECT_EQ(stranded.stateTicks, 0);
 }
 TEST(Animator, BlendsTwoGaitsInStepAndTravelsBetweenThem) {
+  Rig rig;
   const auto model = MakeModel();
   // A walk of one second that goes two units and a run of half a second that goes three, as two
   // clips of one model. Both swing the arm out and back once a cycle, to different heights.
@@ -224,13 +242,14 @@ TEST(Animator, BlendsTwoGaitsInStepAndTravelsBetweenThem) {
   const auto source = MakeBuiltInAssetID("test/gaits");
   const ModelLookup lookup = [&](const AssetID id) { return id == source ? &gaits : nullptr; };
   const auto Travel = [&](const float value, const int ticks) {
+    AnimatorController controller;
+    controller.rootNode = "Root";
+    controller.states.push_back({.name = "move", .loop = true, .blend = {{.source = source, .clip = "Walk", .at = 1.f}, {.source = source, .clip = "Run", .at = 3.f}}});
     Animator animator;
-    animator.rootNode = "Root";
-    animator.states.push_back({.name = "move", .loop = true, .blend = {{.source = source, .clip = "Walk", .at = 1.f}, {.source = source, .clip = "Run", .at = 3.f}}});
-    animator.SetBlend("move", value);
+    animator.blend = value;
     auto travelled = .0f;
     for (auto tick = 0; tick < ticks; ++tick) {
-      StepAnimator(animator, model, RATE, lookup);
+      StepAnimator(animator, controller, model, RATE, lookup);
       travelled += animator.rootDelta.z;
     }
     return travelled;
@@ -244,12 +263,13 @@ TEST(Animator, BlendsTwoGaitsInStepAndTravelsBetweenThem) {
   EXPECT_NEAR(Travel(2.f, 90), 5.f, 2e-2f);
   // A quarter of the way through the mixed cycle the arm is half way up in both, so half way up
   // their mix: both clips are at the same point of the stride, whatever their own lengths.
+  AnimatorController controller;
+  controller.states.push_back({.name = "move", .loop = true, .blend = {{.source = source, .clip = "Walk", .at = 1.f}, {.source = source, .clip = "Run", .at = 3.f}}});
   Animator animator;
-  animator.states.push_back({.name = "move", .loop = true, .blend = {{.source = source, .clip = "Walk", .at = 1.f}, {.source = source, .clip = "Run", .at = 3.f}}});
-  animator.SetBlend("move", 2.f);
+  animator.blend = 2.f;
   for (auto tick = 0; tick < 11; ++tick)
-    StepAnimator(animator, model, RATE, lookup);
+    StepAnimator(animator, controller, model, RATE, lookup);
   EXPECT_NEAR(animator.phase, 11.f / 45.f, 1e-4f);
-  PoseAnimator(animator, model, RATE, 1.f, lookup);
-  EXPECT_NEAR(animator.pose[1].position.y, 1.f + 2.f * (11.f / 45.f) * 2.f, 1e-3f);
+  PoseAnimator(animator, rig, controller, model, RATE, 1.f, lookup);
+  EXPECT_NEAR(rig.pose[1].position.y, 1.f + 2.f * (11.f / 45.f) * 2.f, 1e-3f);
 }

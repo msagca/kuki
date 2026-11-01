@@ -1,6 +1,7 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <animator.hpp>
+#include <animator_controller.hpp>
 #include <application.hpp>
 #include <array>
 #include <camera.hpp>
@@ -45,9 +46,9 @@ constexpr float LINEUP_EASE = 7.f;
 /// quickly that comes and goes -- a share of the way each second.
 constexpr float WATCH_LIMIT = 60.f;
 constexpr float WATCH_EASE = 8.f;
-/// The node of the fighter's skeleton whose travel along the floor is the figure's to take: the
-/// clips carry it forwards, and the rules apply that to where the figure stands instead.
-constexpr const char *ROOT_NODE = "Root";
+using duel::ROOT_NODE;
+/// The id of the one controller every figure in the scene shares: the moves are the same for all.
+const auto CONTROLLER = MakeBuiltInAssetID("Duel States");
 /// How the camera follows: how far back it stands with the figures together and how much further
 /// for every unit between them, the nearest and furthest it will go, and how quickly it gets there
 /// -- a share of the way each second.
@@ -178,11 +179,11 @@ auto DuelSystem::ApplyWatching() -> void {
     auto *animator = GetAnimator(index);
     if (!animator)
       continue;
-    const auto has = animator->FindGoal("watch") != nullptr;
+    const auto has = FindGoal(*animator, "watch") != nullptr;
     if (watching && !has)
       animator->ik.push_back({.name = "watch", .kind = IKKind::Aim, .bone = "Head", .target = FindBone(1 - index, "Head"), .chain = 2, .limit = WATCH_LIMIT});
     else if (!watching && has)
-      std::erase_if(animator->ik, [](const IKGoal &goal) { return goal.name == "watch"; });
+      animator->ik.erase_if([](const IKGoal &goal) { return goal.name == "watch"; });
   }
 }
 auto DuelSystem::Shutdown() -> void {
@@ -202,9 +203,11 @@ auto DuelSystem::Spawn(const int index, const size_t character, const bool alter
   }
   // The scene's animator is stepped by the animation system and then made to agree with the rules
   // each tick. It needs the same states to be able to, and the same root, so that the pose does not
-  // carry the travel the rules have already taken.
-  animator->states = duel::DuelStates();
-  animator->rootNode = ROOT_NODE;
+  // carry the travel the rules have already taken: the same controller as the rules make for
+  // themselves, made once and shared by every figure.
+  if (!app.GetAsset(CONTROLLER))
+    app.AddAsset(std::make_unique<AnimatorController>(duel::DuelController(CONTROLLER)), "Duel States");
+  animator->controller = CONTROLLER;
   return entity;
 }
 auto DuelSystem::ClearFigures() -> void {
@@ -371,13 +374,13 @@ auto DuelSystem::GetAnimator(const int player) -> Animator * {
 auto DuelSystem::FindBone(const int player, const std::string &name) -> EntityID {
   auto bone = EntityID::Invalid;
   ForEachFigure([&](const int seat, const EntityID id, Animator &animator, Transform &) {
-    const auto *skeleton = seat == player ? DuelWorld::Get<Skeleton>(app, id) : nullptr;
-    const auto *model = skeleton ? app.GetAsset<ModelAsset>(animator.modelAssetId) : nullptr;
+    const auto *rig = seat == player ? app.GetRig(id) : nullptr;
+    const auto *model = rig ? app.GetAsset<ModelAsset>(animator.modelAssetId) : nullptr;
     if (!model)
       return;
-    for (size_t node = 0; node < model->nodes.size() && node < skeleton->nodeEntities.size(); ++node)
+    for (size_t node = 0; node < model->nodes.size() && node < rig->nodes.size(); ++node)
       if (model->nodes[node].name == name)
-        bone = skeleton->nodeEntities[node];
+        bone = rig->nodes[node];
   });
   return bone;
 }
@@ -400,7 +403,8 @@ auto DuelSystem::Tick() -> void {
     }
     // The one chosen throws a punch as it steps forward, which is how a fighter says it is ready.
     if (auto *animator = moved && picks[0] < lineup.size() ? DuelWorld::Get<Animator>(app, lineup[picks[0]]) : nullptr)
-      animator->Enter(duel::Punching);
+      if (const auto *controller = app.GetAsset<AnimatorController>(animator->controller); controller)
+        Enter(*animator, *controller, duel::Punching);
     return;
   }
   previousButtons = app.GetButtons();
@@ -423,7 +427,8 @@ auto DuelSystem::SyncAnimators() -> void {
     // Entering is what starts the fade out of the pose that was showing, so it is done when the
     // state changes, and when the same one begins again -- which is the clock going back.
     if (scene.state != rules.state || rules.stateTicks < scene.stateTicks)
-      scene.Enter(rules.state);
+      if (const auto *controller = app.GetAsset<AnimatorController>(scene.controller); controller)
+        Enter(scene, *controller, rules.state);
     scene.stateTicks = rules.stateTicks;
     scene.finished = rules.finished;
     scene.phase = rules.phase;
@@ -432,14 +437,14 @@ auto DuelSystem::SyncAnimators() -> void {
 }
 auto DuelSystem::CheckRootSpace() -> void {
   ForEachFigure([&](const int player, const EntityID id, Animator &animator, Transform &) {
-    const auto *skeleton = player == 0 ? DuelWorld::Get<Skeleton>(app, id) : nullptr;
-    const auto *model = skeleton ? app.GetAsset<ModelAsset>(animator.modelAssetId) : nullptr;
+    const auto *rig = player == 0 ? app.GetRig(id) : nullptr;
+    const auto *model = rig ? app.GetAsset<ModelAsset>(animator.modelAssetId) : nullptr;
     if (!model)
       return;
-    for (size_t node = 0; node < model->nodes.size() && node < skeleton->nodeEntities.size(); ++node) {
+    for (size_t node = 0; node < model->nodes.size() && node < rig->nodes.size(); ++node) {
       if (model->nodes[node].name != ROOT_NODE)
         continue;
-      const auto *parent = app.GetEntityComponent<WorldMatrix>(app.GetEntityParent(skeleton->nodeEntities[node]));
+      const auto *parent = app.GetEntityComponent<WorldMatrix>(app.GetEntityParent(rig->nodes[node]));
       const auto *self = app.GetEntityComponent<WorldMatrix>(id);
       if (!parent || !self)
         return;
@@ -485,7 +490,7 @@ auto DuelSystem::Update(const float) -> void {
     app.MarkTransformDirty(id);
     // A blow knocks the head back, and a figure that kept looking straight on through it would not
     // seem to have felt it. So the watching lets go while one lands and comes back after.
-    if (auto *watch = animator.FindGoal("watch"); watch) {
+    if (auto *watch = FindGoal(animator, "watch"); watch) {
       const auto wanted = animator.state == duel::Hit ? .0f : 1.f;
       watch->weight += (wanted - watch->weight) * std::min(1.f, WATCH_EASE * app.DeltaTime());
     }

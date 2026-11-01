@@ -36,6 +36,11 @@ using AddConstPointer = const T *;
 /// Generated from `EngineComponents`, so it cannot fall out of step with the enum.
 using ComponentVariant = Apply<std::variant, Map<AddPointer, EngineComponents>>;
 using ConstComponentVariant = Apply<std::variant, Map<AddConstPointer, EngineComponents>>;
+template <typename List>
+inline constexpr bool AllPlainData = false;
+template <typename... Cs>
+inline constexpr bool AllPlainData<TypeList<Cs...>> = (IsPlainData<Cs>() && ...);
+static_assert(AllPlainData<EngineComponents>, "every engine component must be trivially copyable");
 class KUKI_ENGINE_API Component {
 public:
   /// @brief Calls `func` with the `ComponentType` of each engine component in a signature.

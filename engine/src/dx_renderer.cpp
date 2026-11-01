@@ -2580,11 +2580,11 @@ auto DXRenderer::CollectSkinnedDraws(Scene &scene, const Camera *) -> std::vecto
       // tried, and it threw away a fighter standing in plain view. There are a handful of figures
       // in a scene, and drawing one out of shot costs less than losing one in it.
       const auto &world = worlds->components[row].matrix;
-      const Skeleton *skeleton{};
+      const Rig *rig{};
       auto ancestorId = id;
       for (auto depth = 0; depth < 64 && ancestorId; ++depth) {
-        if (auto found = scene.GetEntityComponent<Skeleton>(ancestorId); found) {
-          skeleton = found;
+        if (auto found = scene.GetRig(ancestorId); found) {
+          rig = found;
           break;
         }
         ancestorId = scene.GetParent(ancestorId);
@@ -2595,12 +2595,12 @@ auto DXRenderer::CollectSkinnedDraws(Scene &scene, const Camera *) -> std::vecto
       draw.world = world;
       draw.entity = id;
       draw.bones.assign(modelMesh.bones.size(), glm::mat4(1.f));
-      if (skeleton)
+      if (rig)
         for (size_t i = 0; i < modelMesh.bones.size(); ++i) {
           const auto &bone = modelMesh.bones[i];
-          if (bone.nodeIndex >= skeleton->nodeEntities.size())
+          if (bone.nodeIndex >= rig->nodes.size())
             continue;
-          const auto boneEntityId = skeleton->nodeEntities[bone.nodeIndex];
+          const auto boneEntityId = rig->nodes[bone.nodeIndex];
           if (!boneEntityId)
             continue;
           if (auto boneTransform = scene.GetEntityComponent<WorldMatrix>(boneEntityId); boneTransform)

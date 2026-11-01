@@ -235,6 +235,9 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   // the camera's view matrix is, they have to be current at this exact point in the frame, and the
   // dirty tracking in `EntityManager` makes a second flush after physics almost free.
   scene->UpdateComponents<Transform, Camera>();
+  // Here because this system is in every application and runs every frame, which is all a sweep
+  // asks of where it is done: a model removed during the frame keeps its rig until the next.
+  scene->SweepRigs();
   // Render at the window's size, asked for every frame rather than once. `SetResolution` debounces:
   // a new size becomes a candidate and is only committed once the same size has been asked for
   // several frames running, so a single request at startup is recorded and never applied. Asking

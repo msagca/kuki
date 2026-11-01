@@ -3,6 +3,7 @@
 #include <icons_lucide.hpp>
 #include <algorithm>
 #include <animator.hpp>
+#include <animator_controller.hpp>
 #include <anti_aliasing.hpp>
 #include <atmosphere_sky.hpp>
 #include <application.hpp>
@@ -126,20 +127,36 @@ inline auto PropertyDisplayer::operator()(T *) -> void {}
 ///
 /// Trying a state enters it and sets the animator playing. Stopped, that is a preview stepped by
 /// the animation system for the purpose; nothing is saved of which state was being looked at.
+///
+/// The states are the animator's controller's, and every animator with the same controller shares
+/// them: an edit here is an edit to all of them. An animator with none is given one by the first
+/// state added to it.
 inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const kuki::ModelAsset &model) -> void {
   static constexpr auto NAME_LENGTH = 64;
   if (!field::Fold(ICON_LC_WORKFLOW " States", true))
     return;
-  const auto Forget = [](kuki::AnimationState &state) {
-    state.clipIndex = -1;
-    state.nodes.clear();
-  };
-  if (field::BeginCombo(ICON_LC_FOOTPRINTS " Root Node", animator.rootNode.empty() ? "(none)" : animator.rootNode.c_str())) {
-    if (ImGui::Selectable("(none)", animator.rootNode.empty()))
-      animator.rootNode.clear();
+  auto *controller = animator.controller ? app.GetAsset<kuki::AnimatorController>(animator.controller) : nullptr;
+  if (!controller) {
+    if (ImGui::Button(ICON_LC_PLUS " Add State")) {
+      auto created = std::make_unique<kuki::AnimatorController>(kuki::AssetID::Generate());
+      created->states.push_back({.name = "state1", .loop = true});
+      animator.controller = created->id;
+      app.AddAsset(std::move(created), app.GetAssetName(animator.modelAssetId) + " States");
+    }
+    return;
+  }
+  const auto controllerName = app.GetAssetName(controller->id);
+  field::LabelText(ICON_LC_WORKFLOW " Controller", "%s", controllerName.empty() ? "(unnamed)" : controllerName.c_str());
+  ImGui::SetItemTooltip("Where the states are kept. Every animator with the same controller shares them,\nso an edit here is an edit to all of them.");
+  // Which clip a state plays has changed: where each clip was found in each model is worked out again.
+  const auto Forget = [&] { controller->Unbind(); };
+  auto &rootNode = controller->rootNode;
+  if (field::BeginCombo(ICON_LC_FOOTPRINTS " Root Node", rootNode.empty() ? "(none)" : rootNode.c_str())) {
+    if (ImGui::Selectable("(none)", rootNode.empty()))
+      rootNode.clear();
     for (const auto &node : model.nodes)
-      if (!node.name.empty() && ImGui::Selectable(node.name.c_str(), node.name == animator.rootNode))
-        animator.rootNode = node.name;
+      if (!node.name.empty() && ImGui::Selectable(node.name.c_str(), node.name == rootNode))
+        rootNode = node.name;
     ImGui::EndCombo();
   }
   ImGui::SetItemTooltip("The node whose travel along the ground is taken out of the pose and handed to the\ngame, so a walk moves the entity instead of striding off and snapping back.");
@@ -150,9 +167,10 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
     if (const auto *candidate = asset->As<kuki::ModelAsset>(); candidate && candidate != &model && !candidate->animations.empty())
       sources.push_back(candidate);
   });
+  auto &states = controller->states;
   auto removed = -1;
-  for (auto i = 0; i < static_cast<int>(animator.states.size()); ++i) {
-    auto &state = animator.states[i];
+  for (auto i = 0; i < static_cast<int>(states.size()); ++i) {
+    auto &state = states[i];
     ImGui::PushID(i);
     // Named for the state and identified by its place, so that the fold does not shut every time
     // a letter is typed into the name.
@@ -174,14 +192,14 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
         if (ImGui::Selectable("(this model)", !state.source)) {
           state.source = {};
           state.clip.clear();
-          Forget(state);
+          Forget();
         }
         for (const auto *source : sources) {
           ImGui::PushID(source);
           if (ImGui::Selectable(app.GetAssetName(source->id).c_str(), source->id == state.source)) {
             state.source = source->id;
             state.clip.clear();
-            Forget(state);
+            Forget();
           }
           ImGui::PopID();
         }
@@ -190,13 +208,13 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
       if (field::BeginCombo(ICON_LC_FILM " Clip", state.clip.empty() ? "(first)" : state.clip.c_str())) {
         if (ImGui::Selectable("(first)", state.clip.empty())) {
           state.clip.clear();
-          Forget(state);
+          Forget();
         }
         for (size_t clip = 0; clip < from->animations.size(); ++clip) {
           ImGui::PushID(static_cast<int>(clip));
           if (ImGui::Selectable(from->animations[clip].name.c_str(), from->animations[clip].name == state.clip)) {
             state.clip = from->animations[clip].name;
-            Forget(state);
+            Forget();
           }
           ImGui::PopID();
         }
@@ -218,8 +236,7 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
             if (ImGui::Selectable(app.GetAssetName(source->id).c_str(), source->id == entry.source)) {
               entry.source = source->id;
               entry.clip.clear();
-              entry.clipIndex = -1;
-              entry.nodes.clear();
+              Forget();
             }
             ImGui::PopID();
           }
@@ -233,10 +250,14 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
           removedBlend = mixed;
         ImGui::PopID();
       }
-      if (removedBlend >= 0)
+      if (removedBlend >= 0) {
         state.blend.erase(state.blend.begin() + removedBlend);
-      if (ImGui::Button(ICON_LC_BLEND " Add Blend Clip"))
+        Forget();
+      }
+      if (ImGui::Button(ICON_LC_BLEND " Add Blend Clip")) {
         state.blend.push_back({.at = state.blend.empty() ? .0f : state.blend.back().at + 1.f});
+        Forget();
+      }
       if (state.blend.size() > 1) {
         auto low = state.blend.front().at;
         auto high = low;
@@ -244,8 +265,8 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
           low = std::min(low, entry.at);
           high = std::max(high, entry.at);
         }
-        field::SliderFloat(ICON_LC_BLEND " Blend", &state.value, low, high, "%.2f");
-        ImGui::SetItemTooltip("Where along its blend the state is. A game sets this as it runs; here it is\nfor trying the blend out.");
+        field::SliderFloat(ICON_LC_BLEND " Blend", &animator.blend, low, high, "%.2f");
+        ImGui::SetItemTooltip("Where along its blend this animator is, in whichever blended state it is in.\nA game sets this as it runs; here it is for trying the blend out.");
       }
       field::Toggle(ICON_LC_REPEAT, "Loop", &state.loop);
       field::DragFloat(ICON_LC_GAUGE " Speed", &state.speed, .01f, .05f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
@@ -255,10 +276,10 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
       if (field::BeginCombo("Next", state.next.empty() ? "(hold the last pose)" : state.next.c_str())) {
         if (ImGui::Selectable("(hold the last pose)", state.next.empty()))
           state.next.clear();
-        for (auto other = 0; other < static_cast<int>(animator.states.size()); ++other) {
+        for (auto other = 0; other < static_cast<int>(states.size()); ++other) {
           ImGui::PushID(other);
-          if (other != i && !animator.states[other].name.empty() && ImGui::Selectable(animator.states[other].name.c_str(), animator.states[other].name == state.next))
-            state.next = animator.states[other].name;
+          if (other != i && !states[other].name.empty() && ImGui::Selectable(states[other].name.c_str(), states[other].name == state.next))
+            state.next = states[other].name;
           ImGui::PopID();
         }
         ImGui::EndCombo();
@@ -288,7 +309,7 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
         state.events.push_back({0, "event"});
       ImGui::SameLine();
       if (ImGui::Button(ICON_LC_PLAY " Try")) {
-        animator.Play(state.name, true);
+        kuki::Play(animator, *controller, state.name, true);
         animator.playing = true;
       }
       ImGui::SameLine();
@@ -298,15 +319,16 @@ inline auto DisplayAnimatorStates(Editor &app, kuki::Animator &animator, const k
     ImGui::PopID();
   }
   if (removed >= 0) {
-    animator.states.erase(animator.states.begin() + removed);
+    states.erase(states.begin() + removed);
+    Forget();
     animator.state = -1;
     animator.stateTicks = 0;
   }
   if (ImGui::Button(ICON_LC_PLUS " Add State")) {
     kuki::AnimationState state;
-    state.name = "state" + std::to_string(animator.states.size() + 1);
+    state.name = "state" + std::to_string(states.size() + 1);
     state.loop = true;
-    animator.states.push_back(std::move(state));
+    states.push_back(std::move(state));
   }
 }
 /// @brief The entity a goal reaches for, chosen from a list or dropped on from the hierarchy.
@@ -369,10 +391,10 @@ inline auto DisplayAnimatorIK(Editor &app, kuki::Animator &animator, const kuki:
     auto &goal = animator.ik[i];
     ImGui::PushID(i);
     const auto aim = goal.kind == kuki::IKKind::Aim;
-    const auto title = !goal.name.empty() ? goal.name : !goal.bone.empty() ? goal.bone : std::string("(no bone)");
+    const auto title = std::string(!goal.name.empty() ? goal.name.View() : !goal.bone.empty() ? goal.bone.View() : std::string_view("(no bone)"));
     if (field::Fold(((aim ? ICON_LC_EYE " " : ICON_LC_HAND_GRAB " ") + title + "###Goal").c_str(), true)) {
       char name[NAME_LENGTH]{};
-      goal.name.copy(name, NAME_LENGTH - 1);
+      goal.name.View().copy(name, NAME_LENGTH - 1);
       if (field::InputText(ICON_LC_TAG " Name", name, NAME_LENGTH))
         goal.name = name;
       ImGui::SetItemTooltip("What the game finds the goal by.");
@@ -414,8 +436,12 @@ inline auto DisplayAnimatorIK(Editor &app, kuki::Animator &animator, const kuki:
   }
   if (removed >= 0)
     animator.ik.erase(animator.ik.begin() + removed);
+  ImGui::BeginDisabled(animator.ik.full());
   if (ImGui::Button(ICON_LC_PLUS " Add Goal"))
     animator.ik.push_back({});
+  ImGui::EndDisabled();
+  if (animator.ik.full())
+    ImGui::SetItemTooltip("An animator has room for %d goals.", static_cast<int>(kuki::MAX_IK_GOALS));
 }
 /// @brief An animator's clips: its states, or with none the one clip it plays and where it is in it.
 inline auto DisplayAnimatorClips(Editor &app, kuki::Animator *animator) -> void {
@@ -429,7 +455,7 @@ inline auto DisplayAnimatorClips(Editor &app, kuki::Animator *animator) -> void 
     DisplayAnimatorStates(app, *animator, *model);
     // With states the animator is a machine and not a clip being scrubbed: which clip is playing
     // and how far in are the machine's business, so all that is offered is whether it runs.
-    if (!animator->states.empty()) {
+    if (const auto *controller = app.GetAsset<kuki::AnimatorController>(animator->controller); controller && !controller->states.empty()) {
       field::Toggle(ICON_LC_PLAY, "Playing", &animator->playing);
       return;
     }
@@ -1204,7 +1230,9 @@ template <>
 inline auto PropertyDisplayer::operator()<kuki::Skeleton>(kuki::Skeleton *skeleton) -> void {
   if (!skeleton)
     return;
-  auto nodeCount = static_cast<int>(skeleton->nodeEntities.size());
+  // The nodes are the rig's, which the scene keeps; the component holds only where.
+  const auto *rig = context.selectedEntities.empty() ? nullptr : app.GetRig(*context.selectedEntities.begin());
+  auto nodeCount = rig ? static_cast<int>(rig->nodes.size()) : 0;
   field::InputInt("Node Count", &nodeCount, 0, 0, ImGuiInputTextFlags_ReadOnly);
 }
 template <>
