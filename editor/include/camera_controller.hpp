@@ -31,10 +31,8 @@ public:
   auto GetProjection() const -> glm::mat4;
   auto GetType() const -> kuki::CameraType;
   auto GetView() const -> glm::mat4;
-  /// @brief Registers the keys and mouse buttons it flies by.
+  /// @brief Registers the keys it flies by. The mouse buttons are read as they are, in `Update`.
   auto Start() -> void override;
-  /// @brief Unregisters them: the actions capture `this`.
-  auto Shutdown() -> void override;
   /// @brief Which entity's `Camera` it flies. Pointed again whenever a scene is loaded.
   auto SetEntity(const kuki::EntityID) -> void;
   auto GetEntity() const -> kuki::EntityID;
@@ -65,15 +63,15 @@ private:
   float orbitDistance{};
   float pitch{};
   float yaw{};
-  kuki::InputManager::ActionID rmbPressActionId{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID rmbReleaseActionId{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID lmbPressActionId{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID lmbReleaseActionId{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID mmbPressActionId{kuki::InputManager::InvalidActionID};
-  kuki::InputManager::ActionID mmbReleaseActionId{kuki::InputManager::InvalidActionID};
   auto Forward() const -> glm::vec3;
   auto Right() const -> glm::vec3;
   auto Up() const -> glm::vec3;
+  /// @brief Starts and ends mouse look, orbit and pan from the mouse buttons pressed and released
+  /// this frame.
+  ///
+  /// Polled, where it was six callbacks run in the middle of the window's event handling. Presses are
+  /// read before releases, so a click shorter than a frame begins its drag and ends it.
+  auto UpdateDrags() -> void;
   auto UpdateOrbit(kuki::Application &) -> bool;
   auto UpdatePan(kuki::Application &) -> bool;
   /// @brief Applies movement input for the frame, ramping the boost and precision multipliers over time.

@@ -1,20 +1,11 @@
 #pragma once
 #include <concepts.hpp>
-#include <functional>
-#include <kuki_engine_export.h>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 namespace kuki {
-/// @brief Logs a fired sequence, out of line so this header needs no logging library.
-///
-/// One `spdlog::info` in a template body was the sole reason `spdlog/spdlog.h` sat in a public
-/// header, and `trie.hpp` is reached from `input_manager.hpp` and `entity_manager.hpp` -- so every
-/// consumer of the engine inherited it. Behaviour is unchanged, though the message now carries the
-/// `[Trie]` prefix the rest of the engine's logging uses; it fires on every matched sequence, which
-/// is arguably louder than `info` deserves.
-auto KUKI_ENGINE_API LogActionFired(const std::string &) -> void;
 template <typename T>
 struct TrieNode {
   // TODO: add unicode support
@@ -24,10 +15,13 @@ struct TrieNode {
 struct SuffixNode final : TrieNode<SuffixNode> {
   size_t suffix{};
 };
-using InputAction = std::function<void()>;
-struct ActionNode final : TrieNode<ActionNode> {
-  InputAction action{};
-};
+/// @brief A node of typed key sequences, none of which may begin another: a sequence is done the
+/// moment its last key is typed, so one that went on past another could never be reached.
+///
+/// It held the callback the sequence ran, which `Find` called on the way down. A completed sequence
+/// is now recorded for its reader to poll (`InputManager::IsSequenceTyped`), and the trie only says
+/// how far the keys typed so far match.
+struct SequenceNode final : TrieNode<SequenceNode> {};
 enum class TrieMatch : uint8_t { NotFound,
   PrefixFound,
   WordFound };
@@ -40,11 +34,12 @@ public:
   Trie(Trie<T> &&) noexcept = default;
   Trie(const Trie<T> &) = delete;
   auto Insert(std::string_view) -> bool
-    requires(!IsSuffixNode<T> && !IsActionNode<T>);
+    requires(!IsSuffixNode<T> && !IsSequenceNode<T>);
   auto Insert(std::string &) -> bool
-    requires(IsSuffixNode<T> && !IsActionNode<T>);
-  auto Insert(std::string_view, InputAction) -> bool
-    requires(!IsSuffixNode<T> && IsActionNode<T>);
+    requires(IsSuffixNode<T> && !IsSequenceNode<T>);
+  /// @brief Inserts a sequence, refusing one that begins another or that another begins.
+  auto Insert(std::string_view) -> bool
+    requires(!IsSuffixNode<T> && IsSequenceNode<T>);
   auto Remove(std::string_view) -> bool;
   auto RemovePrefix(std::string_view) -> bool;
   auto Find(std::string_view) -> TrieMatch;
@@ -56,7 +51,7 @@ private:
   std::unique_ptr<T> root;
   const size_t maxInsertAttempts{8};
   auto InsertAt(std::string_view, T &) -> bool
-    requires(IsSuffixNode<T> && !IsActionNode<T>);
+    requires(IsSuffixNode<T> && !IsSequenceNode<T>);
   auto Invalidate(T &) -> void;
   template <typename F>
   auto ForEach(const T &, std::string &, F &&) -> void;
@@ -66,7 +61,7 @@ Trie<T>::Trie()
   : root(std::make_unique<T>()) {}
 template <IsTrieNode T>
 auto Trie<T>::Insert(std::string_view word) -> bool
-  requires(!IsSuffixNode<T> && !IsActionNode<T>)
+  requires(!IsSuffixNode<T> && !IsSequenceNode<T>)
 {
   if (word.empty())
     return false;
@@ -85,7 +80,7 @@ auto Trie<T>::Insert(std::string_view word) -> bool
 }
 template <IsTrieNode T>
 auto Trie<T>::Insert(std::string &word) -> bool
-  requires(IsSuffixNode<T> && !IsActionNode<T>)
+  requires(IsSuffixNode<T> && !IsSequenceNode<T>)
 {
   if (word.empty())
     return false;
@@ -111,10 +106,10 @@ auto Trie<T>::Insert(std::string &word) -> bool
   return false;
 }
 template <IsTrieNode T>
-auto Trie<T>::Insert(std::string_view trigger, InputAction action) -> bool
-  requires(!IsSuffixNode<T> && IsActionNode<T>)
+auto Trie<T>::Insert(std::string_view trigger) -> bool
+  requires(!IsSuffixNode<T> && IsSequenceNode<T>)
 {
-  if (trigger.empty() || !action)
+  if (trigger.empty())
     return false;
   auto node = root.get();
   for (const auto &c : trigger) {
@@ -122,19 +117,18 @@ auto Trie<T>::Insert(std::string_view trigger, InputAction action) -> bool
     auto &child = node->children[uc];
     if (!child)
       child = std::make_unique<T>();
-    else if (child->last || child->action)
+    else if (child->last)
       return false;
     node = child.get();
   }
   if (!node->children.empty())
     return false;
   node->last = true;
-  node->action = std::move(action);
   return true;
 }
 template <IsTrieNode T>
 auto Trie<T>::InsertAt(std::string_view word, T &node) -> bool
-  requires(IsSuffixNode<T> && !IsActionNode<T>)
+  requires(IsSuffixNode<T> && !IsSequenceNode<T>)
 {
   if (word.empty())
     return false;
@@ -164,15 +158,11 @@ auto Trie<T>::Remove(std::string_view word) -> bool {
       return false;
   }
   node->last = false;
-  if constexpr (IsActionNode<T>)
-    node->action = {};
   return true;
 }
 template <IsTrieNode T>
 auto Trie<T>::Invalidate(T &node) -> void {
   node.last = false;
-  if constexpr (IsActionNode<T>)
-    node.action = {};
   for (auto &[_, child] : node.children)
     Invalidate(*child);
 }
@@ -204,11 +194,6 @@ auto Trie<T>::Find(I begin, I end) -> TrieMatch {
       node = it2->second.get();
     else
       return TrieMatch::NotFound;
-  if constexpr (IsActionNode<T>)
-    if (node->action) {
-      LogActionFired(std::string(begin, end));
-      node->action();
-    }
   return node->last ? TrieMatch::WordFound : TrieMatch::PrefixFound;
 }
 template <IsTrieNode T>

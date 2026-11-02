@@ -122,64 +122,42 @@ auto CameraController::Up() const -> glm::vec3 {
 auto CameraController::Start() -> void {
   for (auto i = 0; i < BindingCount; ++i)
     Internal(app).RegisterBinding(BindingName(i), InputManager::Trigger{kBindings[i].key, kBindings[i].mods}, kBindings[i].description);
-  rmbPressActionId = Internal(app).Input().RegisterAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
-    if (!Internal(app).IsViewportHovered())
-      return;
-    mouselook = true;
+}
+auto CameraController::UpdateDrags() -> void {
+  const auto begin = [this](bool &drag) {
+    drag = true;
     mouseEnter = true;
     Internal(app).SetCursorLocked(true);
-  });
-  rmbReleaseActionId = Internal(app).Input().RegisterAction(
-    GLFW_MOUSE_BUTTON_RIGHT,
-    [this]() {
-      mouselook = false;
-      Internal(app).SetCursorLocked(false);
-      const auto pos = app.GetMousePosition();
-      ImGui::GetIO().AddMousePosEvent(pos.x, pos.y);
-    },
-    false);
-  lmbPressActionId = Internal(app).Input().RegisterAction(GLFW_MOUSE_BUTTON_LEFT, [this]() {
-    if (!Internal(app).IsViewportHovered() || ImGuizmo::IsOver() || ImGuizmo::IsUsing())
+  };
+  // Only a drag this began: the editor locks the cursor for mouse look of its own, and a release
+  // with nothing under way here is not this controller's to unlock.
+  const auto end = [this](bool &drag) {
+    if (!drag)
       return;
+    drag = false;
+    Internal(app).SetCursorLocked(false);
+    const auto pos = app.GetMousePosition();
+    ImGui::GetIO().AddMousePosEvent(pos.x, pos.y);
+  };
+  const auto hovered = Internal(app).IsViewportHovered();
+  if (app.IsMousePressed(MouseButton::Right) && hovered)
+    begin(mouselook);
+  if (app.IsMousePressed(MouseButton::Left) && hovered && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
     if (const auto world = app.GetEntityComponent<WorldMatrix>(Internal(app).GetSelectedEntity()); world)
       orbitPivot = glm::vec3(world->matrix[3]);
     else
       orbitPivot = position + Forward() * settings.orbitFallbackDistance;
     orbitDistance = glm::length(position - orbitPivot);
-    orbiting = true;
-    mouseEnter = true;
-    Internal(app).SetCursorLocked(true);
-  });
-  lmbReleaseActionId = Internal(app).Input().RegisterAction(
-    GLFW_MOUSE_BUTTON_LEFT,
-    [this]() {
-      orbiting = false;
-      Internal(app).SetCursorLocked(false);
-      const auto pos = app.GetMousePosition();
-      ImGui::GetIO().AddMousePosEvent(pos.x, pos.y);
-    },
-    false);
-  mmbPressActionId = Internal(app).Input().RegisterAction(GLFW_MOUSE_BUTTON_MIDDLE, [this]() {
-    if (!Internal(app).IsViewportHovered())
-      return;
-    panning = true;
-    mouseEnter = true;
-    Internal(app).SetCursorLocked(true);
-  });
-  mmbReleaseActionId = Internal(app).Input().RegisterAction(
-    GLFW_MOUSE_BUTTON_MIDDLE,
-    [this]() {
-      panning = false;
-      Internal(app).SetCursorLocked(false);
-      const auto pos = app.GetMousePosition();
-      ImGui::GetIO().AddMousePosEvent(pos.x, pos.y);
-    },
-    false);
-}
-auto CameraController::Shutdown() -> void {
-  for (const auto action : {rmbPressActionId, rmbReleaseActionId, lmbPressActionId, lmbReleaseActionId, mmbPressActionId, mmbReleaseActionId})
-    if (action != InputManager::InvalidActionID)
-      Internal(app).Input().UnregisterAction(action);
+    begin(orbiting);
+  }
+  if (app.IsMousePressed(MouseButton::Middle) && hovered)
+    begin(panning);
+  if (app.IsMouseReleased(MouseButton::Right))
+    end(mouselook);
+  if (app.IsMouseReleased(MouseButton::Left))
+    end(orbiting);
+  if (app.IsMouseReleased(MouseButton::Middle))
+    end(panning);
 }
 auto CameraController::Update(const float) -> void {
   const auto [transform, camera] = app.GetEntityComponent<Transform, Camera>(entity);
@@ -187,6 +165,7 @@ auto CameraController::Update(const float) -> void {
     return;
   position = transform->position;
   rotation = transform->rotation;
+  UpdateDrags();
   auto moved = false;
   moved |= UpdatePosition(app);
   moved |= mouselook && UpdateRotation(app);

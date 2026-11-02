@@ -62,17 +62,17 @@ auto InputManager::BeginKeyCapture() -> void {
   captureResolved = false;
 }
 auto InputManager::BeginSession() -> void {
-  session = {true, nextActionId, nameToBinding, nameToDescription, bindingOrder, buttonOrder};
+  session = {true, sequenceOrder.size(), nameToBinding, nameToDescription, bindingOrder, buttonOrder};
 }
 auto InputManager::EndSession() -> void {
   if (!session.active)
     return;
-  std::vector<ActionID> registered;
-  for (const auto &[id, registration] : idToRegistration)
-    if (id >= session.firstAction)
-      registered.push_back(id);
-  for (const auto id : registered)
-    UnregisterAction(id);
+  for (auto i = session.sequenceCount; i < sequenceOrder.size(); ++i) {
+    keymap.Remove(sequenceOrder[i]);
+    sequenceToDescription.erase(sequenceOrder[i]);
+  }
+  if (session.sequenceCount < sequenceOrder.size())
+    sequenceOrder.resize(session.sequenceCount);
   nameToBinding = std::move(session.nameToBinding);
   nameToDescription = std::move(session.nameToDescription);
   bindingOrder = std::move(session.bindingOrder);
@@ -93,7 +93,12 @@ auto InputManager::CharCallback(GLFWwindow *window, unsigned int codepoint) -> v
     return;
   const auto c = ToLowerASCII(ToASCII(codepoint));
   keyseq.push_back(c);
-  if (keymap.Find(keyseq.begin(), keyseq.end()) != TrieMatch::PrefixFound)
+  const auto match = keymap.Find(keyseq.begin(), keyseq.end());
+  if (match == TrieMatch::WordFound) {
+    typedSequences.emplace_back(keyseq.begin(), keyseq.end());
+    spdlog::info("[InputManager] Typed {}", typedSequences.back());
+  }
+  if (match != TrieMatch::PrefixFound)
     keyseq.clear();
 }
 auto InputManager::CursorPosCallback(GLFWwindow *window, double xpos, double ypos) -> void {
@@ -234,8 +239,6 @@ auto InputManager::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
   pressState[index] = pressState[index] || action == GLFW_PRESS;
   releaseState[index] = releaseState[index] || action == GLFW_RELEASE;
   tickLatch[index] = tickLatch[index] || action == GLFW_PRESS;
-  if (action != GLFW_REPEAT)
-    FireAction(index, action == GLFW_PRESS);
 }
 auto InputManager::MouseButtonCallback(GLFWwindow *window, int button, int action, int mods) -> void {
   if (!buttonsEnabled)
@@ -248,34 +251,12 @@ auto InputManager::MouseButtonCallback(GLFWwindow *window, int button, int actio
   inputState[index] = action == GLFW_PRESS;
   pressState[index] = pressState[index] || action == GLFW_PRESS;
   releaseState[index] = releaseState[index] || action == GLFW_RELEASE;
-  FireAction(index, action == GLFW_PRESS);
 }
 auto InputManager::PollKeyCapture() -> CaptureOutcome {
   if (!captureResolved)
     return {CaptureState::Pending, {}};
   captureResolved = false;
   return capturedResult;
-}
-auto InputManager::RegisterAction(int trigger, InputAction action, bool press) -> ActionID {
-  const auto index = GLFWInputToIndex(trigger);
-  if (index == 255) {
-    spdlog::warn("[InputManager] Failed to register action: invalid key/button");
-    return InvalidActionID;
-  }
-  if (press && trigger >= GLFW_KEY_SPACE && trigger <= GLFW_KEY_GRAVE_ACCENT) {
-    // Through the string overload rather than straight to `RegisterSequence`, because that is where
-    // a trigger is lowercased. `GLFWKeyToString` names a key in capitals and `CharCallback` types
-    // in lower case, so registering the name as it comes back put "R" in the trie for a sequence
-    // that only ever arrives as "r" -- a key registered this way never fired at all.
-    return RegisterAction(GLFWKeyToString(trigger), std::move(action));
-  }
-  const auto id = nextActionId++;
-  Registration registration;
-  registration.kind = press ? Registration::Kind::Press : Registration::Kind::Release;
-  registration.mapIt = press ? pressActions.emplace(index, std::move(action)) : releaseActions.emplace(index, std::move(action));
-  idToRegistration.emplace(id, std::move(registration));
-  spdlog::info("[InputManager] Registered {} action for key/button: {}", press ? "press" : "release", GLFWKeyToString(trigger));
-  return id;
 }
 auto InputManager::RegisterBinding(const std::string &name, const Trigger &trigger, std::string description, const std::optional<Trigger> &saved) -> void {
   if (nameToBinding.contains(name))
@@ -286,14 +267,11 @@ auto InputManager::RegisterBinding(const std::string &name, const Trigger &trigg
   AssignBinding(name, saved.value_or(trigger));
 }
 auto InputManager::ReleaseAll() -> void {
-  // First, because a sequence half typed is what `FireAction` takes to mean the keys are spelling
-  // something, and it would hold every release action back.
   keyseq.clear();
   for (size_t index = 0; index < inputState.size(); ++index)
     if (inputState[index]) {
       inputState[index] = false;
       releaseState[index] = true;
-      FireAction(static_cast<unsigned char>(index), false);
     }
   tickLatch.reset();
   tickButtons = 0;
@@ -320,30 +298,10 @@ auto InputManager::AssignBinding(const std::string &name, const Trigger &trigger
       }
   nameToBinding[name] = trigger;
 }
-auto InputManager::UnregisterAction(const ActionID id) -> bool {
-  auto it = idToRegistration.find(id);
-  if (it == idToRegistration.end())
-    return false;
-  switch (it->second.kind) {
-  case Registration::Kind::Press:
-    pressActions.erase(it->second.mapIt);
-    break;
-  case Registration::Kind::Release:
-    releaseActions.erase(it->second.mapIt);
-    break;
-  case Registration::Kind::Sequence:
-    keymap.Remove(it->second.sequence);
-    sequenceToId.erase(it->second.sequence);
-    sequenceToDescription.erase(it->second.sequence);
-    std::erase(sequenceOrder, it->second.sequence);
-    break;
-  }
-  idToRegistration.erase(it);
-  return true;
-}
 auto InputManager::ResetPulses() -> void {
   pressState.reset();
   releaseState.reset();
+  typedSequences.clear();
 }
 auto InputManager::ResetScroll() -> void {
   scrollOffset = {};
@@ -355,29 +313,25 @@ auto InputManager::ScrollCallback(GLFWwindow *window, double xoffset, double yof
   scrollOffset.x += static_cast<float>(xoffset);
   scrollOffset.y += static_cast<float>(yoffset);
 }
-auto InputManager::RegisterAction(const std::string &trigger, InputAction action, std::string description) -> ActionID {
+auto InputManager::RegisterSequence(const std::string &trigger, std::string description) -> bool {
   auto sequence = trigger;
   for (auto &c : sequence)
     c = static_cast<char>(ToLowerASCII(static_cast<unsigned char>(c)));
-  return RegisterSequence(std::move(sequence), std::move(action), std::move(description));
-}
-auto InputManager::RegisterSequence(std::string sequence, InputAction action, std::string description) -> ActionID {
-  if (auto it = sequenceToId.find(sequence); it != sequenceToId.end())
-    UnregisterAction(it->second);
-  if (!keymap.Insert(sequence, std::move(action))) {
-    spdlog::warn("[InputManager] Failed to register action for trigger: {}", sequence);
-    return InvalidActionID;
+  // Registered already: only its description can be new.
+  if (sequenceToDescription.contains(sequence)) {
+    sequenceToDescription[sequence] = std::move(description);
+    return true;
   }
-  spdlog::info("[InputManager] Registered action for trigger: {}", sequence);
-  const auto id = nextActionId++;
-  Registration registration;
-  registration.kind = Registration::Kind::Sequence;
-  registration.sequence = sequence;
-  idToRegistration.emplace(id, std::move(registration));
-  sequenceToId[sequence] = id;
+  if (!keymap.Insert(sequence)) {
+    spdlog::warn("[InputManager] Failed to register sequence {}: it begins another, or another begins it", sequence);
+    return false;
+  }
   sequenceOrder.push_back(sequence);
   sequenceToDescription[sequence] = std::move(description);
-  return id;
+  return true;
+}
+auto InputManager::IsSequenceTyped(const std::string_view sequence) const -> bool {
+  return std::ranges::find(typedSequences, sequence) != typedSequences.end();
 }
 auto InputManager::GetSequenceDescription(const std::string &sequence) const -> std::string {
   auto it = sequenceToDescription.find(sequence);
@@ -405,14 +359,6 @@ auto InputManager::ModsSatisfy(const Trigger &trigger, const int mods) const -> 
     if (other.key == trigger.key && other.mods != trigger.mods && (other.mods & trigger.mods) == trigger.mods && (mods & other.mods) == other.mods)
       return false;
   return true;
-}
-auto InputManager::FireAction(unsigned char index, const bool pressed) -> void {
-  if (!keysEnabled || IsSequenceInProgress())
-    return;
-  auto &actions = pressed ? pressActions : releaseActions;
-  const auto range = actions.equal_range(index);
-  for (auto it = range.first; it != range.second; ++it)
-    it->second();
 }
 auto InputManager::IsSequenceInProgress() const -> bool {
   return !keyseq.empty();

@@ -15,8 +15,6 @@ struct GLFWwindow;
 namespace kuki {
 class KUKI_ENGINE_API InputManager final : public Manager {
 public:
-  using ActionID = size_t;
-  static constexpr ActionID InvalidActionID = static_cast<ActionID>(-1);
   struct Trigger {
     int key{};
     int mods{};
@@ -39,18 +37,18 @@ public:
     All };
   InputManager(Application &);
   auto BeginKeyCapture() -> void;
-  /// @brief Marks the start of a stretch whose bindings, buttons and actions are to be undone.
+  /// @brief Marks the start of a stretch whose bindings, buttons and sequences are to be undone.
   ///
   /// A game run inside an editor registers what it needs as it starts, the same as it does on its
   /// own, and that is not harmless there: a binding takes its key from whoever had it, so a game
   /// that steps with A leaves the editor's own A unbound. `EndSession` puts every binding back as
-  /// it stood here, forgets the buttons, and unregisters each action registered since.
+  /// it stood here, forgets the buttons, and forgets each sequence registered since.
   auto BeginSession() -> void;
   auto EndSession() -> void;
   auto CancelKeyCapture() -> void;
   /// @brief Feeds a printable character into the key-sequence trie, resetting the sequence when it stops matching a known prefix.
   ///
-  /// An action bound to the completed sequence fires during the trie traversal itself, not on return.
+  /// A sequence completed is recorded for `IsSequenceTyped` until the frame ends.
   auto CharCallback(GLFWwindow *, unsigned int) -> void;
   auto CursorPosCallback(GLFWwindow *, double, double) -> void;
   auto GetBinding(const std::string &) const -> Trigger;
@@ -80,6 +78,12 @@ public:
   auto IsPressed(int) const -> bool;
   auto IsReleased(int) const -> bool;
   auto IsSequenceInProgress() const -> bool;
+  /// @brief Whether a registered sequence was typed to its end this frame.
+  ///
+  /// Read by whoever registered it, in its own `Update`, in place of the callback a sequence used to
+  /// run in the middle of the window's event handling -- when nothing about the frame was settled
+  /// and the order among several callbacks was nobody's choice.
+  auto IsSequenceTyped(const std::string_view) const -> bool;
   auto KeyCallback(GLFWwindow *, int, int, int, int) -> void;
   /// @brief Fixes what the keyboard is taken to be doing for the tick about to run.
   ///
@@ -97,8 +101,15 @@ public:
   auto LatchTick() -> void;
   auto MouseButtonCallback(GLFWwindow *, int, int, int) -> void;
   auto PollKeyCapture() -> CaptureOutcome;
-  auto RegisterAction(int, InputAction, bool = true) -> ActionID;
-  auto RegisterAction(const std::string &, InputAction, std::string = "") -> ActionID;
+  /// @brief Registers a typed sequence of keys, such as "vp", read with `IsSequenceTyped`.
+  ///
+  /// Lowercased, since that is how characters are typed into it. Refused, with false, if it begins
+  /// a sequence already registered or one begins it: a sequence is done the moment it is typed, so
+  /// the longer of the two could never be reached.
+  ///
+  /// A key or mouse button had a callback form here too, run on its press or release; it is read
+  /// with `IsPressed` and `IsReleased` instead, or a binding's `IsBindingPressed`.
+  auto RegisterSequence(const std::string &, std::string = "") -> bool;
   /// @brief Registers a named binding, on `saved` if one is given and on the trigger otherwise.
   ///
   /// The trigger is the default either way, and is what `GetDefaultBinding` answers. A saved trigger
@@ -119,8 +130,8 @@ public:
   /// @brief Lets go of everything held, as though every key and button had come up at once.
   ///
   /// For a menu taking the keyboard away from the game: what the game was holding when it opened is
-  /// released then, rather than left down until a release the menu has kept for itself. Release
-  /// actions run, so a drag that was under way ends the way a drag ends.
+  /// released then, rather than left down until a release the menu has kept for itself. Each reads
+  /// as released this frame, so a drag that was under way ends the way a drag ends.
   auto ReleaseAll() -> void;
   auto SetBinding(const std::string &, const Trigger &) -> void;
   /// @brief Turns one half of the input space on or off, or both.
@@ -134,19 +145,11 @@ public:
   /// editor turns keys off while Dear ImGui wants text, so a sequence somebody had started survives
   /// across the text field and can still complete on the first character after keys come back.
   auto SetEnabled(const InputKind, const bool) -> void;
-  auto UnregisterAction(ActionID) -> bool;
   auto ResetPulses() -> void;
   auto ResetScroll() -> void;
   auto ScrollCallback(GLFWwindow *, double, double) -> void;
 private:
-  struct Registration {
-    enum class Kind : uint8_t { Press,
-      Release,
-      Sequence } kind{Kind::Press};
-    std::unordered_multimap<unsigned char, InputAction>::iterator mapIt{};
-    std::string sequence;
-  };
-  Trie<ActionNode> keymap;
+  Trie<SequenceNode> keymap;
   bool buttonsEnabled{true};
   bool capturing{};
   bool captureResolved{};
@@ -154,7 +157,6 @@ private:
   double lastInputTime{};
   glm::vec2 mousePosition{};
   glm::vec2 scrollOffset{};
-  ActionID nextActionId{};
   CaptureOutcome capturedResult{};
   std::bitset<256> inputState{0};
   std::bitset<256> pressState{0};
@@ -164,21 +166,20 @@ private:
   std::vector<std::string> buttonOrder;
   struct Session {
     bool active{};
-    ActionID firstAction{};
+    /// How many sequences there were, which those registered since come after.
+    size_t sequenceCount{};
     std::unordered_map<std::string, Trigger> nameToBinding;
     std::unordered_map<std::string, std::string> nameToDescription;
     std::vector<std::string> bindingOrder;
     std::vector<std::string> buttonOrder;
   } session;
-  std::unordered_map<ActionID, Registration> idToRegistration;
   std::unordered_map<std::string, Trigger> nameToBinding;
   std::unordered_map<std::string, std::string> nameToDescription;
   std::unordered_map<std::string, Trigger> nameToDefault;
   std::vector<std::string> bindingOrder;
-  std::unordered_multimap<unsigned char, InputAction> pressActions;
-  std::unordered_multimap<unsigned char, InputAction> releaseActions;
   std::vector<unsigned char> keyseq;
-  std::unordered_map<std::string, ActionID> sequenceToId;
+  /// The sequences typed to their end this frame, cleared with the pulses.
+  std::vector<std::string> typedSequences;
   std::unordered_map<std::string, std::string> sequenceToDescription;
   std::vector<std::string> sequenceOrder;
   auto AssignBinding(const std::string &, const Trigger &) -> void;
@@ -193,14 +194,6 @@ private:
   /// trigger yields only to another binding on the same key that names all of its modifiers and
   /// more, and has them all held.
   auto ModsSatisfy(const Trigger &, const int mods) const -> bool;
-  /// @brief Runs the actions registered for the event that has just arrived.
-  ///
-  /// Told which event it was rather than reading the pulse flags, because those are sticky for the
-  /// whole frame: a press and a release inside one frame left the press flag still set when the
-  /// release arrived, and the release actions never ran at all. A click faster than a frame then
-  /// looked to a game like a button that went down and stayed down.
-  auto FireAction(unsigned char, const bool) -> void;
-  auto RegisterSequence(std::string, InputAction, std::string = "") -> ActionID;
   static auto GLFWInputToIndex(int) -> unsigned char;
   static auto GLFWKeyToString(int) -> std::string;
 };
