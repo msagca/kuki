@@ -462,8 +462,6 @@ auto EntityManager::UpdateComponents() -> void {
     using C = std::tuple_element_t<0, std::tuple<T...>>;
     if constexpr (std::is_same_v<C, Transform>)
       UpdateTransforms();
-    else if constexpr (std::is_same_v<C, Camera>)
-      ForEach<Camera>([](const EntityID, Camera *camera) { camera->Update(); });
   } else
     (UpdateComponents<T>(), ...);
 }

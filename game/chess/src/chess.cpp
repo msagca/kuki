@@ -18,6 +18,7 @@
 #include <model_asset.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <transform.hpp>
 #include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
 using namespace kuki;
@@ -39,10 +40,6 @@ constexpr const char *MATERIALS[]{"piece_white", "piece_black", "piece_check", "
 /// meshes they paint, and every part of the clock resolved to its material and was drawn as the
 /// renderer's fallback cube. They are `clock_case_<theme>` and so on now; see `ClockMaterial`.
 constexpr const char *MODELS[]{"pawn", "knight", "bishop", "rook", "queen", "king", "board", "clock_body", "clock_screen", "clock_rocker"};
-/// @brief Rotation that points a camera's forward at a target. Forward is -Z of the rotation.
-auto LookAt(const glm::vec3 &from, const glm::vec3 &to) -> glm::quat {
-  return glm::quatLookAt(glm::normalize(to - from), glm::vec3(.0f, 1.f, .0f));
-}
 } // namespace
 Chess::Chess()
   : SystemApplication(ApplicationDescription{.name = "Kuki Chess"}) {}
@@ -79,20 +76,17 @@ auto SetupChess(Application &app) -> void {
   chess::ChessWorld::Game(app, "Chess")
     .Scene("Main")
     .Entity<CameraObject>("Camera")
+    .At({.0f, 9.5f, 8.5f})
+    .Facing(-glm::vec3(.0f, 9.5f, 8.5f))
     .With<Camera>([](Camera &camera) {
-      // The camera's own position and rotation, not the entity's transform: nothing in the engine
-      // syncs one into the other, and `Camera::Update` reads these. The editor's camera controller
-      // is what does that syncing there, and it is editor code.
-      camera.position = {.0f, 9.5f, 8.5f};
-      camera.rotation = LookAt(camera.position, glm::vec3(.0f, .0f, .0f));
       camera.fov = 40.f;
       camera.farPlane = 60.f;
     })
     .ActiveCamera()
     .Entity<LightObject>("Sun")
+    .Facing({-.35f, -1.f, -.45f})
     .With<Light>([](Light &light) {
       light.type = LightType::Directional;
-      light.forward = glm::normalize(glm::vec3(-.35f, -1.f, -.45f));
       light.diffuse = {1.f, .97f, .92f};
       light.specular = {1.f, 1.f, 1.f};
       light.intensity = 3.f;

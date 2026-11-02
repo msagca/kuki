@@ -2,6 +2,7 @@
 #include <camera.hpp>
 #include <controller_settings.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <id.hpp>
@@ -25,9 +26,11 @@ public:
   explicit CameraController(kuki::Application &);
   /// @brief The settings, as sliders, for the editor's settings panel.
   auto Display() -> void;
-  auto GetProjection() const -> const glm::mat4 &;
-  auto GetType() const -> const kuki::CameraType &;
-  auto GetView() const -> const glm::mat4 &;
+  /// @brief What the camera it flies saw when last worked out, for the gizmo. Identity, and a
+  /// perspective, when it flies none.
+  auto GetProjection() const -> glm::mat4;
+  auto GetType() const -> kuki::CameraType;
+  auto GetView() const -> glm::mat4;
   /// @brief Registers the keys and mouse buttons it flies by.
   auto Start() -> void override;
   /// @brief Unregisters them: the actions capture `this`.
@@ -35,22 +38,24 @@ public:
   /// @brief Which entity's `Camera` it flies. Pointed again whenever a scene is loaded.
   auto SetEntity(const kuki::EntityID) -> void;
   auto GetEntity() const -> kuki::EntityID;
-  /// @brief Applies the frame's input, then syncs with the entity's `Camera` component.
+  /// @brief Applies the frame's input to the entity's `Transform`, which is where its camera is.
   ///
-  /// The sync is deliberately lopsided. Outwards it writes only the placement -- position, rotation
-  /// and orthographic size -- and only when this controller's `dirty` counter is the newer of the
-  /// two, so a position set in the properties panel or by the Focus binding is not undone. Inwards it
-  /// copies the whole component every frame, because the component is the camera and this is a
-  /// cache of it: anything the placement list does not mention belongs to somebody else and must
-  /// not be written back from here.
+  /// Read from the transform at the start and written back only if the input moved it, so a place
+  /// set anywhere else -- the properties panel, the gizmo -- is where the next movement starts from.
+  /// It kept a copy of the whole camera and synced the two by a counter each side bumped, which had
+  /// to be told field by field which side owned what; with the camera's place on its entity there
+  /// is one copy of it and nothing to arbitrate.
   ///
-  /// The comparison is on a wrapping counter, so the sync direction briefly inverts if `dirty` wraps around.
+  /// The transform is the entity's place relative to its parent, so a camera hung under something
+  /// turned flies in that thing's axes. The editor's own camera has no parent.
   auto Update(const float) -> void override;
 private:
   kuki::EntityID entity{};
-  kuki::Camera camera{};
+  /// Where the camera is and which way it faces, read from its transform at the start of `Update`
+  /// and what the input works on.
+  glm::vec3 position{};
+  glm::quat rotation{1.f, .0f, .0f, .0f};
   ControllerSettings settings{};
-  bool cameraMissing{true};
   bool mouseEnter{true};
   bool mouselook{false};
   bool orbiting{false};
@@ -66,6 +71,9 @@ private:
   kuki::InputManager::ActionID lmbReleaseActionId{kuki::InputManager::InvalidActionID};
   kuki::InputManager::ActionID mmbPressActionId{kuki::InputManager::InvalidActionID};
   kuki::InputManager::ActionID mmbReleaseActionId{kuki::InputManager::InvalidActionID};
+  auto Forward() const -> glm::vec3;
+  auto Right() const -> glm::vec3;
+  auto Up() const -> glm::vec3;
   auto UpdateOrbit(kuki::Application &) -> bool;
   auto UpdatePan(kuki::Application &) -> bool;
   /// @brief Applies movement input for the frame, ramping the boost and precision multipliers over time.
@@ -80,5 +88,9 @@ private:
   ///
   /// @return True when the camera rotated.
   auto UpdateRotation(kuki::Application &) -> bool;
-  auto UpdateZoom(kuki::Application &) -> bool;
+  /// @brief Moves along the view under a perspective, or narrows the view under an orthographic
+  /// projection by writing the camera's size.
+  ///
+  /// @return True when the camera moved; a narrowed view is not a move.
+  auto UpdateZoom(kuki::Application &, kuki::Camera &) -> bool;
 };

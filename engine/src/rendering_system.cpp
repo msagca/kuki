@@ -33,6 +33,7 @@
 #include <target_description.hpp>
 #include <texture.hpp>
 #include <texture_asset.hpp>
+#include <transform.hpp>
 #include <utility>
 namespace kuki {
 RenderingSystem::RenderingSystem(Application &app)
@@ -226,7 +227,7 @@ auto RenderingSystem::Update(float deltaTime) -> void {
     app.GetOverlay().Clear();
     return;
   }
-  // Transforms as well as cameras, and not only because it is convenient here. `UpdateTransforms`
+  // Transforms here, and not only because it is convenient. `UpdateTransforms`
   // used to be reached from `PhysicsSystem::Update` alone, which made drawing the right picture
   // depend on a system a game has every reason to leave out: `SystemApplication` takes its systems
   // as template parameters, and an application without physics got no transform resolution at all
@@ -235,7 +236,10 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   // It belongs here regardless of that. The world matrices are an input to drawing in the same way
   // the camera's view matrix is, they have to be current at this exact point in the frame, and the
   // dirty tracking in `EntityManager` makes a second flush after physics almost free.
-  scene->Entities().UpdateComponents<Transform, Camera>();
+  //
+  // After the sky's light is adopted, which aims that light by its entity's transform.
+  UpdateSkyboxLight(*scene);
+  scene->Entities().UpdateComponents<Transform>();
   // Here because this system is in every application and runs every frame, which is all a sweep
   // asks of where it is done: a model removed during the frame keeps its rig until the next.
   scene->SweepRigs();
@@ -249,7 +253,12 @@ auto RenderingSystem::Update(float deltaTime) -> void {
       if (surfaceWidth > 0 && surfaceHeight > 0)
         SetResolution(surfaceWidth, surfaceHeight);
     }
-  UpdateSkyboxLight(*scene);
+  // What every camera sees, from where its entity now is and the aspect ratio just set: after both,
+  // so neither shows a frame late. Every camera rather than the active one, because a game may read
+  // another's view -- a minimap, a picture in picture -- and there are seldom more than one or two.
+  scene->Entities().ForEach<Camera, WorldMatrix>([](const EntityID, Camera *camera, const WorldMatrix *world) {
+    camera->transform = ComputeCameraTransform(*camera, world->matrix);
+  });
   // The component is where the values live, and the renderer is where they are read from. Pushed
   // every frame rather than on a change, because a component is edited by whoever holds a pointer to
   // it and there is nothing to notice a change -- and a struct this size copied once a frame is
@@ -506,7 +515,12 @@ auto RenderingSystem::UpdateSkyboxLight(Scene &scene) -> void {
   if (!dominant)
     return;
   light->type = LightType::Directional;
-  light->forward = dominant->direction;
+  // The light shines down its entity's -Z, so it is the entity that is turned. Nothing else reads
+  // a sky's transform: the image is not turned with it.
+  if (auto *transform = scene.Entities().GetComponent<Transform>(skyboxEntity)) {
+    transform->rotation = LookRotation(dominant->direction);
+    scene.Entities().MarkTransformDirty(skyboxEntity);
+  }
   light->diffuse = dominant->color;
   light->specular = dominant->color;
   spdlog::info("[RenderingSystem] Adopted a directional light from the skybox");
@@ -544,10 +558,8 @@ auto RenderingSystem::SetResolution(const int width, const int height) -> void {
   if (auto scene = Internal(app).GetScene(); scene)
     if (auto camera = scene->GetActiveCamera(); camera) {
       const auto aspectRatio = static_cast<float>(screenWidth) / screenHeight;
-      if (camera->aspectRatio != aspectRatio) {
+      if (camera->aspectRatio != aspectRatio)
         camera->aspectRatio = aspectRatio;
-        ++camera->dirty;
-      }
     }
 }
 } // namespace kuki

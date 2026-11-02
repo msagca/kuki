@@ -60,6 +60,9 @@ struct Archetype {
   static_assert(sizeof...(Ts) > 0, "an archetype needs at least one component");
   static_assert(Filter<List, detail::IsComponentOf>::size == List::size, "an archetype names a type that is not a component -- declare it with KUKI_COMPONENT");
   static_assert(IsUnique<List>, "an archetype names a component twice, perhaps once on its own and once in a bundle");
+  // A camera and a light are where their entity is and have no place of their own to fall back on,
+  // so without a transform one would sit at the origin looking down -Z whatever was done to it.
+  static_assert(!(Contains<List, Camera> || Contains<List, Light>) || Contains<List, Transform>, "an archetype with a Camera or a Light has no Transform to place it by -- add one, as CameraObject and LightObject have");
   static constexpr uint64_t bits = ListMaskBits<List>;
   template <typename C>
   static constexpr bool Has = Contains<List, C>;

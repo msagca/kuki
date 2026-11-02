@@ -252,8 +252,6 @@ namespace {
   auto ToJson(const Camera &c) -> json {
     return {
       {"type", static_cast<int>(c.type)},
-      {"position", c.position},
-      {"rotation", c.rotation},
       {"fov", c.fov},
       {"nearPlane", c.nearPlane},
       {"farPlane", c.farPlane},
@@ -289,36 +287,10 @@ namespace {
       j.at("shutterSpeed").get_to(c.shutterSpeed);
     if (j.contains("sensitivity"))
       j.at("sensitivity").get_to(c.sensitivity);
-    Transform transform;
-    if (j.contains("position"))
-      j.at("position").get_to(transform.position);
-    if (j.contains("rotation"))
-      j.at("rotation").get_to(transform.rotation);
-    c.SetTransform(transform);
-  }
-  /// @brief The rotation a light is saved with: its own, unless that is not the way it is pointing.
-  ///
-  /// A light keeps a rotation and the direction that follows from it, and loading sets the second
-  /// from the first. Code is free to write the direction alone, though, and a game building its
-  /// scene does -- `light.forward = ...` -- which leaves a rotation that says something else. Saved
-  /// as it stood, such a light came back pointing along -Z: a sun set by a game was on the horizon
-  /// after one round trip. So where the two disagree it is the direction that is believed, and the
-  /// rotation written is one that gives it.
-  auto SavedRotation(const Light &l) -> glm::quat {
-    const auto length = glm::length(l.forward);
-    if (length < 1e-6f)
-      return l.rotation;
-    const auto forward = l.forward / length;
-    if (glm::dot(l.rotation * glm::vec3(.0f, .0f, -1.f), forward) > .99999f)
-      return l.rotation;
-    const auto up = std::abs(forward.y) > .999f ? glm::vec3(.0f, .0f, 1.f) : glm::vec3(.0f, 1.f, .0f);
-    return glm::quatLookAt(forward, up);
   }
   auto ToJson(const Light &l) -> json {
     return {
       {"type", static_cast<int>(l.type)},
-      {"position", l.position},
-      {"rotation", SavedRotation(l)},
       {"ambient", l.ambient},
       {"diffuse", l.diffuse},
       {"specular", l.specular},
@@ -366,12 +338,29 @@ namespace {
       j.at("angularDiameter").get_to(l.angularDiameter);
     if (j.contains("sourceRadius"))
       j.at("sourceRadius").get_to(l.sourceRadius);
-    Transform transform;
-    if (j.contains("position"))
-      j.at("position").get_to(transform.position);
-    if (j.contains("rotation"))
-      j.at("rotation").get_to(transform.rotation);
-    l.SetTransform(transform);
+  }
+  /// @brief Moves the place a camera or a light kept of its own, in a file from before they were
+  /// placed by their entity, into the entity's transform.
+  ///
+  /// After every component is read, because the transform is read too and comes after both by name:
+  /// a file of that age saved it as well, unused and usually at the origin, and it is the
+  /// component's place that was the one drawn.
+  auto AdoptOwnPlace(Application &app, const EntityID id, const json &components) -> void {
+    for (const auto *name : {"Camera", "Light"}) {
+      if (!components.contains(name))
+        continue;
+      const auto &own = components.at(name);
+      if (!own.contains("position") && !own.contains("rotation"))
+        continue;
+      auto *transform = app.GetEntityComponent<Transform>(id);
+      if (!transform)
+        continue;
+      if (own.contains("position"))
+        own.at("position").get_to(transform->position);
+      if (own.contains("rotation"))
+        own.at("rotation").get_to(transform->rotation);
+      app.MarkTransformDirty(id);
+    }
   }
   auto ToJson(const MaterialHandle &h) -> json {
     return {{"assetId", h.assetId}};
@@ -1014,6 +1003,8 @@ namespace {
           break;
         }
       }
+    if (id && entityJson.contains("components"))
+      AdoptOwnPlace(app, id, entityJson.at("components"));
     if (entityJson.contains("children"))
       for (const auto &childJson : entityJson.at("children"))
         DeserializeEntity(app, childJson, id, remap, created, names);

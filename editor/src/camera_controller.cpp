@@ -21,19 +21,23 @@
 #include <utility>
 using namespace kuki;
 namespace {
-/// @brief Points the camera at an entity and backs off until its bounds fill the view. The editor's
+/// @brief Points a camera at an entity and backs off until its bounds fill the view. The editor's
 /// Focus binding; was `Scene::AlignView`, which nothing but this ever called.
-auto Frame(Application &app, const EntityID id) -> void {
+auto FrameEntity(Application &app, const EntityID cameraEntity, const EntityID id) -> void {
   constexpr auto ORIENTATION = glm::vec3{0.f};
   constexpr auto DISTANCE_FACTOR = 2.f;
-  auto *camera = app.GetCamera();
-  if (!camera)
+  const auto [camera, place] = app.GetEntityComponent<Camera, Transform>(cameraEntity);
+  if (!camera || !place)
     return;
   const auto [transform, world] = app.GetEntityComponent<Transform, WorldMatrix>(id);
   const auto bounds = Internal(app).GetEntityBounds(id);
   if (!bounds || !transform || !world)
     return;
-  camera->Frame(bounds.GetWorldBounds(world->matrix), transform->position, ORIENTATION, DISTANCE_FACTOR);
+  const auto framing = kuki::Frame(*camera, bounds.GetWorldBounds(world->matrix), transform->position, ORIENTATION, DISTANCE_FACTOR);
+  place->position = framing.position;
+  place->rotation = framing.rotation;
+  camera->farPlane = framing.farPlane;
+  app.MarkTransformDirty(cameraEntity);
 }
 struct BindingDef {
   const char *label;
@@ -94,14 +98,26 @@ auto CameraController::SetEntity(const EntityID id) -> void {
 auto CameraController::GetEntity() const -> EntityID {
   return entity;
 }
-auto CameraController::GetProjection() const -> const glm::mat4 & {
-  return camera.transform.projection;
+auto CameraController::GetProjection() const -> glm::mat4 {
+  const auto *camera = app.GetEntityComponent<Camera>(entity);
+  return camera ? camera->transform.projection : glm::mat4(1.f);
 }
-auto CameraController::GetType() const -> const CameraType & {
-  return camera.type;
+auto CameraController::GetType() const -> CameraType {
+  const auto *camera = app.GetEntityComponent<Camera>(entity);
+  return camera ? camera->type : CameraType::Perspective;
 }
-auto CameraController::GetView() const -> const glm::mat4 & {
-  return camera.transform.view;
+auto CameraController::GetView() const -> glm::mat4 {
+  const auto *camera = app.GetEntityComponent<Camera>(entity);
+  return camera ? camera->transform.view : glm::mat4(1.f);
+}
+auto CameraController::Forward() const -> glm::vec3 {
+  return -glm::mat3_cast(rotation)[2];
+}
+auto CameraController::Right() const -> glm::vec3 {
+  return glm::mat3_cast(rotation)[0];
+}
+auto CameraController::Up() const -> glm::vec3 {
+  return glm::mat3_cast(rotation)[1];
 }
 auto CameraController::Start() -> void {
   for (auto i = 0; i < BindingCount; ++i)
@@ -128,8 +144,8 @@ auto CameraController::Start() -> void {
     if (const auto world = app.GetEntityComponent<WorldMatrix>(Internal(app).GetSelectedEntity()); world)
       orbitPivot = glm::vec3(world->matrix[3]);
     else
-      orbitPivot = camera.position + camera.forward * settings.orbitFallbackDistance;
-    orbitDistance = glm::length(camera.position - orbitPivot);
+      orbitPivot = position + Forward() * settings.orbitFallbackDistance;
+    orbitDistance = glm::length(position - orbitPivot);
     orbiting = true;
     mouseEnter = true;
     Internal(app).SetCursorLocked(true);
@@ -166,44 +182,25 @@ auto CameraController::Shutdown() -> void {
       Internal(app).Input().UnregisterAction(action);
 }
 auto CameraController::Update(const float) -> void {
-  auto dirty = false;
-  dirty |= UpdatePosition(app);
-  dirty |= mouselook && UpdateRotation(app);
-  dirty |= orbiting && UpdateOrbit(app);
-  dirty |= panning && UpdatePan(app);
-  dirty |= UpdateZoom(app);
+  const auto [transform, camera] = app.GetEntityComponent<Transform, Camera>(entity);
+  if (!transform || !camera)
+    return;
+  position = transform->position;
+  rotation = transform->rotation;
+  auto moved = false;
+  moved |= UpdatePosition(app);
+  moved |= mouselook && UpdateRotation(app);
+  moved |= orbiting && UpdateOrbit(app);
+  moved |= panning && UpdatePan(app);
+  moved |= UpdateZoom(app, *camera);
+  if (moved) {
+    transform->position = position;
+    transform->rotation = rotation;
+    app.MarkTransformDirty(entity);
+  }
+  // After the input's move is written, which this replaces.
   if (app.IsBindingPressed(BindingName(Focus)))
-    Frame(app, Internal(app).GetSelectedEntity());
-  camera.dirty += dirty;
-  auto cameraPtr = app.GetEntityComponent<Camera>(entity);
-  if (cameraPtr) {
-    // Where the camera is, and nothing else. These three are the whole of what this controller
-    // writes -- movement and orbit set the first two, the scroll wheel sets the third under an
-    // orthographic projection -- so they are the whole of what it has any business putting back.
-    //
-    // It used to assign the component wholesale, and that quietly reverted every field on a camera
-    // that nothing here touches. `dirty` is what arbitrates the two directions, and only the
-    // placement controls in the properties panel bump it: the exposure controls do not, and neither
-    // does selecting a debug view. So each of those was written to the component, lost the
-    // comparison that decides the direction, and was overwritten by this controller's copy of the
-    // value it held before -- the moment the camera was next flown. Turning a probe visualisation
-    // on and then looking around was enough to switch it off again.
-    if (!cameraMissing && camera.dirty > cameraPtr->dirty) {
-      cameraPtr->position = camera.position;
-      cameraPtr->rotation = camera.rotation;
-      cameraPtr->orthoSize = camera.orthoSize;
-      cameraPtr->dirty = camera.dirty;
-    }
-    // Then read the whole of it back, in every case rather than only when the component moved last.
-    // The component is the camera and this is a cache of it, so refreshing unconditionally is what
-    // keeps the two from drifting on anything the list above does not mention -- the aspect ratio
-    // the render target hands it, a field of view set in the panel -- and it keeps that list the
-    // only place the split between them is stated. The cache can no longer overwrite anything.
-    camera = *cameraPtr;
-    cameraMissing = false;
-  } else
-    cameraMissing = true;
-  camera.Update();
+    FrameEntity(app, entity, Internal(app).GetSelectedEntity());
 }
 auto CameraController::UpdateOrbit(Application &app) -> bool {
   static constexpr auto EPSILON = 1e-6f;
@@ -213,8 +210,9 @@ auto CameraController::UpdateOrbit(Application &app) -> bool {
   const auto mousePos = app.GetMousePosition();
   if (mouseEnter) {
     mouseLast = mousePos;
-    pitch = glm::asin(std::clamp(camera.forward.y, -1.f, 1.f));
-    yaw = std::atan2(-camera.forward.x, -camera.forward.z);
+    const auto forward = Forward();
+    pitch = glm::asin(std::clamp(forward.y, -1.f, 1.f));
+    yaw = std::atan2(-forward.x, -forward.z);
   }
   mouseEnter = false;
   glm::vec2 mouseDiff{};
@@ -225,9 +223,8 @@ auto CameraController::UpdateOrbit(Application &app) -> bool {
     return false;
   yaw -= mouseDiff.x;
   pitch = std::clamp(pitch + mouseDiff.y, -MAX_PITCH, MAX_PITCH);
-  camera.rotation = glm::normalize(glm::angleAxis(yaw, WORLD_UP) * glm::angleAxis(pitch, WORLD_RIGHT));
-  const auto newForward = glm::normalize(camera.rotation * glm::vec3(0.f, 0.f, -1.f));
-  camera.position = orbitPivot - newForward * orbitDistance;
+  rotation = glm::normalize(glm::angleAxis(yaw, WORLD_UP) * glm::angleAxis(pitch, WORLD_RIGHT));
+  position = orbitPivot - Forward() * orbitDistance;
   return true;
 }
 auto CameraController::UpdatePan(Application &app) -> bool {
@@ -243,7 +240,7 @@ auto CameraController::UpdatePan(Application &app) -> bool {
   mouseLast = mousePos;
   if (glm::length2(mouseDiff) < EPSILON)
     return false;
-  camera.position += (-camera.right * mouseDiff.x + camera.up * mouseDiff.y) * settings.panSpeed;
+  position += (-Right() * mouseDiff.x + Up() * mouseDiff.y) * settings.panSpeed;
   return true;
 }
 auto CameraController::UpdatePosition(Application &app) -> bool {
@@ -274,7 +271,7 @@ auto CameraController::UpdatePosition(Application &app) -> bool {
   if (wasd.x == 0 && wasd.y == 0 && eq == 0)
     return false;
   const auto velocity = settings.moveSpeed * settings.moveBoost * precisionFactor * deltaTime;
-  camera.position += (camera.forward * static_cast<float>(wasd.y) + camera.right * static_cast<float>(wasd.x) + WORLD_UP * static_cast<float>(eq)) * velocity;
+  position += (Forward() * static_cast<float>(wasd.y) + Right() * static_cast<float>(wasd.x) + WORLD_UP * static_cast<float>(eq)) * velocity;
   return true;
 }
 auto CameraController::UpdateRotation(Application &app) -> bool {
@@ -285,8 +282,9 @@ auto CameraController::UpdateRotation(Application &app) -> bool {
   const auto mousePos = app.GetMousePosition();
   if (mouseEnter) {
     mouseLast = mousePos;
-    pitch = glm::asin(std::clamp(camera.forward.y, -1.f, 1.f));
-    yaw = std::atan2(-camera.forward.x, -camera.forward.z);
+    const auto forward = Forward();
+    pitch = glm::asin(std::clamp(forward.y, -1.f, 1.f));
+    yaw = std::atan2(-forward.x, -forward.z);
   }
   mouseEnter = false;
   glm::vec2 mouseDiff{};
@@ -297,10 +295,10 @@ auto CameraController::UpdateRotation(Application &app) -> bool {
     return false;
   yaw -= mouseDiff.x;
   pitch = std::clamp(pitch + mouseDiff.y, -MAX_PITCH, MAX_PITCH);
-  camera.rotation = glm::normalize(glm::angleAxis(yaw, WORLD_UP) * glm::angleAxis(pitch, WORLD_RIGHT));
+  rotation = glm::normalize(glm::angleAxis(yaw, WORLD_UP) * glm::angleAxis(pitch, WORLD_RIGHT));
   return true;
 }
-auto CameraController::UpdateZoom(Application &app) -> bool {
+auto CameraController::UpdateZoom(Application &app, Camera &camera) -> bool {
   static constexpr auto EPSILON = 1e-6f;
   static constexpr auto MIN_ORTHO_SIZE = .1f;
   if (!Internal(app).IsViewportHovered() && !mouselook)
@@ -313,9 +311,10 @@ auto CameraController::UpdateZoom(Application &app) -> bool {
     zoomSpeed *= settings.precisionMin;
   else if (app.IsBindingHeld(BindingName(Boost)))
     zoomSpeed *= settings.moveBoostMax;
-  if (camera.type == CameraType::Orthographic)
+  if (camera.type == CameraType::Orthographic) {
     camera.orthoSize = std::max(MIN_ORTHO_SIZE, camera.orthoSize - scroll * zoomSpeed);
-  else
-    camera.position += camera.forward * scroll * zoomSpeed;
+    return false;
+  }
+  position += Forward() * scroll * zoomSpeed;
   return true;
 }

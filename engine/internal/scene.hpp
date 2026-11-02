@@ -27,6 +27,8 @@ public:
   /// @brief The camera drawn from: the one made active, or else the first there is. Null when the
   /// scene has no camera.
   auto GetActiveCamera(this auto &) -> decltype(auto);
+  /// @brief The entity of the camera drawn from, by the same choice. Invalid when there is none.
+  auto GetActiveCameraEntity() const -> EntityID;
   /// @brief Makes an entity's camera the one drawn from. False when it has no camera.
   auto SetActiveCamera(const EntityID) -> bool;
   /// @brief The rig of a model's root, through its `Skeleton`. Null for an entity with no skeleton,
@@ -46,9 +48,6 @@ private:
   SlotStore<Rig> rigs;
 };
 auto Scene::GetActiveCamera(this auto &self) -> decltype(auto) {
-  if (self.activeCameraId)
-    if (auto *camera = self.entityManager.template GetComponent<Camera>(self.activeCameraId); camera)
-      return camera;
-  return self.entityManager.template GetAny<Camera>();
+  return self.entityManager.template GetComponent<Camera>(self.GetActiveCameraEntity());
 }
 } // namespace kuki

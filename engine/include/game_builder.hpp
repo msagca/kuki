@@ -172,6 +172,11 @@ public:
   auto Rotate(const glm::quat &rotation) -> EntityBuilder {
     return Move([&](Transform &transform) { transform.rotation = rotation; });
   }
+  /// @brief Turns the entity's -Z, the way a camera looks and a light shines, to face a direction.
+  /// See `LookRotation`.
+  auto Facing(const glm::vec3 &direction) -> EntityBuilder {
+    return Rotate(LookRotation(direction));
+  }
   /// @brief Sets the rotation from yaw, pitch and roll in degrees.
   auto RotateEuler(const glm::vec3 &degrees) -> EntityBuilder {
     return Rotate(glm::quat(glm::radians(degrees)));

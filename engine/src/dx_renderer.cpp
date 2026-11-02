@@ -15,6 +15,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <material_asset.hpp>
 #include <mesh_asset.hpp>
 #include <light.hpp>
@@ -241,19 +242,16 @@ auto HashAtmosphere(const AtmosphereSky &sky, const glm::vec3 &sunDirection) -> 
 /// directional light, and two places to set its direction is two things to get out of step. So the
 /// light is the sun, and rotating it moves the sky.
 ///
-/// Negated because `Light::forward` is the direction the light travels and the atmosphere needs the
+/// Negated because a light's forward (its entity's -Z) is the direction the light travels and the atmosphere needs the
 /// direction it came from. Straight up with no directional light in the scene, which is noon -- an
 /// arbitrary choice, but the one that leaves a sky somebody can see rather than a black one.
 auto SunDirection(Scene &scene) -> glm::vec3 {
-  const Light *directional{};
-  scene.Entities().ForEach<Light>([&](const EntityID, const Light *light) {
-    if (!directional && light && light->type == LightType::Directional)
-      directional = light;
+  const WorldMatrix *directional{};
+  scene.Entities().ForEach<Light, WorldMatrix>([&](const EntityID, const Light *light, const WorldMatrix *world) {
+    if (!directional && light->type == LightType::Directional)
+      directional = world;
   });
-  if (!directional)
-    return glm::vec3(.0f, 1.f, .0f);
-  const auto forward = directional->forward;
-  return glm::dot(forward, forward) > 1.0e-12f ? -glm::normalize(forward) : glm::vec3(.0f, 1.f, .0f);
+  return directional ? -WorldForward(directional->matrix) : glm::vec3(.0f, 1.f, .0f);
 }
 /// @brief Hashes the part of the frame constants the probe trace shades its ray hits from.
 ///
@@ -1626,7 +1624,7 @@ auto DXRenderer::ApplyVolumetricFog(std::span<std::string> inputs, std::span<std
   DXVolumetricConstants constants{};
   const auto inverseViewProjection = glm::inverse(camera->transform.projection * camera->transform.view);
   memcpy(constants.inverseViewProjection, glm::value_ptr(inverseViewProjection), sizeof(constants.inverseViewProjection));
-  memcpy(constants.cameraPosition, glm::value_ptr(camera->position), sizeof(constants.cameraPosition));
+  memcpy(constants.cameraPosition, glm::value_ptr(camera->transform.position), sizeof(constants.cameraPosition));
   constants.maxDistance = std::max(.01f, fog->maxDistance);
   memcpy(constants.albedo, glm::value_ptr(fog->albedo), sizeof(constants.albedo));
   constants.anisotropy = std::clamp(fog->anisotropy, -.95f, .95f);
@@ -2104,7 +2102,7 @@ auto DXRenderer::ApplyPlanarReflection(std::span<std::string> inputs, std::span<
   const auto inverse = glm::inverse(viewProjection);
   memcpy(constants.viewProjection, glm::value_ptr(viewProjection), sizeof(constants.viewProjection));
   memcpy(constants.inverseViewProjection, glm::value_ptr(inverse), sizeof(constants.inverseViewProjection));
-  memcpy(constants.cameraPosition, glm::value_ptr(camera->position), sizeof(constants.cameraPosition));
+  memcpy(constants.cameraPosition, glm::value_ptr(camera->transform.position), sizeof(constants.cameraPosition));
   constants.height = surface->height;
   constants.tolerance = std::max(surface->tolerance, 1.0e-4f);
   constants.strength = std::clamp(surface->strength, .0f, 1.f);
@@ -2741,7 +2739,7 @@ auto DXRenderer::ResolvePools(Scene &scene) -> void {
           }
     }
     draw.bounds = cache.bounds;
-    draw.visible = !camera || !draw.bounds || camera->IntersectsFrustum(draw.bounds);
+    draw.visible = !camera || !draw.bounds || IntersectsFrustum(*camera, draw.bounds);
     poolDraws.push_back(draw);
   });
 }
@@ -2864,7 +2862,7 @@ auto DXRenderer::BuildRayScene(const Camera &camera, std::span<const DXPoolDraw>
   if (!rayScene.Build(*context, instances))
     return;
   const auto inverseViewProjection = glm::inverse(camera.transform.projection * camera.transform.view);
-  rayScene.Validate(*context, pipelines, glm::value_ptr(inverseViewProjection), glm::value_ptr(camera.position));
+  rayScene.Validate(*context, pipelines, glm::value_ptr(inverseViewProjection), glm::value_ptr(camera.transform.position));
 }
 auto DXRenderer::CollectProbeGeometry(Scene &) -> std::vector<DXProbeGeometry> {
   KUKI_PROFILE_SCOPE("CollectProbeGeometry");
@@ -2991,19 +2989,23 @@ auto DXRenderer::UploadFrameConstants(const DXFrameConstants &constants) -> D3D1
 auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const bool hasShadowMap, DXFrameConstants &constants) const -> void {
   const auto viewProjection = camera.transform.projection * camera.transform.view;
   memcpy(constants.viewProjection, glm::value_ptr(viewProjection), sizeof(constants.viewProjection));
-  memcpy(constants.viewPosition, glm::value_ptr(camera.position), sizeof(float) * 3);
+  memcpy(constants.viewPosition, glm::value_ptr(camera.transform.position), sizeof(float) * 3);
   const Light *directional{};
+  glm::vec3 directionalForward{.0f, .0f, -1.f};
   auto pointCount = 0u;
   auto spotCount = 0u;
-  scene.Entities().ForEach<Light>([&](const EntityID, const Light *light) {
+  scene.Entities().ForEach<Light, WorldMatrix>([&](const EntityID, const Light *light, const WorldMatrix *world) {
+    const auto position = WorldPosition(world->matrix);
+    const auto forward = WorldForward(world->matrix);
     switch (light->type) {
     case LightType::Directional:
       directional = light;
+      directionalForward = forward;
       break;
     case LightType::Point:
       if (pointCount < MAX_POINT_LIGHTS) {
         auto &target = constants.pointLights[pointCount++];
-        memcpy(target.position, glm::value_ptr(light->position), sizeof(float) * 3);
+        memcpy(target.position, glm::value_ptr(position), sizeof(float) * 3);
         memcpy(target.diffuse, glm::value_ptr(light->diffuse), sizeof(float) * 3);
         memcpy(target.specular, glm::value_ptr(light->specular), sizeof(float) * 3);
         target.attenuation[0] = light->constant;
@@ -3015,8 +3017,8 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
     case LightType::Spot:
       if (spotCount < MAX_SPOT_LIGHTS) {
         auto &target = constants.spotLights[spotCount++];
-        memcpy(target.position, glm::value_ptr(light->position), sizeof(float) * 3);
-        memcpy(target.direction, glm::value_ptr(light->forward), sizeof(float) * 3);
+        memcpy(target.position, glm::value_ptr(position), sizeof(float) * 3);
+        memcpy(target.direction, glm::value_ptr(forward), sizeof(float) * 3);
         memcpy(target.diffuse, glm::value_ptr(light->diffuse), sizeof(float) * 3);
         memcpy(target.specular, glm::value_ptr(light->specular), sizeof(float) * 3);
         target.attenuation[0] = light->constant;
@@ -3032,7 +3034,7 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
     }
   });
   if (directional) {
-    memcpy(constants.directionalDirection, glm::value_ptr(directional->forward), sizeof(float) * 3);
+    memcpy(constants.directionalDirection, glm::value_ptr(directionalForward), sizeof(float) * 3);
     memcpy(constants.directionalAmbient, glm::value_ptr(directional->ambient), sizeof(float) * 3);
     memcpy(constants.directionalDiffuse, glm::value_ptr(directional->diffuse), sizeof(float) * 3);
     memcpy(constants.directionalSpecular, glm::value_ptr(directional->specular), sizeof(float) * 3);
@@ -3092,10 +3094,10 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
   constants.probeCounts[2] = probeVolume.GetLookupResolution();
   constants.probeCounts[3] = 1u;
 }
-auto DXRenderer::FitSpotShadowFrustum(const Light &light, glm::mat4 &view, glm::mat4 &projection) const -> void {
+auto DXRenderer::FitSpotShadowFrustum(const Light &light, const glm::mat4 &world, glm::mat4 &view, glm::mat4 &projection) const -> void {
   constexpr auto MAX_FOV = glm::radians(170.f);
   const auto fov = std::min(MAX_FOV, 2.f * std::acos(std::clamp(light.outerCutoff, -1.f, 1.f)) * 1.05f);
-  view = glm::lookAtRH(light.position, light.position + light.forward, light.up);
+  view = ViewFrom(world);
   projection = glm::perspectiveRH_ZO(fov, 1.f, light.nearPlane, light.farPlane);
 }
 auto DXRenderer::DrawSkybox(const Camera &camera, const DXRenderTarget &target) -> void {
@@ -3176,9 +3178,12 @@ auto DXRenderer::BuildShadowMatrix(Scene &scene, float *out) const -> bool {
   if (!out)
     return false;
   const Light *directional{};
-  scene.Entities().ForEach<Light>([&](const EntityID, const Light *light) {
-    if (light->type == LightType::Directional)
+  glm::mat4 directionalWorld{1.f};
+  scene.Entities().ForEach<Light, WorldMatrix>([&](const EntityID, const Light *light, const WorldMatrix *world) {
+    if (light->type == LightType::Directional) {
       directional = light;
+      directionalWorld = world->matrix;
+    }
   });
   if (!directional)
     return false;
@@ -3205,12 +3210,12 @@ auto DXRenderer::BuildShadowMatrix(Scene &scene, float *out) const -> bool {
   // A flat scene -- a floor alone -- has bounds to fit to; one that is a single point has no size to
   // stand back from, and the light's own box is all there is.
   if (!sceneBounds || sceneBounds.min == sceneBounds.max) {
-    view = directional->GetView();
+    view = ViewFrom(directionalWorld);
     projection = glm::orthoRH_ZO(-directional->orthoSize, directional->orthoSize, -directional->orthoSize, directional->orthoSize, directional->nearPlane, directional->farPlane);
   } else {
     const auto center = (sceneBounds.min + sceneBounds.max) * .5f;
     const auto radius = glm::length(sceneBounds.max - sceneBounds.min) * .5f;
-    view = glm::lookAtRH(center - directional->forward * radius * 2.f, center, directional->up);
+    view = glm::lookAtRH(center - WorldForward(directionalWorld) * radius * 2.f, center, WorldUp(directionalWorld));
     auto boundsMin = glm::vec3(std::numeric_limits<float>::max());
     auto boundsMax = glm::vec3(std::numeric_limits<float>::lowest());
     const glm::vec3 corners[8]{
@@ -3445,9 +3450,9 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   // blended in the order they are in the pool.
   const auto Distance = [&](const DXPoolDraw &draw) {
     if (draw.bounds)
-      return glm::distance((draw.bounds.min + draw.bounds.max) * .5f, camera->position);
+      return glm::distance((draw.bounds.min + draw.bounds.max) * .5f, camera->transform.position);
     const auto *worlds = draw.table->GetColumn<WorldMatrix>();
-    return worlds && !worlds->components.empty() ? glm::distance(glm::vec3(worlds->components.front().matrix[3]), camera->position) : .0f;
+    return worlds && !worlds->components.empty() ? glm::distance(glm::vec3(worlds->components.front().matrix[3]), camera->transform.position) : .0f;
   };
   std::vector<DXDeferredDraw> deferred;
   auto drawnPools = 0;
@@ -3481,7 +3486,7 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
         if (!address || !entity || !boneAddress)
           continue;
         if (Blended(draw.material) || Transmissive(draw.material)) {
-          deferred.push_back({draw.mesh, draw.material, address, boneAddress, entity, 1u, true, Blended(draw.material), glm::distance(glm::vec3(draw.world[3]), camera->position)});
+          deferred.push_back({draw.mesh, draw.material, address, boneAddress, entity, 1u, true, Blended(draw.material), glm::distance(glm::vec3(draw.world[3]), camera->transform.position)});
           continue;
         }
         ApplyMaterial(draw.material);
@@ -3900,10 +3905,10 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
   auto scene = Internal(app).GetScene();
   if (!scene)
     return;
-  std::vector<const Light *> spotLights;
-  scene->Entities().ForEach<Light>([&](const EntityID, const Light *light) {
+  std::vector<std::pair<const Light *, glm::mat4>> spotLights;
+  scene->Entities().ForEach<Light, WorldMatrix>([&](const EntityID, const Light *light, const WorldMatrix *world) {
     if (light->type == LightType::Spot && spotLights.size() < MAX_SPOT_LIGHTS)
-      spotLights.push_back(light);
+      spotLights.emplace_back(light, world->matrix);
   });
   if (spotLights.empty())
     return;
@@ -3923,7 +3928,7 @@ auto DXRenderer::CreateSpotShadowMap(std::span<std::string>, std::span<std::stri
   for (size_t layer = 0; layer < layers; ++layer) {
     glm::mat4 view{1.f};
     glm::mat4 projection{1.f};
-    FitSpotShadowFrustum(*spotLights[layer], view, projection);
+    FitSpotShadowFrustum(*spotLights[layer].first, spotLights[layer].second, view, projection);
     spotShadowViewProjection[layer] = projection * view;
     DXShadowConstants constants{};
     memcpy(constants.lightViewProjection, glm::value_ptr(spotShadowViewProjection[layer]), sizeof(constants.lightViewProjection));
@@ -4102,7 +4107,7 @@ auto DXRenderer::LoadScene(Scene &scene) -> void {
   // is handed target names and nothing else. A scene with no camera keeps whatever was last set,
   // which is the same thing it draws with.
   if (const auto camera = scene.GetActiveCamera(); camera)
-    exposure = camera->GetExposureStops();
+    exposure = GetExposureStops(*camera);
   // Once a frame, here, because every pass that moves a surface by the wind has to see one clock.
   windTime += std::clamp(app.DeltaTime(), .0f, .25f);
   EnsureSceneResources(scene);
@@ -4269,15 +4274,19 @@ auto DXRenderer::RenderPreview(const AssetID assetId, const std::vector<std::pai
   const auto pipeline = pipelines.GetScenePipeline(context->GetDevice(), TargetFormatToRTVDXGI(desc.format), 1);
   if (!pipeline || !*pipeline)
     return nullptr;
+  // A camera and a light of the preview's own, placed by matrices made here rather than by entities:
+  // the preview is drawn outside any scene.
   Camera camera{};
-  camera.Frame(bounds);
+  const auto framing = Frame(camera, bounds);
+  camera.farPlane = framing.farPlane;
+  camera.transform = ComputeCameraTransform(camera, glm::translate(glm::mat4(1.f), framing.position) * glm::toMat4(framing.rotation));
   Light light{};
-  light.SetRotation(glm::quat(glm::vec3(.52f, .0f, .52f)));
+  const auto lightForward = WorldForward(glm::toMat4(glm::quat(glm::vec3(.52f, .0f, .52f))));
   DXFrameConstants frameConstants{};
   const auto viewProjection = camera.transform.projection * camera.transform.view;
   memcpy(frameConstants.viewProjection, glm::value_ptr(viewProjection), sizeof(frameConstants.viewProjection));
-  memcpy(frameConstants.viewPosition, glm::value_ptr(camera.position), sizeof(float) * 3);
-  memcpy(frameConstants.directionalDirection, glm::value_ptr(light.forward), sizeof(float) * 3);
+  memcpy(frameConstants.viewPosition, glm::value_ptr(camera.transform.position), sizeof(float) * 3);
+  memcpy(frameConstants.directionalDirection, glm::value_ptr(lightForward), sizeof(float) * 3);
   memcpy(frameConstants.directionalAmbient, glm::value_ptr(light.ambient), sizeof(float) * 3);
   memcpy(frameConstants.directionalDiffuse, glm::value_ptr(light.diffuse), sizeof(float) * 3);
   memcpy(frameConstants.directionalSpecular, glm::value_ptr(light.specular), sizeof(float) * 3);

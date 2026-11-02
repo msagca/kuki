@@ -1848,10 +1848,8 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
   struct ManipulatorTarget {
     EntityID id{};
     Transform *transformComp{};
-    Camera *cameraComp{};
-    Light *lightComp{};
-    Transform current{};
-    /// Where it is in the world: its world matrix, or for a camera or a light the place it keeps.
+    /// Where it is in the world. A camera and a light are placed by their transform like anything
+    /// else; they kept a place of their own, which this used to read and write in its stead.
     glm::mat4 world{1.f};
   };
   std::vector<ManipulatorTarget> targets;
@@ -1860,23 +1858,10 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
     ManipulatorTarget target;
     target.id = id;
     target.transformComp = GetEntityComponent<Transform>(id);
-    if (target.transformComp) {
-      target.current = *target.transformComp;
-      if (const auto *world = GetEntityComponent<WorldMatrix>(id))
-        target.world = world->matrix;
-    } else {
-      target.cameraComp = GetEntityComponent<Camera>(id);
-      if (target.cameraComp)
-        target.current = target.cameraComp->GetTransform();
-      else {
-        target.lightComp = GetEntityComponent<Light>(id);
-        if (target.lightComp)
-          target.current = target.lightComp->GetTransform();
-        else
-          continue;
-      }
-      target.world = target.current.local;
-    }
+    if (!target.transformComp)
+      continue;
+    if (const auto *world = GetEntityComponent<WorldMatrix>(id))
+      target.world = world->matrix;
     targets.push_back(target);
   }
   if (targets.empty())
@@ -1903,15 +1888,9 @@ auto Editor::DrawManipulator(const float width, const float height) -> void {
     ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(newWorld), glm::value_ptr(result.position), glm::value_ptr(rotation), glm::value_ptr(result.scale));
     result.rotation = glm::quat(glm::radians(rotation));
     result.local = newWorld;
-    if (target.cameraComp)
-      target.cameraComp->SetTransform(result);
-    else if (target.lightComp)
-      target.lightComp->SetTransform(result);
-    else {
-      // Worked out into the world matrix by the next transform update, children and all, rather
-      // than the matrix written here by hand -- which moved the entity and left its children behind.
-      *target.transformComp = result;
-      MarkTransformDirty(target.id);
-    }
+    // Worked out into the world matrix by the next transform update, children and all, rather than
+    // the matrix written here by hand -- which moved the entity and left its children behind.
+    *target.transformComp = result;
+    MarkTransformDirty(target.id);
   }
 }

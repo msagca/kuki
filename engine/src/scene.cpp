@@ -34,6 +34,16 @@ auto Scene::ClaimRig(const EntityID id) -> Rig * {
 auto Scene::SweepRigs() -> void {
   rigs.Sweep([this](const EntityID id) { return entityManager.IsEntity(id); });
 }
+auto Scene::GetActiveCameraEntity() const -> EntityID {
+  if (activeCameraId && entityManager.HasComponent<Camera>(activeCameraId))
+    return activeCameraId;
+  auto first = EntityID::Invalid;
+  entityManager.ForEach<Camera>([&](const EntityID id, const Camera *) {
+    if (!first)
+      first = id;
+  });
+  return first;
+}
 auto Scene::SetActiveCamera(const EntityID id) -> bool {
   if (!entityManager.HasComponent<Camera>(id))
     return false;

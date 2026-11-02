@@ -331,6 +331,10 @@ auto Application::GetCamera() const -> const Camera * {
   const auto scene = sceneManager.Get();
   return scene ? scene->GetActiveCamera() : nullptr;
 }
+auto Application::GetCameraEntity() const -> EntityID {
+  const auto scene = sceneManager.Get();
+  return scene ? scene->GetActiveCameraEntity() : EntityID::Invalid;
+}
 auto Application::ActiveEntities() -> EntityManager * {
   auto scene = sceneManager.Get();
   return scene ? &scene->Entities() : nullptr;
