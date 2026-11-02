@@ -148,6 +148,8 @@ constexpr LightingDebugSequenceDef kLightingDebugSequences[] = {
   {"vc", LightingDebugView::ProbeCell, "Show the octree leaf each point landed in"},
   {"vt", LightingDebugView::ProbeBlend, "Show where in its leaf each point sits"},
 };
+/// @brief Steps through what the probes are drawn as, a view at a time.
+constexpr const char *PROBE_SEQUENCE = "vp";
 auto ShortcutName(int index) -> std::string {
   return std::string("Editor.") + kShortcuts[index].label;
 }
@@ -497,22 +499,6 @@ auto Editor::Start() -> void {
   LoadDefaultScene();
   for (auto i = 0; i < ShortcutCount; ++i)
     Internal(*this).RegisterBinding(ShortcutName(i), InputManager::Trigger{kShortcuts[i].key, kShortcuts[i].mods}, kShortcuts[i].description);
-  // Mouse look grabs the cursor and hides it from Dear ImGui, so it may only start over the game
-  // view. The panels float on top of that view now, and a right click on one of them belongs to the
-  // panel: its own context menus would never see the press otherwise.
-  Internal(*this).Input().RegisterAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
-    if (!Internal(*this).IsViewportHovered())
-      return;
-    mouselookActive = true;
-    Internal(*this).SetCursorLocked(true);
-    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
-  });
-  Internal(*this).Input().RegisterAction(GLFW_MOUSE_BUTTON_RIGHT, [this]() {
-    if (!mouselookActive)
-      return;
-    mouselookActive = false;
-    Internal(*this).SetCursorLocked(false);
-    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse; }, false);
   // The three view groups -- which graph target is shown, which shading step the scene pass writes
   // out, and what the probes are drawn as -- are independent, and each key here sets only its own.
   // Selecting within a group replaces what that group held; nothing else is touched.
@@ -524,35 +510,57 @@ auto Editor::Start() -> void {
   // which of the keys you had pressed since was the one that took it away. Each group now keeps
   // what it was given until it is given something else, or set back to its own off entry -- `vf`
   // here, `None` in the shading list, `Off` in the probe cycle.
-  for (const auto &def : kDebugViewSequences) {
-    const std::string targetName = def.targetName;
-    Internal(*this).Input().RegisterAction(def.sequence, [this, targetName]() { context.debugViewTarget = targetName; }, def.description);
-  }
+  for (const auto &def : kDebugViewSequences)
+    Internal(*this).Input().RegisterSequence(def.sequence, def.description);
   // Not registered at all on a backend whose scene shader has no branch for them, rather than
   // registered and left to do nothing. A key that changes a label and leaves the picture alone is
   // the worst of the three options: the shortcut list still advertises it, and the person pressing
   // it concludes the view is broken rather than absent. The list is built from the same condition,
   // so what it offers and what works are one thing.
-  for (const auto &def : kLightingDebugSequences) {
-    if (!context.capabilities.lightingDebugViews)
-      break;
-    const auto view = def.view;
-    Internal(*this).Input().RegisterAction(def.sequence, [this, view]() {
-      if (auto *camera = GetCamera())
-        camera->lightingDebugView = view; }, def.description);
+  if (context.capabilities.lightingDebugViews)
+    for (const auto &def : kLightingDebugSequences)
+      Internal(*this).Input().RegisterSequence(def.sequence, def.description);
+  if (context.capabilities.probeVolume)
+    Internal(*this).Input().RegisterSequence(PROBE_SEQUENCE, "Step through the irradiance probe visualisations");
+}
+auto Editor::UpdateMouselook() -> void {
+  // Mouse look grabs the cursor and hides it from Dear ImGui, so it may only start over the game
+  // view. The panels float on top of that view now, and a right click on one of them belongs to the
+  // panel: its own context menus would never see the press otherwise.
+  //
+  // Before the frame's `ImGui::NewFrame`, as the callbacks this was ran before it, so the panels do
+  // not see the press that starts it.
+  if (IsMousePressed(MouseButton::Right) && Internal(*this).IsViewportHovered()) {
+    mouselookActive = true;
+    Internal(*this).SetCursorLocked(true);
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
   }
-  if (context.capabilities.probeVolume) {
-    Internal(*this).Input().RegisterAction("vp", [this]() {
-      auto *camera = GetCamera();
-      if (!camera)
-        return;
-      // Steps through the views rather than toggling one. There are six things a probe can be coloured
-      // by and one key, and stepping is how a fault gets narrowed: the irradiance view says a probe has
-      // gone wrong, and the ones after it say which of the mechanisms maintaining it is the one that
-      // failed. Wrapping through `Off` keeps the way out on the same key it came in on.
-      const auto &names = EnumTraits<ProbeDebugView>::GetNames();
-      const auto next = (static_cast<size_t>(camera->probeDebugView) + 1) % names.size();
-      camera->probeDebugView = static_cast<ProbeDebugView>(next); }, "Step through the irradiance probe visualisations");
+  if (IsMouseReleased(MouseButton::Right) && mouselookActive) {
+    mouselookActive = false;
+    Internal(*this).SetCursorLocked(false);
+    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+  }
+}
+auto Editor::UpdateTypedViews() -> void {
+  auto &input = Internal(*this).Input();
+  for (const auto &def : kDebugViewSequences)
+    if (input.IsSequenceTyped(def.sequence))
+      context.debugViewTarget = def.targetName;
+  auto *camera = GetCamera();
+  if (!camera)
+    return;
+  if (context.capabilities.lightingDebugViews)
+    for (const auto &def : kLightingDebugSequences)
+      if (input.IsSequenceTyped(def.sequence))
+        camera->lightingDebugView = def.view;
+  // Steps through the views rather than toggling one. There are six things a probe can be coloured
+  // by and one key, and stepping is how a fault gets narrowed: the irradiance view says a probe has
+  // gone wrong, and the ones after it say which of the mechanisms maintaining it is the one that
+  // failed. Wrapping through `Off` keeps the way out on the same key it came in on.
+  if (context.capabilities.probeVolume && input.IsSequenceTyped(PROBE_SEQUENCE)) {
+    const auto &names = EnumTraits<ProbeDebugView>::GetNames();
+    const auto next = (static_cast<size_t>(camera->probeDebugView) + 1) % names.size();
+    camera->probeDebugView = static_cast<ProbeDebugView>(next);
   }
 }
 auto Editor::Update(const float deltaTime) -> void {
@@ -564,6 +572,8 @@ auto Editor::Update(const float deltaTime) -> void {
     BeginPlay();
   }
   UpdateIO();
+  UpdateMouselook();
+  UpdateTypedViews();
   UpdateView();
 }
 auto Editor::Shutdown() -> void {

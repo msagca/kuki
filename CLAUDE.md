@@ -133,8 +133,9 @@ in a small notation (`"left right punch"`, `"guard*30 -guard"`); it keeps nothin
 fed a peer's it reproduces the peer's gestures. A game's keys are `Key`s (`key.hpp`, GLFW's numbers
 under the engine's names, so glfw is private to the engine), given only as a binding's default; it
 reads no key directly. Mouse buttons are read directly (`IsMousePressed(MouseButton::Left)`). Typed
-sequences and callback actions (`InputManager::RegisterAction`) are the editor's, reached through
-`ApplicationInternal`.
+sequences (`InputManager::RegisterSequence`, read with `IsSequenceTyped`) are the editor's, reached
+through `ApplicationInternal`. Nothing in the input takes a callback: keys, buttons and sequences
+are all read in `Update`.
 
 An `Animator` is plain data. Its states are an `AnimatorController` asset it names by id, shared by
 every animator on the same moves; without one it plays one clip by frame time (the editor's

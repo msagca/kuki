@@ -28,9 +28,9 @@ concept IsTrieNode = std::is_base_of_v<TrieNode<T>, T>;
 struct SuffixNode;
 template <typename T>
 concept IsSuffixNode = std::is_base_of_v<SuffixNode, T>;
-struct ActionNode;
+struct SequenceNode;
 template <typename T>
-concept IsActionNode = std::is_base_of_v<ActionNode, T>;
+concept IsSequenceNode = std::is_base_of_v<SequenceNode, T>;
 template <typename T>
 concept IsCharLike = std::is_same_v<T, char> || std::is_same_v<T, unsigned char>;
 template <typename T>

@@ -190,6 +190,10 @@ private:
   /// that does not know about it.
   auto SaveGraphicsConfig() -> void;
   auto UpdateIO() -> void;
+  /// @brief Starts and ends the editor's mouse look from the right button, polled each frame.
+  auto UpdateMouselook() -> void;
+  /// @brief Applies the debug views whose typed sequences were completed this frame.
+  auto UpdateTypedViews() -> void;
   auto UpdateView() -> void;
   auto ApplyPickedAsset(const AssetID) -> void;
   /// @brief Points the camera controller at the scene's first camera and makes it the active one.
