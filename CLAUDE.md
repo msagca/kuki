@@ -215,7 +215,11 @@ duel's `Figure`) with `ModelNodeObject`/`MeshObject` children in the model's poo
 
 `Transform` has no dirty bit and no world matrix: after writing `position`/`rotation`/`scale`, call
 `MarkTransformDirty` or the change is never applied, and read where something is from `WorldMatrix`.
-The update's invariants are in `entity_manager.hpp`. Scene singletons (`Component::IsSceneSingleton`,
+The update's invariants are in `entity_manager.hpp`. A `Camera` and a `Light` have no place of their
+own (an archetype with one and no `Transform` is refused): they are where their entity is and look
+down its -Z, aimed with `LookRotation` or the builder's `Facing`. A camera's view, projection and
+frustum (`Camera::transform`) are worked out by `RenderingSystem` after the transform update; a game
+moves its camera through `GetCameraEntity`. Scene singletons (`Component::IsSceneSingleton`,
 e.g. `IndirectLighting`, `AtmosphereSky`) describe the scene, not the entity holding them, and a
 game reads one with `GetSceneSingleton<T>()`.
 

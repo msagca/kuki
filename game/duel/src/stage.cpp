@@ -22,6 +22,7 @@
 #include <stage.hpp>
 #include <string>
 #include <stylization.hpp>
+#include <transform.hpp>
 #include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
 using namespace kuki;
@@ -159,11 +160,12 @@ namespace {
     // From behind the fighters is from -Z; the light then travels towards +Z, down and across.
     return -glm::normalize(glm::vec3(std::sin(a) * std::cos(e), std::sin(e), -std::cos(a) * std::cos(e)));
   }
-  auto Sun(Application &app) -> Light * {
-    Light *sun{};
-    DuelWorld::ForEach<Light>(app, [&](const EntityID, Light *light) {
+  /// @brief The first directional light's entity, whose transform aims it.
+  auto Sun(Application &app) -> EntityID {
+    auto sun = EntityID::Invalid;
+    DuelWorld::ForEach<Light>(app, [&](const EntityID id, Light *light) {
       if (!sun && light->type == LightType::Directional)
-        sun = light;
+        sun = id;
     });
     return sun;
   }
@@ -173,9 +175,9 @@ namespace {
     const auto id = DuelWorld::Game(app)
                       .Scene("Main")
                       .Entity<LightObject>(name)
+                      .At(position)
                       .With<Light>([&](Light &light) {
                         light.type = LightType::Point;
-                        light.position = position;
                         light.diffuse = colour;
                         light.specular = colour;
                         light.intensity = intensity;
@@ -192,10 +194,10 @@ namespace {
     const auto id = DuelWorld::Game(app)
                       .Scene("Main")
                       .Entity<LightObject>(name)
+                      .At(position)
+                      .Facing(direction)
                       .With<Light>([&](Light &light) {
                         light.type = LightType::Spot;
-                        light.position = position;
-                        light.forward = glm::normalize(direction);
                         light.diffuse = colour;
                         light.specular = colour;
                         light.intensity = intensity;
@@ -239,8 +241,11 @@ namespace {
     PlanarReflection ground{};
   };
   auto ApplyAir(Application &app, StageScene &stage, const Air &air) -> void {
-    if (auto *sun = Sun(app)) {
-      sun->forward = SunTravel(air.sunElevation, air.sunAzimuth);
+    const auto sunEntity = Sun(app);
+    auto *place = DuelWorld::Get<Transform>(app, sunEntity);
+    if (auto *sun = DuelWorld::Get<Light>(app, sunEntity); sun && place) {
+      place->rotation = LookRotation(SunTravel(air.sunElevation, air.sunAzimuth));
+      app.MarkTransformDirty(sunEntity);
       sun->diffuse = air.sunColour;
       sun->specular = air.sunColour;
       sun->intensity = air.sunIntensity;

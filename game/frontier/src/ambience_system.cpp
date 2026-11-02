@@ -14,6 +14,7 @@
 #include <noise.hpp>
 #include <particle_emitter.hpp>
 #include <props.hpp>
+#include <transform.hpp>
 #include <volumetric_clouds.hpp>
 #include <wind.hpp>
 using namespace kuki;
@@ -84,17 +85,23 @@ auto AmbienceSystem::Weather() -> void {
 }
 auto AmbienceSystem::Sun() -> void {
   Light *sun{};
-  FrontierWorld::ForEach<Light>(app, [&](const EntityID, Light *light) {
-    if (!sun && light->type == LightType::Directional)
+  auto sunEntity = EntityID::Invalid;
+  FrontierWorld::ForEach<Light>(app, [&](const EntityID id, Light *light) {
+    if (!sun && light->type == LightType::Directional) {
       sun = light;
+      sunEntity = id;
+    }
   });
-  if (!sun)
+  auto *place = FrontierWorld::Get<Transform>(app, sunEntity);
+  if (!sun || !place)
     return;
   // Up from the east at dawn, highest at noon and down into the west at dusk.
   const auto elevation = glm::radians(3.f + 58.f * std::sin(day * 3.14159265f));
   const auto azimuth = glm::radians(-70.f + 140.f * day);
   const glm::vec3 towards{std::sin(azimuth) * std::cos(elevation), std::sin(elevation), -std::cos(azimuth) * std::cos(elevation)};
-  sun->forward = -glm::normalize(towards);
+  // Turned, which marks the sun's transform every frame: one entity with nothing under it.
+  place->rotation = LookRotation(-towards);
+  app.MarkTransformDirty(sunEntity);
   // Warm and weak near the horizon, white overhead.
   const auto height = std::sin(elevation);
   const auto colour = Mix({1.f, .5f, .28f}, {1.f, .95f, .88f}, height * 2.2f);

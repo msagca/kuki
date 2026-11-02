@@ -7,6 +7,7 @@
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/matrix.hpp>
+#include <transform.hpp>
 using namespace kuki;
 namespace {
 constexpr float NEAREST = 6.f;
@@ -51,8 +52,9 @@ auto CameraSystem::GetDistance() const -> float {
   return distance;
 }
 auto CameraSystem::Update(const float deltaTime) -> void {
-  auto *camera = app.GetCamera();
-  if (!camera)
+  const auto cameraEntity = app.GetCameraEntity();
+  auto *place = app.GetEntityComponent<Transform>(cameraEntity);
+  if (!place)
     return;
   const auto dt = std::min(deltaTime, .1f);
   // Along the ground, relative to which way the camera faces: forward is away from it.
@@ -104,9 +106,9 @@ auto CameraSystem::Update(const float deltaTime) -> void {
   const auto pitch = std::clamp(FLATTEST + (STEEPEST - FLATTEST) * std::sqrt(zoom) + tilt, .25f, 1.45f);
   const glm::vec3 centre{focus.x, height, focus.y};
   const glm::vec3 back{std::sin(yaw) * std::cos(pitch), std::sin(pitch), std::cos(yaw) * std::cos(pitch)};
-  camera->position = centre + back * distance;
-  camera->rotation = glm::quatLookAt(-back, glm::vec3(.0f, 1.f, .0f));
-  ++camera->dirty;
+  place->position = centre + back * distance;
+  place->rotation = LookRotation(-back);
+  app.MarkTransformDirty(cameraEntity);
 }
 auto CameraSystem::CursorRay() const -> std::pair<glm::vec3, glm::vec3> {
   const auto *camera = app.GetCamera();
@@ -122,5 +124,5 @@ auto CameraSystem::CursorRay() const -> std::pair<glm::vec3, glm::vec3> {
   auto far = inverse * glm::vec4(ndc, .9f, 1.f);
   near /= near.w;
   far /= far.w;
-  return {camera->position, glm::normalize(glm::vec3(far - near))};
+  return {camera->transform.position, glm::normalize(glm::vec3(far - near))};
 }

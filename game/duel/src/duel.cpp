@@ -19,6 +19,7 @@
 #include <spdlog/spdlog.h>
 #include <stage.hpp>
 #include <stylization.hpp>
+#include <transform.hpp>
 #include <unordered_map>
 #include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
@@ -72,12 +73,12 @@ auto SetupDuel(Application &app) -> void {
   duel::LoadStages(app);
   duel::DuelWorld::Game(app, "Kuki Duel")
     .Scene("Main")
+    // From the side and a little above the waist, far enough back to keep both figures in frame
+    // across the whole floor.
     .Entity<CameraObject>("Camera")
+    .At({.0f, 1.5f, 6.5f})
+    .Facing(glm::vec3(.0f, 1.f, .0f) - glm::vec3(.0f, 1.5f, 6.5f))
     .With<Camera>([](Camera &camera) {
-      // From the side and a little above the waist, far enough back to keep both figures in frame
-      // across the whole floor.
-      camera.position = {.0f, 1.5f, 6.5f};
-      camera.rotation = glm::quatLookAt(glm::normalize(glm::vec3(.0f, 1.f, .0f) - camera.position), glm::vec3(.0f, 1.f, .0f));
       camera.fov = 40.f;
       // Far enough for the hills behind the temple and the towers behind the roof. `DuelSystem`
       // moves the camera from here on, following the fight.
@@ -85,9 +86,9 @@ auto SetupDuel(Application &app) -> void {
     })
     .ActiveCamera()
     .Entity<LightObject>("Sun")
+    .Facing({-.4f, -1.f, -.55f})
     .With<Light>([](Light &light) {
       light.type = LightType::Directional;
-      light.forward = glm::normalize(glm::vec3(-.4f, -1.f, -.55f));
       light.diffuse = {1.f, .96f, .9f};
       light.specular = {1.f, 1.f, 1.f};
       light.intensity = 3.f;

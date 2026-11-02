@@ -15,6 +15,7 @@
 #include <screen_effects.hpp>
 #include <spdlog/spdlog.h>
 #include <stylization.hpp>
+#include <transform.hpp>
 #include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
 #include <wind.hpp>
@@ -42,9 +43,9 @@ auto SetupFrontier(Application &app) -> void {
     })
     .ActiveCamera()
     .Entity<LightObject>("Sun")
+    .Facing({-.5f, -.6f, -.4f})
     .With<Light>([](Light &light) {
       light.type = LightType::Directional;
-      light.forward = glm::normalize(glm::vec3(-.5f, -.6f, -.4f));
       light.diffuse = {1.f, .9f, .78f};
       light.intensity = 3.f;
       light.angularDiameter = 1.5f;

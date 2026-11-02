@@ -522,7 +522,6 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   static constexpr auto MAX_FLOAT = std::numeric_limits<float>::max();
   if (!camera)
     return;
-  auto dirty = false;
   // First, because it decides whether anything else here is what you are looking at. A scene may
   // hold several cameras and only one of them draws; editing the others is legitimate and invisible,
   // and without this there is nothing on the panel that says which case you are in.
@@ -540,28 +539,16 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   if (field::Combo("Type", &type, types.data(), types.size())) {
     const auto newType = static_cast<kuki::CameraType>(type);
     if (newType == kuki::CameraType::Orthographic && camera->type != kuki::CameraType::Orthographic) {
-      const auto distance = glm::length(camera->position);
+      const auto distance = glm::length(camera->transform.position);
       if (distance > .0f)
         camera->orthoSize = distance * glm::tan(glm::radians(camera->fov) * .5f);
     }
     camera->type = newType;
-    dirty = true;
-  }
-  auto position = camera->position;
-  if (field::DragFloat3(ICON_LC_MOVE_3D " Position", glm::value_ptr(position), .1f)) {
-    camera->position = position;
-    dirty = true;
-  }
-  auto rotationDegrees = glm::degrees(glm::eulerAngles(camera->rotation));
-  if (field::DragFloat3(ICON_LC_ROTATE_3D " Rotation", glm::value_ptr(rotationDegrees), .1f)) {
-    camera->rotation = glm::quat(glm::radians(rotationDegrees));
-    dirty = true;
   }
   if (camera->type == kuki::CameraType::Perspective) {
     auto fov = camera->fov;
     if (field::SliderFloat("FOV", &fov, .0f, 180.f)) {
       camera->fov = fov;
-      dirty = true;
     }
     // Shown, not offered. This follows the render target, and the control that used to sit here
     // took a drag and silently reverted on the next frame because nothing read the result back.
@@ -574,18 +561,15 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
   auto nearPlane = camera->nearPlane;
   if (field::DragFloat("Near Plane", &nearPlane, .1f, .0f, MAX_FLOAT)) {
     camera->nearPlane = nearPlane;
-    dirty = true;
   }
   auto farPlane = camera->farPlane;
   if (field::DragFloat("Far Plane", &farPlane, .1f, .0f, MAX_FLOAT)) {
     camera->farPlane = farPlane;
-    dirty = true;
   }
   if (camera->type == kuki::CameraType::Orthographic) {
     auto orthoSize = camera->orthoSize;
     if (field::DragFloat("Size", &orthoSize, .1f, .0f, MAX_FLOAT)) {
       camera->orthoSize = orthoSize;
-      dirty = true;
     }
   }
   static auto &modes = kuki::EnumTraits<kuki::ExposureMode>::GetNames();
@@ -638,7 +622,6 @@ inline auto PropertyDisplayer::operator()<kuki::Camera>(kuki::Camera *camera) ->
       ImGui::SetItemTooltip("What the probes are drawn as, over the scene.\nIrradiance is what the field holds; distance and variance are what the\nvisibility test runs on; trust, relocation and classification are\nwhether the mechanisms that maintain the field are working.");
     }
   }
-  camera->dirty += dirty;
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::DXMaterial>(kuki::DXMaterial *material) -> void {
@@ -1106,22 +1089,6 @@ inline auto PropertyDisplayer::operator()<kuki::Light>(kuki::Light *light) -> vo
   auto type = static_cast<int>(light->type);
   if (field::Combo("Type", &type, types.data(), types.size()))
     light->type = static_cast<kuki::LightType>(type);
-  auto position = light->position;
-  if (field::DragFloat3(ICON_LC_MOVE_3D " Position", glm::value_ptr(position), .1f))
-    light->position = position;
-  auto rotationQuat = light->rotation;
-  auto rotationDegrees = glm::degrees(glm::eulerAngles(rotationQuat));
-  if (field::DragFloat3(ICON_LC_ROTATE_3D " Rotation", glm::value_ptr(rotationDegrees), .1f)) {
-    for (auto i = 0; i < 3; ++i) {
-      auto angle = rotationDegrees[i];
-      while (angle > 180.f)
-        angle -= 360.f;
-      while (angle < -180.f)
-        angle += 360.f;
-    }
-    auto rotationRadians = glm::radians(rotationDegrees);
-    light->SetRotation(glm::quat(rotationRadians));
-  }
   auto ambient = light->ambient;
   if (field::ColorEdit3(ICON_LC_PALETTE " Ambient Color", glm::value_ptr(ambient)))
     light->ambient = ambient;

@@ -131,8 +131,13 @@ public:
   auto GetAsset(const AssetID) -> decltype(auto);
   /// @brief The camera the active scene is drawn from: the one the builder made active, or else the
   /// first there is. Null when there is none.
+  ///
+  /// What it sees is read from it (`Camera::transform`); where it is, is its entity's: move it by
+  /// writing the `Transform` of `GetCameraEntity` and calling `MarkTransformDirty`.
   auto GetCamera() -> Camera *;
   auto GetCamera() const -> const Camera *;
+  /// @brief The entity of the camera `GetCamera` returns, which places it. Invalid when there is none.
+  auto GetCameraEntity() const -> EntityID;
   /// @brief One of the active scene's singletons -- `Wind`, `ScreenEffects`, `AtmosphereSky` and
   /// the rest of what `Component::IsSceneSingleton` names -- or null when the scene has none.
   ///

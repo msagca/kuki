@@ -39,5 +39,21 @@ struct KUKI_ENGINE_API Transform {
 struct WorldMatrix {
   glm::mat4 matrix{1.0f};
 };
+/// @brief The rotation that turns -Z, the way a camera and a light look, to face `direction`.
+///
+/// Turned about world up, unless the direction is nearly vertical: there that up gives out, and +Z
+/// stands in. A direction of no length is no rotation.
+KUKI_ENGINE_API auto LookRotation(const glm::vec3 &direction) -> glm::quat;
+/// @brief Where a world matrix puts its origin.
+KUKI_ENGINE_API auto WorldPosition(const glm::mat4 &) -> glm::vec3;
+/// @brief Which way a world matrix turns -Z, at unit length whatever the scale.
+///
+/// The way a camera looks and a light shines. -Z for a matrix that flattens it to nothing.
+KUKI_ENGINE_API auto WorldForward(const glm::mat4 &) -> glm::vec3;
+/// @brief Which way a world matrix turns +Y, at unit length whatever the scale.
+KUKI_ENGINE_API auto WorldUp(const glm::mat4 &) -> glm::vec3;
+/// @brief The view matrix of something placed by a world matrix and looking down its -Z: the
+/// inverse of the place, without its scale.
+KUKI_ENGINE_API auto ViewFrom(const glm::mat4 &) -> glm::mat4;
 std::ostream &operator<<(std::ostream &, const glm::mat4 &);
 } // namespace kuki

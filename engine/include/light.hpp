@@ -1,18 +1,16 @@
 #pragma once
-#include <glm/ext/quaternion_float.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <id.hpp>
-#include <kuki_engine_export.h>
 #include <light_type.hpp>
-#include <transform.hpp>
 namespace kuki {
-struct KUKI_ENGINE_API Light {
+/// @brief A light, placed and aimed by its entity's `Transform`: it shines down the entity's -Z.
+///
+/// Read from the entity's `WorldMatrix` (`WorldPosition`, `WorldForward`), so a light hung under
+/// something moves with it. It kept a position, a rotation and the basis that followed from them,
+/// apart from the entity's transform and synced with nothing; a game set `forward` alone and left the
+/// rotation saying something else, which the scene file then had to guess between. Aim one with
+/// `LookRotation`, or the builder's `Facing`.
+struct Light {
   LightType type{LightType::Directional};
-  glm::vec3 position{};
-  glm::quat rotation{1.f, .0f, .0f, .0f};
-  glm::vec3 forward{.0f, .0f, -1.f};
-  glm::vec3 up{.0f, 1.f, .0f};
-  glm::vec3 right{1.f, .0f, .0f};
   glm::vec3 ambient{.2f};
   glm::vec3 diffuse{.5f};
   glm::vec3 specular{1.f};
@@ -47,9 +45,5 @@ struct KUKI_ENGINE_API Light {
   /// Nought is a point, with the fixed-width shadow. Read only by a spot light; a point light casts
   /// no shadow at all.
   float sourceRadius{.05f};
-  auto GetTransform() const -> Transform;
-  auto GetView() const -> glm::mat4;
-  auto SetRotation(const glm::quat &) -> void;
-  auto SetTransform(const Transform &) -> void;
 };
 } // namespace kuki

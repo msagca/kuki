@@ -964,7 +964,7 @@ private:
   /// The cone's full angle is widened slightly so the shadow map covers a little more than the lit
   /// region, which keeps the cone's edge from sampling outside the map. The projection is zero to
   /// one, Direct3D's clip range.
-  auto FitSpotShadowFrustum(const Light &, glm::mat4 &, glm::mat4 &) const -> void;
+  auto FitSpotShadowFrustum(const Light &, const glm::mat4 &world, glm::mat4 &, glm::mat4 &) const -> void;
   /// @brief Fills the target with the environment behind the scene, before any geometry is drawn.
   ///
   /// Drawn first with depth testing off rather than last against the far plane, which saves the

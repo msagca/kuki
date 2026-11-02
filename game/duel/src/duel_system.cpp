@@ -313,9 +313,10 @@ auto DuelSystem::UpdateSelect(const float deltaTime) -> void {
     app.MarkTransformDirty(lineup[index]);
   }
   const auto chosenX = (static_cast<float>(picks[0]) - static_cast<float>(count - 1) * .5f) * LINEUP_SPACING;
-  if (auto *light = spotlight ? DuelWorld::Get<Light>(app, spotlight) : nullptr) {
-    light->position = {chosenX, 4.2f, 2.4f};
-    light->forward = glm::normalize(glm::vec3(chosenX, 1.f, -.6f + LINEUP_STEP) - light->position);
+  if (auto *place = spotlight ? DuelWorld::Get<Transform>(app, spotlight) : nullptr) {
+    place->position = {chosenX, 4.2f, 2.4f};
+    place->rotation = LookRotation(glm::vec3(chosenX, 1.f, -.6f + LINEUP_STEP) - place->position);
+    app.MarkTransformDirty(spotlight);
   }
   // Nothing on the picture but what the stage lays over it.
   ShowImpact(deltaTime);
@@ -573,8 +574,9 @@ auto DuelSystem::MoveCamera(const float deltaTime) -> void {
   AimCamera({(a + b) * .5f, 1.05f, .0f}, distance, deltaTime);
 }
 auto DuelSystem::AimCamera(const glm::vec3 &focus, const float distance, const float deltaTime) -> void {
-  auto *camera = app.GetCamera();
-  if (!camera)
+  const auto cameraEntity = app.GetCameraEntity();
+  auto *place = DuelWorld::Get<Transform>(app, cameraEntity);
+  if (!place)
     return;
   // Placed where it belongs on the first frame rather than eased there from wherever the scene was
   // built with it, which would open every match, and the select screen, with a swoop.
@@ -586,9 +588,9 @@ auto DuelSystem::AimCamera(const glm::vec3 &focus, const float distance, const f
   const auto shake = hitAge >= .0f ? HIT_SHAKE * hitStrength * std::clamp(1.f - hitAge / .3f, .0f, 1.f) : .0f;
   const glm::vec3 jolt{std::sin(clock * 71.f) * shake, std::sin(clock * 53.f + 1.3f) * shake, .0f};
   // Higher as it pulls back, so the floor between two figures far apart still shows.
-  camera->position = glm::vec3(cameraFocus.x, 1.3f + (cameraDistance - CAMERA_NEAREST) * .1f, cameraDistance) + jolt;
-  camera->rotation = glm::quatLookAt(glm::normalize(cameraFocus + jolt * .5f - camera->position), glm::vec3(.0f, 1.f, .0f));
-  ++camera->dirty;
+  place->position = glm::vec3(cameraFocus.x, 1.3f + (cameraDistance - CAMERA_NEAREST) * .1f, cameraDistance) + jolt;
+  place->rotation = LookRotation(cameraFocus + jolt * .5f - place->position);
+  app.MarkTransformDirty(cameraEntity);
 }
 auto DuelSystem::DrawHud() -> void {
   const auto [surfaceWidth, surfaceHeight] = app.GetSurfaceSize();

@@ -110,10 +110,6 @@ auto Blocks(const glm::vec3 &eye, const glm::vec3 &target, const glm::vec3 &cent
   const auto root = std::sqrt(discriminant);
   return std::max(first, (-b - root) / (2.f * a)) <= std::min(last, (-b + root) / (2.f * a));
 }
-/// @brief Rotation that points a camera's forward at a target. Forward is -Z of the rotation.
-auto LookAt(const glm::vec3 &from, const glm::vec3 &to) -> glm::quat {
-  return glm::quatLookAt(glm::normalize(to - from), glm::vec3(.0f, 1.f, .0f));
-}
 /// @brief The red the squares take when something can be captured there, which a clock that is
 /// running out is printed in too.
 ///
@@ -521,8 +517,9 @@ auto GameManager::UpdateClock(Application &application) -> void {
   Builder().Entity<MeshObject>(rocker).RotateEuler({.0f, .0f, rockerAngle});
 }
 auto GameManager::Orbit(Application &application) -> void {
-  auto *camera = application.GetCamera();
-  if (!camera) {
+  const auto cameraEntity = application.GetCameraEntity();
+  auto *place = application.GetEntityComponent<Transform>(cameraEntity);
+  if (!place) {
     orbiting = false;
     return;
   }
@@ -541,12 +538,9 @@ auto GameManager::Orbit(Application &application) -> void {
   orbitYaw -= drag.x * ORBIT_SPEED;
   orbitPitch = std::clamp(orbitPitch + drag.y * ORBIT_SPEED, MIN_PITCH, MAX_PITCH);
   const auto cosPitch = std::cos(orbitPitch);
-  camera->position = ORBIT_CENTER + orbitDistance * glm::vec3(cosPitch * std::sin(orbitYaw), std::sin(orbitPitch), cosPitch * std::cos(orbitYaw));
-  camera->rotation = LookAt(camera->position, ORBIT_CENTER);
-  // The basis, the view matrix and the frustum are all derived from those two and none of them
-  // recomputes itself; the counter is what tells the renderer the camera it uploaded is stale.
-  camera->Update();
-  ++camera->dirty;
+  place->position = ORBIT_CENTER + orbitDistance * glm::vec3(cosPitch * std::sin(orbitYaw), std::sin(orbitPitch), cosPitch * std::cos(orbitYaw));
+  place->rotation = LookRotation(ORBIT_CENTER - place->position);
+  application.MarkTransformDirty(cameraEntity);
 }
 auto GameManager::End(Application &application) -> void {
   // Written on the way out as well as on every change, so that a first run leaves a file behind
@@ -867,11 +861,11 @@ auto GameManager::UpdateOcclusion() -> bool {
       const auto standing = SquareCenter(square);
       auto nearest = std::numeric_limits<float>::max();
       for (auto target = 0; target < Board::SquareCount; ++target) {
-        if (!wanted[target] || !Blocks(camera->position, aim[target], standing, shape.radius, .0f, shape.height))
+        if (!wanted[target] || !Blocks(camera->transform.position, aim[target], standing, shape.radius, .0f, shape.height))
           continue;
         // The nearest of them, because that is the one a click aimed through this piece would have
         // reached first if the piece were not there.
-        if (const auto distance = glm::length(aim[target] - camera->position); distance < nearest) {
+        if (const auto distance = glm::length(aim[target] - camera->transform.position); distance < nearest) {
           nearest = distance;
           next[square] = target;
         }
@@ -962,7 +956,7 @@ auto GameManager::BeginOrbit() -> void {
   const auto *camera = app ? app->GetCamera() : nullptr;
   if (!camera)
     return;
-  const auto offset = camera->position - ORBIT_CENTER;
+  const auto offset = camera->transform.position - ORBIT_CENTER;
   orbitDistance = glm::length(offset);
   // A camera sitting on the point it turns about has no angles to take, and nothing sensible to do
   // with a drag either.
@@ -1110,7 +1104,7 @@ auto GameManager::Slash(const glm::vec3 &base, const float height) -> void {
   // Sideways as the camera sees the piece, flattened onto the board so the stroke stays upright
   // however steeply the camera looks down. A camera directly overhead has no sideways to speak of,
   // and the board's own x will do.
-  const glm::vec3 toCamera{camera->position.x - base.x, .0f, camera->position.z - base.z};
+  const glm::vec3 toCamera{camera->transform.position.x - base.x, .0f, camera->transform.position.z - base.z};
   const auto distance = glm::length(toCamera);
   const auto side = distance > 1e-4f ? glm::vec3(toCamera.z, .0f, -toCamera.x) / distance : glm::vec3(1.f, .0f, .0f);
   slashFrom = base + side * .5f + glm::vec3(.0f, height + .2f, .0f);
