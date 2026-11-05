@@ -60,8 +60,11 @@ set(KUKI_PUBLIC_HEADERS_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/public_headers.cpp")
 set(KUKI_PUBLIC_HEADERS_TEXT "")
 foreach(header ${KUKI_PUBLIC_HEADERS})
   get_filename_component(name "${header}" NAME)
-  string(APPEND KUKI_PUBLIC_HEADERS_TEXT "#include <${name}>
-")
+  string(
+    APPEND KUKI_PUBLIC_HEADERS_TEXT
+    "#include <${name}>
+"
+  )
 endforeach()
 file(
   CONFIGURE
@@ -103,6 +106,18 @@ foreach(source ${COMPILE_FAIL_SOURCES})
     PROPERTIES PASS_REGULAR_EXPRESSION "${expected}" RUN_SERIAL TRUE
   )
 endforeach()
+# The names the CLAUDE.md files and skills give, each looked for in the sources; see the script. A
+# test rather than a CI step so a local ctest runs it too, and skipped, with a note, where there is
+# no Python to run it with.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  add_test(
+    NAME Docs.NamesExist
+    COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/check_docs.py"
+  )
+else()
+  message(STATUS "No Python, so Docs.NamesExist is not registered")
+endif()
 # Discovered when the tests are run and not when the binary links. Discovery runs the binary, and
 # in a shared build it does not start until the engine has been staged beside it, which happens
 # after the link and not as part of it.
