@@ -21,7 +21,12 @@ target_include_directories(
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 # glfw for `input_trigger_test.cpp`, which writes triggers in GLFW's numbers as saved preferences do.
-target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngineInternal glfw gtest)
+# nlohmann_json for `transform_test.cpp`, which reads JSON through the engine's serializers
+# (`serdes.hpp`); the engine links it privately, so it does not come with `KukiEngineInternal`.
+target_link_libraries(
+  ${PROJECT_NAME}
+  PRIVATE KukiEngineInternal glfw gtest nlohmann_json
+)
 # The rules of the duel game, compiled in as they are. They know nothing of a window or a scene,
 # which is the point of them, so they are tested the way the engine's windowless parts are. The
 # game's own library cannot be linked instead: it is only built with the games, and holds the

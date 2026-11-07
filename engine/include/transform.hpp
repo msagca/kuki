@@ -15,7 +15,10 @@ namespace kuki {
 /// its entities are in. Every archetype with a `Transform` is given a `WorldMatrix` (see `Archetype`).
 struct KUKI_ENGINE_API Transform {
   glm::vec3 position{};
-  glm::quat rotation{};
+  // Spelled out: glm's quaternion constructor is defaulted (the engine does not define
+  // GLM_FORCE_CTOR_INIT), so `{}` would make it all zeros -- which `glm::toMat4` happens to turn
+  // into the identity matrix, hiding it, while `rotation * v`, `slerp` and `normalize` give nonsense.
+  glm::quat rotation{1.f, .0f, .0f, .0f};
   glm::vec3 scale{1.0f};
   EntityID parent{EntityID::Invalid};
   glm::mat4 local{1.0f};

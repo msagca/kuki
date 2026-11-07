@@ -52,11 +52,16 @@ struct adl_serializer<glm::quat> {
   static void to_json(nlohmann::json &j, const glm::quat &obj) {
     j = nlohmann::json{{"w", obj.w}, {"x", obj.x}, {"y", obj.y}, {"z", obj.z}};
   }
+  // A zero quaternion is read as the identity. `Transform::rotation` used to default to one, so
+  // every file saved before that was fixed holds `{0, 0, 0, 0}` on an entity whose rotation was
+  // never set, and meant no rotation by it: it is no rotation at all, so nothing else could be meant.
   static void from_json(const nlohmann::json &j, glm::quat &obj) {
     j.at("w").get_to(obj.w);
     j.at("x").get_to(obj.x);
     j.at("y").get_to(obj.y);
     j.at("z").get_to(obj.z);
+    if (obj.w == .0f && obj.x == .0f && obj.y == .0f && obj.z == .0f)
+      obj = glm::quat{1.f, .0f, .0f, .0f};
   }
 };
 } // namespace nlohmann
