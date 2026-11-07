@@ -51,7 +51,7 @@ struct PositionKey {
 };
 struct RotationKey {
   float time{};
-  glm::quat value{};
+  glm::quat value{1.f, .0f, .0f, .0f}; // not `{}`, which is a zero quaternion and no rotation (see Transform)
 };
 struct ScaleKey {
   float time{};
