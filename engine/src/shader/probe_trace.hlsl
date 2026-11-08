@@ -46,9 +46,10 @@ static const uint PROBE_BEHIND_WORDS = PROBE_DEPTH_TEXELS / 4;
 static const uint PROBE_NEIGHBOURS = 6;
 // What a ray that met nothing records as its hit distance, so the nearest hit is a plain minimum.
 static const float NO_HIT = 3.402823e38;
-static const uint VERTEX_STRIDE = 76;
+static const uint VERTEX_STRIDE = 92;
 static const uint VERTEX_NORMAL_OFFSET = 12;
 static const uint VERTEX_TEXCOORD_OFFSET = 24;
+static const uint VERTEX_COLOR_OFFSET = 76;
 static const uint ALBEDO_SLOT = 0;
 static const uint EMISSIVE_SLOT = 6;
 static const uint ALPHA_MODE_OPAQUE = 0;
@@ -437,10 +438,27 @@ float3 FetchNormal(GeometryInfo info, uint vertex) {
 float2 FetchTexcoord(GeometryInfo info, uint vertex) {
   return asfloat(g_meshBuffers[NonUniformResourceIndex(info.vertexBuffer)].Load2(vertex * VERTEX_STRIDE + VERTEX_TEXCOORD_OFFSET));
 }
-float4 FetchAlbedo(GeometryInfo info, float2 texcoord) {
-  float4 albedo = info.albedo;
+float4 FetchColor(GeometryInfo info, uint vertex) {
+  return asfloat(g_meshBuffers[NonUniformResourceIndex(info.vertexBuffer)].Load4(vertex * VERTEX_STRIDE + VERTEX_COLOR_OFFSET));
+}
+// Where a ray met a triangle, as much of it as the albedo needs: the texture coordinate and the
+// vertex colour, each interpolated across the triangle.
+struct SurfacePoint {
+  float2 texcoord;
+  float4 color;
+};
+SurfacePoint InterpolateSurface(GeometryInfo info, uint3 indices, float3 weights) {
+  SurfacePoint surface;
+  surface.texcoord = FetchTexcoord(info, indices.x) * weights.x + FetchTexcoord(info, indices.y) * weights.y + FetchTexcoord(info, indices.z) * weights.z;
+  surface.color = FetchColor(info, indices.x) * weights.x + FetchColor(info, indices.y) * weights.y + FetchColor(info, indices.z) * weights.z;
+  return surface;
+}
+// The vertex colour goes in as `scene.hlsl` puts it in, or a model coloured by its vertices would
+// bounce its material's white into the probes while it is drawn red.
+float4 FetchAlbedo(GeometryInfo info, SurfacePoint surface) {
+  float4 albedo = info.albedo * surface.color;
   if (info.materialTextures != INVALID_INDEX && (info.textureMask & (1u << ALBEDO_SLOT)))
-    albedo *= g_materialTextures[NonUniformResourceIndex(info.materialTextures + ALBEDO_SLOT)].SampleLevel(g_sampler, texcoord, 0);
+    albedo *= g_materialTextures[NonUniformResourceIndex(info.materialTextures + ALBEDO_SLOT)].SampleLevel(g_sampler, surface.texcoord, 0);
   return albedo;
 }
 float3 VolumeAttenuation(GeometryInfo info) {
@@ -449,8 +467,8 @@ float3 VolumeAttenuation(GeometryInfo info) {
   float3 coefficient = -log(max(info.attenuation.rgb, EPSILON)) / info.attenuation.w;
   return exp(-coefficient * info.thickness);
 }
-float3 SurfaceTransmittance(GeometryInfo info, float2 texcoord) {
-  float4 albedo = FetchAlbedo(info, texcoord);
+float3 SurfaceTransmittance(GeometryInfo info, SurfacePoint surface) {
+  float4 albedo = FetchAlbedo(info, surface);
   if (info.alphaMode == ALPHA_MODE_MASK)
     return albedo.a < info.alphaCutoff ? 1.0 : 0.0;
   float coverage = info.alphaMode == ALPHA_MODE_OPAQUE ? 1.0 : saturate(albedo.a);
@@ -460,10 +478,9 @@ float3 SurfaceTransmittance(GeometryInfo info, float2 texcoord) {
 float Loudest(float3 value) {
   return max(value.r, max(value.g, value.b));
 }
-float2 CandidateTexcoord(GeometryInfo info, uint primitive, float2 barycentrics) {
-  uint3 indices = FetchIndices(info, primitive);
+SurfacePoint CandidateSurface(GeometryInfo info, uint primitive, float2 barycentrics) {
   float3 weights = float3(1.0 - barycentrics.x - barycentrics.y, barycentrics.x, barycentrics.y);
-  return FetchTexcoord(info, indices.x) * weights.x + FetchTexcoord(info, indices.y) * weights.y + FetchTexcoord(info, indices.z) * weights.z;
+  return InterpolateSurface(info, FetchIndices(info, primitive), weights);
 }
 float3 Transmittance(float3 origin, float3 direction, float maximum) {
   RayDesc ray;
@@ -478,7 +495,7 @@ float3 Transmittance(float3 origin, float3 direction, float maximum) {
     if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE)
       continue;
     GeometryInfo info = g_geometry[query.CandidateInstanceID()];
-    float3 through = SurfaceTransmittance(info, CandidateTexcoord(info, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics()));
+    float3 through = SurfaceTransmittance(info, CandidateSurface(info, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics()));
     if (Loudest(through) < u_field.y)
       query.CommitNonOpaqueTriangleHit();
     else
@@ -565,11 +582,11 @@ float3 DirectLight(float3 position, float3 normal) {
   }
   return total;
 }
-float3 ShadeHit(GeometryInfo info, float3 position, float3 normal, float2 texcoord) {
-  float3 albedo = FetchAlbedo(info, texcoord).rgb;
+float3 ShadeHit(GeometryInfo info, float3 position, float3 normal, SurfacePoint surface) {
+  float3 albedo = FetchAlbedo(info, surface).rgb;
   float3 emissive = info.emissive.rgb;
   if (info.materialTextures != INVALID_INDEX && (info.textureMask & (1u << EMISSIVE_SLOT)))
-    emissive *= g_materialTextures[NonUniformResourceIndex(info.materialTextures + EMISSIVE_SLOT)].SampleLevel(g_sampler, texcoord, 0).rgb;
+    emissive *= g_materialTextures[NonUniformResourceIndex(info.materialTextures + EMISSIVE_SLOT)].SampleLevel(g_sampler, surface.texcoord, 0).rgb;
   float3 incoming = DirectLight(position, normal) + SampleVolume(position, normal) + SkyLight(position, normal);
   return emissive + albedo * incoming / PI;
 }
@@ -600,7 +617,7 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
     if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE)
       continue;
     GeometryInfo candidate = g_geometry[query.CandidateInstanceID()];
-    float3 through = SurfaceTransmittance(candidate, CandidateTexcoord(candidate, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics()));
+    float3 through = SurfaceTransmittance(candidate, CandidateSurface(candidate, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics()));
     if (Loudest(through) < u_field.y)
       query.CommitNonOpaqueTriangleHit();
     else
@@ -619,7 +636,7 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
     float2 bary = query.CommittedTriangleBarycentrics();
     float3 weights = float3(1.0 - bary.x - bary.y, bary.x, bary.y);
     float3 objectNormal = FetchNormal(info, indices.x) * weights.x + FetchNormal(info, indices.y) * weights.y + FetchNormal(info, indices.z) * weights.z;
-    float2 texcoord = FetchTexcoord(info, indices.x) * weights.x + FetchTexcoord(info, indices.y) * weights.y + FetchTexcoord(info, indices.z) * weights.z;
+    SurfacePoint surface = InterpolateSurface(info, indices, weights);
     float3x4 worldToObject = query.CommittedWorldToObject3x4();
     float3 normal = normalize(mul(objectNormal, (float3x3)worldToObject));
     // Meeting a surface from behind says nothing about the light and everything about where this
@@ -631,7 +648,7 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
       InterlockedAdd(gs_buried, 1);
     }
     float3 position = origin + direction * query.CommittedRayT() + normal * u_params.z;
-    radiance = throughput * ShadeHit(info, position, normal, texcoord);
+    radiance = throughput * ShadeHit(info, position, normal, surface);
   }
   gs_radiance[thread] = radiance;
   gs_direction[thread] = direction;
@@ -888,7 +905,7 @@ void CSClassify(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
     if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE)
       continue;
     GeometryInfo candidate = g_geometry[query.CandidateInstanceID()];
-    float3 through = SurfaceTransmittance(candidate, CandidateTexcoord(candidate, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics()));
+    float3 through = SurfaceTransmittance(candidate, CandidateSurface(candidate, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics()));
     if (Loudest(through) < u_field.y)
       query.CommitNonOpaqueTriangleHit();
   }

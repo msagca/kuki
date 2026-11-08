@@ -13,6 +13,15 @@ struct Vertex {
   glm::vec3 tangent{};
   glm::ivec4 boneIds{};
   glm::vec4 boneWeights{};
+  /// @brief Multiplied into the material's albedo, so a low-poly model of many colours is one
+  /// material, one pool and one draw rather than one of each per colour. White by default, which
+  /// leaves a mesh built before vertices had a colour looking as it did. Linear, like the albedo,
+  /// and four floats rather than four bytes: eight bits a channel stored linearly band the darks,
+  /// and sixteen bytes on a vertex of seventy-six is not what a frame spends its time on.
+  ///
+  /// Last, so the offsets `probe_trace.hlsl` hardcodes for the normal and texture coordinate stay
+  /// put; only the stride moves.
+  glm::vec4 color{1.f};
 };
 struct Triangle {
   glm::vec3 v1{};

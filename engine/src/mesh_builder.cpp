@@ -15,6 +15,9 @@ namespace {
   }
 } // namespace
 auto MeshBuilder::Emit(const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c) -> void {
+  Emit(a, b, c, color, color, color);
+}
+auto MeshBuilder::Emit(const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c, const glm::vec4 &ca, const glm::vec4 &cb, const glm::vec4 &cc) -> void {
   auto pa = a;
   auto pb = b;
   auto pc = c;
@@ -31,13 +34,17 @@ auto MeshBuilder::Emit(const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &
     return;
   const auto normal = cross / length;
   const auto tangent = Perpendicular(normal);
-  for (const auto &p : {pa, pb, pc}) {
+  const std::array<glm::vec3, 3> corners{pa, pb, pc};
+  const std::array<glm::vec4, 3> colors{ca, cb, cc};
+  for (size_t i = 0; i < corners.size(); ++i) {
+    const auto &p = corners[i];
     Vertex vertex{};
     vertex.position = p;
     vertex.normal = normal;
     vertex.tangent = tangent;
     // Laid flat on the ground plane: what a texture would want if a material ever gave one.
     vertex.texture = {p.x * .25f, p.z * .25f};
+    vertex.color = colors[i];
     mesh.vertices.push_back(vertex);
   }
 }
@@ -177,11 +184,22 @@ auto MeshBuilder::SetTransform(const glm::mat4 &value) -> MeshBuilder & {
 auto MeshBuilder::ResetTransform() -> MeshBuilder & {
   return SetTransform(glm::mat4(1.f));
 }
+auto MeshBuilder::SetColor(const glm::vec4 &value) -> MeshBuilder & {
+  color = value;
+  return *this;
+}
+auto MeshBuilder::SetColor(const glm::vec3 &rgb) -> MeshBuilder & {
+  return SetColor(glm::vec4(rgb, 1.f));
+}
 auto MeshBuilder::Append(const Mesh &other) -> MeshBuilder & {
-  const auto At = [&](const size_t i) { return other.vertices[other.indices.empty() ? i : other.indices[i]].position; };
+  const auto At = [&](const size_t i) -> const Vertex & { return other.vertices[other.indices.empty() ? i : other.indices[i]]; };
   const auto count = other.indices.empty() ? other.vertices.size() : other.indices.size();
-  for (size_t i = 0; i + 2 < count; i += 3)
-    Emit(At(i), At(i + 1), At(i + 2));
+  for (size_t i = 0; i + 2 < count; i += 3) {
+    const auto &a = At(i);
+    const auto &b = At(i + 1);
+    const auto &c = At(i + 2);
+    Emit(a.position, b.position, c.position, a.color * color, b.color * color, c.color * color);
+  }
   return *this;
 }
 auto MeshBuilder::IsEmpty() const -> bool {

@@ -35,7 +35,11 @@ only if the compiler prints its expected message on the first line.
 Executables land in `build/editor/`, `build/game/<name>/`, `build/test/`. A game's folder gets fresh
 DLLs from its `<Target>Runtime` target: build both, or the game runs against the old engine.
 `--capture <file.png>` saves the frame after `--capture-frame <n>` (300) and quits -- how to see
-what a build draws (the `capture` skill). Assets are staged beside the binary and found through
+what a build draws (the `capture` skill). `KukiEditor --stress <load>` (`draws`, `rigs`, `lights`,
+`particles`, `all`; `--stress-scale`, `--stress-budget`, `--stress-report <file.json>`) ramps a load
+up in front of the camera with vsync off, logs each step's frame times and costliest scopes, and
+exits 1 if the full load's p95 is over budget -- how to measure what a change costs
+(`StressSystem`, also the editor's Stress panel). Assets are staged beside the binary and found through
 `ResolvePath` against the executable's directory, never the working directory.
 
 Direct3D 12 is the only backend; without it the application stops at startup. HLSL is compiled at

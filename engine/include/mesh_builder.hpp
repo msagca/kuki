@@ -4,6 +4,7 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <kuki_engine_export.h>
 #include <mesh.hpp>
 #include <span>
@@ -21,7 +22,9 @@ namespace kuki {
 /// was laid down, and a face built the wrong way round is culled.
 ///
 /// Everything goes through the current transform, so a part can be built about its own origin and
-/// placed with `SetTransform` -- the leaf on the branch, the roof on the house.
+/// placed with `SetTransform` -- the leaf on the branch, the roof on the house. Colour is held the
+/// same way: `SetColor` paints everything added after it, so a house of white walls and a red roof
+/// is one mesh, one material and one draw (`Vertex::color`).
 class KUKI_ENGINE_API MeshBuilder {
 public:
   /// @brief A triangle whose front is the side from which `a`, `b`, `c` go counter-clockwise.
@@ -53,7 +56,12 @@ public:
   /// @brief Applied to everything added after it, until it is set again.
   auto SetTransform(const glm::mat4 &) -> MeshBuilder &;
   auto ResetTransform() -> MeshBuilder &;
-  /// @brief Everything another mesh holds, through the current transform.
+  /// @brief The colour of every vertex added after it, until it is set again; white to begin with.
+  /// Linear, and multiplied into the material's albedo, so a white material shows it as it is.
+  auto SetColor(const glm::vec4 &) -> MeshBuilder &;
+  auto SetColor(const glm::vec3 &rgb) -> MeshBuilder &;
+  /// @brief Everything another mesh holds, through the current transform, its own vertex colours
+  /// tinted by the current colour.
   auto Append(const Mesh &) -> MeshBuilder &;
   auto IsEmpty() const -> bool;
   auto VertexCount() const -> size_t;
@@ -66,6 +74,8 @@ private:
   Mesh mesh;
   glm::mat4 transform{1.f};
   bool transformed{};
+  glm::vec4 color{1.f};
   auto Emit(const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c) -> void;
+  auto Emit(const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c, const glm::vec4 &ca, const glm::vec4 &cb, const glm::vec4 &cc) -> void;
 };
 } // namespace kuki

@@ -230,6 +230,7 @@ WindowLayout gWindowLayouts[] = {
   {"Assets", {.5f, .5f}, {.0f, 1.f}, false, -1, ICON_LC_FOLDER},
   {"Animation", {.5f, .5f}, {.0f, 1.f}, false, -1, ICON_LC_FILM},
   {"Profiler", {.5f, .5f}, {.0f, 1.f}, false, -1, ICON_LC_ACTIVITY},
+  {"Stress", {.5f, .5f}, {.0f, 1.f}, false, -1, ICON_LC_GAUGE},
   {"Help", {.5f, .6f}, {.5f, .5f}, false, -1, ICON_LC_CIRCLE_QUESTION_MARK},
 };
 /// @brief Something that ships inside the editor, and the terms it is used on.
@@ -769,6 +770,7 @@ auto Editor::UpdateView() -> void {
   DisplayAssets();
   DisplayAnimation();
   DisplayProfiler();
+  DisplayStress();
   DisplayHierarchy();
   DisplayProperties();
   DisplaySettings();
@@ -1578,6 +1580,117 @@ auto Editor::DisplayProfiler() -> void {
     for (const auto root : profiler.GetRoots())
       DisplayProfileNode(root);
     ImGui::EndTable();
+  }
+  EndWindow();
+}
+auto Editor::DisplayStress() -> void {
+  static constexpr auto TABLE_FLAGS = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_SizingFixedFit;
+  auto *stress = GetSystem<StressSystem>();
+  const auto phase = stress->GetPhase();
+  const auto running = phase != StressPhase::Idle;
+  // Green while a ramp runs, as the Profiler is while it records.
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, StateTint(running, false));
+  const auto visible = BeginWindow("Stress");
+  ImGui::PopStyleColor();
+  if (!visible) {
+    EndWindow();
+    return;
+  }
+  // What the frames cost now, whatever is in the scene, so a load put in by hand can be watched.
+  {
+    const auto &recent = stress->GetRecentFrames();
+    float total{};
+    float worst{};
+    for (const auto millis : recent) {
+      total += millis;
+      worst = std::max(worst, millis);
+    }
+    const auto average = total / static_cast<float>(recent.size());
+    ImGui::TextDisabled("last %zu frames | %.2f ms average | %.2f max | budget %.2f ms", recent.size(), average, worst, stress->GetBudget());
+    ImGui::PlotLines("##StressFrames", recent.data(), static_cast<int>(recent.size()), static_cast<int>(stress->GetRecentOffset()), nullptr, .0f, std::max(worst, stress->GetBudget()) * 1.1f, ImVec2(-1.f, 48.f));
+  }
+  ImGui::BeginDisabled(running);
+  if (field::BeginCombo("Preset", "Fill from...")) {
+    for (const auto &preset : STRESS_PRESETS)
+      if (ImGui::Selectable(std::string(preset.name).c_str()))
+        stressDraft = preset.load;
+    ImGui::EndCombo();
+  }
+  const auto Count = [](const char *label, uint32_t &value, const int most) {
+    auto count = static_cast<int>(value);
+    if (field::DragInt(label, &count, std::max(1.f, static_cast<float>(most) / 500.f), 0, most, "%d", ImGuiSliderFlags_AlwaysClamp))
+      value = static_cast<uint32_t>(count);
+  };
+  Count("Instances", stressDraft.instances, 200000);
+  auto pools = static_cast<int>(stressDraft.pools);
+  if (field::SliderInt("Pools", &pools, 1, static_cast<int>(StressSystem::MAX_POOLS), "%d", ImGuiSliderFlags_AlwaysClamp))
+    stressDraft.pools = static_cast<uint32_t>(pools);
+  Count("Rigs", stressDraft.rigs, 1024);
+  Count("Lights", stressDraft.lights, 64);
+  Count("Emitters", stressDraft.emitters, 512);
+  field::Toggle(ICON_LC_ROTATE_CW, "Moving", &stressDraft.moving);
+  auto budget = stress->GetBudget();
+  if (field::DragFloat("Budget", &budget, .05f, .1f, 200.f, "%.2f ms", ImGuiSliderFlags_AlwaysClamp))
+    stress->SetBudget(budget);
+  if (ImGui::Button(ICON_LC_CHECK " Apply"))
+    stress->SetLoad(stressDraft);
+  ImGui::SameLine();
+  if (ImGui::Button(ICON_LC_TRASH_2 " Clear"))
+    stress->Clear();
+  ImGui::SameLine();
+  if (ImGui::Button(ICON_LC_PLAY " Run ramp"))
+    stress->BeginRun(stressDraft);
+  ImGui::EndDisabled();
+  if (running) {
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_LC_SQUARE " Cancel"))
+      stress->CancelRun();
+    ImGui::TextDisabled("step %u of %u, %s %u of %u frames", stress->GetStepIndex() + 1, StressSystem::STRESS_STEPS, phase == StressPhase::Settling ? "settling" : "measuring", stress->GetPhaseFrames(), phase == StressPhase::Settling ? StressSystem::SETTLE_FRAMES : StressSystem::MEASURE_FRAMES);
+  } else if (const auto &load = stress->GetLoad(); load.instances + load.rigs + load.lights + load.emitters > 0)
+    ImGui::TextDisabled("standing: %u instances in %u pools, %u rigs, %u lights, %u emitters", load.instances, load.pools, load.rigs, load.lights, load.emitters);
+  const auto &steps = stress->GetSteps();
+  if (steps.empty()) {
+    EndWindow();
+    return;
+  }
+  if (ImGui::BeginTable("StressSteps", 9, TABLE_FLAGS)) {
+    for (const auto *heading : {"Step", "Instances", "Pools", "Rigs", "Lights", "Emitters", "Avg (ms)", "p95 (ms)", "Max (ms)"})
+      ImGui::TableSetupColumn(heading);
+    ImGui::TableHeadersRow();
+    for (size_t i = 0; i < steps.size(); ++i) {
+      const auto &step = steps[i];
+      ImGui::TableNextRow();
+      ImGui::TableNextColumn();
+      ImGui::Text("%zu", i + 1);
+      for (const auto count : {step.load.instances, step.load.pools, step.load.rigs, step.load.lights, step.load.emitters}) {
+        ImGui::TableNextColumn();
+        ImGui::Text("%u", count);
+      }
+      ImGui::TableNextColumn();
+      ImGui::Text("%.2f", step.averageMillis);
+      ImGui::TableNextColumn();
+      // Held to the budget, so it is the one coloured by it.
+      ImGui::TextColored(step.withinBudget ? ImVec4(.45f, .85f, .5f, 1.f) : ImVec4(.95f, .4f, .35f, 1.f), "%.2f", step.p95Millis);
+      ImGui::TableNextColumn();
+      ImGui::Text("%.2f", step.maxMillis);
+    }
+    ImGui::EndTable();
+  }
+  // Where the last step's time went, which is what the next change is made against.
+  if (field::Fold("Costliest scopes, last step")) {
+    for (const auto &scope : steps.back().scopes)
+      ImGui::Text("%8.3f ms  %s", scope.millis, scope.path.c_str());
+  }
+  if (!running) {
+    if (field::InputText("Report", stressReportPath, sizeof(stressReportPath)))
+      stressReportStatus.clear();
+    if (ImGui::Button(ICON_LC_SAVE " Save report")) {
+      // Beside the editor when it is relative, as everything it saves is: never the working directory.
+      const auto path = ResolvePath(stressReportPath);
+      stressReportStatus = stress->WriteReport(path) ? "Saved " + path.string() : "Could not write " + path.string();
+    }
+    if (!stressReportStatus.empty())
+      ImGui::TextDisabled("%s", stressReportStatus.c_str());
   }
   EndWindow();
 }
