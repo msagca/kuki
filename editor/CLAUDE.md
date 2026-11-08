@@ -7,6 +7,12 @@ Hierarchy's New menu makes an entity of a chosen kind), the script panel, and ho
 only warns). The camera controller is an editor system (`CameraController`, listed before
 `RenderingSystem`), set in the Settings panel.
 
+The Stress panel drives the engine's `StressSystem`, listed before `RenderingSystem` as well: it puts
+a load (`StressLoad`) under one `StressRoot` entity in front of the camera, by hand (Apply, Clear)
+or ramped up in `STRESS_STEPS` measured steps (Run ramp), and saves the steps as JSON. The load is
+in the scene like anything else: saved with it, and one put in while playing is gone after Stop.
+`--stress <load>` runs the same ramp at startup and quits with what it found.
+
 It starts `Stopped`: no ticks, and an animator previews its clip by frame time. Play (`BeginPlay`,
 F5 or `--play`) saves the scene to a temporary file and sets `Playing`; Stop (`EndPlay`, F5) loads
 it back. F6 pauses, F10 steps one tick.

@@ -24,6 +24,9 @@ public:
   auto BeginFrame() -> void override;
   auto Present() -> void override;
   auto SetVSync(const bool) -> void override;
+  auto GetVSync() const -> bool override {
+    return vsync;
+  }
   auto Shutdown() -> void override;
   auto OnResize(const int, const int) -> void override;
   auto GetDevice() const -> ID3D12Device *;

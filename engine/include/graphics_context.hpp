@@ -46,6 +46,10 @@ public:
   }
   /// @brief Whether a present waits for the display's refresh. Backends that cannot, ignore it.
   virtual auto SetVSync(const bool) -> void {}
+  /// @brief What `SetVSync` was last told, for whatever turns it off for a while to put back.
+  virtual auto GetVSync() const -> bool {
+    return false;
+  }
   /// @brief Tears the device or context down while the window is still alive.
   virtual auto Shutdown() -> void = 0;
 protected:

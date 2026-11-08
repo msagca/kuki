@@ -17,6 +17,7 @@
 #include <rendering_api.hpp>
 #include <rendering_system.hpp>
 #include <spdlog/spdlog.h>
+#include <stress_system.hpp>
 #include <string>
 #include <system_application.hpp>
 #include <unordered_set>
@@ -115,8 +116,10 @@ using SkySettings = kuki::Archetype<kuki::Transform, kuki::AtmosphereSky, kuki::
 using EditorWorld = kuki::World<EditorSettings, SkySettings>;
 /// The editor is not a host for games while a game's behaviour is its systems: they are part of the
 /// game's own application type, and this is a different one. Playing runs what is listed here --
-/// the animators' states, the physics -- on the scene that is open.
-class Editor final : public SystemApplication<EditorWorld, AnimationSystem, NetworkSystem, PhysicsSystem, CameraController, RenderingSystem> {
+/// the animators' states, the physics -- on the scene that is open. `StressSystem` puts a load into
+/// it from the Stress panel or `--stress`, which is why a stress test from the command line is run
+/// with the editor.
+class Editor final : public SystemApplication<EditorWorld, AnimationSystem, NetworkSystem, PhysicsSystem, CameraController, StressSystem, RenderingSystem> {
 public:
   Editor();
   EditorContext context{};
@@ -234,6 +237,12 @@ private:
   auto DisplayProfiler() -> void;
   auto DisplayProperties() -> void;
   auto DisplayProperties(const ComponentVariant &) -> void;
+  /// @brief The Stress panel: a load to put into the scene or ramp up to, and what the ramp measured.
+  auto DisplayStress() -> void;
+  /// @brief The load the Stress panel is editing, which is not put in until it says so.
+  kuki::StressLoad stressDraft{kuki::STRESS_PRESETS.back().load};
+  char stressReportPath[260]{"stress-report.json"};
+  std::string stressReportStatus;
   auto DisplayScene() -> void;
   auto DisplaySettings() -> void;
   auto DrawManipulator(const float, const float) -> void;

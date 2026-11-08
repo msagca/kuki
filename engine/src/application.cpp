@@ -92,7 +92,7 @@ Application::~Application() {}
 auto Application::Start() -> void {}
 auto Application::Update(const float) -> void {}
 auto Application::Shutdown() -> void {}
-auto Application::Run() -> void {
+auto Application::Run() -> int {
   PreStart();
   Start();
   PostStart();
@@ -103,6 +103,7 @@ auto Application::Run() -> void {
   }
   PreShutdown();
   Shutdown();
+  return exitCode;
 }
 auto Application::PreStart() -> void {
   // Before the window, so that even a launch that fails to get one has read them -- and before

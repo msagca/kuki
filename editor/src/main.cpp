@@ -10,6 +10,5 @@ auto main() -> int {
   if (kuki::HasFlag(arguments, kuki::GAME_FLAG))
     spdlog::warn("[Editor] {} was given, but the editor cannot host a game while a game's behaviour is its own systems; opening the editor's scene instead", kuki::GAME_FLAG.name);
   editor.startPlaying = kuki::HasFlag(arguments, kuki::PLAY_FLAG);
-  editor.Run();
-  return 0;
+  return editor.Run();
 }
