@@ -35,9 +35,13 @@
 #include <texture_asset.hpp>
 #include <transform.hpp>
 #include <utility>
+#include <video_recorder.hpp>
+#include <vector>
 namespace kuki {
 RenderingSystem::RenderingSystem(Application &app)
   : System(std::in_place_type<RenderingSystem>, app) {}
+RenderingSystem::RenderingSystem(RenderingSystem &&) noexcept = default;
+RenderingSystem::~RenderingSystem() = default;
 auto RenderingSystem::Start() -> void {
   SetRenderer(Internal(app).GetDescription().api);
   {
@@ -49,6 +53,29 @@ auto RenderingSystem::Start() -> void {
         captureFrame = std::max<size_t>(1, std::stoul(*frame));
       } catch (...) {
         spdlog::warn("[RenderingSystem] --capture-frame wants a count, not {}", *frame);
+      }
+    }
+    if (const auto frames = GetFlagValue(arguments, RECORD_FRAMES_FLAG)) {
+      try {
+        recordFrames = std::max<size_t>(1, std::stoul(*frames));
+      } catch (...) {
+        spdlog::warn("[RenderingSystem] --record-frames wants a count, not {}", *frames);
+      }
+    }
+    if (const auto path = GetFlagValue(arguments, RECORD_FLAG)) {
+      // Looked for now rather than at the first frame, so a run that cannot record says so before it
+      // has drawn anything. It then ends at once, failed, as it would for any other reason it could
+      // not record: whatever asked for a video is a script waiting for the run to end, not a player.
+      recordPath = *path;
+      if (VideoRecorder::FindEncoder()) {
+        recorder = std::make_unique<VideoRecorder>();
+        // One tick a frame while recording, so the video keeps the game's time however slowly the
+        // readback lets it be made. From the first tick, so the video starts where the run does.
+        Internal(app).SetFixedStep(true);
+      } else {
+        spdlog::error("[RenderingSystem] --record needs ffmpeg on the PATH, and there is none, so {} was not recorded", *path);
+        recordEnded = true;
+        Internal(app).SetExitCode(1);
       }
     }
   }
@@ -325,11 +352,18 @@ auto RenderingSystem::Update(float deltaTime) -> void {
       activeRenderer->PresentTarget(renderGraph->GetFinalOutputName());
     }
     // After the frame is whole, overlay and all, and before it is presented.
+    if (recorder && renderGraph)
+      RecordFrame();
     if (!capturePath.empty() && renderGraph && ++capturedFrames == captureFrame) {
       if (activeRenderer->CaptureTarget(renderGraph->GetFinalOutputName(), capturePath))
         spdlog::info("[RenderingSystem] Saved frame {} to {}", captureFrame, capturePath.string());
       else
         spdlog::warn("[RenderingSystem] This backend cannot save a frame, so {} was not written", capturePath.string());
+    }
+    // Once whatever was asked for last is saved: a capture inside a recording does not cut it short,
+    // and a recording does not end a run before the frame a capture is waiting for.
+    if (!savedEverything && (!capturePath.empty() || !recordPath.empty()) && SavedEverything()) {
+      savedEverything = true;
       // What the frames before it cost, scope by scope, so a run with nobody at the screen can say
       // where the time goes as well as what was drawn. Averages over the frames a scope ran in,
       // which is what the profiler keeps; anything under a hundredth of a millisecond is left out.
@@ -375,7 +409,72 @@ auto RenderingSystem::IsPresentEnabled() const -> bool {
 auto RenderingSystem::SetPresentEnabled(const bool enabled) -> void {
   presentEnabled = enabled;
 }
+auto RenderingSystem::RecordFrame() -> void {
+  // Not before the targets are the window's size. They are made at the desktop's, before the window
+  // has said what it is, and the change waits out `RESOLUTION_DEBOUNCE_FRAMES` -- a recording begun
+  // on the first frame ended on the sixth, when the picture shrank by the title bar. The ticks run
+  // meanwhile are as fixed as the rest, so the video still starts at the same moment every time.
+  if (!recorder->IsOpen() && hasPending)
+    return;
+  KUKI_PROFILE_SCOPE("Record");
+  int width{};
+  int height{};
+  if (!activeRenderer->ReadTarget(renderGraph->GetFinalOutputName(), recordPixels, width, height)) {
+    spdlog::warn("[RenderingSystem] This backend cannot read a frame back, so {} will not be recorded", recordPath.string());
+    FinishRecording();
+    return;
+  }
+  if (!recorder->IsOpen()) {
+    const auto encoder = VideoRecorder::FindEncoder();
+    if (!encoder || !recorder->Start(*encoder, recordPath, width, height, app.TickRate())) {
+      FinishRecording();
+      return;
+    }
+    // No waiting on the display, which would only make a slow recording slower. Here rather than in
+    // `Start`, since the settings menu puts the player's vsync back after every system has started.
+    if (auto *context = Internal(app).GetGraphicsContext())
+      context->SetVSync(false);
+    spdlog::info("[RenderingSystem] Recording {} frames of {}x{} at {} a second to {}", recordFrames, width, height, app.TickRate(), recordPath.string());
+  }
+  // A raw stream cannot change size, and scaling every frame back to the first's would hide that the
+  // window moved. Better a shorter video that is right.
+  if (width != recorder->Width() || height != recorder->Height()) {
+    spdlog::warn("[RenderingSystem] The picture went from {}x{} to {}x{}, so the recording ends at frame {}", recorder->Width(), recorder->Height(), width, height, recordedFrames);
+    FinishRecording();
+    return;
+  }
+  if (!recorder->Write(recordPixels)) {
+    FinishRecording();
+    return;
+  }
+  if (++recordedFrames == recordFrames)
+    FinishRecording();
+}
+auto RenderingSystem::FinishRecording(const bool closing) -> void {
+  if (!recorder)
+    return;
+  // Short of the frames asked for is a failure for whatever was waiting on them, unless the window
+  // was closed on it: that is somebody at the screen deciding it was long enough.
+  const auto whole = recordedFrames == recordFrames || closing;
+  if (recordedFrames > 0 && recorder->Finish() && whole)
+    spdlog::info("[RenderingSystem] Saved {} frames to {}", recordedFrames, recordPath.string());
+  else {
+    spdlog::error("[RenderingSystem] Recorded {} of {} frames, so {} is missing or cut short", recordedFrames, recordFrames, recordPath.string());
+    Internal(app).SetExitCode(1);
+  }
+  recorder.reset();
+  recordEnded = true;
+  // Neither the clock nor the vsync is put back: the run ends with the recording, which is the frame
+  // it is told to.
+}
+auto RenderingSystem::SavedEverything() const -> bool {
+  const auto captured = capturePath.empty() || capturedFrames >= captureFrame;
+  const auto recorded = recordPath.empty() || recordEnded;
+  return captured && recorded;
+}
 auto RenderingSystem::Shutdown() -> void {
+  // A run closed before the last frame still leaves a video that plays, of the frames it got to.
+  FinishRecording(true);
   for (auto &renderer : renderers)
     if (renderer)
       renderer->Clear();

@@ -138,6 +138,11 @@ auto Application::PreUpdate() -> void {
   static auto timeLast = timeNow;
   deltaTime = std::chrono::duration<float>(timeNow - timeLast).count();
   timeLast = timeNow;
+  // A frame stands for exactly one tick, whatever it took, while something reads every frame back:
+  // the wall clock would skip ticks behind a slow readback and the result would stutter. See
+  // `ApplicationInternal::SetFixedStep`.
+  if (fixedStep)
+    deltaTime = static_cast<float>(tickClock.Step());
   inputManager.ResetScroll();
   inputManager.ResetPulses();
   {
@@ -158,7 +163,10 @@ auto Application::PreUpdate() -> void {
     // the last, and any further ticks the frame owes see the keyboard as it now stands.
     KUKI_PROFILE_SCOPE("Ticks");
     // Time owed is only counted while playing, so a pause is not a debt to be run off afterwards.
-    auto due = playState == PlayState::Playing ? tickClock.Advance(deltaTime * tickScale) : 0;
+    // The fixed step is handed over as the double it is: a float's 1/60 is a hair over the tick, so
+    // it happens to come out right, but a rate whose float rounds down would owe a tick short every
+    // so often and drop one.
+    auto due = playState == PlayState::Playing ? tickClock.Advance(fixedStep ? tickClock.Step() : deltaTime * tickScale) : 0;
     if (stepRequested && playState == PlayState::Paused)
       due = 1;
     stepRequested = false;

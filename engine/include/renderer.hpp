@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <buffer_object.hpp>
+#include <cstdint>
 #include <debug_view.hpp>
 #include <exposure.hpp>
 #include <filesystem>
@@ -20,6 +21,7 @@
 #include <string>
 #include <target_description.hpp>
 #include <tone_mapper.hpp>
+#include <vector>
 namespace kuki {
 class Scene;
 class KUKI_ENGINE_API Renderer {
@@ -124,6 +126,13 @@ public:
   /// @brief Writes a target as it stands to a PNG file, waiting for the frame so far to be drawn.
   /// False where the backend cannot, which by default is every one. See `CAPTURE_FLAG`.
   virtual auto CaptureTarget(const std::string &, const std::filesystem::path &) -> bool {
+    return false;
+  }
+  /// @brief Reads a target as it stands into eight-bit RGBA, top row first, waiting for the frame so
+  /// far to be drawn, and says how big it was. The buffer is resized only when the target's size
+  /// changes, so a caller reading every frame, as `RECORD_FLAG` does, allocates once. False where
+  /// the backend cannot, which by default is every one.
+  virtual auto ReadTarget(const std::string &, std::vector<uint8_t> &, int &, int &) -> bool {
     return false;
   }
   virtual auto Reset() -> void = 0;

@@ -4096,6 +4096,8 @@ auto DXRenderer::Clear() -> void {
   pipelines.Clear();
   pickResultBuffer.Reset();
   pickReadbackBuffer.Reset();
+  targetReadbackBuffer.Reset();
+  targetReadbackSize = 0;
   // Everything from here down runs with the GPU idle: `ReleaseAllTargets` above flushes the command
   // list and waits. That is what lets these descriptors go straight back to the heap instead of on
   // to the retirement queue, which is drained by `Reset` -- a call a backend being torn down is
@@ -4656,7 +4658,35 @@ auto DXRenderer::ReleaseAllTargets() -> void {
   nameToTarget.clear();
   nameToId.clear();
 }
+namespace {
+/// @brief Every half float's value as a byte, clamped to the picture's 0 to 1.
+///
+/// Worked out once rather than per channel, since there are only 65536 halves and a frame has
+/// millions of channels: unpacked one at a time, a 2560x1440 frame took over a second to read in a
+/// Debug build, which made a recording of a few seconds take minutes.
+auto HalfToByte() -> const std::array<uint8_t, 65536> & {
+  static const auto table = [] {
+    std::array<uint8_t, 65536> bytes{};
+    for (size_t half = 0; half < bytes.size(); ++half) {
+      const auto value = glm::unpackHalf1x16(static_cast<uint16_t>(half));
+      // A NaN compares false both ways and would clamp to whatever the order of the tests made it;
+      // black is what the display shows for one.
+      bytes[half] = value == value ? static_cast<uint8_t>(std::clamp(value, .0f, 1.f) * 255.f + .5f) : 0;
+    }
+    return bytes;
+  }();
+  return table;
+}
+} // namespace
 auto DXRenderer::CaptureTarget(const std::string &name, const std::filesystem::path &path) -> bool {
+  std::vector<uint8_t> pixels;
+  int width{};
+  int height{};
+  if (!ReadTarget(name, pixels, width, height))
+    return false;
+  return stbi_write_png(path.string().c_str(), width, height, 4, pixels.data(), width * 4) != 0;
+}
+auto DXRenderer::ReadTarget(const std::string &name, std::vector<uint8_t> &pixels, int &width, int &height) -> bool {
   auto *context = GetContext();
   auto *commandList = context ? context->GetCommandList() : nullptr;
   auto *device = context ? context->GetDevice() : nullptr;
@@ -4675,44 +4705,55 @@ auto DXRenderer::CaptureTarget(const std::string &name, const std::filesystem::p
   UINT64 rowBytes{};
   UINT64 total{};
   device->GetCopyableFootprints(&description, 0, 1, 0, &footprint, &rows, &rowBytes, &total);
-  ComPtr<ID3D12Resource> readback;
-  const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_READBACK);
-  const auto bufferDescription = CD3DX12_RESOURCE_DESC::Buffer(total);
-  if (DXFailed(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &bufferDescription, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readback)), "CreateCommittedResource for capture"))
-    return false;
+  if (!targetReadbackBuffer || targetReadbackSize < total) {
+    // Nothing in flight can still be copying into the old one: every read below waits for its copy.
+    targetReadbackBuffer.Reset();
+    targetReadbackSize = 0;
+    const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_READBACK);
+    const auto bufferDescription = CD3DX12_RESOURCE_DESC::Buffer(total);
+    if (DXFailed(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &bufferDescription, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&targetReadbackBuffer)), "CreateCommittedResource for target readback"))
+      return false;
+    targetReadbackSize = total;
+  }
   Transition(source, D3D12_RESOURCE_STATE_COPY_SOURCE);
-  const CD3DX12_TEXTURE_COPY_LOCATION destination(readback.Get(), footprint);
+  const CD3DX12_TEXTURE_COPY_LOCATION destination(targetReadbackBuffer.Get(), footprint);
   const CD3DX12_TEXTURE_COPY_LOCATION from(source.resource.Get(), 0);
   commandList->CopyTextureRegion(&destination, 0, 0, 0, &from, nullptr);
   // Run what the frame has recorded so far, as a pick does, so the copy has something in it to read.
+  // A stall every time, which is what `RECORD_FLAG` costs: rotating two or three buffers and reading
+  // each a frame or two late would not wait, and is not worth it yet for a clip made offline.
   context->FlushCommandList();
   void *mapped{};
   const CD3DX12_RANGE readRange(0, static_cast<SIZE_T>(total));
-  if (DXFailed(readback->Map(0, &readRange, &mapped), "Map capture readback"))
+  if (DXFailed(targetReadbackBuffer->Map(0, &readRange, &mapped), "Map target readback"))
     return false;
-  const auto width = static_cast<int>(description.Width);
-  const auto height = static_cast<int>(description.Height);
-  std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4);
+  width = static_cast<int>(description.Width);
+  height = static_cast<int>(description.Height);
+  pixels.resize(static_cast<size_t>(width) * height * 4);
   const auto *bytes = static_cast<const uint8_t *>(mapped);
+  const auto &toByte = HalfToByte();
   for (auto y = 0; y < height; ++y) {
     const auto *row = bytes + footprint.Offset + static_cast<size_t>(y) * footprint.Footprint.RowPitch;
-    for (auto x = 0; x < width; ++x) {
-      auto *out = &pixels[(static_cast<size_t>(y) * width + x) * 4];
-      if (half) {
-        const auto *channels = reinterpret_cast<const uint16_t *>(row) + static_cast<size_t>(x) * 4;
-        for (auto c = 0; c < 4; ++c) {
-          const auto value = c == 3 ? 1.f : glm::unpackHalf1x16(channels[c]);
-          out[c] = static_cast<uint8_t>(std::clamp(value, .0f, 1.f) * 255.f + .5f);
-        }
-      } else {
-        memcpy(out, row + static_cast<size_t>(x) * 4, 4);
-        out[3] = 255;
+    auto *out = &pixels[static_cast<size_t>(y) * width * 4];
+    if (half) {
+      const auto *channels = reinterpret_cast<const uint16_t *>(row);
+      for (size_t x = 0; x < static_cast<size_t>(width); ++x) {
+        out[x * 4] = toByte[channels[x * 4]];
+        out[x * 4 + 1] = toByte[channels[x * 4 + 1]];
+        out[x * 4 + 2] = toByte[channels[x * 4 + 2]];
+        out[x * 4 + 3] = 255;
       }
+    } else {
+      // A row at a time, and the alpha made whole afterwards: the picture's own alpha is whatever the
+      // last pass left there, which a PNG would show as holes and a video encoder would ignore.
+      memcpy(out, row, static_cast<size_t>(width) * 4);
+      for (auto x = 0; x < width; ++x)
+        out[static_cast<size_t>(x) * 4 + 3] = 255;
     }
   }
   const CD3DX12_RANGE writeRange(0, 0);
-  readback->Unmap(0, &writeRange);
-  return stbi_write_png(path.string().c_str(), width, height, 4, pixels.data(), width * 4) != 0;
+  targetReadbackBuffer->Unmap(0, &writeRange);
+  return true;
 }
 } // namespace kuki
 #endif

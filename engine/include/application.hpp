@@ -274,6 +274,7 @@ private:
   bool hosting{};
   bool stopRequested{};
   bool stepRequested{};
+  bool fixedStep{};
   bool viewportHovered{};
   /// @brief Private and virtual: `SystemApplication` and `Editor` say what they are, and only the
   /// engine asks, through `ApplicationInternal`. Overriding does not need access.
