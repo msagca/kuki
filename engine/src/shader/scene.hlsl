@@ -1,5 +1,6 @@
 static const uint ALPHA_MODE_OPAQUE = 0;
 static const uint ALPHA_MODE_MASK = 1;
+static const uint ALPHA_MODE_BLEND = 2;
 static const float EPSILON = 1.0e-6;
 static const float PI = 3.14159265359;
 static const float MAX_REFLECTION_LOD = 6.0;
@@ -181,6 +182,9 @@ Texture2D g_sceneColor : register(t17);
 // The pool's entities, in the same order as its matrices: each is a 64-bit id, of which the picking
 // buffer keeps the low 24 bits.
 StructuredBuffer<uint2> g_entityIds : register(t18);
+// How open each pixel is to the sky, from the occlusion pass; read only where `u_debug.y` says the
+// pass ran this frame.
+Texture2D<float> g_ambientOcclusion : register(t19);
 SamplerState g_sampler : register(s0);
 SamplerState g_shadowSampler : register(s1);
 SamplerState g_clampSampler : register(s2);
@@ -943,11 +947,19 @@ PSOutput PSMain(PSInput input) {
   float3 N = useNormal ? GetNormalFromTexture(input.texture0, GN, input.tangent) : GN;
   float4 S = useSpecular ? g_specular.Sample(g_sampler, input.texture0) : u_specular;
   float4 E = useEmissive ? g_emissive.Sample(g_sampler, input.texture0) : u_emissive;
-  // The material's own occlusion map, and now the whole of the factor every indirect term is
-  // scaled by. The screen space estimate that used to multiply it is gone: it cancelled its sample
-  // rotation against a window fixed at four pixels, which only holds where the occlusion is smooth
-  // across four pixels, so a crease seen from far enough away printed the rotation into the image.
+  // The material's own occlusion map, which every indirect term is scaled by. An earlier screen
+  // space estimate multiplied it and was taken out: it cancelled its sample rotation against a
+  // window fixed at four pixels, which only holds where the occlusion is smooth across four pixels,
+  // so a crease seen from far enough away printed the rotation into the image. Its replacement,
+  // below, sizes both its samples and its blur by a radius in scene units (`occlusion.hlsl`).
   float O = useOcclusion ? g_occlusion.Sample(g_sampler, input.texture0).r : u_surface.y;
+  // The occlusion pass's estimate of the same thing at the scale of the scene, where it ran: a
+  // house's foot, the step of a terrace, the floor between two trees. Found in the depth prepass,
+  // so not for a see-through surface, which is not in it and would take the shade of what is behind.
+  float creases = u_debug.y != 0 && u_alphaMode != ALPHA_MODE_BLEND ? g_ambientOcclusion.Load(int3(input.position.xy, 0)) : 1.0;
+  O *= creases;
+  // As much of it as the scene lends the direct light. See `AmbientOcclusion::direct`.
+  float directOcclusion = lerp(1.0, creases, u_indirectScale.w);
   float R = useRoughness ? g_roughness.Sample(g_sampler, input.texture0).g : u_surface.z;
   float M = useMetalness ? g_metalness.Sample(g_sampler, input.texture0).b : u_surface.x;
   float3 V = normalize(u_viewPosition.xyz - input.worldPosition);
@@ -1077,6 +1089,8 @@ PSOutput PSMain(PSInput input) {
     output.color = float4(shown, alpha);
     return output;
   }
+  Lo *= directOcclusion;
+  LoToon *= directOcclusion;
   float3 shaded = ambient + Lo;
   if (toon > 0.0) {
     // The ambient is kept, so a figure still takes the colour of the sky it stands under, but the

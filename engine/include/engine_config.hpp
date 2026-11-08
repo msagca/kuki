@@ -62,6 +62,8 @@ struct KUKI_ENGINE_API EngineConfig {
   bool bloom{true};
   bool volumetrics{true};
   bool reflections{true};
+  bool ambientOcclusion{true};
+  bool depthOfField{true};
   LightingQuality lighting{LightingQuality::High};
   bool showFrameRate{};
   /// @brief Location of the config file, alongside the executable.

@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <ambient_occlusion.hpp>
 #include <animator.hpp>
 #include <animator_controller.hpp>
 #include <anti_aliasing.hpp>
@@ -12,6 +13,7 @@
 #include <cctype>
 #include <cmath>
 #include <component_type.hpp>
+#include <depth_of_field.hpp>
 #include <dx_material.hpp>
 #include <editor.hpp>
 #include <enum_traits.hpp>
@@ -829,6 +831,41 @@ inline auto PropertyDisplayer::operator()<kuki::PlanarReflection>(kuki::PlanarRe
   }
   if (edited != *surface)
     *surface = edited;
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::AmbientOcclusion>(kuki::AmbientOcclusion *occlusion) -> void {
+  if (!occlusion || !context.capabilities.ambientOcclusion)
+    return;
+  auto edited = *occlusion;
+  if (field::Fold("Occlusion", true)) {
+    field::DragFloat("Radius", &edited.radius, .01f, .01f, 10.f, "%.2f");
+    ImGui::SetItemTooltip("How far round a point is looked for what hides the sky, in scene units.");
+    field::SliderFloat("Intensity", &edited.intensity, .0f, 2.f);
+    ImGui::SetItemTooltip("Zero switches the occlusion off.");
+    field::SliderFloat("Power", &edited.power, .25f, 4.f);
+    field::SliderFloat("Direct", &edited.direct, .0f, 1.f);
+    ImGui::SetItemTooltip("How much of the shade the direct light takes as well as the indirect.");
+  }
+  if (edited != *occlusion)
+    *occlusion = edited;
+}
+template <>
+inline auto PropertyDisplayer::operator()<kuki::DepthOfField>(kuki::DepthOfField *focus) -> void {
+  if (!focus || !context.capabilities.depthOfField)
+    return;
+  auto edited = *focus;
+  if (field::Fold("Focus", true)) {
+    field::DragFloat("Distance", &edited.focusDistance, .1f, .0f, 1000.f, "%.1f");
+    ImGui::SetItemTooltip("Zero focuses on whatever is at the focus point.");
+    field::DragFloat2("Point", &edited.focusPoint.x, .01f, .0f, 1.f, "%.2f");
+    field::SliderFloat("Range", &edited.focusRange, .0f, 1.f);
+    ImGui::SetItemTooltip("How far either side of the focus stays sharp, as a share of the distance.");
+    field::SliderFloat("Transition", &edited.transition, .01f, 2.f);
+    field::SliderFloat("Max Blur", &edited.maxBlur, .0f, 16.f);
+    ImGui::SetItemTooltip("In pixels of a picture 1080 high. Zero switches the blur off.");
+  }
+  if (edited != *focus)
+    *focus = edited;
 }
 template <>
 inline auto PropertyDisplayer::operator()<kuki::Wind>(kuki::Wind *wind) -> void {

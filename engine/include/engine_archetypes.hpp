@@ -27,6 +27,8 @@ using VolumetricFogObject = Archetype<Transform, VolumetricFog>;
 using AntiAliasingObject = Archetype<Transform, AntiAliasing>;
 using StylizationObject = Archetype<Transform, Stylization>;
 using PlanarReflectionObject = Archetype<Transform, PlanarReflection>;
+using AmbientOcclusionObject = Archetype<Transform, AmbientOcclusion>;
+using DepthOfFieldObject = Archetype<Transform, DepthOfField>;
 using WindObject = Archetype<Transform, Wind>;
 /// @brief One node of a placed model that carries no mesh: a bone, or a group of meshes.
 using ModelNodeObject = Archetype<Transform, BoundingBox>;
@@ -42,5 +44,5 @@ using ModelRoot = Archetype<Transform, BoundingBox, Animated>;
 ///
 /// What the engine itself makes: the prefabs of models and meshes it places, the entities the
 /// builder's conveniences make, and the settings. A game's `World` adds its own to these.
-using EngineArchetypes = TypeList<EmptyNode, MeshObject, CameraObject, LightObject, ParticleObject, SkyboxObject, AtmosphereSkyObject, IndirectLightingObject, VolumetricCloudsObject, VolumetricFogObject, AntiAliasingObject, StylizationObject, PlanarReflectionObject, WindObject, ModelNodeObject, ModelRoot>;
+using EngineArchetypes = TypeList<EmptyNode, MeshObject, CameraObject, LightObject, ParticleObject, SkyboxObject, AtmosphereSkyObject, IndirectLightingObject, VolumetricCloudsObject, VolumetricFogObject, AntiAliasingObject, StylizationObject, PlanarReflectionObject, AmbientOcclusionObject, DepthOfFieldObject, WindObject, ModelNodeObject, ModelRoot>;
 } // namespace kuki

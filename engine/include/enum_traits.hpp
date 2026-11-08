@@ -110,7 +110,7 @@ struct EnumTraits<ParticleSprite> {
 template <>
 struct EnumTraits<RenderPass> {
   static const std::vector<const char *> &GetNames() {
-    static const std::vector<const char *> names = {"AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "DepthPrepass", "Ink", "Outline", "Overlay", "Particles", "PlanarReflection", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "Stylize", "ToneMapping", "Volumetric Clouds", "Volumetric Fog"};
+    static const std::vector<const char *> names = {"Ambient Occlusion", "AntiAliasing", "BloomEffect", "BlurEffect", "BrightPassFilter", "Depth of Field", "DepthPrepass", "Ink", "Outline", "Overlay", "Particles", "PlanarReflection", "ProbeTrace", "Scene", "ShadowMap", "SpotShadowMap", "Stylize", "ToneMapping", "Volumetric Clouds", "Volumetric Fog"};
     return names;
   }
 };

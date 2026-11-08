@@ -68,14 +68,21 @@ auto RenderingSystem::Start() -> void {
                   .BeginPass(RenderPass::SpotShadowMap)
                   .AddOutput("SpotShadowMap", {.format = TargetFormat::DEPTH, .type = TargetType::Texture2DArray, .width = SPOT_SHADOW_MAP_RESOLUTION, .height = SPOT_SHADOW_MAP_RESOLUTION, .layers = static_cast<int>(MAX_SPOT_SHADOW_LIGHTS)}, TargetSizing::Fixed)
                   .EndPass()
-                  // Depth alone, before anything is shaded, and read by nobody since the screen
-                  // space occlusion pass it was added for was removed. It is not the early-z the
-                  // name suggests either: the scene pass renders against the depth buffer its own
-                  // multisampled target carries, not this one. Kept because the debug view list is
-                  // the one place a depth buffer can be looked at, and because an occlusion term
-                  // that is traced rather than gathered off the screen would want it back.
+                  // Depth alone, before anything is shaded: what the occlusion below is found in,
+                  // and what every fullscreen pass after the scene reads distance from. It is not
+                  // the early-z the name suggests: the scene pass renders against the depth buffer
+                  // its own multisampled target carries, not this one.
                   .BeginPass(RenderPass::DepthPrepass)
                   .AddOutput("SceneDepth", {.format = TargetFormat::DEPTH, .width = screenWidth, .height = screenHeight})
+                  .EndPass()
+                  // The shade in the creases, from the prepass, ahead of the scene pass that scales
+                  // its indirect light by it. One channel at the full size, so a crease's shade
+                  // lines up with the crease pixel for pixel; the second target is the blur's
+                  // half-way point, across before down.
+                  .BeginPass(RenderPass::AmbientOcclusion)
+                  .AddInput("SceneDepth")
+                  .AddOutput("AmbientOcclusion", {.format = TargetFormat::R8, .width = screenWidth, .height = screenHeight, .samples = 1})
+                  .AddOutput("AmbientOcclusionBlur", {.format = TargetFormat::R8, .width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
                   // Sixty-four rays from every probe, shaded and averaged into the field the scene
                   // pass reads its bounce out of. A pass like any other, and here for the reason any
@@ -92,6 +99,7 @@ auto RenderingSystem::Start() -> void {
                   .AddInput("ShadowMap")
                   .AddInput("SpotShadowMap")
                   .AddInput("ProbeField")
+                  .AddInput("AmbientOcclusion")
                   .AddOutput("SceneMulti", {.type = TargetType::Texture2DMulti, .width = screenWidth, .height = screenHeight, .samples = 4, .pickingBuffer = true})
                   .EndPass()
                   .BeginPass(RenderPass::AntiAliasing)
@@ -160,8 +168,16 @@ auto RenderingSystem::Start() -> void {
                   .AddInput("Clouds")
                   .AddOutput("SceneVolumetric", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
-                  .BeginPass(RenderPass::BrightPassFilter)
+                  // The shallow focus, on the picture with its air in it, so the haze over a far
+                  // hill softens with the hill; and ahead of the bloom, so a light out of focus
+                  // spreads before it glows rather than glowing sharp over a soft picture.
+                  .BeginPass(RenderPass::DepthOfField)
                   .AddInput("SceneVolumetric")
+                  .AddInput("SceneDepth")
+                  .AddOutput("SceneFocused", {.width = screenWidth, .height = screenHeight, .samples = 1})
+                  .EndPass()
+                  .BeginPass(RenderPass::BrightPassFilter)
+                  .AddInput("SceneFocused")
                   .AddOutput("SceneBright", {.width = bloomWidth, .height = bloomHeight, .samples = 1}, TargetSizing::ViewportHalf)
                   .EndPass()
                   .BeginPass(RenderPass::BlurEffect)
@@ -171,7 +187,7 @@ auto RenderingSystem::Start() -> void {
                   .AddOutput("SceneBlurredPong", {.width = bloomWidth, .height = bloomHeight, .samples = 1}, TargetSizing::ViewportHalf)
                   .EndPass()
                   .BeginPass(RenderPass::BloomEffect)
-                  .AddInput("SceneVolumetric")
+                  .AddInput("SceneFocused")
                   .AddInput("SceneBlurred")
                   .AddOutput("SceneBloom", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()

@@ -90,6 +90,19 @@ public:
   /// A scene with no `Stylization`, or one whose ink is nought thick, costs a copy, as does a
   /// backend that draws no lines -- `RendererCapabilities::stylization` says which.
   virtual auto ApplyInk(std::span<std::string>, std::span<std::string>) -> void = 0;
+  /// @brief Estimates from the depth prepass how much each pixel's surroundings hide the sky from it.
+  ///
+  /// Writes a single channel the scene pass multiplies its indirect light by, one where nothing is
+  /// hidden. A scene with no `AmbientOcclusion`, or one whose intensity is nought, leaves the target
+  /// cleared and tells the scene pass not to read it, as does a backend without the pass --
+  /// `RendererCapabilities::ambientOcclusion` says which.
+  virtual auto ApplyAmbientOcclusion(std::span<std::string>, std::span<std::string>) -> void = 0;
+  /// @brief Blurs what is out of the scene's focus, by how far it is from it. See `DepthOfField`.
+  ///
+  /// Handed the picture and the depth, and returns the picture. A copy where the scene has no
+  /// `DepthOfField` or its blur is nought, and on a backend without the pass --
+  /// `RendererCapabilities::depthOfField` says which.
+  virtual auto ApplyDepthOfField(std::span<std::string>, std::span<std::string>) -> void = 0;
   /// @brief Grades the finished picture and lays the scene's `ScreenEffects` over it.
   virtual auto ApplyStylize(std::span<std::string>, std::span<std::string>) -> void = 0;
   /// @brief Mirrors the scene's level surface, where it has one, in the picture handed to it.

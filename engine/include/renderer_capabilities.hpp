@@ -80,5 +80,16 @@ struct RendererCapabilities {
   /// Gates the `Wind` panel and its entry in the add menu. A backend without it draws every surface
   /// where its mesh puts it, which is a still day rather than a wrong picture.
   bool wind{};
+  /// @brief Whether the backend shades the creases of a scene from its depth. See `AmbientOcclusion`.
+  ///
+  /// Gates the panel, its entry in the add menu and the setting. A backend without it lights a
+  /// corner as it lights an open floor, which is a flatter picture rather than a wrong one.
+  bool ambientOcclusion{};
+  /// @brief Whether the backend blurs what is out of focus. See `DepthOfField`.
+  ///
+  /// Its own flag rather than the occlusion's, though both are fullscreen work over the same depth:
+  /// one is read by the scene pass and the other is a step of the post chain, and a backend could
+  /// well have either without the other.
+  bool depthOfField{};
 };
 } // namespace kuki

@@ -250,6 +250,10 @@ auto SettingsMenu::ApplyGraphics() -> void {
       rendering->SetPassEnabled(RenderPass::VolumetricFog, graphics.volumetrics);
       rendering->SetPassEnabled(RenderPass::VolumetricClouds, graphics.volumetrics);
     }
+    if (rendering->GetCapabilities().ambientOcclusion)
+      rendering->SetPassEnabled(RenderPass::AmbientOcclusion, graphics.ambientOcclusion);
+    if (rendering->GetCapabilities().depthOfField)
+      rendering->SetPassEnabled(RenderPass::DepthOfField, graphics.depthOfField);
   }
   if (app.graphicsContext)
     app.graphicsContext->SetVSync(graphics.vsync);
@@ -265,6 +269,8 @@ auto SettingsMenu::SaveGraphics() const -> void {
   config.bloom = graphics.bloom;
   config.volumetrics = graphics.volumetrics;
   config.reflections = graphics.reflections;
+  config.ambientOcclusion = graphics.ambientOcclusion;
+  config.depthOfField = graphics.depthOfField;
   config.lighting = graphics.lighting;
   config.showFrameRate = graphics.showFrameRate;
   config.Save();
@@ -300,6 +306,10 @@ auto SettingsMenu::AddGraphicsEntries() -> void {
   if (capabilities.volumetrics)
     Flag("Fog and clouds", &EngineConfig::volumetrics);
   Flag("Reflections", &EngineConfig::reflections);
+  if (capabilities.ambientOcclusion)
+    Flag("Ambient occlusion", &EngineConfig::ambientOcclusion);
+  if (capabilities.depthOfField)
+    Flag("Depth of field", &EngineConfig::depthOfField);
   Flag("Frame rate", &EngineConfig::showFrameRate);
 }
 auto SettingsMenu::ShowNotice(std::string text) -> void {

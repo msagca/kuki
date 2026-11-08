@@ -10,11 +10,13 @@ namespace kuki {
 /// A game's components are not here: they take ids from `FIRST_GAME_COMPONENT` up, through
 /// `KUKI_COMPONENT` (`component_traits.hpp`), so a game never edits the engine to add one.
 enum class ComponentType : uint8_t {
+  AmbientOcclusion,
   Animator,
   AntiAliasing,
   AtmosphereSky,
   BoundingBox,
   Camera,
+  DepthOfField,
   IndirectLighting,
   Light,
   MaterialHandle,

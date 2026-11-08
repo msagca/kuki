@@ -98,6 +98,8 @@ auto EngineConfig::Load() -> EngineConfig {
     Flag("bloom", config.bloom);
     Flag("volumetrics", config.volumetrics);
     Flag("reflections", config.reflections);
+    Flag("ambientOcclusion", config.ambientOcclusion);
+    Flag("depthOfField", config.depthOfField);
     Flag("showFrameRate", config.showFrameRate);
     // By name, like the tone mapper, so that a level added between two others reads back as itself.
     if (const auto it = json.find("lighting"); it != json.end() && it->is_string()) {
@@ -136,6 +138,8 @@ auto EngineConfig::Save() const -> bool {
   json["bloom"] = bloom;
   json["volumetrics"] = volumetrics;
   json["reflections"] = reflections;
+  json["ambientOcclusion"] = ambientOcclusion;
+  json["depthOfField"] = depthOfField;
   json["lighting"] = lighting == LightingQuality::Low ? "low" : lighting == LightingQuality::Medium ? "medium"
                                                                                                    : "high";
   json["showFrameRate"] = showFrameRate;

@@ -3,10 +3,25 @@
 #include <cstdint>
 namespace kuki {
 enum class RenderPass : uint8_t {
+  /// @brief How much of the sky each pixel's surroundings hide from it, estimated from the depth
+  /// prepass and blurred. See `AmbientOcclusion`.
+  ///
+  /// Between the prepass and the scene pass rather than over the finished picture, because what it
+  /// darkens is the indirect light alone: the scene pass reads it and scales its ambient terms, so a
+  /// crease in sunlight is shaded by the sun's shadow and a crease in shade by this, and the two are
+  /// never laid one over the other.
+  AmbientOcclusion,
   AntiAliasing,
   BloomEffect,
   BlurEffect,
   BrightPassFilter,
+  /// @brief A shallow focus: what is nearer or further than the band in focus blurred by how far it
+  /// is from it. See `DepthOfField`.
+  ///
+  /// After the volumetric fog, so the haze is blurred with the hill it hangs over rather than drawn
+  /// sharp across a soft one, and before the bloom and tone mapping, so a blurred light still glows
+  /// and is mapped as the rest of the picture is.
+  DepthOfField,
   DepthPrepass,
   /// @brief The lines a cel is inked with, found in the depth buffer and drawn over the resolved scene.
   ///

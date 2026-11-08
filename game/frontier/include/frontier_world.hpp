@@ -25,7 +25,8 @@ using StructureObject = kuki::Archetype<kuki::Transform, kuki::Renderable, Struc
 using BirdObject = kuki::Archetype<kuki::Transform, kuki::Renderable, Wing>;
 /// @brief The sky, which is both the atmosphere and the light it throws back on the scene.
 using Sky = kuki::Archetype<kuki::Transform, kuki::AtmosphereSky, kuki::IndirectLighting>;
-/// @brief How the picture is drawn, and the water's mirror: the sea is the one level surface.
-using Look = kuki::Archetype<kuki::Transform, kuki::Stylization, kuki::ScreenEffects, kuki::PlanarReflection>;
+/// @brief How the picture is drawn, and the water's mirror: the sea is the one level surface. The
+/// shade in the creases and the shallow focus are what make it read as a model on a table.
+using Look = kuki::Archetype<kuki::Transform, kuki::Stylization, kuki::ScreenEffects, kuki::PlanarReflection, kuki::AmbientOcclusion, kuki::DepthOfField>;
 using FrontierWorld = kuki::World<StructureObject, BirdObject, Sky, Look>;
 } // namespace frontier

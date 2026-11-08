@@ -208,6 +208,32 @@ struct DXReflectionConstants {
   float texelSize[2]{};
 };
 static_assert(sizeof(DXReflectionConstants) == 192, "DXReflectionConstants must stay twelve float4 rows to match the HLSL cbuffer");
+/// @brief Root constants for the ambient occlusion and its blur, read by `occlusion.hlsl`. Seven
+/// float4 rows; `horizontal` says which way a blur runs and is ignored by the estimate.
+struct DXOcclusionConstants {
+  float inverseProjection[16]{};
+  float projectionScale[2]{};
+  float projectionW[2]{};
+  float texelSize[2]{};
+  float radius{};
+  float intensity{};
+  float power{1.f};
+  float maxPixels{};
+  uint32_t horizontal{};
+  float padding{};
+};
+static_assert(sizeof(DXOcclusionConstants) == 112, "DXOcclusionConstants must stay seven float4 rows to match the HLSL cbuffer");
+/// @brief Root constants for the depth of field, read by `depth_of_field.hlsl`. Three float4 rows.
+struct DXFocusConstants {
+  float texelSize[2]{};
+  float focusPoint[2]{};
+  float depthTerms[4]{};
+  float focusDistance{};
+  float focusRange{};
+  float transition{};
+  float maxBlur{};
+};
+static_assert(sizeof(DXFocusConstants) == 48, "DXFocusConstants must stay three float4 rows to match the HLSL cbuffer");
 struct DXOutlineConstants {
   float color[4]{};
   float texelSize[4]{};
@@ -644,6 +670,11 @@ public:
   /// passes' bindings -- a picture and a depth -- with a larger block of constants, which is the
   /// only reason it is not one of them: two matrices do not fit beside the ink's settings.
   auto GetReflectionPipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
+  /// @brief Returns one of the ambient occlusion pipelines for a target format, building it once.
+  /// `entryPoint` is `PSOcclusion` or `PSOcclusionBlur`; both bind the depth and the estimate.
+  auto GetOcclusionPipeline(ID3D12Device *, const DXGI_FORMAT, const char *entryPoint) -> const DXPipeline *;
+  /// @brief Returns the depth of field pipeline for a target format, building it once.
+  auto GetFocusPipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
   /// @brief Returns the overlay text pipeline for a target format, building it once.
   ///
   /// The only raster pipeline here that blends and does not test depth. Both follow from where it
@@ -757,6 +788,8 @@ private:
   ComPtr<ID3D12RootSignature> outlineRootSignature;
   ComPtr<ID3D12RootSignature> stylizeRootSignature;
   ComPtr<ID3D12RootSignature> reflectionRootSignature;
+  ComPtr<ID3D12RootSignature> occlusionRootSignature;
+  ComPtr<ID3D12RootSignature> focusRootSignature;
   ComPtr<ID3D12RootSignature> overlayRootSignature;
   ComPtr<ID3D12RootSignature> shadowRootSignature;
   ComPtr<ID3D12RootSignature> skyboxRootSignature;
@@ -790,6 +823,14 @@ private:
   auto GetOutlineRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   auto GetStylizeRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   auto GetReflectionRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
+  /// @brief A root signature of the shape the fullscreen passes share -- a block of root constants
+  /// and two single-texture tables, `t0` and `t1`, with one clamped linear sampler -- built once
+  /// into `signature`. The older passes each spell theirs out; the newer ones differ only in the
+  /// size of their constants and come through here.
+  auto GetFullscreenRootSignature(ID3D12Device *, ComPtr<ID3D12RootSignature> &signature, const uint32_t constantDwords, const char *name) -> ID3D12RootSignature *;
+  /// @brief A fullscreen pipeline over such a root signature: one oversized triangle, no depth, one
+  /// target of the format, `VSMain` and `entryPoint` from `source`.
+  auto GetFullscreenPipeline(ID3D12Device *, const DXGI_FORMAT, const ComPtr<ID3D12RootSignature> &, const std::string_view source, const char *name, const char *entryPoint) -> const DXPipeline *;
   /// @brief Root signature for the overlay pass: the projection and colour, and the glyph atlas.
   auto GetOverlayRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the shadow pass: a single light-space matrix.

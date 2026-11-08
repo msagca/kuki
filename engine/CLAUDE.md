@@ -29,9 +29,11 @@ never saved into it; a goal's `target` is saved as an entity index and resolved 
   targets; `RenderingSystem::Start` builds it with `RenderGraphBuilder`. `AddResource` declares
   something ordered on but not allocated.
 
-A disabled pass runs a bypass instead of leaving the graph, so nothing reads a stale image. After
-the scene pass: resolve, `Ink`, `PlanarReflection`, `Particles`, volumetric fog, bloom, the editor's
-outline, tone mapping, `Stylize`, `Overlay`. The cel look is a material's `toon` (banded by the
+A disabled pass runs a bypass instead of leaving the graph, so nothing reads a stale image. Before
+the scene pass, `AmbientOcclusion` finds the creases in the depth prepass, and the scene pass
+scales its indirect light by it. After the scene pass: resolve, `Ink`, `PlanarReflection`,
+`Particles`, volumetric fog, `DepthOfField`, bloom, the editor's outline, tone mapping, `Stylize`,
+`Overlay`. The cel look is a material's `toon` (banded by the
 scene's `Stylization`), `Ink`'s outlines (from prepass depth, skinned meshes included) and
 `Stylize`, which grades the picture and applies `ScreenEffects`.
 

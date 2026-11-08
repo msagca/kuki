@@ -1,4 +1,5 @@
 #pragma once
+#include <ambient_occlusion.hpp>
 #include <animator.hpp>
 #include <anti_aliasing.hpp>
 #include <atmosphere_sky.hpp>
@@ -6,6 +7,7 @@
 #include <camera.hpp>
 #include <component_traits.hpp>
 #include <component_type.hpp>
+#include <depth_of_field.hpp>
 #include <indirect_lighting.hpp>
 #include <kuki_engine_export.h>
 #include <light.hpp>
@@ -55,7 +57,7 @@ public:
   /// put so that it can be selected and edited like everything else, and two of them would be two
   /// answers to a question with one -- with nothing to say which the renderer should read.
   static constexpr auto IsSceneSingleton(const ComponentType type) -> bool {
-    return type == ComponentType::AntiAliasing || type == ComponentType::AtmosphereSky || type == ComponentType::IndirectLighting || type == ComponentType::PlanarReflection || type == ComponentType::ScreenEffects || type == ComponentType::Stylization || type == ComponentType::VolumetricClouds || type == ComponentType::VolumetricFog || type == ComponentType::Wind;
+    return type == ComponentType::AmbientOcclusion || type == ComponentType::AntiAliasing || type == ComponentType::AtmosphereSky || type == ComponentType::DepthOfField || type == ComponentType::IndirectLighting || type == ComponentType::PlanarReflection || type == ComponentType::ScreenEffects || type == ComponentType::Stylization || type == ComponentType::VolumetricClouds || type == ComponentType::VolumetricFog || type == ComponentType::Wind;
   }
 private:
   static const std::unordered_map<ComponentType, std::string> typeToName;

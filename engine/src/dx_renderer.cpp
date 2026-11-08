@@ -2,9 +2,11 @@
 #include <dx_renderer.hpp>
 #ifdef KUKI_HAS_DIRECTX
 #include <algorithm>
+#include <ambient_occlusion.hpp>
 #include <application.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
+#include <depth_of_field.hpp>
 #include <dx_context.hpp>
 #include <dx_format.hpp>
 #include <limits>
@@ -2182,6 +2184,132 @@ auto DXRenderer::ApplyStylize(std::span<std::string> inputs, std::span<std::stri
   if (!DrawStylizePass(inputs, outputs, "PSStylize", constants))
     BypassCopy(inputs, outputs);
 }
+auto DXRenderer::ApplyAmbientOcclusion(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  occlusionReady = false;
+  auto scene = Internal(app).GetScene();
+  const auto *occlusion = scene ? scene->Entities().GetAny<AmbientOcclusion>() : nullptr;
+  const auto *camera = scene ? scene->GetActiveCamera() : nullptr;
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  // Nothing drawn, and the scene pass told so, where there is nothing to shade or no way to.
+  if (!occlusion || !camera || !commandList || occlusion->intensity <= .0f || occlusion->radius <= .0f || outputs.size() < 2)
+    return;
+  const auto Find = [&](const std::string &name) -> DXRenderTarget * {
+    auto it = nameToTarget.find(name);
+    return it == nameToTarget.end() || !it->second.resource || it->second.srvIndex == DXDescriptorHeap::InvalidIndex ? nullptr : &it->second;
+  };
+  DXRenderTarget *depth{};
+  for (const auto &name : inputs)
+    if (auto *target = Find(name); target && IsDepthFormat(target->desc.format) && target->desc.type == TargetType::Texture2D) {
+      depth = target;
+      break;
+    }
+  // The estimate is drawn into the first output, blurred across into the second and down again into
+  // the first, which is what the scene pass reads.
+  auto *result = Find(outputs[0]);
+  auto *scratch = Find(outputs[1]);
+  auto *fallback = EnsureDummyTexture();
+  if (!depth || !result || !scratch || !fallback || result->rtvIndex == DXDescriptorHeap::InvalidIndex || scratch->rtvIndex == DXDescriptorHeap::InvalidIndex)
+    return;
+  if (depth->desc.width != result->desc.width || depth->desc.height != result->desc.height || scratch->desc.width != result->desc.width || scratch->desc.height != result->desc.height)
+    return;
+  const auto format = TargetFormatToRTVDXGI(result->desc.format);
+  const auto *estimate = pipelines.GetOcclusionPipeline(context->GetDevice(), format, "PSOcclusion");
+  const auto *blur = pipelines.GetOcclusionPipeline(context->GetDevice(), format, "PSOcclusionBlur");
+  if (!estimate || !*estimate || !blur || !*blur)
+    return;
+  DXOcclusionConstants constants{};
+  const auto &projection = camera->transform.projection;
+  const auto inverse = glm::inverse(projection);
+  memcpy(constants.inverseProjection, glm::value_ptr(inverse), sizeof(constants.inverseProjection));
+  constants.projectionScale[0] = projection[0][0];
+  constants.projectionScale[1] = projection[1][1];
+  constants.projectionW[0] = projection[2][3];
+  constants.projectionW[1] = projection[3][3];
+  const auto height = static_cast<float>(std::max(result->desc.height, 1));
+  constants.texelSize[0] = 1.f / static_cast<float>(std::max(result->desc.width, 1));
+  constants.texelSize[1] = 1.f / height;
+  constants.radius = occlusion->radius;
+  constants.intensity = occlusion->intensity;
+  constants.power = std::max(occlusion->power, .1f);
+  // A tenth of the picture's height at most, so a crease right in front of the camera costs what one
+  // across the room does: twelve samples spread wider than this would miss what they were looking for.
+  constants.maxPixels = height * .1f;
+  Transition(*depth, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  const auto Draw = [&](const DXPipeline &pipeline, const D3D12_GPU_DESCRIPTOR_HANDLE source, DXRenderTarget &destination, const bool horizontal) {
+    Transition(destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    const auto rtv = context->GetRTVHeap().GetCPUHandle(destination.rtvIndex);
+    commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+    const auto viewport = CD3DX12_VIEWPORT(.0f, .0f, static_cast<float>(destination.desc.width), static_cast<float>(destination.desc.height));
+    const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination.desc.width), static_cast<LONG>(destination.desc.height));
+    commandList->RSSetViewports(1, &viewport);
+    commandList->RSSetScissorRects(1, &scissor);
+    constants.horizontal = horizontal ? 1u : 0u;
+    commandList->SetGraphicsRootSignature(pipeline.rootSignature.Get());
+    commandList->SetPipelineState(pipeline.pipelineState.Get());
+    commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXOcclusionConstants) / sizeof(uint32_t), &constants, 0);
+    commandList->SetGraphicsRootDescriptorTable(1, depth->srvGPU);
+    commandList->SetGraphicsRootDescriptorTable(2, source);
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->IASetVertexBuffers(0, 0, nullptr);
+    commandList->DrawInstanced(3, 1, 0, 0);
+  };
+  Draw(*estimate, fallback->srvGPU, *result, false);
+  Transition(*result, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  Draw(*blur, result->srvGPU, *scratch, true);
+  Transition(*scratch, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  Draw(*blur, scratch->srvGPU, *result, false);
+  occlusionReady = true;
+}
+auto DXRenderer::ApplyDepthOfField(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
+  auto scene = Internal(app).GetScene();
+  const auto *focus = scene ? scene->Entities().GetAny<DepthOfField>() : nullptr;
+  const auto *camera = scene ? scene->GetActiveCamera() : nullptr;
+  auto context = GetContext();
+  auto *commandList = context ? context->GetCommandList() : nullptr;
+  // Sharp over a debug view, which is a picture of a number and not of a scene seen through a lens.
+  if (!focus || !camera || !commandList || focus->maxBlur <= .0f || lightingDebugView != LightingDebugView::None) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  const auto pipeline = pipelines.GetFocusPipeline(context->GetDevice(), outputs.empty() ? DXGI_FORMAT_UNKNOWN : [&] {
+    auto it = nameToTarget.find(outputs[0]);
+    return it == nameToTarget.end() ? DXGI_FORMAT_UNKNOWN : TargetFormatToRTVDXGI(it->second.desc.format);
+  }());
+  DXRenderTarget *source{};
+  DXRenderTarget *depth{};
+  DXRenderTarget *destination{};
+  if (!pipeline || !*pipeline || !BindFullscreenInputs(inputs, outputs, source, depth, destination) || !depth) {
+    BypassCopy(inputs, outputs);
+    return;
+  }
+  DXFocusConstants constants{};
+  const auto height = static_cast<float>(std::max(destination->desc.height, 1));
+  constants.texelSize[0] = 1.f / static_cast<float>(std::max(destination->desc.width, 1));
+  constants.texelSize[1] = 1.f / height;
+  constants.focusPoint[0] = std::clamp(focus->focusPoint.x, .0f, 1.f);
+  constants.focusPoint[1] = std::clamp(focus->focusPoint.y, .0f, 1.f);
+  // The rows of the inverse projection that give a view space z and w from a depth alone: on either
+  // kind of camera the x and y of the clip space point do not reach them.
+  const auto inverse = glm::inverse(camera->transform.projection);
+  constants.depthTerms[0] = inverse[2][2];
+  constants.depthTerms[1] = inverse[3][2];
+  constants.depthTerms[2] = inverse[2][3];
+  constants.depthTerms[3] = inverse[3][3];
+  constants.focusDistance = std::max(focus->focusDistance, .0f);
+  constants.focusRange = std::max(focus->focusRange, .0f);
+  constants.transition = std::max(focus->transition, 1.0e-3f);
+  // Kept within what forty taps can cover without gaps, at the picture's height.
+  constants.maxBlur = std::min(focus->maxBlur, 16.f) * height / 1080.f;
+  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
+  commandList->SetPipelineState(pipeline->pipelineState.Get());
+  commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXFocusConstants) / sizeof(uint32_t), &constants, 0);
+  commandList->SetGraphicsRootDescriptorTable(1, source->srvGPU);
+  commandList->SetGraphicsRootDescriptorTable(2, depth->srvGPU);
+  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  commandList->IASetVertexBuffers(0, 0, nullptr);
+  commandList->DrawInstanced(3, 1, 0, 0);
+}
 auto DXRenderer::BindAtmosphereResources(const std::array<uint32_t, ATMOSPHERE_SRV_SLOTS> &sources, const uint32_t table, const uint32_t cubemap) -> bool {
   auto context = GetContext();
   if (!context)
@@ -3086,6 +3214,10 @@ auto DXRenderer::BuildFrameConstants(Scene &scene, const Camera &camera, const b
   }
   // Before the early return as well: a field of grass moves whether or not there are probes.
   PackWind(scene, windTime, constants.wind, constants.gust, constants.waves);
+  // How much of the creases' shade the direct light takes, in the spare fourth of the indirect
+  // scales; whether there is any shade to take is said by the scene pass, which knows if it ran.
+  if (const auto *occlusion = scene.Entities().GetAny<AmbientOcclusion>())
+    constants.indirectScale[3] = std::clamp(occlusion->direct, .0f, 1.f);
   if (!probeVolume.IsReady())
     return;
   probeVolume.GetBounds(constants.probeVolume, constants.probeVolume + 3);
@@ -3284,7 +3416,7 @@ auto DXRenderer::GetCapabilities() const -> RendererCapabilities {
   // The debug views are not conditional on the same thing. They are branches in `scene.hlsl`, which
   // compiles and runs whatever the hardware can trace, and a field that never filled is worth
   // looking at through them more than a full one is.
-  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true, .particles = true, .stylization = true, .wind = true};
+  return {.probeVolume = traces, .lightingDebugViews = true, .proceduralSky = true, .volumetrics = true, .particles = true, .stylization = true, .wind = true, .ambientOcclusion = true, .depthOfField = true};
 }
 auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> void {
   auto context = GetContext();
@@ -3353,10 +3485,18 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   auto shadowSrv = fallbackTexture->srvGPU;
   auto spotShadowSrv = dummyArraySrvGPU.ptr ? dummyArraySrvGPU : fallbackTexture->srvGPU;
   auto hasShadowMap = false;
+  // The occlusion pass's target, the one colour input, where that pass ran this frame and drew into
+  // a target the size of this one: the shader reads it pixel for pixel.
+  DXRenderTarget *occlusion{};
   for (const auto &name : inputs) {
     auto inputIt = nameToTarget.find(name);
-    if (inputIt == nameToTarget.end() || !inputIt->second.resource || !IsDepthFormat(inputIt->second.desc.format) || inputIt->second.srvIndex == DXDescriptorHeap::InvalidIndex)
+    if (inputIt == nameToTarget.end() || !inputIt->second.resource || inputIt->second.srvIndex == DXDescriptorHeap::InvalidIndex)
       continue;
+    if (!IsDepthFormat(inputIt->second.desc.format)) {
+      if (!occlusion && occlusionReady && inputIt->second.desc.samples <= 1 && inputIt->second.desc.width == target.desc.width && inputIt->second.desc.height == target.desc.height)
+        occlusion = &inputIt->second;
+      continue;
+    }
     if (inputIt->second.desc.type == TargetType::Texture2DArray) {
       Transition(inputIt->second, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
       spotShadowSrv = inputIt->second.srvGPU;
@@ -3375,6 +3515,12 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   // this one because this one names `ProbeField` among its inputs. That ordering is also what makes
   // the probe bounds gathered below current: the volume is rebuilt there, before they are read.
   BuildFrameConstants(*scene, *camera, hasShadowMap, frameConstants);
+  // Past `HashLighting`'s range, beside the view: the shade in the creases changes as the camera
+  // moves, and is applied after the field is sampled rather than gathered into it.
+  frameConstants.debug[1] = occlusion ? 1u : 0u;
+  occlusionReady = false;
+  if (occlusion)
+    Transition(*occlusion, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
   const auto frameConstantAddress = UploadFrameConstants(frameConstants);
   if (!frameConstantAddress)
     return;
@@ -3404,6 +3550,7 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   commandList->SetGraphicsRootDescriptorTable(4, spotShadowSrv);
   commandList->SetGraphicsRootDescriptorTable(7, environmentReady ? environmentTable : fallbackEnvironmentTable);
   commandList->SetGraphicsRootDescriptorTable(11, fallbackTexture->srvGPU);
+  commandList->SetGraphicsRootDescriptorTable(13, occlusion ? occlusion->srvGPU : fallbackTexture->srvGPU);
   BindProbeVolume(frameConstantAddress);
   auto drawnInstances = 0;
   const auto ApplyMaterial = [&](const DXMaterial *material) {
@@ -4315,6 +4462,7 @@ auto DXRenderer::RenderPreview(const AssetID assetId, const std::vector<std::pai
   commandList->SetGraphicsRootDescriptorTable(4, dummyArraySrvGPU.ptr ? dummyArraySrvGPU : fallbackTexture->srvGPU);
   commandList->SetGraphicsRootDescriptorTable(7, environmentReady ? environmentTable : fallbackEnvironmentTable);
   commandList->SetGraphicsRootDescriptorTable(11, fallbackTexture->srvGPU);
+  commandList->SetGraphicsRootDescriptorTable(13, fallbackTexture->srvGPU);
   BindProbeVolume(frameConstantAddress);
   const glm::mat4 origin{1.f};
   const auto instanceAddress = AllocateInstances(std::span(&origin, 1));
