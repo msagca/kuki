@@ -155,6 +155,11 @@ auto LoadMesh(const aiMesh &aiMesh, ModelAsset &model, BoundingBox &bounds, unsi
       vertex.texture = texCoord;
     } else
       vertex.texture = glm::vec2(0.f);
+    // The first set only, as with the texture coordinates; a mesh without one keeps the white
+    // `Vertex` starts with, so its material's colour shows unchanged. Taken as the file gives it,
+    // like the material's own colour above: glTF's are linear already.
+    if (aiMesh.mColors[0])
+      vertex.color = glm::vec4(aiMesh.mColors[0][i].r, aiMesh.mColors[0][i].g, aiMesh.mColors[0][i].b, aiMesh.mColors[0][i].a);
   }
   auto indexCount = 0u;
   for (auto i = 0; i < aiMesh.mNumFaces; ++i)

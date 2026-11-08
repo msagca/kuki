@@ -201,12 +201,14 @@ inline constexpr uint32_t PROBE_FULL_RATE_SAMPLES = 8;
 /// the layout is written into it literally. The assertions below are the only thing tying the two
 /// together: change `Vertex` and the build breaks here, rather than the trace quietly interpolating
 /// whatever now sits at byte twelve.
-inline constexpr uint32_t PROBE_VERTEX_STRIDE = 76;
+inline constexpr uint32_t PROBE_VERTEX_STRIDE = 92;
 inline constexpr uint32_t PROBE_VERTEX_NORMAL_OFFSET = 12;
 inline constexpr uint32_t PROBE_VERTEX_TEXCOORD_OFFSET = 24;
+inline constexpr uint32_t PROBE_VERTEX_COLOR_OFFSET = 76;
 static_assert(sizeof(Vertex) == PROBE_VERTEX_STRIDE);
 static_assert(offsetof(Vertex, normal) == PROBE_VERTEX_NORMAL_OFFSET);
 static_assert(offsetof(Vertex, texture) == PROBE_VERTEX_TEXCOORD_OFFSET);
+static_assert(offsetof(Vertex, color) == PROBE_VERTEX_COLOR_OFFSET);
 /// @brief Coefficients a probe stores per colour channel. Nine is the second spherical harmonic band.
 ///
 /// Two bands would be four coefficients and could not represent a directional bounce; three bands
