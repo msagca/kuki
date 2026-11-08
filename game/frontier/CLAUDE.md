@@ -10,6 +10,10 @@ panels (the settings' "Map details") and a debug path (two right clicks). `Place
 `AmbienceSystem` moves the wind, clouds, emitters, foam and the sun (the day passes on a binding or
 setting). Every key is a binding in `controls.hpp`, registered in order by `RegisterControls`.
 
+The look is soft and painted, unlike the duel's inked cels: its `Stylization` draws no ink and one
+wide, soft band, the sun is wide enough to blur its shadows, and the palette in `props.cpp` is
+lifted and greyed a little, kept apart by hue. A new surface takes the same soft colours.
+
 The sea is opaque on purpose: `PlanarReflection` reads the depth prepass, which has no see-through
 surfaces.
 
