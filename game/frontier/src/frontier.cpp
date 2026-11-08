@@ -44,36 +44,46 @@ auto SetupFrontier(Application &app) -> void {
     .ActiveCamera()
     .Entity<LightObject>("Sun")
     .Facing({-.5f, -.6f, -.4f})
+    // A warm afternoon sun, wide in the sky so a shadow's edge blurs as it falls away from what
+    // casts it: the soft light of a miniature rather than the hard one of a cel.
     .With<Light>([](Light &light) {
       light.type = LightType::Directional;
-      light.diffuse = {1.f, .9f, .78f};
+      light.diffuse = {1.f, .91f, .8f};
       light.intensity = 3.f;
-      light.angularDiameter = 1.5f;
+      light.angularDiameter = 4.f;
     })
     .Entity<Sky>("Sky")
     .With<AtmosphereSky>([](AtmosphereSky &sky) {
       sky.sunIntensity = 12.f;
       sky.sunDiscIntensity = .6f;
     })
+    // More of the sky into the shade, so a shadow is a gentle blue rather than a dark.
     .With<IndirectLighting>([](IndirectLighting &lighting) {
+      lighting.skyIntensity = 1.3f;
       lighting.ambientFallback = .2f;
     })
     .Entity<Look>("Look")
+    // Painted, not drawn: the frontier is meant to look apart from the duel's inked cels, soft and
+    // calm like a tabletop model in daylight. No ink, since a line round every cell and roof is what
+    // made the map read as a drawing; one band, as wide as it can be, so the light wraps round a form
+    // in a gradient and the shaded side takes a cool tint without a step to it; no hard highlight or
+    // bright rim; and a grade that warms the lights and lifts the darks a little towards blue. The
+    // softness is in the colours and the light, not in the grade: turning saturation and contrast
+    // below one as well washed the map out into a grey haze.
     .With<Stylization>([](Stylization &look) {
-      look.bands = 3;
-      look.bandSoftness = .04f;
-      look.shadowTint = {.6f, .62f, .9f};
-      look.highlightSize = .04f;
-      look.rimIntensity = .55f;
-      look.inkThickness = 1.2f;
-      // A map seen from high up has everything far away, so the lines fade only at the horizon.
-      look.inkFadeDistance = 140.f;
-      look.inkDepthThreshold = .045f;
-      look.saturation = 1.18f;
-      look.contrast = 1.05f;
-      look.shadowColor = {.45f, .47f, .6f};
-      look.highlightColor = {.56f, .53f, .47f};
-      look.vignette = .25f;
+      look.bands = 2;
+      look.bandSoftness = .4f;
+      look.terminator = -.1f;
+      look.shadowTint = {.8f, .82f, .96f};
+      look.highlightSize = .0f;
+      look.rimIntensity = .15f;
+      look.rimWidth = .25f;
+      look.inkThickness = .0f;
+      look.saturation = 1.06f;
+      look.contrast = .98f;
+      look.shadowColor = {.51f, .51f, .56f};
+      look.highlightColor = {.54f, .52f, .47f};
+      look.vignette = .12f;
     })
     .With<ScreenEffects>([](ScreenEffects &) {})
     // The sea is the one level surface, at nought, mirroring the land and the sky over it. Every

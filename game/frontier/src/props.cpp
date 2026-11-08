@@ -20,59 +20,64 @@ namespace {
   };
   /// @brief Every surface in the game, by name. The ground's colours are a little less saturated
   /// than the props', so a house reads in front of the field it stands in.
+  ///
+  /// Soft colours throughout: spring greens with yellow in them, cream sand and plaster, a pale
+  /// turquoise sea, and roofs in terracotta and slate blue. A colour as dark or as pure as a cel's is
+  /// what makes a map loud; these are lifted towards white and greyed a little, and kept apart by
+  /// their hue rather than by how strong they are.
   const std::vector<NamedPaint> &Paints() {
     static const std::vector<NamedPaint> paints{
       // The ground: a top for each terrain, and the faces of the steps between them.
-      {"ground/deep", {.albedo = {.02f, .07f, .12f}, .roughness = .9f, .toon = .5f}},
-      {"ground/shallows", {.albedo = {.42f, .4f, .26f}, .roughness = .9f, .toon = .5f}},
-      {"ground/sand", {.albedo = {.78f, .66f, .42f}, .roughness = .95f, .toon = .75f}},
-      {"ground/grass", {.albedo = {.24f, .46f, .13f}, .roughness = .95f, .toon = .75f}},
-      {"ground/meadow", {.albedo = {.42f, .55f, .16f}, .roughness = .95f, .toon = .75f}},
-      {"ground/forest", {.albedo = {.13f, .26f, .08f}, .roughness = .95f, .toon = .75f}},
-      {"ground/hills", {.albedo = {.42f, .44f, .2f}, .roughness = .95f, .toon = .75f}},
-      {"ground/rock", {.albedo = {.33f, .31f, .3f}, .roughness = .9f, .toon = .8f}},
-      {"ground/snow", {.albedo = {.86f, .9f, .97f}, .roughness = .8f, .toon = .85f}},
-      {"cliff/earth", {.albedo = {.33f, .2f, .11f}, .roughness = .95f, .toon = .8f}},
-      {"cliff/sand", {.albedo = {.6f, .46f, .28f}, .roughness = .95f, .toon = .8f}},
-      {"cliff/stone", {.albedo = {.27f, .25f, .25f}, .roughness = .9f, .toon = .8f}},
-      {"cliff/seabed", {.albedo = {.2f, .2f, .16f}, .roughness = .95f, .toon = .5f}},
-      // The sea: opaque, so it is in the depth the reflection and the ink read, and tinted by how
-      // deep it is over, since it cannot be seen through.
-      {"water/deep", {.albedo = {.012f, .09f, .16f}, .roughness = .08f, .toon = .55f, .waves = 1.f, .metalness = .0f}},
+      {"ground/deep", {.albedo = {.05f, .16f, .22f}, .roughness = .9f, .toon = .5f}},
+      {"ground/shallows", {.albedo = {.58f, .56f, .42f}, .roughness = .9f, .toon = .5f}},
+      {"ground/sand", {.albedo = {.84f, .73f, .52f}, .roughness = .95f}},
+      {"ground/grass", {.albedo = {.34f, .58f, .2f}, .roughness = .95f}},
+      {"ground/meadow", {.albedo = {.52f, .66f, .25f}, .roughness = .95f}},
+      {"ground/forest", {.albedo = {.21f, .4f, .15f}, .roughness = .95f}},
+      {"ground/hills", {.albedo = {.52f, .55f, .3f}, .roughness = .95f}},
+      {"ground/rock", {.albedo = {.56f, .54f, .52f}, .roughness = .9f}},
+      {"ground/snow", {.albedo = {.94f, .95f, .98f}, .roughness = .8f}},
+      {"cliff/earth", {.albedo = {.55f, .41f, .3f}, .roughness = .95f}},
+      {"cliff/sand", {.albedo = {.76f, .65f, .49f}, .roughness = .95f}},
+      {"cliff/stone", {.albedo = {.5f, .48f, .47f}, .roughness = .9f}},
+      {"cliff/seabed", {.albedo = {.36f, .38f, .32f}, .roughness = .95f, .toon = .5f}},
+      // The sea: opaque, so it is in the depth the reflection reads, and tinted by how deep it is
+      // over, since it cannot be seen through.
+      {"water/deep", {.albedo = {.04f, .2f, .28f}, .roughness = .08f, .toon = .45f, .waves = 1.f, .metalness = .0f}},
       // The open sea far out, in tiles too large to carry a wave: heaved, each would catch the sun as
       // one great facet. Still, it reads as the same sea at that distance.
-      {"water/far", {.albedo = {.012f, .09f, .16f}, .roughness = .12f, .toon = .55f}},
-      {"water/shallows", {.albedo = {.03f, .26f, .3f}, .roughness = .08f, .toon = .55f, .waves = 1.f}},
-      {"water/coast", {.albedo = {.05f, .34f, .36f}, .roughness = .1f, .toon = .6f, .waves = 1.f}},
+      {"water/far", {.albedo = {.04f, .2f, .28f}, .roughness = .12f, .toon = .45f}},
+      {"water/shallows", {.albedo = {.12f, .46f, .5f}, .roughness = .08f, .toon = .45f, .waves = 1.f}},
+      {"water/coast", {.albedo = {.22f, .58f, .57f}, .roughness = .1f, .toon = .5f, .waves = 1.f}},
       {"water/foam", {.albedo = {.95f, .98f, 1.f}, .toon = .0f, .waves = 1.f, .alpha = .55f, .unlit = true}},
       // The props.
-      {"prop/bark", {.albedo = {.2f, .12f, .07f}, .roughness = .9f, .sway = .03f}},
-      {"prop/pine", {.albedo = {.05f, .2f, .1f}, .roughness = .9f, .sway = .03f}},
-      {"prop/leaves", {.albedo = {.2f, .45f, .1f}, .roughness = .9f, .sway = .035f}},
-      {"prop/leaves_autumn", {.albedo = {.75f, .38f, .08f}, .roughness = .9f, .sway = .035f}},
-      {"prop/bush", {.albedo = {.12f, .32f, .1f}, .roughness = .9f, .sway = .12f}},
-      {"prop/berries", {.albedo = {.7f, .04f, .08f}, .roughness = .4f, .emissive = {.05f, .0f, .0f}, .sway = .12f}},
-      {"prop/grass", {.albedo = {.3f, .58f, .14f}, .roughness = .9f, .toon = .7f, .sway = 1.6f}},
-      {"prop/stone", {.albedo = {.45f, .44f, .42f}, .roughness = .85f}},
-      {"prop/crystal", {.albedo = {.3f, .85f, .95f}, .roughness = .2f, .emissive = {.4f, 1.6f, 2.f}}},
-      {"prop/crystal_rock", {.albedo = {.22f, .2f, .26f}, .roughness = .85f}},
+      {"prop/bark", {.albedo = {.4f, .28f, .2f}, .roughness = .9f, .sway = .03f}},
+      {"prop/pine", {.albedo = {.12f, .32f, .2f}, .roughness = .9f, .sway = .03f}},
+      {"prop/leaves", {.albedo = {.32f, .58f, .2f}, .roughness = .9f, .sway = .035f}},
+      {"prop/leaves_autumn", {.albedo = {.88f, .6f, .3f}, .roughness = .9f, .sway = .035f}},
+      {"prop/bush", {.albedo = {.24f, .48f, .2f}, .roughness = .9f, .sway = .12f}},
+      {"prop/berries", {.albedo = {.82f, .3f, .34f}, .roughness = .4f, .emissive = {.05f, .0f, .0f}, .sway = .12f}},
+      {"prop/grass", {.albedo = {.42f, .66f, .24f}, .roughness = .9f, .sway = 1.6f}},
+      {"prop/stone", {.albedo = {.66f, .64f, .61f}, .roughness = .85f}},
+      {"prop/crystal", {.albedo = {.45f, .85f, .92f}, .roughness = .2f, .emissive = {.3f, 1.2f, 1.5f}}},
+      {"prop/crystal_rock", {.albedo = {.42f, .4f, .46f}, .roughness = .85f}},
       // The buildings.
-      {"build/plaster", {.albedo = {.85f, .8f, .68f}, .roughness = .9f}},
-      {"build/stone", {.albedo = {.42f, .4f, .38f}, .roughness = .85f}},
-      {"build/wood", {.albedo = {.36f, .21f, .1f}, .roughness = .85f}},
-      {"build/dark", {.albedo = {.08f, .07f, .07f}, .roughness = .7f}},
-      {"build/roof_red", {.albedo = {.6f, .12f, .07f}, .roughness = .6f}},
-      {"build/roof_blue", {.albedo = {.1f, .2f, .45f}, .roughness = .55f}},
-      {"build/roof_thatch", {.albedo = {.62f, .48f, .2f}, .roughness = .95f}},
-      {"build/vermilion", {.albedo = {.7f, .1f, .03f}, .roughness = .55f}},
-      {"build/soil", {.albedo = {.25f, .15f, .08f}, .roughness = .95f}},
-      {"build/wheat", {.albedo = {.85f, .65f, .2f}, .roughness = .9f, .sway = 1.4f}},
-      {"build/sail", {.albedo = {.9f, .88f, .8f}, .roughness = .9f}},
-      {"build/window", {.albedo = {.9f, .7f, .35f}, .roughness = .4f, .emissive = {.9f, .55f, .2f}}},
+      {"build/plaster", {.albedo = {.95f, .91f, .83f}, .roughness = .9f}},
+      {"build/stone", {.albedo = {.68f, .65f, .62f}, .roughness = .85f}},
+      {"build/wood", {.albedo = {.58f, .42f, .28f}, .roughness = .85f}},
+      {"build/dark", {.albedo = {.28f, .25f, .25f}, .roughness = .7f}},
+      {"build/roof_red", {.albedo = {.78f, .36f, .25f}, .roughness = .6f}},
+      {"build/roof_blue", {.albedo = {.32f, .46f, .7f}, .roughness = .55f}},
+      {"build/roof_thatch", {.albedo = {.82f, .68f, .42f}, .roughness = .95f}},
+      {"build/vermilion", {.albedo = {.82f, .32f, .22f}, .roughness = .55f}},
+      {"build/soil", {.albedo = {.46f, .34f, .24f}, .roughness = .95f}},
+      {"build/wheat", {.albedo = {.93f, .8f, .45f}, .roughness = .9f, .sway = 1.4f}},
+      {"build/sail", {.albedo = {.96f, .94f, .88f}, .roughness = .9f}},
+      {"build/window", {.albedo = {.95f, .78f, .48f}, .roughness = .4f, .emissive = {.7f, .45f, .2f}}},
       // The birds.
-      {"bird/gull", {.albedo = {.92f, .93f, .95f}, .roughness = .8f}},
-      {"bird/gull_tip", {.albedo = {.08f, .08f, .1f}, .roughness = .8f}},
-      {"bird/swallow", {.albedo = {.06f, .07f, .12f}, .roughness = .7f}},
+      {"bird/gull", {.albedo = {.95f, .95f, .96f}, .roughness = .8f}},
+      {"bird/gull_tip", {.albedo = {.3f, .3f, .33f}, .roughness = .8f}},
+      {"bird/swallow", {.albedo = {.24f, .26f, .34f}, .roughness = .7f}},
     };
     return paints;
   }

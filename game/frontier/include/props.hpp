@@ -16,8 +16,9 @@ namespace frontier {
 struct Paint {
   glm::vec3 albedo{1.f};
   float roughness{.8f};
-  /// @brief How far it takes the cel bands. The props take most of them, the ground a little less.
-  float toon{.85f};
+  /// @brief How far it takes the scene's soft bands, which give the shaded side its cool tint. Six
+  /// tenths keeps that tint while leaving the rest physically lit; the sea takes a little less.
+  float toon{.6f};
   glm::vec3 emissive{.0f};
   float sway{};
   float waves{};
