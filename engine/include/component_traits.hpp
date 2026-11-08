@@ -67,11 +67,13 @@ template <IsComponent C, IsComponent... Cs>
 inline constexpr bool HasDistinctIds<TypeList<C, Cs...>> = ((ComponentIdOf<C> != ComponentIdOf<Cs>) && ...) && HasDistinctIds<TypeList<Cs...>>;
 // The engine's own, declared ahead of their definitions so that naming a component in an archetype
 // costs a header this small and not one that includes every component there is.
+KUKI_ENGINE_COMPONENT(AmbientOcclusion)
 KUKI_ENGINE_COMPONENT(Animator)
 KUKI_ENGINE_COMPONENT(AntiAliasing)
 KUKI_ENGINE_COMPONENT(AtmosphereSky)
 KUKI_ENGINE_COMPONENT(BoundingBox)
 KUKI_ENGINE_COMPONENT(Camera)
+KUKI_ENGINE_COMPONENT(DepthOfField)
 KUKI_ENGINE_COMPONENT(IndirectLighting)
 KUKI_ENGINE_COMPONENT(Light)
 KUKI_ENGINE_COMPONENT(MaterialHandle)
@@ -93,7 +95,7 @@ KUKI_ENGINE_COMPONENT(WorldMatrix)
 /// What the run-time questions about a component -- its name, a pointer to it as a variant -- are
 /// generated from, so that a component added to the enum and declared above is found everywhere
 /// those are asked without a switch to extend. `component.hpp` checks this list against the enum.
-using EngineComponents = TypeList<Animator, AntiAliasing, AtmosphereSky, BoundingBox, Camera, IndirectLighting, Light, MaterialHandle, ParticleEmitter, PlanarReflection, Pooled, ScreenEffects, Skeleton, SkyboxHandle, Stylization, TextureHandle, Transform, VolumetricClouds, VolumetricFog, Wind, WorldMatrix>;
+using EngineComponents = TypeList<AmbientOcclusion, Animator, AntiAliasing, AtmosphereSky, BoundingBox, Camera, DepthOfField, IndirectLighting, Light, MaterialHandle, ParticleEmitter, PlanarReflection, Pooled, ScreenEffects, Skeleton, SkyboxHandle, Stylization, TextureHandle, Transform, VolumetricClouds, VolumetricFog, Wind, WorldMatrix>;
 static_assert(EngineComponents::size == ENGINE_COMPONENT_COUNT, "a component is in ComponentType but not in EngineComponents, or the other way round");
 template <typename List>
 inline constexpr bool InIdOrder = false;

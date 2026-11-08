@@ -4,11 +4,13 @@
 #include <unordered_map>
 namespace kuki {
 const std::unordered_map<ComponentType, std::string> Component::typeToName = {
+  {ComponentType::AmbientOcclusion, "Ambient Occlusion"},
   {ComponentType::Animator, "Animator"},
   {ComponentType::AntiAliasing, "Anti Aliasing"},
   {ComponentType::AtmosphereSky, "Atmosphere Sky"},
   {ComponentType::BoundingBox, "BoundingBox"},
   {ComponentType::Camera, "Camera"},
+  {ComponentType::DepthOfField, "Depth of Field"},
   {ComponentType::IndirectLighting, "Indirect Lighting"},
   {ComponentType::Light, "Light"},
   {ComponentType::MaterialHandle, "MaterialHandle"},

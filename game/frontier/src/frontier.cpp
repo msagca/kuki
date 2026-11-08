@@ -1,6 +1,8 @@
+#include <ambient_occlusion.hpp>
 #include <atmosphere_sky.hpp>
 #include <camera.hpp>
 #include <controls.hpp>
+#include <depth_of_field.hpp>
 #include <frontier.hpp>
 #include <frontier_world.hpp>
 #include <game_builder.hpp>
@@ -97,6 +99,23 @@ auto SetupFrontier(Application &app) -> void {
       water.blur = .5f;
       water.ripples = .0f;
       water.maxDistance = 80.f;
+    })
+    // A soft shade where things meet: under the eaves and round the foot of a house, between the
+    // trees, along the foot of a terrace's step. About the size of a cottage's doorway, so it settles
+    // a prop onto its cell without darkening the cell, and a little of it in the sunlight too, which
+    // is what a miniature photographed in daylight has where the probe field is too coarse to say.
+    .With<AmbientOcclusion>([](AmbientOcclusion &occlusion) {
+      occlusion.radius = .6f;
+      occlusion.intensity = 1.6f;
+      occlusion.power = 1.4f;
+      occlusion.direct = .5f;
+    })
+    // The miniature's shallow focus, on whatever is in the middle of the picture: the band across it
+    // stays sharp and the near cells at the bottom and the far shore at the top soften away.
+    .With<DepthOfField>([](DepthOfField &focus) {
+      focus.focusRange = .12f;
+      focus.transition = .5f;
+      focus.maxBlur = 6.f;
     })
     // A haze that thickens low over the water and gathers in the distance, so the land fades into
     // the sea at the horizon and the sun throws shafts through it.

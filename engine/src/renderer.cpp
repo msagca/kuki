@@ -41,6 +41,10 @@ auto Renderer::ExecutePass(const RenderPass pass, std::span<std::string> inputs,
     return ApplyStylize(inputs, outputs);
   case RenderPass::PlanarReflection:
     return ApplyPlanarReflection(inputs, outputs);
+  case RenderPass::AmbientOcclusion:
+    return ApplyAmbientOcclusion(inputs, outputs);
+  case RenderPass::DepthOfField:
+    return ApplyDepthOfField(inputs, outputs);
   default:
     return RenderScene(inputs, outputs);
   }
@@ -63,6 +67,11 @@ auto Renderer::BypassPass(const RenderPass pass, std::span<std::string> inputs, 
   // it was filled in is a buffer nobody opens. Clearing it would be the tidier-looking answer and a
   // full-screen write per frame to produce zeroes that go unread.
   case RenderPass::VolumetricClouds:
+    return;
+  // Nothing, for the clouds' reason: the scene pass asks whether the occlusion ran this frame before
+  // it reads the target, so whatever a stood-down pass leaves in it is never opened. A clear would
+  // be a full-screen write of ones nobody reads.
+  case RenderPass::AmbientOcclusion:
     return;
   // Emptied. A depth target clears to the far plane, which is the honest neutral for all three: a
   // shadow map that reaches nothing shadows nothing, and a prepass that found no surfaces occludes

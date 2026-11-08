@@ -288,6 +288,8 @@ public:
   auto ApplyInk(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyStylize(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyPlanarReflection(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyAmbientOcclusion(std::span<std::string>, std::span<std::string>) -> void override;
+  auto ApplyDepthOfField(std::span<std::string>, std::span<std::string>) -> void override;
   auto UpdateTarget(const std::string &, const TargetDescription &) -> void override;
 private:
   DXPipelineCache pipelines;
@@ -428,6 +430,12 @@ private:
   /// @brief Seconds the stylize pass has run for, which is what turns the speed lines over. Its own
   /// clock rather than the application's, so the lines keep streaming while a game holds a frame.
   float stylizeTime{};
+  /// @brief Whether the occlusion pass filled its target this frame, for the scene pass to read.
+  ///
+  /// Set by the occlusion pass and spent by the scene pass, which comes after it in every frame. A
+  /// pass stood down, or a scene with nothing to shade, leaves it false, and the scene pass then
+  /// does not open the target -- whatever an earlier frame left there belongs to another view.
+  bool occlusionReady{};
   /// @brief Seconds the wind has blown for, which every sway and wave is a function of. Its own clock
   /// for the reason the stylize pass has one: the grass keeps moving while a game is paused.
   float windTime{};

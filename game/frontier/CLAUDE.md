@@ -12,7 +12,9 @@ setting). Every key is a binding in `controls.hpp`, registered in order by `Regi
 
 The look is soft and painted, unlike the duel's inked cels: its `Stylization` draws no ink and one
 wide, soft band, the sun is wide enough to blur its shadows, and the palette in `props.cpp` is
-lifted and greyed a little, kept apart by hue. A new surface takes the same soft colours.
+lifted and greyed a little, kept apart by hue. A new surface takes the same soft colours. Its
+`AmbientOcclusion` settles props onto their cells, and its `DepthOfField`, focused on the middle of
+the picture, softens the near and far edges so the map reads as a model on a table.
 
 The sea is opaque on purpose: `PlanarReflection` reads the depth prepass, which has no see-through
 surfaces.

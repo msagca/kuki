@@ -29,7 +29,9 @@ auto DXPipelineCache::GetSceneRootSignature(ID3D12Device *device) -> ID3D12RootS
   environmentRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, MATERIAL_TEXTURE_SLOTS + 4);
   CD3DX12_DESCRIPTOR_RANGE sceneColorRange{};
   sceneColorRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, MATERIAL_TEXTURE_SLOTS + 10);
-  CD3DX12_ROOT_PARAMETER parameters[13]{};
+  CD3DX12_DESCRIPTOR_RANGE occlusionRange{};
+  occlusionRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, MATERIAL_TEXTURE_SLOTS + 12);
+  CD3DX12_ROOT_PARAMETER parameters[14]{};
   // Visible to the vertex stage too, which reads the material's sway and waves from them.
   parameters[0].InitAsConstants(sizeof(DXSceneConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_ALL);
   parameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_ALL);
@@ -45,6 +47,8 @@ auto DXPipelineCache::GetSceneRootSignature(ID3D12Device *device) -> ID3D12RootS
   parameters[11].InitAsDescriptorTable(1, &sceneColorRange, D3D12_SHADER_VISIBILITY_PIXEL);
   // The entities of the pool being drawn, beside its matrices in parameter 5.
   parameters[12].InitAsShaderResourceView(MATERIAL_TEXTURE_SLOTS + 11, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+  // The shade in the creases, from the occlusion pass, read pixel for pixel.
+  parameters[13].InitAsDescriptorTable(1, &occlusionRange, D3D12_SHADER_VISIBILITY_PIXEL);
   CD3DX12_STATIC_SAMPLER_DESC samplers[3]{};
   samplers[0] = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP);
   samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -371,6 +375,74 @@ auto DXPipelineCache::GetReflectionPipeline(ID3D12Device *device, const DXGI_FOR
     return nullptr;
   spdlog::info("[DX12] Created reflection pipeline");
   return &pipeline;
+}
+auto DXPipelineCache::GetFullscreenRootSignature(ID3D12Device *device, ComPtr<ID3D12RootSignature> &signature, const uint32_t constantDwords, const char *name) -> ID3D12RootSignature * {
+  if (signature)
+    return signature.Get();
+  CD3DX12_DESCRIPTOR_RANGE firstRange{};
+  firstRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+  CD3DX12_DESCRIPTOR_RANGE secondRange{};
+  secondRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+  CD3DX12_ROOT_PARAMETER parameters[3]{};
+  parameters[0].InitAsConstants(constantDwords, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+  parameters[1].InitAsDescriptorTable(1, &firstRange, D3D12_SHADER_VISIBILITY_PIXEL);
+  parameters[2].InitAsDescriptorTable(1, &secondRange, D3D12_SHADER_VISIBILITY_PIXEL);
+  CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+  sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+  CD3DX12_ROOT_SIGNATURE_DESC desc{};
+  desc.Init(_countof(parameters), parameters, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+  ComPtr<ID3DBlob> serialized;
+  ComPtr<ID3DBlob> errors;
+  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
+    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
+    spdlog::error("[DX12] Failed to serialise the {} root signature: {}", name, log);
+    return nullptr;
+  }
+  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&signature)), "CreateRootSignature"))
+    return nullptr;
+  return signature.Get();
+}
+auto DXPipelineCache::GetFullscreenPipeline(ID3D12Device *device, const DXGI_FORMAT format, const ComPtr<ID3D12RootSignature> &rootSignature, const std::string_view source, const char *name, const char *entryPoint) -> const DXPipeline * {
+  if (!device || !rootSignature || !entryPoint)
+    return nullptr;
+  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(std::string(name) + entryPoint);
+  if (auto it = pipelines.find(key); it != pipelines.end())
+    return it->second ? &it->second : nullptr;
+  auto &pipeline = pipelines[key];
+  pipeline.rootSignature = rootSignature;
+  const auto vertexShader = shaderCompiler.Compile(source, "VSMain", "vs_6_0", name);
+  const auto pixelShader = shaderCompiler.Compile(source, entryPoint, "ps_6_0", name);
+  if (!vertexShader || !pixelShader)
+    return nullptr;
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+  desc.pRootSignature = rootSignature.Get();
+  desc.VS = ToBytecode(vertexShader);
+  desc.PS = ToBytecode(pixelShader);
+  desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+  desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+  desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+  desc.DepthStencilState.DepthEnable = FALSE;
+  desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+  desc.SampleMask = UINT_MAX;
+  desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+  desc.NumRenderTargets = 1;
+  desc.RTVFormats[0] = format;
+  desc.SampleDesc.Count = 1;
+  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
+    return nullptr;
+  spdlog::info("[DX12] Created {} pipeline: {}", name, entryPoint);
+  return &pipeline;
+}
+auto DXPipelineCache::GetOcclusionPipeline(ID3D12Device *device, const DXGI_FORMAT format, const char *entryPoint) -> const DXPipeline * {
+  if (!device || !GetFullscreenRootSignature(device, occlusionRootSignature, sizeof(DXOcclusionConstants) / sizeof(uint32_t), "occlusion"))
+    return nullptr;
+  return GetFullscreenPipeline(device, format, occlusionRootSignature, embedded_shader::occlusion_hlsl, "occlusion", entryPoint);
+}
+auto DXPipelineCache::GetFocusPipeline(ID3D12Device *device, const DXGI_FORMAT format) -> const DXPipeline * {
+  if (!device || !GetFullscreenRootSignature(device, focusRootSignature, sizeof(DXFocusConstants) / sizeof(uint32_t), "focus"))
+    return nullptr;
+  return GetFullscreenPipeline(device, format, focusRootSignature, embedded_shader::depth_of_field_hlsl, "focus", "PSFocus");
 }
 auto DXPipelineCache::GetOverlayRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (overlayRootSignature)
@@ -1271,6 +1343,10 @@ auto DXPipelineCache::Clear() -> void {
   probeAuditRootSignature.Reset();
   probeTraceRootSignature.Reset();
   probeDebugRootSignature.Reset();
+  stylizeRootSignature.Reset();
+  reflectionRootSignature.Reset();
+  occlusionRootSignature.Reset();
+  focusRootSignature.Reset();
 }
 } // namespace kuki
 #endif

@@ -1,3 +1,4 @@
+#include <ambient_occlusion.hpp>
 #include <animator.hpp>
 #include <animator_controller.hpp>
 #include <application.hpp>
@@ -6,6 +7,7 @@
 #include <bounding_box.hpp>
 #include <camera.hpp>
 #include <component.hpp>
+#include <depth_of_field.hpp>
 #include <engine_archetypes.hpp>
 #include <fstream>
 #include <inverse_kinematics.hpp>
@@ -42,6 +44,10 @@ namespace {
     // work -- what time of day it is and how high up the scene sits -- so it belongs in the file
     // the way a light does.
     ComponentType::AtmosphereSky,
+    // Both travel, as the look does: how soft a scene's corners are and how shallow its focus is
+    // are decisions about how it is meant to be seen.
+    ComponentType::AmbientOcclusion,
+    ComponentType::DepthOfField,
     ComponentType::BoundingBox,
     ComponentType::Camera,
     ComponentType::Light,
@@ -640,6 +646,42 @@ namespace {
     Read("highlightColor", s.highlightColor);
     Read("vignette", s.vignette);
   }
+  auto ToJson(const AmbientOcclusion &o) -> json {
+    return {
+      {"radius", o.radius},
+      {"intensity", o.intensity},
+      {"power", o.power},
+      {"direct", o.direct}};
+  }
+  auto FromJson(const json &j, AmbientOcclusion &o) -> void {
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("radius", o.radius);
+    Read("intensity", o.intensity);
+    Read("power", o.power);
+    Read("direct", o.direct);
+  }
+  auto ToJson(const DepthOfField &f) -> json {
+    return {
+      {"focusDistance", f.focusDistance},
+      {"focusPoint", f.focusPoint},
+      {"focusRange", f.focusRange},
+      {"transition", f.transition},
+      {"maxBlur", f.maxBlur}};
+  }
+  auto FromJson(const json &j, DepthOfField &f) -> void {
+    const auto Read = [&j](const char *key, auto &field) {
+      if (j.contains(key))
+        j.at(key).get_to(field);
+    };
+    Read("focusDistance", f.focusDistance);
+    Read("focusPoint", f.focusPoint);
+    Read("focusRange", f.focusRange);
+    Read("transition", f.transition);
+    Read("maxBlur", f.maxBlur);
+  }
   auto ToJson(const PlanarReflection &r) -> json {
     return {
       {"height", r.height},
@@ -763,6 +805,12 @@ namespace {
     }
     auto operator()(PlanarReflection *r) const -> json {
       return ToJson(*r);
+    }
+    auto operator()(AmbientOcclusion *o) const -> json {
+      return ToJson(*o);
+    }
+    auto operator()(DepthOfField *f) const -> json {
+      return ToJson(*f);
     }
     auto operator()(ParticleEmitter *p) const -> json {
       if (p->mesh)
@@ -937,6 +985,14 @@ namespace {
           break;
         case ComponentType::PlanarReflection:
           if (auto *c = app.GetEntityComponent<PlanarReflection>(id))
+            FromJson(componentJson, *c);
+          break;
+        case ComponentType::AmbientOcclusion:
+          if (auto *c = app.GetEntityComponent<AmbientOcclusion>(id))
+            FromJson(componentJson, *c);
+          break;
+        case ComponentType::DepthOfField:
+          if (auto *c = app.GetEntityComponent<DepthOfField>(id))
             FromJson(componentJson, *c);
           break;
         case ComponentType::ParticleEmitter: {
