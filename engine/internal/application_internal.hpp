@@ -102,6 +102,11 @@ public:
   auto Quit() -> void {
     app.Quit();
   }
+  /// @brief What `Run` returns, and so what the process exits with. For a run made from the command
+  /// line that has an answer to give besides what it logs.
+  auto SetExitCode(const int code) -> void {
+    app.exitCode = code;
+  }
   /// @brief How fast the tick clock runs against the wall clock, from just above nothing up to one.
   ///
   /// For a game played against another machine, which has to keep to the other's pace: one that

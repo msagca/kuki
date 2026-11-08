@@ -62,7 +62,11 @@ public:
   ///
   /// The one lifecycle entry point that is public, because `main` has to call something. The four
   /// hooks it drives are protected -- see the note on `Start`.
-  auto Run() -> void;
+  ///
+  /// Returns what the process should exit with: nought, unless something run from the command line
+  /// said otherwise through `ApplicationInternal::SetExitCode` -- a stress test over its budget,
+  /// which a script running it has no other way to be told of.
+  auto Run() -> int;
   /// @brief How long the frame being updated took, in seconds. For presentation; rules count ticks.
   auto DeltaTime() const -> float;
   /// @brief Whether the game is running, paused by the settings menu, or (in an editor) stopped.
@@ -266,6 +270,7 @@ private:
   double tickScale{1.};
   NetworkSystem *network{};
   PlayState playState{PlayState::Playing};
+  int exitCode{};
   bool hosting{};
   bool stopRequested{};
   bool stepRequested{};
