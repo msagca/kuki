@@ -50,3 +50,25 @@ TEST(MeshBuilder, PlacesThroughItsTransform) {
   EXPECT_FLOAT_EQ(bounds.max.x, 6.f);
   EXPECT_TRUE(FacesOutFrom(builder.GetMesh(), {5.f, .0f, .0f}));
 }
+TEST(MeshBuilder, PaintsWhatComesAfterItsColour) {
+  MeshBuilder builder;
+  builder.Box({-1.f, -1.f, -1.f}, {1.f, 1.f, 1.f});
+  builder.SetColor(glm::vec3(1.f, .0f, .0f));
+  builder.Gable({}, {1.f, 1.f}, 1.f);
+  const auto &vertices = builder.GetMesh().vertices;
+  ASSERT_GT(vertices.size(), 36u);
+  // White before any colour is set, which is what a mesh built before vertices had one showed.
+  for (size_t i = 0; i < 36; ++i)
+    EXPECT_EQ(vertices[i].color, glm::vec4(1.f));
+  for (size_t i = 36; i < vertices.size(); ++i)
+    EXPECT_EQ(vertices[i].color, glm::vec4(1.f, .0f, .0f, 1.f));
+}
+TEST(MeshBuilder, TintsAnAppendedMeshByItsColour) {
+  MeshBuilder part;
+  part.SetColor(glm::vec4(.5f, 1.f, 1.f, 1.f)).Box({-1.f, -1.f, -1.f}, {1.f, 1.f, 1.f});
+  MeshBuilder whole;
+  whole.SetColor(glm::vec4(1.f, .5f, 1.f, 1.f)).Append(part.GetMesh());
+  ASSERT_EQ(whole.VertexCount(), 36u);
+  for (const auto &vertex : whole.GetMesh().vertices)
+    EXPECT_EQ(vertex.color, glm::vec4(.5f, .5f, 1.f, 1.f));
+}

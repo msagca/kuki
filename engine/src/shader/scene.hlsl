@@ -189,12 +189,14 @@ struct VSInput {
   float3 normal : NORMAL;
   float2 texture0 : TEXCOORD0;
   float3 tangent : TANGENT;
+  float4 color : COLOR0;
 };
 struct VSSkinnedInput {
   float3 position : POSITION;
   float3 normal : NORMAL;
   float2 texture0 : TEXCOORD0;
   float3 tangent : TANGENT;
+  float4 color : COLOR0;
   int4 boneIds : BLENDINDICES;
   float4 boneWeights : BLENDWEIGHT;
 };
@@ -204,6 +206,9 @@ struct PSInput {
   float3 normal : NORMAL;
   float3 tangent : TANGENT;
   float2 texture0 : TEXCOORD0;
+  // The vertex's colour, multiplied into the albedo. Interpolated, though a flat-shaded mesh gives
+  // all three corners of a face the same one and so sees no blend.
+  float4 color : COLOR0;
   nointerpolation uint entityId : TEXCOORD2;
   // Above nought for a surface the waves move, which is shaded a flat facet a triangle.
   nointerpolation float waves : TEXCOORD3;
@@ -257,7 +262,7 @@ float3 Displace(float3 world, float3 origin, float sway, float waves) {
     world.y += waves * WaveHeight(world.xz);
   return world;
 }
-PSInput BuildVertex(float4x4 world, float3 position, float3 normal, float3 tangent, float2 texture0, uint entityId, float sway, float waves) {
+PSInput BuildVertex(float4x4 world, float3 position, float3 normal, float3 tangent, float2 texture0, float4 color, uint entityId, float sway, float waves) {
   PSInput output;
   float4 worldPosition = mul(world, float4(position, 1.0));
   worldPosition.xyz = Displace(worldPosition.xyz, mul(world, float4(0.0, 0.0, 0.0, 1.0)).xyz, sway, waves);
@@ -272,10 +277,11 @@ PSInput BuildVertex(float4x4 world, float3 position, float3 normal, float3 tange
   output.normal = normalize(cross(c1, c2) * normal.x + cross(c2, c0) * normal.y + cross(c0, c1) * normal.z);
   output.tangent = normalize(mul(model, tangent));
   output.texture0 = texture0;
+  output.color = color;
   return output;
 }
 PSInput VSMain(VSInput input, uint instance : SV_InstanceID) {
-  return BuildVertex(g_instances[instance], input.position, input.normal, input.tangent, input.texture0, g_entityIds[instance].x & 0xFFFFFF, u_style.y, u_style.z);
+  return BuildVertex(g_instances[instance], input.position, input.normal, input.tangent, input.texture0, input.color, g_entityIds[instance].x & 0xFFFFFF, u_style.y, u_style.z);
 }
 PSInput VSSkinned(VSSkinnedInput input, uint instance : SV_InstanceID) {
   float4x4 world = (float4x4)0;
@@ -287,7 +293,7 @@ PSInput VSSkinned(VSSkinnedInput input, uint instance : SV_InstanceID) {
     }
   if (total <= 0.0)
     world = g_instances[instance];
-  return BuildVertex(world, input.position, input.normal, input.tangent, input.texture0, g_entityIds[instance].x & 0xFFFFFF, 0.0, 0.0);
+  return BuildVertex(world, input.position, input.normal, input.tangent, input.texture0, input.color, g_entityIds[instance].x & 0xFFFFFF, 0.0, 0.0);
 }
 float DistributionGGX(float3 N, float3 H, float R) {
   float a = R * R;
@@ -910,6 +916,8 @@ PSOutput PSMain(PSInput input) {
   float4 A = useAlbedo ? g_albedo.Sample(g_sampler, input.texture0) : u_albedo;
   if (useAlbedo)
     A *= u_albedo;
+  // Before the alpha test, so a vertex's alpha cuts like a texture's would.
+  A *= input.color;
   if (u_alphaMode == ALPHA_MODE_MASK && A.a < u_alphaCutoff)
     discard;
   float alpha = u_alphaMode == ALPHA_MODE_OPAQUE ? 1.0 : A.a;
