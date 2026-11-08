@@ -34,12 +34,11 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential clang cmake ninja-build xorg-dev
-      - name: Install prerequisites
-        if: runner.os == 'Windows'
-        run: winget install ninja-build.ninja --accept-source-agreements --disable-interactivity
-      # The installer's tools only where an installer is made. Installing NSIS on every push was a
-      # second download for nothing, and the step it shared failed a run once on winget's exit code
-      # alone, after both packages said they had installed.
+      # Nothing to install on Windows for a build: the runner has Visual Studio, which CMake picks
+      # by default and the presets build with. Ninja was installed here on every push and never
+      # used, and winget failed two runs in a day doing it -- once exiting 1 after saying it had
+      # installed, once on a download timeout (0x80072ee2). The installer's tools are fetched only
+      # where an installer is made.
       - name: Install packaging prerequisites
         if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
         run: winget install nsis --accept-source-agreements --disable-interactivity
