@@ -81,10 +81,15 @@ inline constexpr Flag HELP_FLAG{"--help", FlagKind::Switch, "", "list these and 
 /// anyone at the screen: a check run from a script, or a picture for a change's description.
 inline constexpr Flag CAPTURE_FLAG{"--capture", FlagKind::Value, "<file.png>", "save the frame drawn after --capture-frame frames to this picture and quit (Direct3D 12)"};
 inline constexpr Flag CAPTURE_FRAME_FLAG{"--capture-frame", FlagKind::Value, "<count>", "how many frames to draw before --capture takes one (300)"};
+/// @brief Saves a run as a video and closes: what `CAPTURE_FLAG` is for an effect that lives in
+/// motion. Each frame is piped to an `ffmpeg` found on the `PATH`, and the clock steps exactly one
+/// tick a frame while it records, so the video plays at the game's speed however slowly it is made.
+inline constexpr Flag RECORD_FLAG{"--record", FlagKind::Value, "<file.mp4>", "record the run to this video through ffmpeg on the PATH, one tick a frame, and quit (Direct3D 12)"};
+inline constexpr Flag RECORD_FRAMES_FLAG{"--record-frames", FlagKind::Value, "<count>", "how many frames --record records before it quits (600)"};
 /// @brief Starts with the settings menu open on a page, which is how a capture shows it: nobody is
 /// there to press Escape.
 inline constexpr Flag SETTINGS_FLAG{"--settings", FlagKind::Value, "<page>", "start with the settings open on a page: game, graphics or controls"};
-inline constexpr std::array ENGINE_FLAGS{GAME_FLAG, PLAY_FLAG, HELP_FLAG, CAPTURE_FLAG, CAPTURE_FRAME_FLAG, SETTINGS_FLAG};
+inline constexpr std::array ENGINE_FLAGS{GAME_FLAG, PLAY_FLAG, HELP_FLAG, CAPTURE_FLAG, CAPTURE_FRAME_FLAG, RECORD_FLAG, RECORD_FRAMES_FLAG, SETTINGS_FLAG};
 /// @brief Whether a flag was given.
 KUKI_ENGINE_API auto HasFlag(const std::span<const std::string>, const Flag &) -> bool;
 /// @brief What follows a flag, if it was given with something after it.

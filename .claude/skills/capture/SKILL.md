@@ -1,6 +1,6 @@
 ---
 name: capture
-description: Build a Kuki game or the editor and look at a frame it draws, through --capture. Use to see what a rendering, shader, scene or game change looks like, to compare before and after, or when asked to run or screenshot a game -- no one needs to be at the screen.
+description: Build a Kuki game or the editor and look at a frame it draws, through --capture, or record a video of it, through --record. Use to see what a rendering, shader, scene or game change looks like, to compare before and after, or when asked to run, screenshot or record a game -- no one needs to be at the screen.
 ---
 
 # Capture a frame
@@ -57,3 +57,28 @@ which is reported at run time, not at build time.
 
 To compare, capture before and after with the same flags and frame, and name the files for what
 they show.
+
+## Record a video
+
+What lives in motion -- a blur as the camera moves, wind in the grass, impact frames and smears --
+is judged from a video. `--record <file.mp4>` records `--record-frames <n>` frames (600, ten
+seconds) and quits:
+
+```bash
+build/game/frontier/KukiFrontier.exe --record "<scratchpad>/frontier.mp4" --record-frames 180 --seed 7 --demo
+```
+
+- It needs `ffmpeg` on the `PATH` (piped to, never linked); without it the run says so and exits 1.
+  So does one that records fewer frames than asked, unless the window was closed on it.
+- Each frame is exactly one tick (`ApplicationInternal::SetFixedStep`), so the video plays at the
+  game's speed however slowly it is made: every frame is read back with a stall, about 85 ms at
+  1440p in Debug. A three-second clip takes about half a minute; give the run a timeout to match.
+- It starts once the targets are the window's size, a few frames in, and stops early if the window
+  is resized: a raw stream cannot change size.
+- The mouse is live: a cursor left over the window shows whatever it hovers.
+
+The Read tool cannot open a video. To look at one, pull frames out with ffmpeg and read the PNG:
+
+```bash
+ffmpeg -v error -y -i "<scratchpad>/frontier.mp4" -vf "select='eq(n\,0)+eq(n\,90)+eq(n\,179)',scale=640:-1,tile=3x1" -frames:v 1 "<scratchpad>/frames.png"
+```

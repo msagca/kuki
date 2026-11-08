@@ -263,6 +263,7 @@ public:
   /// exists with a matching description, so leaving them alone is both correct and free.
   auto PresentTarget(const std::string &) -> void override;
   auto CaptureTarget(const std::string &, const std::filesystem::path &) -> bool override;
+  auto ReadTarget(const std::string &, std::vector<uint8_t> &, int &, int &) -> bool override;
   auto Reset() -> void override;
   auto SetPreviewSize(const int) -> void override;
   /// @brief Bytes of upload staging allowed in flight before the upload path stops and waits.
@@ -543,6 +544,10 @@ private:
   /// which was both larger than the question and wrong -- see `DXRenderer::PickEntity`.
   ComPtr<ID3D12Resource> pickResultBuffer;
   ComPtr<ID3D12Resource> pickReadbackBuffer;
+  /// @brief Where `ReadTarget` copies a target to, kept between calls so that reading every frame
+  /// does not make a committed resource every frame; grown, never shrunk, as a larger target asks.
+  ComPtr<ID3D12Resource> targetReadbackBuffer;
+  UINT64 targetReadbackSize{};
   EntityID nextTargetId{1};
   int previewSize{128};
   /// @brief Staging buffers whose copies are recorded into the open command list but not yet run.

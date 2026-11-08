@@ -82,6 +82,20 @@ public:
   auto StepTick() -> void {
     app.stepRequested = true;
   }
+  /// @brief Makes every frame stand for exactly one tick, however long it really took.
+  ///
+  /// For a run that is read back frame by frame, as `RECORD_FLAG` reads it: the readback stalls the
+  /// GPU, so frames come out slower than the display's, and a clock that kept to the wall would run
+  /// ticks two and three to a frame and the video would stutter. Stepped this way, the video plays at
+  /// the game's speed however slowly it was made, and the same state and input give the same video,
+  /// which is what lets a before and an after be compared. The frame's time is the tick's too, so
+  /// whatever runs in `Update` -- particles, wind, a camera that eases -- keeps to it.
+  ///
+  /// The tick scale is ignored meanwhile: it is how a networked game keeps to another machine's
+  /// pace, and nothing recorded offline has one.
+  auto SetFixedStep(const bool value) -> void {
+    app.fixedStep = value;
+  }
   /// @brief Makes this application a host: a request to quit stops the game instead of the application.
   ///
   /// A game is ended by the settings menu's Quit. Hosted, that would close the editor around it, so

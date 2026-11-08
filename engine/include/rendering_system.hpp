@@ -23,6 +23,7 @@
 #include <system.hpp>
 #include <target_description.hpp>
 #include <tone_mapper.hpp>
+#include <vector>
 namespace kuki {
 /// @brief Edge length of the directional shadow map, in texels.
 ///
@@ -34,9 +35,14 @@ inline constexpr int SHADOW_MAP_RESOLUTION = 4096;
 ///
 /// Multiplied by the spot shadow light limit, so it costs a layer per light.
 inline constexpr int SPOT_SHADOW_MAP_RESOLUTION = 1024;
+class VideoRecorder;
 class KUKI_ENGINE_API RenderingSystem final : public System {
 public:
   RenderingSystem(Application &);
+  /// @brief Out of line for the recorder, whose type this header does not show. The move is what
+  /// `SystemApplication` builds its systems with, and declaring the one takes the other away.
+  RenderingSystem(RenderingSystem &&) noexcept;
+  ~RenderingSystem() override;
   auto Start() -> void override;
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
@@ -158,6 +164,25 @@ private:
   std::filesystem::path capturePath;
   size_t captureFrame{300};
   size_t capturedFrames{};
+  /// @brief Where `--record` wants the video, how many frames it wants, and the encoder they are
+  /// piped to once the first is drawn, which is when the picture's size is known. The pixels are
+  /// kept between frames so that reading one back allocates only when the size changes.
+  std::filesystem::path recordPath;
+  size_t recordFrames{600};
+  size_t recordedFrames{};
+  std::unique_ptr<VideoRecorder> recorder;
+  std::vector<uint8_t> recordPixels;
+  /// @brief Whether the recording is over, finished or failed, and whether the run has been told to
+  /// end because everything asked for is saved -- told once, though the frame goes on.
+  bool recordEnded{};
+  bool savedEverything{};
+  /// @brief Reads the finished frame back and hands it to the encoder, starting it on the first.
+  auto RecordFrame() -> void;
+  /// @brief Ends the video and says how it went, failed if it is short of the frames asked for and
+  /// not `closing` -- the window shut on it, the one way a person ends a recording early.
+  auto FinishRecording(const bool closing = false) -> void;
+  /// @brief Whether everything the command line asked to have saved has been, so the run can end.
+  auto SavedEverything() const -> bool;
   /// @brief The size every viewport-sized target in the graph is built at, before the window has
   /// said anything about its own.
   ///
