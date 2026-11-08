@@ -39,8 +39,7 @@
 #define KUKI_GAME_MAIN(App) \
   extern "C" KUKI_MODULE_EXPORT auto KukiGameRun() -> int { \
     App app; \
-    app.Run(); \
-    return 0; \
+    return app.Run(); \
   }
 // --- Components (`component_traits.hpp`)
 /// @brief Declares one of a game's types to be a component, with its place among the game's.
