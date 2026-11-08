@@ -34,23 +34,31 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential clang cmake ninja-build xorg-dev
-      - name: Install prerequisites
-        if: runner.os == 'Windows'
-        run: winget install ninja-build.ninja nsis --accept-source-agreements --disable-interactivity
+      # Nothing to install on Windows for a build: the runner has Visual Studio, which CMake picks
+      # by default and the presets build with. Ninja was installed here on every push and never
+      # used, and winget failed two runs in a day doing it -- once exiting 1 after saying it had
+      # installed, once on a download timeout (0x80072ee2). The installer's tools are fetched only
+      # where an installer is made.
+      - name: Install packaging prerequisites
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
+        run: winget install nsis --accept-source-agreements --disable-interactivity
       - uses: actions/cache@v5
         with:
           path: build
           key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt','**/CMakePresets.json') }}
           restore-keys: ${{ runner.os }}-cmake-
-      # Not `cmake --workflow Debug`: the presets leave tests off, and a workflow preset takes no
-      # cache overrides, so that ran a test step with nothing registered and passed on a build alone.
-      # The steps are the workflow's, with tests turned on at configure.
+      # The `Test` workflow's steps, one to a step so a failure says which. `Test` is `Debug` with
+      # the tests on; `Debug` alone builds none, and its workflow runs no test step.
       - name: Configure
-        run: cmake --preset Debug -DKUKI_BUILD_TESTS=ON
+        run: cmake --preset Test
       - name: Build
-        run: cmake --build --preset Debug
+        run: cmake --build --preset Test
       - name: Test
-        run: ctest --preset Debug --output-on-failure
+        run: ctest --preset Test
+      # A release build, tested again and packaged: the only place the installer is made.
+      - name: Package
+        if: startsWith(github.ref, 'refs/tags/')
+        run: cmake --workflow Package
       - uses: actions/upload-artifact@v7
         if: startsWith(github.ref, 'refs/tags/')
         with:
