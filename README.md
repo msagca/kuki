@@ -66,6 +66,8 @@ cd kuki
 cmake --workflow Release
 ```
 
+This builds and nothing else: no tests and no installer. See [Presets](#presets) for those.
+
 > If it fails due to missing dependencies, refer to the error messages to install the required packages. Then, run the command again.
 
 If it succeeds, you can launch `KukiEditor` from `build/editor/` and the games from `build/game/<name>/`.
@@ -76,13 +78,16 @@ If it succeeds, you can launch `KukiEditor` from `build/editor/` and the games f
 
 All presets share the `build/` directory, so switching between them reconfigures in place.
 
-| Preset | Generator |
-| --- | --- |
-| `Debug`, `Release` | CMake's default |
-| `MSVC` (build presets `MSVC-Debug`, `MSVC-Release`) | Visual Studio |
-| `Clang-Debug`, `Clang-Release` | Ninja with Clang |
+| Preset | What it adds | Generator |
+| --- | --- | --- |
+| `Debug`, `Release` | Nothing: configure and build | CMake's default |
+| `Test` | `Debug` with the tests, which its workflow runs | CMake's default |
+| `Lint` | `Test` with clang-tidy on every target | CMake's default |
+| `Package` | `Release` with the tests, and the installer: for a release | CMake's default |
+| `MSVC` (build presets `MSVC-Debug`, `MSVC-Release`) | Nothing | Visual Studio |
+| `Clang-Debug`, `Clang-Release` | Nothing | Ninja with Clang |
 
-`cmake --workflow Debug` configures and builds a debug build, and runs the tests if they are turned on (see below). To iterate without packaging, configure and build separately:
+Each has a workflow of the same name (`cmake --workflow Test`), `MSVC` has two (`MSVC-Debug`, `MSVC-Release`), and only `Package` makes an installer. To iterate, configure and build separately:
 
 ```bash
 cmake --preset Debug
@@ -94,21 +99,21 @@ cmake --build --preset Debug
 
 ### Tests and linting
 
-Tests and linting are off by default.
+Tests and linting are off in `Debug` and `Release`; `Test` turns the tests on and `Lint` adds clang-tidy.
 
 ```bash
-cmake --preset Debug -DKUKI_BUILD_TESTS=ON
+cmake --preset Test
 ```
 
 ```bash
-cmake --build --preset Debug
+cmake --build --preset Test
 ```
 
 ```bash
-ctest --preset Debug --output-on-failure
+ctest --preset Test
 ```
 
-Pass `-DKUKI_ENABLE_LINTING=ON` at configure time to run clang-tidy on every target.
+Switching to or from `Lint` rebuilds everything, since clang-tidy runs with every compile.
 
 ## License
 

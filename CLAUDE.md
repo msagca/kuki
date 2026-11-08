@@ -14,18 +14,23 @@ rest is read where it is used:
 
 ```bash
 git submodule update --init --recursive                # external/ is required
-cmake --workflow Release                               # configure + build + test + package
-cmake --workflow Debug                                 # configure + build + test
+cmake --workflow Debug                                 # configure + build
+cmake --workflow Test                                  # configure + build + test (what CI runs)
+cmake --workflow Lint                                  # configure + build with clang-tidy
+cmake --workflow Package                               # release build + test + installer, for a release
 cmake --preset Debug && cmake --build --preset Debug   # iterate
-cmake --preset Debug -DKUKI_BUILD_TESTS=ON && cmake --build --preset Debug
-ctest --test-dir build --output-on-failure [-R <TestName>]   # one test per gtest case
+cmake --preset Test && cmake --build --preset Test     # iterate with the tests
+ctest --preset Test [-R <TestName>]                    # one test per gtest case
 ```
 
-Presets: `Debug`, `Release`, `MSVC` (built with `MSVC-Debug`/`MSVC-Release`), `Clang-Debug`/
-`Clang-Release` (Ninja). All share `build/`, so switching reconfigures in place. Games are on and
-tests off (`KUKI_BUILD_TESTS`); the tests cover what has no window -- the tick, gestures, the ECS,
-rollback, networking, the duel's rules. A `test/compile_fail/*.cpp` passes only if the compiler
-prints its expected message on the first line. `-DKUKI_ENABLE_LINTING=ON` attaches clang-tidy.
+Presets: `Debug`, `Release` (build only), `Test` (`Debug` with the tests), `Lint` (`Test` with
+clang-tidy), `Package` (`Release` with the tests, and the only one with a package step: the
+installer is made for a release and not otherwise), `MSVC` (built with `MSVC-Debug`/
+`MSVC-Release`), `Clang-Debug`/`Clang-Release` (Ninja). All share `build/`, so switching
+reconfigures in place -- to or from `Lint` rebuilds everything, since clang-tidy runs with every
+compile. Games are on everywhere; the tests (`KUKI_BUILD_TESTS`) cover what has no window -- the
+tick, gestures, the ECS, rollback, networking, the duel's rules. A `test/compile_fail/*.cpp` passes
+only if the compiler prints its expected message on the first line.
 
 Executables land in `build/editor/`, `build/game/<name>/`, `build/test/`. A game's folder gets fresh
 DLLs from its `<Target>Runtime` target: build both, or the game runs against the old engine.
@@ -263,7 +268,7 @@ included.
   in an area (`gh issue list`).
 - Every name between backticks in a `CLAUDE.md` or a skill must exist: `test/check_docs.py`, the
   `Docs.NamesExist` test, fails on one a rename left behind. A rename brings the text along.
-- CI (`build-and-test.yml`) builds `Debug` with tests and runs `ctest` (Windows/cl) on a push to any
+- CI (`build-and-test.yml`) builds the `Test` preset and runs `ctest` (Windows/cl) on a push to any
   branch but `main`. `main` is protected, kept in step with the remote and never worked on: work
   reaches it by pull request once `cmake (windows-latest)` passes on the head. A fix gets a GitHub
   issue and a branch whose pull request closes it; other work needs no issue.

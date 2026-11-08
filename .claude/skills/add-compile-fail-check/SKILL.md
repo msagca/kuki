@@ -21,7 +21,7 @@ first line.
 5. Reconfigure (the glob is `CONFIGURE_DEPENDS`) and run it:
 
 ```bash
-cmake --preset Debug -DKUKI_BUILD_TESTS=ON
+cmake --preset Test
 ctest --test-dir build -R CompileFail.<name> --output-on-failure
 ```
 
