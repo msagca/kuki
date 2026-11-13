@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
+namespace chess {
 /// @brief The rules, with no dependency on the engine at all.
 ///
 /// Deliberately separate from everything that draws or clicks: the board knows nothing about
@@ -113,3 +114,4 @@ private:
   auto SelfCheck(const Move &) const -> bool;
   auto AnyLegalMove(const PieceColor) const -> bool;
 };
+} // namespace chess

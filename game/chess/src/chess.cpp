@@ -22,6 +22,7 @@
 #include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
 using namespace kuki;
+namespace chess {
 namespace {
 /// @brief Materials the game draws with, staged next to the binary as `.mat` files.
 ///
@@ -73,7 +74,7 @@ auto SetupChess(Application &app) -> void {
   // The whole scene skeleton in one expression. `Entity` asks for scene scope, so each call
   // discards the entity frame the previous one left open -- which is what lets these run on after
   // one another without a closing call between them. See `kuki::Game`.
-  chess::ChessWorld::Game(app, "Chess")
+  ChessWorld::Game(app, "Chess")
     .Scene("Main")
     .Entity<CameraObject>("Camera")
     .At({.0f, 9.5f, 8.5f})
@@ -91,7 +92,7 @@ auto SetupChess(Application &app) -> void {
       light.specular = {1.f, 1.f, 1.f};
       light.intensity = 3.f;
     })
-    .Entity<chess::Settings>("Settings")
+    .Entity<Settings>("Settings")
     // The board is meant to read as being up in the sky, so it is given one to be up in. Present is
     // what switches the computed sky on: this scene had no skybox at all before, so what it stood
     // in front of was the flat background below, and the two settings after this are now what it
@@ -174,5 +175,6 @@ auto SetupChess(Application &app) -> void {
       lighting.backgroundColor = {.34f, .35f, .4f};
     });
 }
-KUKI_GAME_MODULE("Chess", SetupChess)
-KUKI_GAME_MAIN(Chess)
+} // namespace chess
+KUKI_GAME_MODULE("Chess", chess::SetupChess)
+KUKI_GAME_MAIN(chess::Chess)

@@ -9,6 +9,7 @@
 namespace kuki {
 class Application;
 } // namespace kuki
+namespace frontier {
 /// @brief Putting buildings on the map: choosing one, turning it, and setting it down on free cells.
 ///
 /// A number key picks a building and shows it under the cursor, see-through: green where it can go
@@ -57,3 +58,4 @@ private:
   /// @brief Puts down two of every building, wherever they fit, for `--demo`.
   auto Demo() -> void;
 };
+} // namespace frontier

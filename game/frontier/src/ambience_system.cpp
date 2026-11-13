@@ -18,7 +18,7 @@
 #include <volumetric_clouds.hpp>
 #include <wind.hpp>
 using namespace kuki;
-using namespace frontier;
+namespace frontier {
 namespace {
 /// How hard the wind carries what drifts, in units a second squared for each unit of its strength.
 constexpr float CARRY = .9f;
@@ -36,7 +36,7 @@ auto AmbienceSystem::PostStart() -> void {
 auto AmbienceSystem::Update(const float deltaTime) -> void {
   const auto dt = std::min(deltaTime, .1f);
   clock += dt;
-  if (app.IsBindingPressed(frontier::TIME))
+  if (app.IsBindingPressed(TIME))
     passing = !passing;
   if (passing) {
     // Dawn to dusk and back again, never through the night: the map is for looking at.
@@ -112,3 +112,4 @@ auto AmbienceSystem::Sun() -> void {
   if (auto *sky = app.GetSceneSingleton<AtmosphereSky>())
     sky->sunIntensity = 6.f + 8.f * std::clamp(height * 2.f, .0f, 1.f);
 }
+} // namespace frontier

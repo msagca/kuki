@@ -23,7 +23,7 @@
 #include <spdlog/spdlog.h>
 #include <transform.hpp>
 using namespace kuki;
-using namespace frontier;
+namespace frontier {
 namespace {
 constexpr glm::vec3 UP{.0f, 1.f, .0f};
 /// How many classes a layer can colour cells in, each a mesh and a material of its own.
@@ -737,9 +737,9 @@ auto MapSystem::AddSettings() -> void {
   menu.AddAction(SettingsPage::Game, "New map", [this] { NextMap(); });
 }
 auto MapSystem::Update(const float) -> void {
-  if (app.IsBindingPressed(frontier::NEW_MAP))
+  if (app.IsBindingPressed(NEW_MAP))
     NextMap();
-  if (app.IsBindingPressed(frontier::LAYER)) {
+  if (app.IsBindingPressed(LAYER)) {
     layer = static_cast<Layer>((static_cast<size_t>(layer) + 1) % LAYER_NAMES.size());
     layersDirty = true;
   }
@@ -807,3 +807,4 @@ auto MapSystem::DrawPanel() -> void {
   if (!path.empty())
     overlay.DrawText(std::format("Path: {} turns, {:.1f} long", path.size() - 2, pathLength), {0.f, 24.f * unit}, 22.f * unit, text, TextAnchor::Top);
 }
+} // namespace frontier
