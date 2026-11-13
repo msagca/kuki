@@ -20,8 +20,10 @@
 #include <particle_emitter.hpp>
 #include <planar_reflection.hpp>
 #include <pool.hpp>
+#include <saved_fields.hpp>
 #include <scene_serializer.hpp>
 #include <serdes.hpp>
+#include <set>
 #include <shader_asset.hpp>
 #include <skybox_handle.hpp>
 #include <spdlog/spdlog.h>
@@ -851,7 +853,7 @@ namespace {
       return {};
     }
   };
-  auto SerializeEntity(Application &app, const EntityID id, std::unordered_set<AssetID> &referenced, const EntityOrder &order, const ComponentNames &names) -> json {
+  auto SerializeEntity(Application &app, const EntityID id, std::unordered_set<AssetID> &referenced, const EntityOrder &order, const ComponentNames &names, std::set<std::string> &unsaved) -> json {
     json entity;
     const auto name = Internal(app).GetEntityName(id);
     entity["name"] = name;
@@ -872,6 +874,21 @@ namespace {
       if (auto variant = Internal(app).GetEntityComponent(id, type); variant.has_value())
         components[Component::GetTypeName(type)] = std::visit(ToJsonVisitor{referenced, order}, *variant);
     }
+    // A game's components, which the engine has no `ToJson` for: written by the fields the game
+    // declared (`ComponentFields`), under the name its archetype gives. One that declares none is
+    // not written, and comes back as its defaults, which the save says once for each.
+    for (size_t bit = FIRST_GAME_COMPONENT; bit < MAX_COMPONENTS; ++bit) {
+      if (!signature[bit])
+        continue;
+      const auto it = names.byId.find(static_cast<ComponentId>(bit));
+      const auto saved = Internal(app).GetSavedComponent(id, static_cast<ComponentId>(bit));
+      if (it == names.byId.end() || !saved.data)
+        continue;
+      if (saved.fields.empty())
+        unsaved.insert(it->second);
+      else
+        components[it->second] = SavedFieldsToJson(saved.fields, saved.data, order, referenced);
+    }
     entity["components"] = std::move(components);
     if (const auto pool = app.GetEntityPool(id)) {
       referenced.insert(pool.mesh);
@@ -881,7 +898,7 @@ namespace {
     }
     auto children = json::array();
     Internal(app).ForEachChildEntity(id, [&](const EntityID childId) {
-      children.push_back(SerializeEntity(app, childId, referenced, order, names));
+      children.push_back(SerializeEntity(app, childId, referenced, order, names, unsaved));
     });
     entity["children"] = std::move(children);
     return entity;
@@ -902,7 +919,21 @@ namespace {
       }
     });
   }
-  auto DeserializeEntity(Application &app, const json &entityJson, const EntityID parent, const std::unordered_map<AssetID, AssetID> &remap, std::vector<EntityID> &created, const ComponentNames &names) -> void {
+  /// @brief A game's component of a loaded entity, whose entity fields wait to be resolved.
+  using LinkedComponent = std::pair<EntityID, ComponentId>;
+  /// @brief Reads one of a game's components into a loaded entity, by the fields the game declared.
+  auto ReadGameComponent(Application &app, const EntityID id, const std::string &name, const json &componentJson, const ComponentNames &names, const std::unordered_map<AssetID, AssetID> &remap, std::vector<LinkedComponent> &linked) -> void {
+    const auto it = names.byName.find(name);
+    if (it == names.byName.end() || it->second < FIRST_GAME_COMPONENT)
+      return;
+    const auto saved = Internal(app).GetSavedComponent(id, it->second);
+    if (!saved.data)
+      return;
+    SavedFieldsFromJson(componentJson, saved.fields, saved.data, remap);
+    if (NamesEntities(saved.fields))
+      linked.emplace_back(id, it->second);
+  }
+  auto DeserializeEntity(Application &app, const json &entityJson, const EntityID parent, const std::unordered_map<AssetID, AssetID> &remap, std::vector<EntityID> &created, const ComponentNames &names, std::vector<LinkedComponent> &linked) -> void {
     const auto name = entityJson.value("name", std::string{});
     // The archetype the file names, or failing that the one its components suggest. Either way it
     // must be one the application declared; an entity of any other is reported and left out, with
@@ -956,8 +987,10 @@ namespace {
       for (const auto &[typeName, componentJson] : entityJson.at("components").items()) {
         const auto &nameToType = NameToType();
         const auto it = nameToType.find(typeName);
-        if (it == nameToType.end())
+        if (it == nameToType.end()) {
+          ReadGameComponent(app, id, typeName, componentJson, names, remap, linked);
           continue;
+        }
         switch (it->second) {
         case ComponentType::Transform:
           if (auto *c = app.GetEntityComponent<Transform>(id))
@@ -1063,7 +1096,7 @@ namespace {
       AdoptOwnPlace(app, id, entityJson.at("components"));
     if (entityJson.contains("children"))
       for (const auto &childJson : entityJson.at("children"))
-        DeserializeEntity(app, childJson, id, remap, created, names);
+        DeserializeEntity(app, childJson, id, remap, created, names, linked);
   }
 } // namespace
 auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) -> bool {
@@ -1087,9 +1120,12 @@ auto SceneSerializer::Save(Application &app, const std::filesystem::path &path) 
     Order(app, id, order);
   });
   const auto names = GetComponentNames(app);
+  std::set<std::string> unsaved;
   Internal(app).ForEachRootEntity([&](const EntityID id) {
-    entities.push_back(SerializeEntity(app, id, referenced, order, names));
+    entities.push_back(SerializeEntity(app, id, referenced, order, names, unsaved));
   });
+  for (const auto &name : unsaved)
+    spdlog::warn("[SceneSerializer] {} declares no saved fields (kuki::ComponentFields), so it is not written and loads as its defaults", name);
   // Each controller once, however many animators share it, with the models its clips come from
   // named in the manifest so that they are loaded before it is played.
   auto controllers = json::array();
@@ -1209,10 +1245,16 @@ auto SceneSerializer::Load(Application &app, const std::filesystem::path &path) 
   Internal(app).DeleteEntities();
   std::vector<EntityID> created;
   const auto names = GetComponentNames(app);
+  std::vector<LinkedComponent> linked;
   if (sceneJson.contains("entities"))
     for (const auto &entityJson : sceneJson.at("entities"))
-      DeserializeEntity(app, entityJson, EntityID::Invalid, remap, created, names);
+      DeserializeEntity(app, entityJson, EntityID::Invalid, remap, created, names, linked);
   ResolveTargets(app, created);
+  // Looked up again rather than kept from the read: a pointer into a column is lost when a row is
+  // added to its table, and every entity after it in the file may have been one.
+  for (const auto &[id, component] : linked)
+    if (const auto saved = Internal(app).GetSavedComponent(id, component); saved.data)
+      ResolveSavedEntities(saved.fields, saved.data, created);
   // Gathered first and resolved after, not from inside the walk over the animators. Resolving used
   // to add a `Skeleton`, and a component added while a `ForEach` was under way was put off until it
   // ended -- so the skeleton arrived empty and every model in a loaded scene stood still. It only

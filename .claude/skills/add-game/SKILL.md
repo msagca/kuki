@@ -17,7 +17,8 @@ class (`Frontier`).
 2. `game/<name>/include/<name>_world.hpp` -- the game's archetypes and `using <Name>World = kuki::World<...>`,
    all in `namespace <name>`. A game's component is a plain struct, declared with
    `KUKI_COMPONENT(<name>::Type, index)` at global scope after its definition, indices from 0 and
-   the game's own (`frontier_world.hpp`). The engine's archetypes (`CameraObject`, `MeshObject`,
+   the game's own (`frontier_world.hpp`), followed by its `kuki::ComponentFields` -- the members a
+   scene is saved with, each `kuki::Field<&Type::member>("key")` -- or it loads as its defaults. The engine's archetypes (`CameraObject`, `MeshObject`,
    `LightObject`, ...) come with every world and are not listed.
 3. `game/<name>/include/<name>.hpp` -- the application class,
    `SystemApplication<<name>::<Name>World, <Name>'s systems..., kuki::RenderingSystem>`, in the

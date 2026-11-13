@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+#include <component_fields.hpp>
 #include <component_traits.hpp>
 #include <engine_archetypes.hpp>
 #include <world.hpp>
@@ -13,6 +15,10 @@ struct Seat {
 };
 } // namespace duel
 KUKI_COMPONENT(duel::Seat, 0);
+template <>
+struct kuki::ComponentFields<duel::Seat> {
+  static constexpr std::array fields{kuki::Field<&duel::Seat::player>("player")};
+};
 namespace duel {
 /// @brief A figure: a placed model that can play its clips, and the seat it is drawn for.
 using Figure = kuki::Archetype<kuki::Transform, kuki::BoundingBox, kuki::Animated, Seat>;

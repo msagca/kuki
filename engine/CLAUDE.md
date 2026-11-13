@@ -75,4 +75,6 @@ controllers are written once into the scene's `"controllers"` (an animator from 
 holding its own states, gets a controller of its own on load); the editor's scenes are in
 `editor/src/scene/`. An entity is saved with its `"archetype"` and loaded as it if the application
 declares it (older files are guessed from their components); one undeclared is reported and
-skipped.
+skipped. A game's component is written by the fields it declares (`ComponentFields`, read and
+written in `saved_fields.hpp`), by key, so a field added later loads as its default; one that
+declares none is not written, and the save warns.

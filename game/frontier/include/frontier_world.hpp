@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+#include <component_fields.hpp>
 #include <component_traits.hpp>
 #include <engine_archetypes.hpp>
 #include <world.hpp>
@@ -18,6 +20,14 @@ struct Wing {
 } // namespace frontier
 KUKI_COMPONENT(frontier::Structure, 0);
 KUKI_COMPONENT(frontier::Wing, 1);
+template <>
+struct kuki::ComponentFields<frontier::Structure> {
+  static constexpr std::array fields{kuki::Field<&frontier::Structure::id>("id")};
+};
+template <>
+struct kuki::ComponentFields<frontier::Wing> {
+  static constexpr std::array fields{kuki::Field<&frontier::Wing::flock>("flock"), kuki::Field<&frontier::Wing::bird>("bird"), kuki::Field<&frontier::Wing::side>("side")};
+};
 namespace frontier {
 /// @brief A building's mesh: drawn, and found again by its building when the building is removed.
 using StructureObject = kuki::Archetype<kuki::Transform, kuki::Renderable, Structure>;
