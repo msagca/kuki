@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <component_fields.hpp>
 #include <component_traits.hpp>
 #include <concepts.hpp>
 #include <cstdint>
@@ -7,6 +8,7 @@
 #include <kuki_engine_export.h>
 #include <memory>
 #include <pool.hpp>
+#include <span>
 #include <string_view>
 #include <type_list.hpp>
 #include <type_traits>
@@ -95,6 +97,14 @@ struct KUKI_ENGINE_API IArchetypeColumn {
   virtual auto Reserve(const size_t) -> void = 0;
   /// @brief An empty column of the same component, for declaring the same archetype somewhere else.
   virtual auto CloneEmpty() const -> std::unique_ptr<IArchetypeColumn> = 0;
+  /// @brief A row's component as the bytes it is, for what knows the component only by its id.
+  ///
+  /// The scene serializer, which writes a game's component through the fields the game declared
+  /// (`SavedFields`) and has no type to cast to.
+  virtual auto Row(const size_t) -> void * = 0;
+  /// @brief The members a scene is saved with (`ComponentFields`); none for a component that names
+  /// none, which every engine component is: the serializer knows those itself.
+  virtual auto SavedFields() const -> std::span<const ComponentField> = 0;
 };
 template <IsComponent T>
 struct ArchetypeColumn final : public IArchetypeColumn {
@@ -125,6 +135,12 @@ struct ArchetypeColumn final : public IArchetypeColumn {
   }
   auto CloneEmpty() const -> std::unique_ptr<IArchetypeColumn> override {
     return std::make_unique<ArchetypeColumn>();
+  }
+  auto Row(const size_t row) -> void * override {
+    return &components[row];
+  }
+  auto SavedFields() const -> std::span<const ComponentField> override {
+    return SavedFieldsOf<T>;
   }
 };
 /// @brief An archetype as something to hand to an `EntityManager` at run time: its signature, and

@@ -226,8 +226,10 @@ moves its camera through `GetCameraEntity`. Scene singletons (`Component::IsScen
 e.g. `IndirectLighting`, `AtmosphereSky`) describe the scene, not the entity holding them, and a
 game reads one with `GetSceneSingleton<T>()`.
 
-A game's component is a struct, `KUKI_COMPONENT` and an archetype that has it. An engine component touches five places (the
-`add-engine-component` skill); an enum shown in the editor needs `EnumTraits<T>` (`enum_traits.hpp`).
+A game's component is a struct, `KUKI_COMPONENT` and an archetype that has it; to be saved with a
+scene it also lists its members in `ComponentFields` (`component_fields.hpp`), each under a key of
+its own. An engine component touches five places (the `add-engine-component` skill); an enum shown
+in the editor needs `EnumTraits<T>` (`enum_traits.hpp`).
 
 ### Rendering
 

@@ -10,6 +10,7 @@
 #include <functional>
 #include <id.hpp>
 #include <kuki_engine_export.h>
+#include <span>
 #include <string>
 #include <transform.hpp>
 #include <tuple>
@@ -18,6 +19,12 @@
 #include <unordered_set>
 #include <vector>
 namespace kuki {
+/// @brief A component reached by id rather than by type: where it is, and the fields its game
+/// saves it by (`ComponentFields`). See `EntityManager::GetSavedComponent`.
+struct SavedComponent {
+  void *data{};
+  std::span<const ComponentField> fields;
+};
 /// @brief Marks a component a query reads where it exists, rather than one it filters on.
 ///
 /// `ForEach<Transform, Optional<BoundingBox>>` visits every entity carrying a transform, and hands
@@ -163,6 +170,12 @@ public:
   auto GetParent(const EntityID) const -> EntityID;
   /// @brief The components of an entity's archetype. Empty for an id that is not an entity here.
   auto GetSignature(const EntityID) const -> ComponentMask;
+  /// @brief One of an entity's components by id, as its bytes and the fields it is saved by.
+  ///
+  /// For the scene serializer, which knows a game's components only by the ids and names their
+  /// archetypes give. Null data for an entity without the component. The pointer is good until a
+  /// row is added to or taken from the entity's table, as any pointer into a column is.
+  auto GetSavedComponent(const EntityID, const ComponentId) -> SavedComponent;
   auto HasChildren(const EntityID) const -> bool;
   auto IsEntity(const EntityID) const -> bool;
   auto IsEntity(const std::string &) const -> bool;

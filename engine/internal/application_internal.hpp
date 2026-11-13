@@ -225,6 +225,10 @@ public:
     const auto scene = ActiveScene();
     return scene ? scene->Entities().GetSignature(id) : ComponentMask{};
   }
+  auto GetSavedComponent(const EntityID id, const ComponentId component) -> SavedComponent {
+    auto scene = ActiveScene();
+    return scene ? scene->Entities().GetSavedComponent(id, component) : SavedComponent{};
+  }
   auto GetEntityComponentTypes(const EntityID id) const -> std::vector<ComponentType> {
     const auto scene = ActiveScene();
     return scene ? scene->Entities().GetComponentTypes(id) : std::vector<ComponentType>{};

@@ -254,6 +254,17 @@ auto EntityManager::GetSignature(const EntityID id) const -> ComponentMask {
     return archetypeRegistry.GetTable(it->second.table)->signature;
   return {};
 }
+auto EntityManager::GetSavedComponent(const EntityID id, const ComponentId component) -> SavedComponent {
+  const auto it = idToLocation.find(id);
+  if (it == idToLocation.end())
+    return {};
+  auto &table = *archetypeRegistry.GetTable(it->second.table);
+  const auto index = table.columnIndexById[component];
+  if (index < 0)
+    return {};
+  auto &column = *table.columns[index];
+  return {column.Row(it->second.row), column.SavedFields()};
+}
 auto EntityManager::HasChildren(const EntityID id) const -> bool {
   if (auto it = idToChildren.find(id); it != idToChildren.end())
     return it->second.size() > 0;
