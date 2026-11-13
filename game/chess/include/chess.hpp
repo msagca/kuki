@@ -4,18 +4,19 @@
 #include <game_manager.hpp>
 #include <rendering_system.hpp>
 #include <system_application.hpp>
+namespace kuki {
+class Application;
+} // namespace kuki
+namespace chess {
+/// @brief Loads the game's assets and builds its scene into whichever application is hosting it:
+/// the game's own, below, or the editor.
+auto SetupChess(kuki::Application &) -> void;
 /// @brief The typeface the game sets all of its text in, staged beside the binary.
 ///
 /// One font for the clocks and the board's labels alike. `Application::SetOverlayFont` bakes it
 /// and registers the atlas, and `GameManager` reads that same atlas back rather than baking its
 /// own -- a second bake of the same file would be a second four-megabyte texture saying exactly
 /// what the first one says.
-namespace kuki {
-class Application;
-} // namespace kuki
-/// @brief Loads the game's assets and builds its scene into whichever application is hosting it:
-/// the game's own, below, or the editor.
-auto SetupChess(kuki::Application &) -> void;
 inline constexpr const char *CHESS_FONT = "font/Inter-VariableFont_opsz,wght.ttf";
 /// @brief The chess application: a window, a renderer, the game, and nothing else.
 ///
@@ -24,9 +25,10 @@ inline constexpr const char *CHESS_FONT = "font/Inter-VariableFont_opsz,wght.ttf
 /// skinned meshes nor anything that falls, and the editor's list is not the list every application
 /// wants. `RenderingSystem` is the one that has to be present -- `Application`'s own startup
 /// depends on it, and leaving it out is a `static_assert` rather than a crash.
-class Chess final : public kuki::SystemApplication<chess::ChessWorld, GameManager, kuki::RenderingSystem> {
+class Chess final : public kuki::SystemApplication<ChessWorld, GameManager, kuki::RenderingSystem> {
 public:
   Chess();
 private:
   auto Start() -> void override;
 };
+} // namespace chess

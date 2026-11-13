@@ -16,8 +16,7 @@
 #include <string>
 #include <vector>
 using namespace kuki;
-using duel::DuelWorld;
-using duel::StageLight;
+namespace duel {
 namespace {
 /// How long a bolt lasts, from the first flicker to the last, in seconds; and how long to wait
 /// between them, at the least and at the most.
@@ -41,9 +40,9 @@ auto StageSystem::Random() -> float {
   return static_cast<float>(seed >> 8) / 16777216.f;
 }
 auto StageSystem::PostStart() -> void {
-  auto chosen = duel::StageId::Alley;
+  auto chosen = StageId::Alley;
   if (const auto name = GetFlagValue(GetCommandLineArguments(), STAGE_FLAG); name) {
-    if (const auto found = duel::FindStage(*name); found)
+    if (const auto found = FindStage(*name); found)
       chosen = *found;
     else
       spdlog::warn("[Duel] There is no stage called {}, so the fight is in the alley", *name);
@@ -51,7 +50,7 @@ auto StageSystem::PostStart() -> void {
   Build(chosen);
   app.RegisterBinding(NEXT_BINDING, Key::Tab, "Next stage");
   std::vector<SettingsOption> stages;
-  for (const auto *name : duel::STAGE_NAMES) {
+  for (const auto *name : STAGE_NAMES) {
     std::string label(name);
     label.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(label.front())));
     stages.push_back({std::move(label)});
@@ -62,19 +61,19 @@ auto StageSystem::PostStart() -> void {
   spdlog::info("[Duel] Tab moves the fight to the next stage");
 }
 auto StageSystem::Shutdown() -> void {}
-auto StageSystem::Build(const duel::StageId id) -> void {
-  duel::ClearStage(app, stage);
-  stage = duel::BuildStage(app, id);
+auto StageSystem::Build(const StageId id) -> void {
+  ClearStage(app, stage);
+  stage = BuildStage(app, id);
   clock = .0f;
   strike = -1.f;
   nextStrike = STRIKE_GAP_MIN * .5f;
 }
 auto StageSystem::Update(const float deltaTime) -> void {
   if (app.IsBindingPressed(NEXT_BINDING))
-    pendingStage = static_cast<int>((static_cast<size_t>(stage.id) + 1) % duel::STAGE_COUNT);
+    pendingStage = static_cast<int>((static_cast<size_t>(stage.id) + 1) % STAGE_COUNT);
   if (pendingStage >= 0) {
     if (pendingStage != static_cast<int>(stage.id))
-      Build(static_cast<duel::StageId>(pendingStage));
+      Build(static_cast<StageId>(pendingStage));
     pendingStage = -1;
   }
   clock += deltaTime;
@@ -163,3 +162,4 @@ auto StageSystem::Storm(const float deltaTime) -> void {
       effects->flashColor = {.85f, .9f, 1.f};
     }
 }
+} // namespace duel

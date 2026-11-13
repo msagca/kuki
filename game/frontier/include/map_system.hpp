@@ -15,6 +15,7 @@
 namespace kuki {
 class Application;
 } // namespace kuki
+namespace frontier {
 /// @brief Which of the map's logical layers is laid over the ground, if any.
 enum class Layer : uint8_t {
   None,
@@ -47,7 +48,7 @@ public:
   explicit MapSystem(kuki::Application &);
   auto PostStart() -> void override;
   auto Update(const float) -> void override;
-  auto GetMap() -> frontier::TerrainMap &;
+  auto GetMap() -> TerrainMap &;
   /// @brief Where the cursor meets the ground or the sea, and the cell there.
   auto GetCursor() const -> const std::optional<glm::vec3> &;
   auto GetHoveredCell() const -> kuki::CellIndex;
@@ -66,7 +67,7 @@ public:
   /// @brief The point where a line from `origin` along `direction` first meets the ground or the sea.
   auto Raycast(const glm::vec3 &origin, const glm::vec3 &direction) const -> std::optional<glm::vec3>;
 private:
-  frontier::TerrainMap map;
+  TerrainMap map;
   uint64_t seed{1};
   uint32_t generation{};
   Layer layer{Layer::None};
@@ -106,3 +107,4 @@ private:
   /// @brief A path between the two walkable cells furthest apart of a few picked at random.
   auto DemoPath() -> void;
 };
+} // namespace frontier

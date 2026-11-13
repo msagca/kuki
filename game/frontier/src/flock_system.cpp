@@ -12,7 +12,7 @@
 #include <transform.hpp>
 #include <wind.hpp>
 using namespace kuki;
-using namespace frontier;
+namespace frontier {
 namespace {
 constexpr glm::vec3 UP{.0f, 1.f, .0f};
 auto FindMap(Application &app) -> MapSystem * {
@@ -160,3 +160,4 @@ auto FlockSystem::Update(const float deltaTime) -> void {
     }
   }
 }
+} // namespace frontier

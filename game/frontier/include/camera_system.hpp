@@ -8,6 +8,7 @@
 namespace kuki {
 class Application;
 } // namespace kuki
+namespace frontier {
 /// @brief The camera a strategy game is looked at through: over the map, tilted down at it, turned
 /// and zoomed about the point it is looking at.
 ///
@@ -56,3 +57,4 @@ private:
   bool dragging{};
   glm::vec2 dragFrom{};
 };
+} // namespace frontier

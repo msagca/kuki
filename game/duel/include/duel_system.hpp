@@ -18,6 +18,7 @@ namespace kuki {
 class Application;
 struct Animator;
 } // namespace kuki
+namespace duel {
 /// @brief The scene's half of the game: the screen a fighter is picked on, and the match after it.
 ///
 /// The game opens on the roster standing in a row. A and D move along it and Enter starts a match
@@ -25,7 +26,7 @@ struct Animator;
 /// match for the row is one of the entries on its game page, and quitting is the menu's own.
 ///
 /// In a match it feeds the rules the buttons and draws what they decide. The rules are in
-/// `duel::DuelSim`, which knows nothing of the scene. That is deliberate and it is what makes the
+/// `DuelSim`, which knows nothing of the scene. That is deliberate and it is what makes the
 /// game something two machines can play: the rules can be taken back to an earlier tick and run
 /// again, and a scene cannot. So the scene is only ever a picture of the rules. Each tick this hands
 /// them the buttons and copies the answer into the scene's animators; each frame it puts the figures
@@ -73,10 +74,10 @@ private:
   Screen screen{Screen::Select};
   /// Which fighter each player plays, by place in the roster: the one the player chose, and the one
   /// the game set against them.
-  std::array<size_t, duel::DuelSim::PLAYERS> picks{0, 1};
+  std::array<size_t, DuelSim::PLAYERS> picks{0, 1};
   /// The roster standing in a row while one is chosen, and how far forward each has stepped.
   std::vector<kuki::EntityID> lineup;
-  std::array<float, duel::ROSTER.size()> stepped{};
+  std::array<float, ROSTER.size()> stepped{};
   /// The light that picks out the one chosen.
   kuki::EntityID spotlight{};
   /// The buttons as they stood on the last tick, to see one go down.
@@ -85,7 +86,7 @@ private:
   /// than between the systems' updates and the drawing of this one.
   bool backPending{};
   /// Shared and not unique because the network system holds the rules too, for as long as the match.
-  std::shared_ptr<duel::DuelSim> sim;
+  std::shared_ptr<DuelSim> sim;
   kuki::EntityID sparks{};
   /// A ring thrown out from where a blow lands, and the dust a lunge or a knock kicks up.
   kuki::EntityID shockwave{};
@@ -96,7 +97,7 @@ private:
   float hitStrength{};
   glm::vec3 hitPoint{};
   /// Each figure's state as last drawn, to see a lunge or a knock begin.
-  std::array<int, duel::DuelSim::PLAYERS> shownState{};
+  std::array<int, DuelSim::PLAYERS> shownState{};
   /// Where the camera is looking and how far back it stands, eased towards where the screen wants it.
   glm::vec3 cameraFocus{.0f, 1.f, .0f};
   float cameraDistance{6.5f};
@@ -108,8 +109,8 @@ private:
   bool watching{true};
   bool flashing{true};
   /// The health each bar shows, and the pale trail that follows it down, as a share of a bar.
-  std::array<float, duel::DuelSim::PLAYERS> shownHealth{1.f, 1.f};
-  std::array<float, duel::DuelSim::PLAYERS> trailHealth{1.f, 1.f};
+  std::array<float, DuelSim::PLAYERS> shownHealth{1.f, 1.f};
+  std::array<float, DuelSim::PLAYERS> trailHealth{1.f, 1.f};
   /// A small generator of its own for choosing the opponent, which is presentation and must not
   /// touch anything the rules draw on.
   uint32_t seed{0x2545f491u};
@@ -155,3 +156,4 @@ private:
   /// @brief Lists the game's settings: leaving the match, and the two about how it is shown.
   auto AddSettings() -> void;
 };
+} // namespace duel

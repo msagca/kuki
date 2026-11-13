@@ -8,6 +8,7 @@
 namespace kuki {
 class Application;
 } // namespace kuki
+namespace frontier {
 /// @brief Birds over the map: gulls along the shore and swallows over the land, in flocks that
 /// wander from one place to another.
 ///
@@ -42,3 +43,4 @@ private:
   auto Spawn() -> void;
   auto PickGoal(Birds &) -> void;
 };
+} // namespace frontier

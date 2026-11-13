@@ -24,11 +24,12 @@
 #include <volumetric_clouds.hpp>
 #include <volumetric_fog.hpp>
 using namespace kuki;
+namespace duel {
 namespace {
 /// @brief Loads one fighter of the roster and makes the copy a second player who picks the same
 /// one is dressed in.
-auto LoadFighter(Application &app, const duel::Character &character) -> void {
-  const auto name = duel::ModelName(character);
+auto LoadFighter(Application &app, const Character &character) -> void {
+  const auto name = ModelName(character);
   const auto id = app.LoadAsset<ModelAsset>(ResolvePath("model/" + name), name);
   auto *model = id ? app.GetAsset<ModelAsset>(id) : nullptr;
   if (!model) {
@@ -41,7 +42,7 @@ auto LoadFighter(Application &app, const duel::Character &character) -> void {
   // A copy under an id of its own, so the renderer keeps its materials apart. A second load of the
   // file would not do -- the asset manager hands back the first for the same path -- and a copy
   // shares nothing that one of the two could change under the other.
-  auto alternate = std::make_unique<ModelAsset>(MakeBuiltInAssetID("duel/" + duel::ModelName(character, true)));
+  auto alternate = std::make_unique<ModelAsset>(MakeBuiltInAssetID("duel/" + ModelName(character, true)));
   alternate->materials = model->materials;
   alternate->meshes = model->meshes;
   alternate->nodes = model->nodes;
@@ -55,7 +56,7 @@ auto LoadFighter(Application &app, const duel::Character &character) -> void {
     if (const auto it = colours.find(part); it != colours.end())
       material.fallback.albedo = glm::vec4(it->second, 1.f);
   }
-  app.AddAsset(std::move(alternate), duel::ModelName(character, true));
+  app.AddAsset(std::move(alternate), ModelName(character, true));
 }
 } // namespace
 Duel::Duel()
@@ -64,14 +65,14 @@ auto Duel::Start() -> void {
   SetupDuel(*this);
 }
 auto SetupDuel(Application &app) -> void {
-  for (const auto &character : duel::ROSTER)
+  for (const auto &character : ROSTER)
     LoadFighter(app, character);
   if (!app.SetOverlayFont(ResolvePath(DUEL_FONT)))
     spdlog::warn("[Duel] No font, so nothing will be written on screen");
   // Every stage's parts, though only one stage stands at a time: switching is then a matter of
   // placing what is already loaded.
-  duel::LoadStages(app);
-  duel::DuelWorld::Game(app, "Kuki Duel")
+  LoadStages(app);
+  DuelWorld::Game(app, "Kuki Duel")
     .Scene("Main")
     // From the side and a little above the waist, far enough back to keep both figures in frame
     // across the whole floor.
@@ -95,12 +96,12 @@ auto SetupDuel(Application &app) -> void {
       // Wider than the sun, so the shadows of the limbs soften as they leave the feet.
       light.angularDiameter = 2.f;
     })
-    .Entity<duel::Sky>("Sky")
+    .Entity<Sky>("Sky")
     .With<AtmosphereSky>([](AtmosphereSky &) {})
     .With<IndirectLighting>([](IndirectLighting &lighting) {
       lighting.ambientFallback = .18f;
     })
-    .Entity<duel::Look>("Look")
+    .Entity<Look>("Look")
     .With<Stylization>([](Stylization &) {})
     .With<ScreenEffects>([](ScreenEffects &) {})
     .With<PlanarReflection>([](PlanarReflection &) {})
@@ -111,5 +112,6 @@ auto SetupDuel(Application &app) -> void {
     .Entity<VolumetricCloudsObject>("Clouds")
     .With<VolumetricClouds>([](VolumetricClouds &) {});
 }
-KUKI_GAME_MODULE("Duel", SetupDuel)
-KUKI_GAME_MAIN(Duel)
+} // namespace duel
+KUKI_GAME_MODULE("Duel", duel::SetupDuel)
+KUKI_GAME_MAIN(duel::Duel)

@@ -20,16 +20,20 @@ class (`Frontier`).
    the game's own (`frontier_world.hpp`). The engine's archetypes (`CameraObject`, `MeshObject`,
    `LightObject`, ...) come with every world and are not listed.
 3. `game/<name>/include/<name>.hpp` -- the application class,
-   `SystemApplication<<name>::<Name>World, <Name>'s systems..., kuki::RenderingSystem>`, in the
-   order they are to run (each system's `Tick`/`Update` in list order; `RenderingSystem` last), and
-   `Setup<Name>(kuki::Application &)`, which the editor calls to load the game into itself.
+   `SystemApplication<<Name>World, <Name>'s systems..., kuki::RenderingSystem>`, in the order they
+   are to run (each system's `Tick`/`Update` in list order; `RenderingSystem` last), and
+   `Setup<Name>(kuki::Application &)`, which the editor calls to load the game into itself. Every
+   header and source of the game is in `namespace <name>`, the application and systems as much as
+   the world and rules; only `KUKI_COMPONENT` and the module macros stand outside it, at global
+   scope. Forward declarations of the engine's (`namespace kuki { class Application; }`) go above
+   the game's namespace, not in it, or they declare a `<name>::kuki` nobody defines.
 4. `game/<name>/src/<name>.cpp` -- the constructor
    (`SystemApplication(ApplicationDescription{.name = "Kuki <Name>"})`), `Start` calling
    `Setup<Name>(*this)` and nothing else, and `Setup<Name>`: register the controls first (the
    `add-binding` skill), load or build the assets, then the scene with
    `<Name>World::Game(app, "<Name>").Scene("Main")`, a `CameraObject` included or nothing is drawn.
-   At the end of this one file, once: `KUKI_GAME_MODULE("<Name>", Setup<Name>)` and
-   `KUKI_GAME_MAIN(<Name>)`.
+   At the end of this one file, once, after the game's namespace is closed:
+   `KUKI_GAME_MODULE("<Name>", <name>::Setup<Name>)` and `KUKI_GAME_MAIN(<name>::<Name>)`.
 5. The game's behaviour is its systems, one class each (`kuki::System`, constructed as
    `System(std::in_place_type<S>, app)`), beginning in `PostStart`. Rules go in `Tick`,
    presentation in `Update`. Command-line flags are a system's `static constexpr std::array FLAGS`.

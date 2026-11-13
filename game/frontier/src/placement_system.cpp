@@ -19,7 +19,7 @@
 #include <transform.hpp>
 #include <wind.hpp>
 using namespace kuki;
-using namespace frontier;
+namespace frontier {
 namespace {
 constexpr glm::vec3 UP{.0f, 1.f, .0f};
 constexpr glm::vec3 GOOD{.3f, 1.f, .45f};
@@ -268,3 +268,4 @@ auto PlacementSystem::DrawPanel() -> void {
   const auto degrees = std::fmod(std::fmod(angle * 57.2958f, 360.f) + 360.f, 360.f);
   app.GetOverlay().DrawText(std::format("{}   {:.0f} degrees", type.name, degrees), {.0f, -48.f * unit}, 22.f * unit, Display(valid ? GOOD : BAD), TextAnchor::Bottom);
 }
+} // namespace frontier
