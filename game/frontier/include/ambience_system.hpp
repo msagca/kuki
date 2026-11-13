@@ -3,6 +3,7 @@
 namespace kuki {
 class Application;
 } // namespace kuki
+namespace frontier {
 /// @brief The weather and the hour: the wind that moves everything, the foam breathing on the shore,
 /// and the sun.
 ///
@@ -28,3 +29,4 @@ private:
   auto Weather() -> void;
   auto Sun() -> void;
 };
+} // namespace frontier

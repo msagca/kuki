@@ -8,6 +8,7 @@
 namespace kuki {
 class Application;
 } // namespace kuki
+namespace duel {
 /// @brief The place the match is fought in, and everything in it that moves without being told to.
 ///
 /// Builds the stage the command line names, or the first one, once the game has built its scene;
@@ -31,7 +32,7 @@ public:
 private:
   /// @brief The binding that moves the fight to the next stage, Tab unless rebound.
   static constexpr const char *NEXT_BINDING = "Duel.NextStage";
-  duel::StageScene stage;
+  StageScene stage;
   /// @brief The stage asked for by the settings menu, built at the top of the next frame. Below
   /// nought when none is waiting.
   int pendingStage{-1};
@@ -48,7 +49,8 @@ private:
   /// the rules' random numbers -- which they must not touch, since a rollback replays them.
   uint32_t seed{0x9e3779b9u};
   auto Random() -> float;
-  auto Build(const duel::StageId) -> void;
+  auto Build(const StageId) -> void;
   auto AnimateLights() -> void;
   auto Storm(const float) -> void;
 };
+} // namespace duel

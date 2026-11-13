@@ -12,6 +12,7 @@ namespace kuki {
 class Application;
 class EntityManager;
 } // namespace kuki
+namespace chess {
 /// @brief Everything the chess game does that is not a rule: geometry, picking, and turn flow.
 ///
 /// A system: there is one game in the application and this is it, so it holds the board itself
@@ -435,3 +436,4 @@ private:
   /// nothing in red -- so a running commentary here would repeat the scene rather than add to it.
   auto UpdateTitle() -> void;
 };
+} // namespace chess

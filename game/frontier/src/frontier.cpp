@@ -22,7 +22,7 @@
 #include <volumetric_fog.hpp>
 #include <wind.hpp>
 using namespace kuki;
-using namespace frontier;
+namespace frontier {
 Frontier::Frontier()
   : SystemApplication(ApplicationDescription{.name = "Kuki Frontier"}) {}
 auto Frontier::Start() -> void {
@@ -139,5 +139,6 @@ auto SetupFrontier(Application &app) -> void {
     .Entity<WindObject>("Wind")
     .With<Wind>([](Wind &) {});
 }
-KUKI_GAME_MODULE("Frontier", SetupFrontier)
-KUKI_GAME_MAIN(Frontier)
+} // namespace frontier
+KUKI_GAME_MODULE("Frontier", frontier::SetupFrontier)
+KUKI_GAME_MAIN(frontier::Frontier)

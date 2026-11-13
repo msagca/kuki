@@ -9,6 +9,7 @@
 #include <glm/matrix.hpp>
 #include <transform.hpp>
 using namespace kuki;
+namespace frontier {
 namespace {
 constexpr float NEAREST = 6.f;
 constexpr float FURTHEST = 70.f;
@@ -61,22 +62,22 @@ auto CameraSystem::Update(const float deltaTime) -> void {
   const glm::vec2 forward{-std::sin(yaw), -std::cos(yaw)};
   const glm::vec2 right{std::cos(yaw), -std::sin(yaw)};
   glm::vec2 move{};
-  if (app.IsBindingHeld(frontier::FORWARD))
+  if (app.IsBindingHeld(FORWARD))
     move += forward;
-  if (app.IsBindingHeld(frontier::BACK))
+  if (app.IsBindingHeld(BACK))
     move -= forward;
-  if (app.IsBindingHeld(frontier::RIGHT))
+  if (app.IsBindingHeld(RIGHT))
     move += right;
-  if (app.IsBindingHeld(frontier::LEFT))
+  if (app.IsBindingHeld(LEFT))
     move -= right;
-  const auto fast = app.IsBindingHeld(frontier::MODIFIER) ? 2.5f : 1.f;
+  const auto fast = app.IsBindingHeld(MODIFIER) ? 2.5f : 1.f;
   if (glm::length(move) > .0f)
     target += glm::normalize(move) * targetDistance * .9f * fast * dt;
   target = glm::clamp(target, min, max);
   if (turnKeys) {
-    if (app.IsBindingHeld(frontier::TURN_LEFT))
+    if (app.IsBindingHeld(TURN_LEFT))
       targetYaw -= 1.6f * dt;
-    if (app.IsBindingHeld(frontier::TURN_RIGHT))
+    if (app.IsBindingHeld(TURN_RIGHT))
       targetYaw += 1.6f * dt;
   }
   if (const auto scroll = app.GetScrollOffset().y; scroll != .0f)
@@ -126,3 +127,4 @@ auto CameraSystem::CursorRay() const -> std::pair<glm::vec3, glm::vec3> {
   far /= far.w;
   return {camera->transform.position, glm::normalize(glm::vec3(far - near))};
 }
+} // namespace frontier

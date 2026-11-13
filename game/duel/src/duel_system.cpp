@@ -32,7 +32,7 @@
 #include <utility>
 #include <vector>
 using namespace kuki;
-using duel::DuelWorld;
+namespace duel {
 namespace {
 /// How far apart the roster stands on the select screen, how far forward the one chosen steps, and
 /// how quickly it gets there -- a share of the way each second.
@@ -43,7 +43,6 @@ constexpr float LINEUP_EASE = 7.f;
 /// quickly that comes and goes -- a share of the way each second.
 constexpr float WATCH_LIMIT = 60.f;
 constexpr float WATCH_EASE = 8.f;
-using duel::ROOT_NODE;
 /// The id of the one controller every figure in the scene shares: the moves are the same for all.
 const auto CONTROLLER = MakeBuiltInAssetID("Duel States");
 /// How the camera follows: how far back it stands with the figures together and how much further
@@ -83,8 +82,8 @@ auto DuelSystem::PostStart() -> void {
   flashing = preferences.GetBool(PREF_FLASH, true) && !HasFlag(GetCommandLineArguments(), NO_FLASH_FLAG);
   spdlog::info("[Duel] Inverse kinematics {}", watching ? "on" : "off");
   if (auto *network = app.GetNetwork(); network) {
-    network->SetProtocol(duel::PROTOCOL);
-    network->SetBot(duel::ScriptedButtons);
+    network->SetProtocol(PROTOCOL);
+    network->SetBot(ScriptedButtons);
   }
   sparks = DuelWorld::Game(app)
              .Scene("Main")
@@ -172,7 +171,7 @@ auto DuelSystem::AddSettings() -> void {
 auto DuelSystem::ApplyWatching() -> void {
   if (screen != Screen::Fight)
     return;
-  for (auto index = 0; index < duel::DuelSim::PLAYERS; ++index) {
+  for (auto index = 0; index < DuelSim::PLAYERS; ++index) {
     auto *animator = GetAnimator(index);
     if (!animator)
       continue;
@@ -190,12 +189,12 @@ auto DuelSystem::Shutdown() -> void {
 auto DuelSystem::Spawn(const int index, const size_t character, const bool alternate) -> EntityID {
   // As a figure and not as a plain model: the seat is what the rest of this finds it by, and it is
   // part of what the entity is made of rather than something added once it is placed.
-  const auto entity = DuelWorld::Instantiate<duel::Figure>(app, duel::ModelName(duel::ROSTER[character], alternate));
-  if (auto *seat = DuelWorld::Get<duel::Seat>(app, entity); seat)
+  const auto entity = DuelWorld::Instantiate<Figure>(app, ModelName(ROSTER[character], alternate));
+  if (auto *seat = DuelWorld::Get<Seat>(app, entity); seat)
     seat->player = index;
   auto *animator = DuelWorld::Get<Animator>(app, entity);
   if (!animator || !animator->modelAssetId) {
-    spdlog::warn("[Duel] {} has no animator, so they will stand still", duel::ROSTER[character].name);
+    spdlog::warn("[Duel] {} has no animator, so they will stand still", ROSTER[character].name);
     return entity;
   }
   // The scene's animator is stepped by the animation system and then made to agree with the rules
@@ -203,13 +202,13 @@ auto DuelSystem::Spawn(const int index, const size_t character, const bool alter
   // carry the travel the rules have already taken: the same controller as the rules make for
   // themselves, made once and shared by every figure.
   if (!app.GetAsset(CONTROLLER))
-    app.AddAsset(std::make_unique<AnimatorController>(duel::DuelController(CONTROLLER)), "Duel States");
+    app.AddAsset(std::make_unique<AnimatorController>(DuelController(CONTROLLER)), "Duel States");
   animator->controller = CONTROLLER;
   return entity;
 }
 auto DuelSystem::ClearFigures() -> void {
   std::vector<EntityID> figures;
-  DuelWorld::ForEach<duel::Seat>(app, [&](const EntityID id, duel::Seat *) {
+  DuelWorld::ForEach<Seat>(app, [&](const EntityID id, Seat *) {
     figures.push_back(id);
   });
   for (const auto id : figures)
@@ -228,7 +227,7 @@ auto DuelSystem::EnterSelect() -> void {
   ClearFigures();
   hitAge = -1.f;
   cameraPlaced = false;
-  for (size_t index = 0; index < duel::ROSTER.size(); ++index) {
+  for (size_t index = 0; index < ROSTER.size(); ++index) {
     lineup.push_back(Spawn(-1 - static_cast<int>(index), index));
     stepped[index] = index == picks[0] ? 1.f : .0f;
   }
@@ -251,7 +250,7 @@ auto DuelSystem::EnterSelect() -> void {
                 .Id();
 }
 auto DuelSystem::StartFight() -> void {
-  const auto count = duel::ROSTER.size();
+  const auto count = ROSTER.size();
   // Anyone but the one chosen, from a generator of the screen's own.
   seed ^= seed << 13;
   seed ^= seed >> 17;
@@ -268,7 +267,7 @@ auto DuelSystem::StartFight() -> void {
   // differently play each other.
   const auto *animator = GetAnimator(0);
   if (const auto *model = animator ? app.GetAsset<ModelAsset>(animator->modelAssetId) : nullptr; model)
-    sim = std::make_shared<duel::DuelSim>(*model, app.TickRate(), duel::RootSpace(*model, ROOT_NODE));
+    sim = std::make_shared<DuelSim>(*model, app.TickRate(), RootSpace(*model, ROOT_NODE));
   else {
     spdlog::warn("[Duel] The fighter has no model, so the rules will not run");
     sim.reset();
@@ -288,7 +287,7 @@ auto DuelSystem::StartFight() -> void {
   // Each keeps its eyes on the other: the head and the chest share a turn towards the other's
   // head, so that the face follows a duck or a lunge and does not stare at where it was.
   ApplyWatching();
-  for (auto index = 0; index < duel::DuelSim::PLAYERS; ++index) {
+  for (auto index = 0; index < DuelSim::PLAYERS; ++index) {
     shownState[index] = sim ? sim->GetAnimator(index).state : 0;
     shownHealth[index] = 1.f;
     trailHealth[index] = 1.f;
@@ -348,14 +347,14 @@ auto DuelSystem::DrawSelect() -> void {
     const auto x = (clip.x / clip.w * .5f + .5f) * width - width * .5f;
     const auto y = (.5f - clip.y / clip.w * .5f) * height + 14.f * unit;
     const auto chosen = index == picks[0];
-    overlay.DrawText(duel::ROSTER[index].name, {x, y}, (chosen ? 40.f : 26.f) * unit, {1.f, 1.f, 1.f, chosen ? 1.f : .55f}, TextAnchor::Top);
+    overlay.DrawText(ROSTER[index].name, {x, y}, (chosen ? 40.f : 26.f) * unit, {1.f, 1.f, 1.f, chosen ? 1.f : .55f}, TextAnchor::Top);
     if (chosen)
-      overlay.DrawText(duel::ROSTER[index].title, {x, y + 46.f * unit}, 22.f * unit, Display({1.f, .62f, .08f}, 1.f), TextAnchor::Top);
+      overlay.DrawText(ROSTER[index].title, {x, y + 46.f * unit}, 22.f * unit, Display({1.f, .62f, .08f}, 1.f), TextAnchor::Top);
   }
 }
 auto DuelSystem::ForEachFigure(auto &&func) -> void {
-  DuelWorld::ForEach<duel::Seat, Animator, Transform>(app, [&](const EntityID id, duel::Seat *seat, Animator *animator, Transform *transform) {
-    if (seat->player >= 0 && seat->player < duel::DuelSim::PLAYERS)
+  DuelWorld::ForEach<Seat, Animator, Transform>(app, [&](const EntityID id, Seat *seat, Animator *animator, Transform *transform) {
+    if (seat->player >= 0 && seat->player < DuelSim::PLAYERS)
       func(seat->player, id, *animator, *transform);
   });
 }
@@ -387,20 +386,20 @@ auto DuelSystem::Tick() -> void {
     const auto buttons = app.GetButtons();
     const auto pressed = buttons & ~previousButtons;
     previousButtons = buttons;
-    const auto count = duel::ROSTER.size();
+    const auto count = ROSTER.size();
     auto moved = false;
-    if (pressed & (1u << duel::Left)) {
+    if (pressed & (1u << Left)) {
       picks[0] = (picks[0] + count - 1) % count;
       moved = true;
     }
-    if (pressed & (1u << duel::Right)) {
+    if (pressed & (1u << Right)) {
       picks[0] = (picks[0] + 1) % count;
       moved = true;
     }
     // The one chosen throws a punch as it steps forward, which is how a fighter says it is ready.
     if (auto *animator = moved && picks[0] < lineup.size() ? DuelWorld::Get<Animator>(app, lineup[picks[0]]) : nullptr)
       if (const auto *controller = app.GetAsset<AnimatorController>(animator->controller); controller)
-        Enter(*animator, *controller, duel::Punching);
+        Enter(*animator, *controller, Punching);
     return;
   }
   previousButtons = app.GetButtons();
@@ -412,7 +411,7 @@ auto DuelSystem::Tick() -> void {
   // one, this plays the tick itself: the player is the first figure and the second is played by
   // nobody, from the keyboard's buttons as they stood for this tick and nothing else.
   if (!app.GetNetwork()) {
-    const std::array<ButtonMask, duel::DuelSim::PLAYERS> buttons{app.GetButtons(), sim->Think(1)};
+    const std::array<ButtonMask, DuelSim::PLAYERS> buttons{app.GetButtons(), sim->Think(1)};
     sim->Advance(sim->GetTick(), buttons, false);
   }
   SyncAnimators();
@@ -487,7 +486,7 @@ auto DuelSystem::Update(const float) -> void {
     // A blow knocks the head back, and a figure that kept looking straight on through it would not
     // seem to have felt it. So the watching lets go while one lands and comes back after.
     if (auto *watch = FindGoal(animator, "watch"); watch) {
-      const auto wanted = animator.state == duel::Hit ? .0f : 1.f;
+      const auto wanted = animator.state == Hit ? .0f : 1.f;
       watch->weight += (wanted - watch->weight) * std::min(1.f, WATCH_EASE * app.DeltaTime());
     }
   });
@@ -510,13 +509,13 @@ auto DuelSystem::Update(const float) -> void {
       ++ring->fired;
     }
     hitAge = .0f;
-    hitStrength = sim->GetAnimator(impact.attacker).state == duel::Kicking ? 1.f : .7f;
+    hitStrength = sim->GetAnimator(impact.attacker).state == Kicking ? 1.f : .7f;
     hitPoint = {impact.x, impact.height, .0f};
   }
   // Dust where a figure lunges off or is knocked back: the moment its state becomes one of those.
-  for (auto index = 0; index < duel::DuelSim::PLAYERS; ++index) {
+  for (auto index = 0; index < DuelSim::PLAYERS; ++index) {
     const auto state = sim->GetAnimator(index).state;
-    if (state != shownState[index] && (state == duel::Lunge || state == duel::Hit))
+    if (state != shownState[index] && (state == Lunge || state == Hit))
       if (auto *puff = dust ? DuelWorld::Get<ParticleEmitter>(app, dust) : nullptr; puff) {
         DuelWorld::Game(app).Scene("Main").Entity<ParticleObject>(dust).At({sim->GetFighter(index).position, .05f, .0f});
         ++puff->fired;
@@ -605,7 +604,7 @@ auto DuelSystem::DrawHud() -> void {
   const auto top = 36.f * unit;
   const auto gap = 70.f * unit;
   const auto deltaTime = app.DeltaTime();
-  for (auto index = 0; index < duel::DuelSim::PLAYERS; ++index) {
+  for (auto index = 0; index < DuelSim::PLAYERS; ++index) {
     // A player's bar is what the other has landed on them, a bar's worth at a time.
     const auto taken = sim->GetFighter(1 - index).hits;
     const auto wanted = taken > 0 && taken % BAR_HITS == 0 ? .0f : 1.f - static_cast<float>(taken % BAR_HITS) / BAR_HITS;
@@ -629,6 +628,7 @@ auto DuelSystem::DrawHud() -> void {
     Fill(trailHealth[index], {1.f, .92f, .8f, .9f});
     const auto health = shownHealth[index];
     Fill(health, health > .3f ? Display({1.f, .62f, .08f}, 1.f) : Display({1.f, .12f, .05f}, 1.f));
-    overlay.DrawText(duel::ROSTER[picks[index]].name, {right ? edge + barWidth - width : edge - barWidth, top + barHeight + 8.f * unit}, 26.f * unit, {1.f, 1.f, 1.f, .95f}, right ? TextAnchor::TopRight : TextAnchor::TopLeft);
+    overlay.DrawText(ROSTER[picks[index]].name, {right ? edge + barWidth - width : edge - barWidth, top + barHeight + 8.f * unit}, 26.f * unit, {1.f, 1.f, 1.f, .95f}, right ? TextAnchor::TopRight : TextAnchor::TopLeft);
   }
 }
+} // namespace duel

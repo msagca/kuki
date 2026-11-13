@@ -7,14 +7,16 @@
 namespace kuki {
 class Application;
 } // namespace kuki
+namespace my_game {
 /// @brief Registers the controls, makes the assets and builds the scene.
 auto SetupMyGame(kuki::Application &) -> void;
 /// @brief The application: the game's world, and its systems in the order they run.
 /// `RenderingSystem` is required, and last; `StressSystem` before it is what `--stress` needs, and
 /// does nothing without it.
-class MyGame final : public kuki::SystemApplication<my_game::MyGameWorld, my_game::SpinSystem, kuki::StressSystem, kuki::RenderingSystem> {
+class MyGame final : public kuki::SystemApplication<MyGameWorld, SpinSystem, kuki::StressSystem, kuki::RenderingSystem> {
 public:
   MyGame();
 private:
   auto Start() -> void override;
 };
+} // namespace my_game

@@ -1,6 +1,7 @@
 #include <array>
 #include <board.hpp>
 #include <cstdlib>
+namespace chess {
 namespace {
 constexpr int KNIGHT_OFFSETS[8][2]{{1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}};
 constexpr int KING_OFFSETS[8][2]{{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
@@ -313,3 +314,4 @@ auto Board::State() const -> GameState {
     return check ? GameState::Check : GameState::Playing;
   return check ? GameState::Checkmate : GameState::Stalemate;
 }
+} // namespace chess
