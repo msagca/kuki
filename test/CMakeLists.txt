@@ -33,21 +33,21 @@ target_link_libraries(
 # scripts and a module entry point as well.
 target_sources(
   ${PROJECT_NAME}
-  PRIVATE "${CMAKE_SOURCE_DIR}/game/duel/src/duel_sim.cpp"
+  PRIVATE "${Kuki_SOURCE_DIR}/game/duel/src/duel_sim.cpp"
 )
 target_include_directories(
   ${PROJECT_NAME}
-  PRIVATE "${CMAKE_SOURCE_DIR}/game/duel/include"
+  PRIVATE "${Kuki_SOURCE_DIR}/game/duel/include"
 )
 # The frontier's map, for the same reason: generating it needs no window, and what it promises --
 # the rules kept everywhere, the layers agreeing with the ground -- is worth a test of its own.
 target_sources(
   ${PROJECT_NAME}
-  PRIVATE "${CMAKE_SOURCE_DIR}/game/frontier/src/terrain.cpp"
+  PRIVATE "${Kuki_SOURCE_DIR}/game/frontier/src/terrain.cpp"
 )
 target_include_directories(
   ${PROJECT_NAME}
-  PRIVATE "${CMAKE_SOURCE_DIR}/game/frontier/include"
+  PRIVATE "${Kuki_SOURCE_DIR}/game/frontier/include"
 )
 kuki_stage_runtime(${PROJECT_NAME})
 # Every installed header in one translation unit, compiled with what a game is given and nothing
@@ -59,7 +59,7 @@ kuki_stage_runtime(${PROJECT_NAME})
 file(
   GLOB KUKI_PUBLIC_HEADERS
   CONFIGURE_DEPENDS
-  "${CMAKE_SOURCE_DIR}/engine/include/*.hpp"
+  "${Kuki_SOURCE_DIR}/engine/include/*.hpp"
 )
 set(KUKI_PUBLIC_HEADERS_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/public_headers.cpp")
 set(KUKI_PUBLIC_HEADERS_TEXT "")
@@ -103,7 +103,7 @@ foreach(source ${COMPILE_FAIL_SOURCES})
   add_test(
     NAME CompileFail.${name}
     COMMAND
-      ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}" --target ${target} --config
+      ${CMAKE_COMMAND} --build "${Kuki_BINARY_DIR}" --target ${target} --config
       $<CONFIG>
   )
   set_tests_properties(

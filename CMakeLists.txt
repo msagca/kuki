@@ -53,190 +53,6 @@ function(enable_clang_tidy target)
     PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_OPTS}"
   )
 endfunction()
-# Hides the console window a release build of an application would otherwise open behind it.
-#
-# Windows decides this from the executable's subsystem, which is a property of the binary rather
-# than anything it can choose at run time: a CONSOLE image is given a console by the loader before
-# any of its code runs, so there is no point at which the program could decline one. Hence a link
-# flag rather than a call to `FreeConsole`, which would flash a window and then close it.
-#
-# Debug keeps its console, which is where the logs go -- see `Application`, which turns logging off
-# in release builds for the same reason this hides the window: neither is anything to show someone
-# playing a game.
-#
-# The entry point has to be named explicitly. `/SUBSYSTEM:WINDOWS` makes the CRT look for `WinMain`,
-# and every application here has an ordinary `main`; pointing the linker back at `mainCRTStartup`
-# keeps that working rather than making each one carry a second entry point for release builds.
-function(kuki_hide_console target)
-  if(NOT WIN32)
-    return()
-  endif()
-  set_target_properties(
-    ${target}
-    PROPERTIES WIN32_EXECUTABLE "$<NOT:$<CONFIG:Debug>>"
-  )
-  target_link_options(
-    ${target}
-    PRIVATE "$<$<NOT:$<CONFIG:Debug>>:LINKER:/ENTRY:mainCRTStartup>"
-  )
-endfunction()
-# Declares a game: a library holding everything the game is, and an executable that starts it.
-#
-# The library is the game. Under BUILD_SHARED_LIBS it is a shared one named `<target>Game`, which
-# the game's own executable links and the editor loads at run time to play the game inside itself
-# -- see `game_module.hpp`. The executable is `cmake/game_main.cpp` and nothing else, the same file
-# for every game.
-#
-# A static build has no such library. The engine would be linked into the game and into the editor
-# separately, and a game loaded into the editor would bring a second engine with it; so there the
-# sources are compiled straight into the executable, as they always were, and the editor cannot
-# host the game. Straight in rather than through a static library, because the scripts once
-# registered themselves from static initialisers and a linker drops an archive member nothing refers
-# to. Nothing registers itself that way now, but the module entry points are still found by name.
-#
-# `KUKI_GAME_CODE` is set for the caller to the target the game's sources are compiled in, which is
-# where its include directories and anything else about its code belong.
-function(kuki_add_game target)
-  set(entry "${CMAKE_SOURCE_DIR}/cmake/game_main.cpp")
-  if(BUILD_SHARED_LIBS)
-    add_library(${target}Game SHARED ${ARGN})
-    target_link_libraries(${target}Game PUBLIC KukiEngine)
-    add_executable(${target} "${entry}")
-    target_link_libraries(${target} PRIVATE ${target}Game)
-    install(
-      TARGETS ${target}Game
-      RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT ${target}
-      LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT ${target}
-    )
-    set(KUKI_GAME_CODE ${target}Game PARENT_SCOPE)
-  else()
-    add_executable(${target} ${ARGN} "${entry}")
-    target_link_libraries(${target} PRIVATE KukiEngine)
-    set(KUKI_GAME_CODE ${target} PARENT_SCOPE)
-  endif()
-  kuki_stage_runtime(${target})
-endfunction()
-# Copies the shared libraries an executable loads to the directory it is in.
-#
-# Windows looks for a DLL beside the executable and has no rpath to be told otherwise, so a shared
-# build that leaves the engine in `build/engine` produces executables that do not start. Nothing to
-# do in a static build, where the list is empty, and the generator expression is why this needs no
-# condition of its own.
-#
-# A target of its own that runs on every build, and not a step after the executable links. That is
-# what this was first, and it was wrong in a way that is hard to see: a change to the engine alone
-# rebuilds the engine's DLL and relinks nothing that loads it, so the step never ran and the
-# executable went on loading the engine from before the change -- built against the new headers,
-# run against the old code. `copy_if_different` makes running it every time cost nothing when
-# nothing has changed.
-function(kuki_stage_runtime target)
-  if(NOT WIN32)
-    return()
-  endif()
-  add_custom_target(
-    ${target}Runtime
-    ALL
-    COMMAND
-      "${CMAKE_COMMAND}" -E
-      "$<IF:$<BOOL:$<TARGET_RUNTIME_DLLS:${target}>>,copy_if_different,true>"
-      "$<TARGET_RUNTIME_DLLS:${target}>" "$<TARGET_FILE_DIR:${target}>"
-    COMMAND_EXPAND_LISTS
-    VERBATIM
-  )
-  add_dependencies(${target}Runtime ${target})
-endfunction()
-# Prints where a built executable ended up, so whoever ran the build does not have to go looking.
-#
-# A function each target calls rather than something applied centrally, because
-# `add_custom_command(TARGET ...)` may only be used in the directory that created the target --
-# so `game/CMakeLists.txt`, which discovers games without reading their files, cannot add it on
-# their behalf however much it would like to.
-function(kuki_report_binary target)
-  add_custom_command(
-    TARGET ${target}
-    POST_BUILD
-    COMMAND
-      ${CMAKE_COMMAND} -E cmake_echo_color
-      "Build successful. Binaries can be found at: $<TARGET_FILE:${target}>"
-    VERBATIM
-  )
-endfunction()
-# Blender, for the games whose models are kept as .blend files and exported at build time.
-#
-# Looked for on PATH first, then where the Windows installer and the macOS bundle put it -- newest
-# version first, since a .blend saved by a newer Blender may not open in an older one. Passing
-# -DKUKI_BLENDER_EXECUTABLE=<path> outranks all of it.
-file(
-  GLOB _kuki_blender_dirs
-  LIST_DIRECTORIES true
-  "$ENV{ProgramFiles}/Blender Foundation/Blender*"
-)
-list(SORT _kuki_blender_dirs COMPARE NATURAL ORDER DESCENDING)
-find_program(
-  KUKI_BLENDER_EXECUTABLE
-  NAMES blender
-  HINTS ${_kuki_blender_dirs} "/Applications/Blender.app/Contents/MacOS"
-  DOC "Blender, which exports the games' .blend models to glTF during the build"
-)
-unset(_kuki_blender_dirs)
-# Exports a .blend's `Export` collection to glTF beside a target's executable, one file a mesh.
-#
-# The .blend is the source and the only copy in the repository; the glTF files are build products,
-# as an object file is. Blender runs headless and only when the .blend or the export script has
-# changed. See `cmake/export_blend_gltf.py` for what is exported and how files are named.
-#
-# The export goes to a directory of its own in the build tree and is copied next to the executable
-# by the same command, rather than by a POST_BUILD step: that step runs only when the executable
-# relinks, and a model edited on its own would never reach a binary that had not changed. The
-# install takes the exported directory as it stands.
-#
-# A game with more than one .blend calls this once for each, with a different destination: each
-# export clears its own directory of models before writing, so two sharing one would leave only the
-# second's.
-#
-# Without Blender the target still builds, with a warning and no models, rather than the configure
-# failing: a missing model is something a game can report and carry on past, and a build machine
-# with no use for the game should not need Blender to build the engine.
-function(kuki_add_blender_models target blend destination)
-  if(NOT KUKI_BLENDER_EXECUTABLE)
-    message(
-      WARNING
-      "Blender was not found, so ${target} is built without the models in ${blend}. Install Blender or set KUKI_BLENDER_EXECUTABLE."
-    )
-    return()
-  endif()
-  set(script "${CMAKE_SOURCE_DIR}/cmake/export_blend_gltf.py")
-  set(exported "${CMAKE_CURRENT_BINARY_DIR}/${destination}.export")
-  set(stamp "${CMAKE_CURRENT_BINARY_DIR}/${destination}.stamp")
-  add_custom_command(
-    OUTPUT "${stamp}"
-    COMMAND
-      "${KUKI_BLENDER_EXECUTABLE}" --background --factory-startup "${blend}"
-      --python-exit-code 1 --python "${script}" -- "${exported}" "${stamp}"
-    COMMAND
-      ${CMAKE_COMMAND} -E copy_directory "${exported}"
-      "$<TARGET_FILE_DIR:${target}>/${destination}"
-    DEPENDS "${blend}" "${script}"
-    COMMENT "Exporting ${blend} to glTF"
-    VERBATIM
-  )
-  # Named for the destination as well as the target, so a game can export more than one .blend --
-  # each to a directory of its own -- without the second call redefining the first one's target.
-  string(MAKE_C_IDENTIFIER "${destination}" suffix)
-  add_custom_target(${target}Models_${suffix} DEPENDS "${stamp}")
-  add_dependencies(${target} ${target}Models_${suffix})
-  # Listed on the target so the .blend shows up beside the sources in an IDE.
-  target_sources(${target} PRIVATE "${blend}")
-  set_source_files_properties(
-    "${blend}"
-    PROPERTIES HEADER_FILE_ONLY TRUE VS_TOOL_OVERRIDE "None"
-  )
-  install(
-    DIRECTORY "${exported}/"
-    DESTINATION "${CMAKE_INSTALL_BINDIR}/${destination}"
-    COMPONENT ${target}
-  )
-endfunction()
 # Nought throughout until there is something to call a release. The number is shown in the editor
 # and stamped on the installer, and anything higher would be a claim.
 project(Kuki VERSION 0.0.0)
@@ -323,6 +139,9 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   endif()
 endif()
 include(GNUInstallDirs)
+# The functions a game's CMakeLists.txt calls -- `kuki_add_game` and the rest -- in a file of their
+# own, so that a game in a repository of its own, which adds kuki as a subdirectory, gets them too.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/KukiGame.cmake")
 option(${PROJECT_NAME_UPPER}_BUILD_TESTS "Build engine tests" OFF)
 option(${PROJECT_NAME_UPPER}_BUILD_GAMES "Build sample games" OFF)
 option(${PROJECT_NAME_UPPER}_ENABLE_LINTING "Enable linting" OFF)
@@ -424,52 +243,6 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "")
 set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "")
 set(GLFW_INSTALL ON CACHE BOOL "")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/glfw")
-## imgui
-set(
-  IMGUI_CPP_SOURCES
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_demo.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_draw.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_tables.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_widgets.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp"
-)
-if(WIN32)
-  list(
-    APPEND IMGUI_CPP_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx12.cpp"
-  )
-endif()
-add_library(imgui STATIC ${IMGUI_CPP_SOURCES})
-target_include_directories(
-  imgui
-  PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui"
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends"
-)
-target_link_libraries(imgui PUBLIC glfw)
-if(WIN32)
-  target_link_libraries(imgui PUBLIC kuki_d3d12)
-endif()
-## imgui-filebrowser
-add_library(imgui_filebrowser INTERFACE)
-target_include_directories(
-  imgui_filebrowser
-  INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui-filebrowser"
-)
-## imguizmo
-add_library(
-  imguizmo
-  STATIC
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/ImGuizmo.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/GraphEditor.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/ImSequencer.cpp"
-)
-target_include_directories(
-  imguizmo
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src"
-)
-target_link_libraries(imguizmo PUBLIC imgui)
 ## json
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/json")
 ## kaitai-struct (C++ runtime)
@@ -530,7 +303,7 @@ add_subdirectory(engine)
 # Copied at configure time from where each project keeps its own, so the text is theirs and is
 # never a copy that could go stale in this repository. What is used only to build or to test is
 # left out: nothing of googletest is in anything a user receives.
-set(KUKI_LICENSE_DIR "${CMAKE_BINARY_DIR}/licenses")
+set(KUKI_LICENSE_DIR "${CMAKE_CURRENT_BINARY_DIR}/licenses")
 set(
   KUKI_LICENSES
   "Kuki|LICENSE"
@@ -555,7 +328,7 @@ foreach(entry ${KUKI_LICENSES})
   list(GET entry 0 name)
   list(GET entry 1 file)
   configure_file(
-    "${CMAKE_SOURCE_DIR}/${file}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${file}"
     "${KUKI_LICENSE_DIR}/${name}.txt"
     COPYONLY
   )
@@ -565,9 +338,67 @@ install(
   DESTINATION "${CMAKE_INSTALL_BINDIR}/licenses"
   COMPONENT KukiEngine
 )
+# The engine is all a game in a repository of its own takes from here. Such a game pins kuki as a
+# submodule and adds it with `add_subdirectory` (see `template/`), and everything below -- the
+# editor, the games, the tests, the installer -- is this repository's own product, which the game
+# would otherwise build, test and package as part of itself.
+if(NOT PROJECT_IS_TOP_LEVEL)
+  return()
+endif()
+# The editor's libraries, after the cut above so a game's repository does not build them.
+## imgui
+set(
+  IMGUI_CPP_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_demo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_draw.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_tables.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_widgets.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp"
+)
+if(WIN32)
+  list(
+    APPEND IMGUI_CPP_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx12.cpp"
+  )
+endif()
+add_library(imgui STATIC ${IMGUI_CPP_SOURCES})
+target_include_directories(
+  imgui
+  PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends"
+)
+target_link_libraries(imgui PUBLIC glfw)
+if(WIN32)
+  target_link_libraries(imgui PUBLIC kuki_d3d12)
+endif()
+## imgui-filebrowser
+add_library(imgui_filebrowser INTERFACE)
+target_include_directories(
+  imgui_filebrowser
+  INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui-filebrowser"
+)
+## imguizmo
+add_library(
+  imguizmo
+  STATIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/ImGuizmo.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/GraphEditor.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/ImSequencer.cpp"
+)
+target_include_directories(
+  imguizmo
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src"
+)
+target_link_libraries(imguizmo PUBLIC imgui)
 add_subdirectory(editor)
 if(${PROJECT_NAME_UPPER}_BUILD_GAMES)
   add_subdirectory(game)
+  # The template, built as a game is so that a change to `cmake/KukiGame.cmake` or to the engine's
+  # public surface that would break a new game breaks this build first. Its root CMakeLists.txt,
+  # the one a game's own repository starts from, is the half that cannot be built here: it adds kuki.
+  add_subdirectory(template/game)
 endif()
 if(${PROJECT_NAME_UPPER}_BUILD_TESTS)
   enable_testing()

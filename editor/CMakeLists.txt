@@ -15,7 +15,7 @@ file(GLOB_RECURSE PNG_SOURCES CONFIGURE_DEPENDS "${IMAGE_SOURCE_DIR}/*.png")
 set(IMAGE_SOURCES ${JPG_SOURCES} ${PNG_SOURCES})
 # Shared with the games rather than owned here: a font is the one asset more than one target in
 # this repository wants, and the file is most of a megabyte. See `asset/font`.
-set(FONT_SOURCE_DIR "${CMAKE_SOURCE_DIR}/asset/font")
+set(FONT_SOURCE_DIR "${Kuki_SOURCE_DIR}/asset/font")
 file(GLOB_RECURSE TTF_SOURCES CONFIGURE_DEPENDS "${FONT_SOURCE_DIR}/*.ttf")
 set(FONT_SOURCES ${TTF_SOURCES})
 set(MATERIAL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/material")
@@ -127,7 +127,7 @@ add_custom_command(
 # The version the Help window reports, and the licences it shows. See `KUKI_LICENSES` in the root.
 target_compile_definitions(
   ${PROJECT_NAME}
-  PRIVATE KUKI_VERSION="${CMAKE_PROJECT_VERSION}"
+  PRIVATE KUKI_VERSION="${Kuki_VERSION}"
 )
 add_custom_command(
   TARGET ${PROJECT_NAME}

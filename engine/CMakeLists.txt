@@ -138,8 +138,8 @@ add_custom_command(
   COMMAND
     ${CMAKE_COMMAND} "-DSHADER_FILES=${SHADER_SOURCES}"
     "-DOUT_FILE=${EMBEDDED_SHADER_HEADER}" -P
-    "${CMAKE_SOURCE_DIR}/cmake/EmbedShaders.cmake"
-  DEPENDS ${SHADER_SOURCES} "${CMAKE_SOURCE_DIR}/cmake/EmbedShaders.cmake"
+    "${Kuki_SOURCE_DIR}/cmake/EmbedShaders.cmake"
+  DEPENDS ${SHADER_SOURCES} "${Kuki_SOURCE_DIR}/cmake/EmbedShaders.cmake"
   COMMENT "Embedding shader sources into ${EMBEDDED_SHADER_HEADER}"
   VERBATIM
 )
@@ -214,7 +214,7 @@ if(BUILD_SHARED_LIBS)
     COMPONENT ${PROJECT_NAME}
   )
   configure_package_config_file(
-    "${CMAKE_SOURCE_DIR}/cmake/KukiEngineConfig.cmake.in"
+    "${Kuki_SOURCE_DIR}/cmake/KukiEngineConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/KukiEngineConfig.cmake"
     INSTALL_DESTINATION "${KUKI_CMAKE_DESTINATION}"
   )
@@ -223,7 +223,7 @@ if(BUILD_SHARED_LIBS)
   # against a compatible major version. Anything looser would promise more than this can keep.
   write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/KukiEngineConfigVersion.cmake"
-    VERSION ${CMAKE_PROJECT_VERSION}
+    VERSION ${Kuki_VERSION}
     COMPATIBILITY SameMajorVersion
   )
   install(
