@@ -6,7 +6,7 @@ file(
 )
 # Everything in the game is made in code -- the map, the props, the buildings, the birds -- so the
 # font is all it stages.
-kuki_add_game(${PROJECT_NAME} SOURCES ${CPP_SOURCES} FONT)
+kuki_add_game(${PROJECT_NAME} SOURCES ${CPP_SOURCES} FONTS)
 # The map, which needs no window to generate: what it promises -- the rules kept everywhere, the
 # layers agreeing with the ground, one seed giving one map -- is tested here. See
 # `kuki_add_game_tests`.

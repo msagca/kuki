@@ -173,19 +173,24 @@ function(kuki_stage_assets target destination)
   add_custom_target(${target}Assets_${suffix} ALL ${commands} VERBATIM)
   add_dependencies(${target}Assets_${suffix} ${target})
 endfunction()
-# The font every game here writes its text in, for a game to pass to `kuki_add_game(... FONT)` or
-# to `SetOverlayFont` as `font/<this file's name>`. One file and not `asset/font`: the editor keeps
-# its icon font there too, which is most of a megabyte a game would carry and never open.
-set(
-  KUKI_FONT
-  "${CMAKE_CURRENT_LIST_DIR}/../asset/font/Inter-VariableFont_opsz,wght.ttf"
+# The fonts `kuki_add_game(... FONTS)` stages in `fonts/`, for a game to pass to `SetOverlayFont` as
+# `fonts/<a file's name>`: today one, Inter's static Regular, which every game writes its text in.
+# The static cut rather than the variable font Inter also ships: `Font` bakes through stb_truetype,
+# which reads only a variable font's default instance -- Regular at text size -- so the variable
+# file was twice the size for the same glyphs. Files listed rather than `assets/fonts` whole, so the
+# license beside them is not staged into every game's folder (the installer carries it with the
+# others, from `KUKI_LICENSES`), and a font later kept there is not carried by a game that never
+# opens it.
+cmake_path(
+  SET kuki_fonts_dir
+  NORMALIZE
+  "${CMAKE_CURRENT_LIST_DIR}/../assets/fonts"
 )
-cmake_path(NORMAL_PATH KUKI_FONT)
 set(
-  KUKI_FONT
-  "${KUKI_FONT}"
+  KUKI_FONTS
+  "${kuki_fonts_dir}/Inter-Regular.ttf"
   CACHE INTERNAL
-  "The font games write their text in"
+  "The fonts games write their text in"
 )
 # Declares a game: a library holding everything the game is, and an executable that starts it.
 #
@@ -193,7 +198,7 @@ set(
 #     SOURCES <file>...         the game's sources
 #     [INCLUDE <dir>...]        its own headers, private to it; `include/` beside the call if absent
 #     [ASSETS <dir>...]         directories staged beside the executable under their own names
-#     [FONT])                   stages `KUKI_FONT` in `font/`
+#     [FONTS])                  stages `KUKI_FONTS` in `fonts/`
 #
 # Everything a game needs to start comes with it: the launcher, the engine's DLLs beside it, the
 # HLSL compiler, the console hidden in a release build, its install under a component named after
@@ -210,7 +215,7 @@ set(
 # `KUKI_GAME_CODE` is set for the caller to the target the game's sources are compiled in, which is
 # where anything else about its code belongs.
 function(kuki_add_game target)
-  cmake_parse_arguments(PARSE_ARGV 1 GAME "FONT" "" "SOURCES;INCLUDE;ASSETS")
+  cmake_parse_arguments(PARSE_ARGV 1 GAME "FONTS" "" "SOURCES;INCLUDE;ASSETS")
   if(NOT GAME_SOURCES)
     message(FATAL_ERROR "kuki_add_game(${target}) was given no SOURCES")
   endif()
@@ -253,8 +258,8 @@ function(kuki_add_game target)
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
     COMPONENT ${target}
   )
-  if(GAME_FONT)
-    kuki_stage_assets(${target} font "${KUKI_FONT}")
+  if(GAME_FONTS)
+    kuki_stage_assets(${target} fonts ${KUKI_FONTS})
   endif()
   foreach(directory ${GAME_ASSETS})
     get_filename_component(name "${directory}" NAME)

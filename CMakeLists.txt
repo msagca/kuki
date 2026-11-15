@@ -315,7 +315,7 @@ set(
   "DirectX-Headers|external/DirectX-Headers/LICENSE"
   "GLFW|external/glfw/LICENSE.md"
   "GLM|external/glm/copying.txt"
-  "Inter|asset/font/Inter-LICENSE.txt"
+  "Inter|assets/fonts/Inter-LICENSE.txt"
   "JSON for Modern C++|external/json/LICENSE.MIT"
   "Kaitai Struct|external/kaitai-struct/LICENSE"
   "spdlog|external/spdlog/LICENSE"

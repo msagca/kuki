@@ -42,8 +42,8 @@ auto SetupMyGame(Application &app) -> void {
   // rebindable there; a key is only ever its default.
   app.RegisterBinding(REVERSE, Key::R, "Spin the other way");
   // The settings menu (Escape) is written in the overlay's font, so without one it opens unseen.
-  // Staged beside the executable by `kuki_add_game(... FONT)`.
-  if (!app.SetOverlayFont(ResolvePath("font/Inter-VariableFont_opsz,wght.ttf")))
+  // Staged beside the executable by `kuki_add_game(... FONTS)`.
+  if (!app.SetOverlayFont(ResolvePath("fonts/Inter-Regular.ttf")))
     spdlog::warn("[MyGame] No font, so nothing will be written on screen");
   // One white material: the colour is the mesh's, by its vertices, so one material serves all.
   auto material = std::make_unique<MaterialAsset>(MakeBuiltInAssetID("my_game/material/painted"));

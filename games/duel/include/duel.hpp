@@ -12,7 +12,7 @@ namespace kuki {
 class Application;
 } // namespace kuki
 namespace duel {
-inline constexpr const char *DUEL_FONT = "font/Inter-VariableFont_opsz,wght.ttf";
+inline constexpr const char *DUEL_FONT = "fonts/Inter-Regular.ttf";
 /// @brief Loads the game's assets and builds its scene into the application it is given.
 ///
 /// The scene is all it builds: what plays the game is `DuelSystem`, which the application lists

@@ -5,4 +5,4 @@ file(
   CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
-kuki_add_game(MyGame SOURCES ${CPP_SOURCES} FONT)
+kuki_add_game(MyGame SOURCES ${CPP_SOURCES} FONTS)

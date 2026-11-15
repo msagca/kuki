@@ -5,7 +5,7 @@ file(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 # The text on screen is drawn in the font. See `kuki_add_game`.
-kuki_add_game(${PROJECT_NAME} SOURCES ${CPP_SOURCES} FONT)
+kuki_add_game(${PROJECT_NAME} SOURCES ${CPP_SOURCES} FONTS)
 # The fighter, rigged and animated in one .blend and exported to `model/` beside the executable as
 # one glTF with its skeleton and every clip. `tools/make_fighter.py` is what wrote the .blend.
 kuki_add_blender_models(
