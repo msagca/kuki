@@ -4,6 +4,21 @@ A game engine written in C++23, made up of:
 
 - **KukiEngine**, the engine library: an archetype-based ECS fixed at compile time, a fixed-tick game loop with rebindable buttons and a gesture recognizer, skeletal animation with state machines and inverse kinematics, rollback networking, procedural generation (irregular grids, wave function collapse over any graph, noise), navigation meshes, flocking, and a render graph with a Direct3D 12 backend (physically based lighting, image-based lighting, shadows, bloom, a computed sky with clouds and fog, anti-aliasing).
 - **KukiEditor**, a [Dear ImGui](https://github.com/ocornut/imgui) editor for building, saving and playing scenes.
+- **kuki**, the command a game is started and looked after with, in a repository of its own with the engine as a submodule.
+
+## Starting a game
+
+The installer's **Kuki CLI** component puts `kuki` on the PATH. Then:
+
+```bash
+kuki new my-game        # ./my-game: git, the engine pinned in external/kuki, the template named MyGame
+cd my-game
+kuki build              # or: kuki build --release
+kuki run                # arguments after it go to the game
+kuki update             # later: move the engine to its latest main
+```
+
+Nothing is committed by `kuki new`; the first commit is yours. Git and Git LFS are needed, and the Windows SDK for the HLSL compiler.
 
 ## Installation
 

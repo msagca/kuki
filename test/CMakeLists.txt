@@ -45,6 +45,16 @@ target_sources(
   ${PROJECT_NAME}
   PRIVATE "${Kuki_SOURCE_DIR}/game/frontier/src/terrain.cpp"
 )
+# How `kuki new` makes a game's names from the one it is given, compiled in as the rules are. The
+# rest of the CLI runs git and CMake, which a test of its own would have to stand up a repository for.
+target_sources(
+  ${PROJECT_NAME}
+  PRIVATE "${Kuki_SOURCE_DIR}/cli/src/game_name.cpp"
+)
+target_include_directories(
+  ${PROJECT_NAME}
+  PRIVATE "${Kuki_SOURCE_DIR}/cli/include"
+)
 target_include_directories(
   ${PROJECT_NAME}
   PRIVATE "${Kuki_SOURCE_DIR}/game/frontier/include"

@@ -55,7 +55,9 @@ def tracked_files() -> list[PurePosixPath]:
 
 
 def documents(files: list[PurePosixPath]) -> list[PurePosixPath]:
-    return [f for f in files if f.name == "CLAUDE.md" or (f.name == "SKILL.md" and f.parts[:2] == (".claude", "skills"))]
+    # Not `template/`'s: it is the CLAUDE.md of a game's repository, copied there by `kuki new`, and
+    # names what that repository has (`external/kuki/...`), not what this one does.
+    return [f for f in files if (f.name == "CLAUDE.md" and f.parts[0] != "template") or (f.name == "SKILL.md" and f.parts[:2] == (".claude", "skills"))]
 
 
 def spans(text: str):

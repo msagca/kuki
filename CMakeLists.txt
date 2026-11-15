@@ -393,6 +393,7 @@ target_include_directories(
 )
 target_link_libraries(imguizmo PUBLIC imgui)
 add_subdirectory(editor)
+add_subdirectory(cli)
 if(${PROJECT_NAME_UPPER}_BUILD_GAMES)
   add_subdirectory(game)
   # The template, built as a game is so that a change to `cmake/KukiGame.cmake` or to the engine's
@@ -473,6 +474,11 @@ if(WIN32)
   set(CPACK_NSIS_DISPLAY_NAME ${PROJECT_NAME})
   set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
   set(CPACK_NSIS_URL_INFO_ABOUT ${PROJECT_URL})
+  # The installer's page offering to put `bin` on the PATH, so `kuki` can be typed anywhere. CPack's
+  # NSIS template adds `$INSTDIRin` and no other directory, which is why the CLI is installed
+  # there rather than in a directory of its own. The engine's and the games' DLLs come onto the
+  # PATH with it; Windows looks there last for a DLL, after an application's own directory.
+  set(CPACK_NSIS_MODIFY_PATH ON)
 elseif(APPLE)
   set(CPACK_BUNDLE_NAME ${PROJECT_NAME})
   set(CPACK_DMG_VOLUME_NAME ${PROJECT_NAME})
@@ -497,7 +503,14 @@ cpack_add_component(
   DESCRIPTION "An ImGui-based editor application."
   DEPENDS KukiEngine
 )
-set(CPACK_COMPONENTS_ALL KukiEngine KukiEditor)
+# `kuki`, which starts a game's repository and builds and runs it there. Its own component so it can
+# be left out, and selected by default: a game is not made on this engine without it.
+cpack_add_component(
+  KukiCli
+  DISPLAY_NAME "Kuki CLI"
+  DESCRIPTION "The kuki command: start a game with `kuki new`, then build, run and update it."
+)
+set(CPACK_COMPONENTS_ALL KukiEngine KukiEditor KukiCli)
 # One entry per game rather than one for all of them, gathered under a group so they read as a set
 # in the installer's tree. The names come from `game/CMakeLists.txt`, which discovers them, so a new
 # game appears here by existing rather than by being listed.
