@@ -174,11 +174,12 @@ function(kuki_stage_assets target destination)
   add_dependencies(${target}Assets_${suffix} ${target})
 endfunction()
 # The font every game here writes its text in, for a game to pass to `kuki_add_game(... FONT)` or
-# to `SetOverlayFont` as `font/<this file's name>`. One file and not `asset/font`: the editor keeps
-# its icon font there too, which is most of a megabyte a game would carry and never open.
+# to `SetOverlayFont` as `font/<this file's name>`. One file and not `assets/fonts`, so the license
+# beside it is not staged into every game's folder (the installer carries it with the others, from
+# `KUKI_LICENSES`), and anything later kept there is not carried by a game that never opens it.
 set(
   KUKI_FONT
-  "${CMAKE_CURRENT_LIST_DIR}/../asset/font/Inter-VariableFont_opsz,wght.ttf"
+  "${CMAKE_CURRENT_LIST_DIR}/../assets/fonts/Inter-VariableFont_opsz,wght.ttf"
 )
 cmake_path(NORMAL_PATH KUKI_FONT)
 set(
