@@ -3,7 +3,7 @@
 Guidance for Claude Code in this repository. This file holds what nearly every change needs; the
 rest is read where it is used:
 
-- `engine/`, `game/duel/`, `game/frontier/` and `engine/src/shader/` have a `CLAUDE.md`
+- `engine/`, `games/duel/`, `games/frontier/` and `engine/src/shader/` have a `CLAUDE.md`
   of their own, loaded with the files there.
 - Recipes are skills in `.claude/skills/`: `capture`, `add-game`, `add-binding`,
   `add-graphics-setting`, `add-engine-component`, `add-render-pass`, `add-compile-fail-check`.
@@ -29,10 +29,11 @@ installer is made for a release and not otherwise), `MSVC` (built with `MSVC-Deb
 `MSVC-Release`), `Clang-Debug`/`Clang-Release` (Ninja). All share `build/`, so switching
 reconfigures in place -- to or from `Lint` rebuilds everything, since clang-tidy runs with every
 compile. Games are on everywhere; the tests (`KUKI_BUILD_TESTS`) cover what has no window -- the
-tick, gestures, the ECS, rollback, networking, the duel's rules. A `test/compile_fail/*.cpp` passes
+tick, gestures, the ECS, rollback, networking in `KukiTest`, and a game's rules in its own
+`<Target>Test` (the duel's fights and netplay, the frontier's map); `ctest` runs them all. A `tests/compile_fail/*.cpp` passes
 only if the compiler prints its expected message on the first line.
 
-Executables land in `build/game/<name>/`, `build/cli/`, `build/test/`. A game's folder gets fresh
+Executables land in `build/games/<name>/` (a game's tests beside it), `build/cli/`, `build/tests/`. A game's folder gets fresh
 DLLs from its `<Target>Runtime` target: build both, or the game runs against the old engine.
 `--capture <file.png>` saves the frame after `--capture-frame <n>` (300) and quits -- how to see
 what a build draws (the `capture` skill). `--record <file.mp4>` pipes `--record-frames <n>` (600)
@@ -58,8 +59,9 @@ beside each executable -- without them nothing is drawn.
   `internal/` (the backend, shader constants, `ApplicationInternal`) is reached only by the engine
   and, through `KukiEngineInternal`, the tests. No `include/` header
   may include an `internal/` one -- `KukiPublicHeaders`, built with the tests, fails if one does.
-- `game/` -- a subdirectory with a `CMakeLists.txt` is a game, found without registration. It links
-  `KukiEngine` alone, through `kuki_add_game` (`cmake/KukiGame.cmake`).
+- `games/` -- a subdirectory with a `CMakeLists.txt` is a game, found without registration. It links
+  `KukiEngine` alone, through `kuki_add_game` (`cmake/KukiGame.cmake`), and keeps its tests in its
+  own `tests/`, through `kuki_add_game_tests` -- laid out as it would be in a repository of its own.
 - `template/` -- a game laid out as a repository of its own, which `kuki new` copies out of the
   engine it pins: kuki as the submodule external/kuki, added with `add_subdirectory`, after which
   kuki builds only its engine (no CLI, games, tests or installer). Its placeholders are
@@ -71,7 +73,7 @@ beside each executable -- without them nothing is drawn.
   (git, the engine pinned, the template renamed), `update` moves its engine to the latest main,
   `build` and `run` wrap `cmake --workflow` and the executable. Standard library only, no engine;
   `ParseGameName` and `RenameTemplate` are compiled into the tests.
-- `test/` -- gtest, with the duel's rules and the frontier's map compiled in.
+- `tests/` -- gtest, the engine's and the CLI's; it names no game.
 - `external/` -- submodules, never patched; their quirks are worked around, and explained, in the
   root `CMakeLists.txt`.
 
@@ -116,13 +118,13 @@ commit. Where the repo falls short of one, the shortfall is a GitHub issue, not 
 - **Every game plays from the keyboard alone.** Every action is a named binding
   (`RegisterBinding`/`RegisterButton`); the mouse is a second way, never the only one.
 - **Rules are deterministic and windowless.** A game's rules are its `Tick`, in files compiled into
-  the tests (`duel_sim.cpp`, `terrain.cpp`): the same state and buttons, or seed, give the same
+  its own tests (`duel_sim.cpp`, `terrain.cpp`): the same state and buttons, or seed, give the same
   result on every machine, which rollback and shared maps stand on. No clock, `<random>`
   distribution, unordered iteration or anything drawn reaches a rule.
 - **Refuse mistakes at compile time**, by a `static_assert` or constraint whose message says what to
-  do instead, each with a check in `test/compile_fail/`.
+  do instead, each with a check in `tests/compile_fail/`.
 - **Content is made by code**: `MeshBuilder`, the generators, or a script in the repo run by hand
-  (`game/duel/tools/make_fighter.py`, `game/duel/tools/make_stages.py`), not modelled by hand -- a change is a readable
+  (`games/duel/tools/make_fighter.py`, `games/duel/tools/make_stages.py`), not modelled by hand -- a change is a readable
   diff, variety is a seed, and LFS holds only what a script wrote.
 - **No heap allocation on the hot path** (`Tick`, `Update`, `LateUpdate`) once a scene runs: buffers
   are sized at start and reused.
@@ -292,7 +294,7 @@ included.
   folder's `CLAUDE.md`. A note goes stale the day it is fixed and nobody remembers to delete it; an
   issue is closed by the pull request that fixes it. Look at the open issues before starting work
   in an area (`gh issue list`).
-- Every name between backticks in a `CLAUDE.md` or a skill must exist: `test/check_docs.py`, the
+- Every name between backticks in a `CLAUDE.md` or a skill must exist: `tests/check_docs.py`, the
   `Docs.NamesExist` test, fails on one a rename left behind. A rename brings the text along.
 - CI (`build-and-test.yml`) builds the `Test` preset and runs `ctest` (Windows/cl) on a push to any
   branch but `main`. `main` is protected, kept in step with the remote and never worked on: work

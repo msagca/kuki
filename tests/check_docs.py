@@ -11,7 +11,7 @@ What is checked is everything between backticks outside fenced code blocks:
 - A path (it has a `/` or a file extension) must be a file or directory in git. With a `/`, it is
   resolved against the document's own directory, the repository's root and `engine/` (where
   `include/...` and `internal/...` are written from) -- not matched against the end of any path,
-  which would let `tools/x.py` in the root pass for `game/duel/tools/x.py`. Without one it is a bare
+  which would let `tools/x.py` in the root pass for `games/duel/tools/x.py`. Without one it is a bare
   name, as headers are included, and may be anywhere. A `<placeholder>` matches one path segment
   and `*` a glob. A path the build writes (under `build/`) is not checked; a file name the code
   writes or reads at run time (`kuki.config.json`) passes if the code spells it.
@@ -24,7 +24,7 @@ That is deliberately loose -- `Camera::transform` passes if `Camera` and `transf
 somewhere, not only if one is a member of the other -- because what goes stale in practice is a name
 that has gone altogether, and a checker that needed the C++ parsed would be a project of its own.
 
-Run by hand: `python test/check_docs.py` from anywhere in the repository.
+Run by hand: `python tests/check_docs.py` from anywhere in the repository.
 """
 
 import fnmatch

@@ -15,4 +15,4 @@ and are dressed in `stage.cpp`; `StageSystem` builds the one `--stage` names, sw
 game page, and animates the lights and lightning. Both scripts are run by hand and their .blend files
 committed.
 
-The rules (`duel_sim.cpp`) are windowless and compiled into the tests.
+The rules (`duel_sim.cpp`) are windowless and compiled into the game's tests, `tests/duel_sim_test.cpp`.

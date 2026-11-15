@@ -142,7 +142,11 @@ include(GNUInstallDirs)
 # The functions a game's CMakeLists.txt calls -- `kuki_add_game` and the rest -- in a file of their
 # own, so that a game in a repository of its own, which adds kuki as a subdirectory, gets them too.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/KukiGame.cmake")
-option(${PROJECT_NAME_UPPER}_BUILD_TESTS "Build engine tests" OFF)
+option(
+  ${PROJECT_NAME_UPPER}_BUILD_TESTS
+  "Build the tests: the engine's, the CLI's and each game's"
+  OFF
+)
 option(${PROJECT_NAME_UPPER}_BUILD_GAMES "Build sample games" OFF)
 option(${PROJECT_NAME_UPPER}_ENABLE_LINTING "Enable linting" OFF)
 # Claims the cache entry for the generator list before any vendored project can.
@@ -334,6 +338,15 @@ install(
   DESTINATION "${CMAKE_INSTALL_BINDIR}/licenses"
   COMPONENT KukiEngine
 )
+# googletest, for whichever tests are built: the engine's and the CLI's in `tests/`, and each game's
+# beside it, through `kuki_add_game_tests`. Before the early return below, because a game in a
+# repository of its own builds its tests against this one too -- and before the games, which link it.
+if(${PROJECT_NAME_UPPER}_BUILD_TESTS)
+  set(INSTALL_GTEST OFF CACHE BOOL "")
+  # Static whatever the rest is. As a DLL gmock does not link here -- its mutex is not exported --
+  # and a test framework has no reason to be shared with anything.
+  kuki_static_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/googletest")
+endif()
 # The engine is all a game in a repository of its own takes from here. Such a game pins kuki as a
 # submodule and adds it with `add_subdirectory` (see `template/`), and everything below -- the
 # CLI, the games, the tests, the installer -- is this repository's own product, which the game
@@ -341,21 +354,21 @@ install(
 if(NOT PROJECT_IS_TOP_LEVEL)
   return()
 endif()
+# Before the games, whose tests are registered in their own directories: CTest reads the tests of a
+# directory only where testing was enabled in it or above it.
+if(${PROJECT_NAME_UPPER}_BUILD_TESTS)
+  enable_testing()
+endif()
 add_subdirectory(cli)
 if(${PROJECT_NAME_UPPER}_BUILD_GAMES)
-  add_subdirectory(game)
+  add_subdirectory(games)
   # The template, built as a game is so that a change to `cmake/KukiGame.cmake` or to the engine's
   # public surface that would break a new game breaks this build first. Its root CMakeLists.txt,
   # the one a game's own repository starts from, is the half that cannot be built here: it adds kuki.
   add_subdirectory(template/game)
 endif()
 if(${PROJECT_NAME_UPPER}_BUILD_TESTS)
-  enable_testing()
-  set(INSTALL_GTEST OFF CACHE BOOL "")
-  # Static whatever the rest is. As a DLL gmock does not link here -- its mutex is not exported --
-  # and a test framework has no reason to be shared with anything.
-  kuki_static_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/googletest")
-  add_subdirectory(test)
+  add_subdirectory(tests)
 else()
   # What a configure with tests on left behind. Every preset shares one build directory, and CMake
   # neither rewrites nor removes the CTest files once testing is no longer enabled, so after a
@@ -366,7 +379,7 @@ else()
   file(
     REMOVE
     "${CMAKE_CURRENT_BINARY_DIR}/CTestTestfile.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/test/CTestTestfile.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/tests/CTestTestfile.cmake"
   )
 endif()
 # What Visual Studio runs on F5: the frontier, the game made entirely in code and the one a new
@@ -417,11 +430,12 @@ cpack_add_component(
 cpack_add_component(
   KukiCli
   DISPLAY_NAME "Kuki CLI"
-  DESCRIPTION "The kuki command: start a game with `kuki new`, then build, run and update it."
+  DESCRIPTION
+    "The kuki command: start a game with `kuki new`, then build, run and update it."
 )
 set(CPACK_COMPONENTS_ALL KukiEngine KukiCli)
 # One entry per game rather than one for all of them, gathered under a group so they read as a set
-# in the installer's tree. The names come from `game/CMakeLists.txt`, which discovers them, so a new
+# in the installer's tree. The names come from `games/CMakeLists.txt`, which discovers them, so a new
 # game appears here by existing rather than by being listed.
 if(${PROJECT_NAME_UPPER}_BUILD_GAMES AND KUKI_GAME_TARGETS)
   cpack_add_component_group(

@@ -13,7 +13,7 @@ Every action is a binding: rebindable in the settings menu's controls, saved in 
    `GetButtons()`'s mask. There are at most thirty-two buttons, and their order is the protocol --
    two peers must register the same buttons in the same order.
 2. **The name.** `"<Game>.<Action>"` (`"Frontier.Demolish"`), a constant in the game's controls
-   header (`game/frontier/include/controls.hpp`) so every system reads it by the same name. The
+   header (`games/frontier/include/controls.hpp`) so every system reads it by the same name. The
    description is the third argument, in the words the controls page shows ("Pull down the
    building under the cursor").
 3. **The default key.** A `Key` alone (`key.hpp`), never a chord: a game's action is one key. A

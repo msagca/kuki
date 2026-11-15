@@ -85,7 +85,7 @@ This builds and nothing else: no tests and no installer. See [Presets](#presets)
 
 > If it fails due to missing dependencies, refer to the error messages to install the required packages. Then, run the command again.
 
-If it succeeds, you can launch the games from `build/game/<name>/` and `kuki` from `build/cli/`.
+If it succeeds, you can launch the games from `build/games/<name>/` and `kuki` from `build/cli/`.
 
 > Refer to the build output for the exact path of each executable.
 

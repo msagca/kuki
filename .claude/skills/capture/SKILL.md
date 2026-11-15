@@ -12,9 +12,9 @@ sixty), saves the last one and quits.
 
 | What | Target | Executable |
 |---|---|---|
-| chess | `KukiChess` | `build/game/chess/KukiChess.exe` |
-| duel | `KukiDuel` | `build/game/duel/KukiDuel.exe` |
-| frontier | `KukiFrontier` | `build/game/frontier/KukiFrontier.exe` |
+| chess | `KukiChess` | `build/games/chess/KukiChess.exe` |
+| duel | `KukiDuel` | `build/games/duel/KukiDuel.exe` |
+| frontier | `KukiFrontier` | `build/games/frontier/KukiFrontier.exe` |
 
 Build the target **and** `<Target>Runtime`. The game alone leaves the DLLs from the last build
 beside it, and the game then runs against the engine from before -- the change you want to see is
@@ -33,7 +33,7 @@ Give an absolute path in the session's scratchpad, never one in the repository, 
 run is a few seconds plus shader compilation.
 
 ```bash
-build/game/frontier/KukiFrontier.exe --capture "<scratchpad>/frontier.png" --seed 7 --demo
+build/games/frontier/KukiFrontier.exe --capture "<scratchpad>/frontier.png" --seed 7 --demo
 ```
 
 What sets up the picture (`--help` on any executable lists everything it reads):
@@ -63,7 +63,7 @@ is judged from a video. `--record <file.mp4>` records `--record-frames <n>` fram
 seconds) and quits:
 
 ```bash
-build/game/frontier/KukiFrontier.exe --record "<scratchpad>/frontier.mp4" --record-frames 180 --seed 7 --demo
+build/games/frontier/KukiFrontier.exe --record "<scratchpad>/frontier.mp4" --record-frames 180 --seed 7 --demo
 ```
 
 - It needs `ffmpeg` on the `PATH` (piped to, never linked); without it the run says so and exits 1.

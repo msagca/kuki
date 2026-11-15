@@ -1,7 +1,7 @@
 # The frontier
 
 A strategy map with no units yet, all made in code. `GenerateMap` (`terrain.cpp`, windowless and
-tested) grows a grid, collapses nine terrains over it biased by an island field and ridges rising from
+tested in `tests/terrain_test.cpp`) grows a grid, collapses nine terrains over it biased by an island field and ridges rising from
 the shore, raises terraces and peaks, lays resource sites (stone and ore over two or three cells), and
 builds the movement layer and navmesh. `MapSystem` builds the scene (a mesh per terrain, step faces,
 the sea in three tints, shore foam, props as entities) and draws the layers, the map and hovered-cell

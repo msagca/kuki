@@ -21,30 +21,12 @@ target_include_directories(
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 # glfw for `input_trigger_test.cpp`, which writes triggers in GLFW's numbers as saved preferences do.
-target_link_libraries(
-  ${PROJECT_NAME}
-  PRIVATE KukiEngineInternal glfw gtest
-)
-# The rules of the duel game, compiled in as they are. They know nothing of a window or a scene,
-# which is the point of them, so they are tested the way the engine's windowless parts are. The
-# game's own library cannot be linked instead: it is only built with the games, and holds the
-# scripts and a module entry point as well.
-target_sources(
-  ${PROJECT_NAME}
-  PRIVATE "${Kuki_SOURCE_DIR}/game/duel/src/duel_sim.cpp"
-)
-target_include_directories(
-  ${PROJECT_NAME}
-  PRIVATE "${Kuki_SOURCE_DIR}/game/duel/include"
-)
-# The frontier's map, for the same reason: generating it needs no window, and what it promises --
-# the rules kept everywhere, the layers agreeing with the ground -- is worth a test of its own.
-target_sources(
-  ${PROJECT_NAME}
-  PRIVATE "${Kuki_SOURCE_DIR}/game/frontier/src/terrain.cpp"
-)
-# How `kuki new` makes a game's names from the one it is given, compiled in as the rules are. The
-# rest of the CLI runs git and CMake, which a test of its own would have to stand up a repository for.
+target_link_libraries(${PROJECT_NAME} PRIVATE KukiEngineInternal glfw gtest)
+# The engine's tests and the CLI's, and no game's: a game's tests are beside its code, in
+# `games/<name>/tests/`, made by `kuki_add_game_tests` the same way here as in a repository of its own.
+#
+# How `kuki new` makes a game's names from the one it is given, compiled in as it is. The rest of
+# the CLI runs git and CMake, which a test of its own would have to stand up a repository for.
 target_sources(
   ${PROJECT_NAME}
   PRIVATE "${Kuki_SOURCE_DIR}/cli/src/game_name.cpp"
@@ -52,10 +34,6 @@ target_sources(
 target_include_directories(
   ${PROJECT_NAME}
   PRIVATE "${Kuki_SOURCE_DIR}/cli/include"
-)
-target_include_directories(
-  ${PROJECT_NAME}
-  PRIVATE "${Kuki_SOURCE_DIR}/game/frontier/include"
 )
 kuki_stage_runtime(${PROJECT_NAME})
 # Every installed header in one translation unit, compiled with what a game is given and nothing

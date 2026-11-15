@@ -20,3 +20,14 @@ kuki_add_blender_models(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/model/stages.blend"
   stage
 )
+# The rules, which need no window: the same state and buttons give the same fight, which rollback
+# stands on. See `kuki_add_game_tests`.
+file(
+  GLOB TEST_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp"
+)
+kuki_add_game_tests(
+  ${PROJECT_NAME}
+  SOURCES ${TEST_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/src/duel_sim.cpp"
+)

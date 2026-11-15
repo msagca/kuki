@@ -1,11 +1,11 @@
 ---
 name: add-compile-fail-check
-description: Add a test that a mistake is refused at compile time (a static_assert or constraint in the Kuki engine). Use when adding or changing such a check -- every promise the engine makes to refuse something at compile time has a test in test/compile_fail.
+description: Add a test that a mistake is refused at compile time (a static_assert or constraint in the Kuki engine). Use when adding or changing such a check -- every promise the engine makes to refuse something at compile time has a test in tests/compile_fail.
 ---
 
 # Add a compile-fail check
 
-`test/compile_fail/*.cpp` are picked up by a glob in `test/CMakeLists.txt`; nothing to register.
+`tests/compile_fail/*.cpp` are picked up by a glob in `tests/CMakeLists.txt`; nothing to register.
 Each becomes an object library left out of the build (`KukiCompileFail_<name>`) and a test
 `CompileFail.<name>` that builds it and passes only if the compiler's output matches the source's
 first line.
