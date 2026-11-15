@@ -8,14 +8,34 @@ A game engine written in C++23, made up of:
 
 ## Starting a game
 
-The installer's **Kuki CLI** component puts `kuki` on the PATH. Then:
+The installer's **Kuki CLI** component puts `kuki` on the PATH. Then make the game's repository, `./my-game`: git, the engine pinned in `external/kuki`, and the template named `MyGame`.
 
 ```bash
-kuki new my-game        # ./my-game: git, the engine pinned in external/kuki, the template named MyGame
+kuki new my-game
+```
+
+Go into it:
+
+```bash
 cd my-game
-kuki build              # or: kuki build --release
-kuki run                # arguments after it go to the game
-kuki update             # later: move the engine to its latest main
+```
+
+Build it (`kuki build --release` for a release build):
+
+```bash
+kuki build
+```
+
+Run it; any arguments after `run` go to the game:
+
+```bash
+kuki run
+```
+
+Later, move the engine to its latest main:
+
+```bash
+kuki update
 ```
 
 Nothing is committed by `kuki new`; the first commit is yours. Git and Git LFS are needed, and the Windows SDK for the HLSL compiler.
