@@ -13,7 +13,7 @@ namespace kuki {
 class Application;
 } // namespace kuki
 namespace frontier {
-inline constexpr const char *FRONTIER_FONT = "font/Inter-VariableFont_opsz,wght.ttf";
+inline constexpr const char *FRONTIER_FONT = "fonts/Inter-Regular.ttf";
 /// @brief Loads the game's assets and builds the parts of its scene that every map shares: the
 /// camera, the sun, the sky, the air, the wind and the look. The map itself is `MapSystem`'s.
 auto SetupFrontier(kuki::Application &) -> void;

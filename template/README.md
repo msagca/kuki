@@ -31,7 +31,7 @@ first. Git LFS is needed for the engine's binary assets, and the Windows SDK for
 ## What goes where
 
 - `CMakeLists.txt` -- adds the engine, then the game.
-- `game/CMakeLists.txt` -- `kuki_add_game(<target> SOURCES ... [ASSETS <dir>...] [FONT])`, plus
+- `game/CMakeLists.txt` -- `kuki_add_game(<target> SOURCES ... [ASSETS <dir>...] [FONTS])`, plus
   anything particular to the game, such as `kuki_add_blender_models`.
 - `game/include/my_game_world.hpp` -- the game's components and archetypes, and its `World`.
 - `game/include/my_game.hpp`, `game/src/my_game.cpp` -- the application, its systems in order,

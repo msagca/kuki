@@ -10,7 +10,7 @@ kuki_add_game(
   ${PROJECT_NAME}
   SOURCES ${CPP_SOURCES}
   ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/src/material"
-  FONT
+  FONTS
 )
 # Pieces, board and clock, modelled in one .blend and exported to `model/` beside the executable
 # as one glTF a mesh. `Chess::Start` loads them by those names.
