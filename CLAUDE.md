@@ -37,11 +37,14 @@ DLLs from its `<Target>Runtime` target: build both, or the game runs against the
 `--capture <file.png>` saves the frame after `--capture-frame <n>` (300) and quits -- how to see
 what a build draws (the `capture` skill). `--record <file.mp4>` pipes `--record-frames <n>` (600)
 frames to an `ffmpeg` on the `PATH`, each frame one tick, and quits -- how to see what moves; never
-linked or shipped, and without it the run exits 1. `KukiEditor --stress <load>` (`draws`, `rigs`, `lights`,
+linked or shipped, and without it the run exits 1. `<Game> --stress <load>` (`draws`, `rigs`, `lights`,
 `particles`, `all`; `--stress-scale`, `--stress-budget`, `--stress-report <file.json>`) ramps a load
 up in front of the camera with vsync off, logs each step's frame times and costliest scopes, and
 exits 1 if the full load's p95 is over budget -- how to measure what a change costs
-(`StressSystem`, also the editor's Stress panel). Assets are staged beside the binary and found through
+(`StressSystem`, which every game lists before `RenderingSystem`, and the editor's Stress panel). The
+graphics page's Performance choice puts the frame rate or the timings -- the frame time's mean, p95
+and worst, and the costliest profiler scopes by their own time, all CPU -- in the corner while it
+runs (`EngineConfig::showTimings`). Assets are staged beside the binary and found through
 `ResolvePath` against the executable's directory, never the working directory.
 
 Direct3D 12 is the only backend; without it the application stops at startup. HLSL is compiled at
@@ -168,8 +171,9 @@ see a tick's events that tick. Rigs, crossfades and IK are in `engine/CLAUDE.md`
 
 Every game has a `SettingsMenu` (`settings_menu.hpp`; off in the editor through
 `ApplicationDescription::settingsMenu`), opened and closed by Escape, the `Settings` binding,
-registered first. Its pages are the game's (`GetSettingsMenu().AddChoice/AddToggle/AddAction(
-SettingsPage::Game, ...)`), graphics (saved in `EngineConfig`) and controls (every binding,
+registered first. Its pages are the game's (`GetSettingsMenu().AddChoice/AddToggle/AddNumber/
+AddAction(SettingsPage::Game, ...)`; `AddLightingEntries` lists the scene's `IndirectLighting` and the
+shading and probe views there, for a game that studies the lighting), graphics (saved in `EngineConfig`) and controls (every binding,
 rebindable, saved in `Preferences` as `input.<name>`). Quitting is the menu's; a game does not quit
 on Escape. While it is open the game hears no input, held input is released, and a game not online
 is `Paused` -- a clock in `Update` checks `GetPlayState`. `--settings <page>` opens it for a capture.

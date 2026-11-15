@@ -6,6 +6,7 @@
 #include <command_line.hpp>
 #include <engine_config.hpp>
 #include <format>
+#include <profiler.hpp>
 #include <glm/common.hpp>
 #include <glm/exponential.hpp>
 #include <graphics_context.hpp>
@@ -104,6 +105,12 @@ auto SettingsMenu::AddToggle(const SettingsPage page, std::string label, std::fu
   if (!get || !set)
     return;
   entries.push_back({page, EntryKind::Toggle, std::move(label), {{"Off"}, {"On"}}, [get = std::move(get)] { return get() ? size_t{1} : size_t{0}; }, [set = std::move(set)](const size_t index) { set(index == 1); }, std::move(visible)});
+}
+auto SettingsMenu::AddNumber(const SettingsPage page, std::string label, const SettingsRange range, std::function<float()> get, std::function<void(float)> set, std::function<bool()> visible) -> void {
+  if (!get || !set || !(range.step > .0f) || range.max < range.min)
+    return;
+  Entry entry{.page = page, .kind = EntryKind::Number, .label = std::move(label), .visible = std::move(visible), .range = range, .getNumber = std::move(get), .setNumber = std::move(set)};
+  entries.push_back(std::move(entry));
 }
 auto SettingsMenu::AddAction(const SettingsPage page, std::string label, std::function<void()> run, std::function<bool()> visible) -> void {
   if (!run)
@@ -273,6 +280,7 @@ auto SettingsMenu::SaveGraphics() const -> void {
   config.depthOfField = graphics.depthOfField;
   config.lighting = graphics.lighting;
   config.showFrameRate = graphics.showFrameRate;
+  config.showTimings = graphics.showTimings;
   config.Save();
 }
 auto SettingsMenu::AddGraphicsEntries() -> void {
@@ -310,7 +318,84 @@ auto SettingsMenu::AddGraphicsEntries() -> void {
     Flag("Ambient occlusion", &EngineConfig::ambientOcclusion);
   if (capabilities.depthOfField)
     Flag("Depth of field", &EngineConfig::depthOfField);
-  Flag("Frame rate", &EngineConfig::showFrameRate);
+  AddChoice(SettingsPage::Graphics, "Performance", {{"Off"}, {"Frame rate"}, {"Timings"}}, [this] { return graphics.showTimings ? size_t{2} : graphics.showFrameRate ? size_t{1}
+                                                                                                                                         : size_t{0}; }, [this](const size_t index) {
+    graphics.showFrameRate = index == 1;
+    graphics.showTimings = index == 2;
+    SaveGraphics(); });
+}
+auto SettingsMenu::DrawTimings(const float deltaTime, const float unit) -> void {
+  const auto &profiler = Profiler::Get();
+  const auto &nodes = profiler.GetNodes();
+  // A scope's own time, which is where the frame actually went: its time less its children's, so a
+  // scope that only calls others does not appear beside each of them with the same number.
+  if (scopeOwnMillis.size() < nodes.size())
+    scopeOwnMillis.resize(nodes.size());
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    auto own = nodes[i].lastMillis;
+    for (const auto child : nodes[i].children)
+      own -= nodes[child].lastMillis;
+    scopeOwnMillis[i] += std::max(own, .0);
+  }
+  ++timingFrames;
+  timingLeft -= deltaTime;
+  if (timingLeft <= .0f || frameLine.empty()) {
+    timingLeft = TIMING_INTERVAL;
+    // The frame's times from the profiler's history, the last four seconds or so, copied into a
+    // buffer of the history's own size so that working out a percentile allocates nothing.
+    std::array<float, PROFILE_FRAME_HISTORY> times{};
+    size_t count = 0;
+    for (const auto millis : profiler.GetFrameHistory())
+      if (millis > .0f && count < times.size())
+        times[count++] = millis;
+    if (count > 0) {
+      auto sum = .0f;
+      for (size_t i = 0; i < count; ++i)
+        sum += times[i];
+      const auto mean = sum / static_cast<float>(count);
+      const auto worst = *std::max_element(times.begin(), times.begin() + static_cast<std::ptrdiff_t>(count));
+      const auto rank = static_cast<std::ptrdiff_t>(std::ceil(.95f * static_cast<float>(count))) - 1;
+      std::nth_element(times.begin(), times.begin() + rank, times.begin() + static_cast<std::ptrdiff_t>(count));
+      frameLine = std::format("{:.0f} fps   {:.2f} ms   p95 {:.2f}   worst {:.2f}", 1000.f / mean, mean, times[static_cast<size_t>(rank)], worst);
+    }
+    // The costliest scopes over the frames since the last time, kept in order as they are found.
+    std::array<size_t, TIMING_SCOPES> best{};
+    size_t found = 0;
+    for (size_t i = 0; i < nodes.size(); ++i) {
+      if (scopeOwnMillis[i] <= .0)
+        continue;
+      auto at = std::min(found, TIMING_SCOPES);
+      while (at > 0 && scopeOwnMillis[best[at - 1]] < scopeOwnMillis[i])
+        --at;
+      if (at >= TIMING_SCOPES)
+        continue;
+      for (auto j = std::min(found, TIMING_SCOPES - 1); j > at; --j)
+        best[j] = best[j - 1];
+      best[at] = i;
+      found = std::min(found + 1, TIMING_SCOPES);
+    }
+    const auto frames = static_cast<double>(std::max(timingFrames, 1u));
+    for (size_t line = 0; line < TIMING_SCOPES; ++line)
+      scopeLines[line] = line < found ? std::pair{nodes[best[line]].name, std::format("{:.2f} ms", scopeOwnMillis[best[line]] / frames)} : std::pair{std::string{}, std::string{}};
+    std::ranges::fill(scopeOwnMillis, .0);
+    timingFrames = 0;
+  }
+  // Top right, where the frame rate is, in two columns: the times right-aligned to the edge and the
+  // names right-aligned against them. Faint, since they are read when looked for and not otherwise.
+  auto &overlay = app.GetOverlay();
+  const auto size = 18.f * unit;
+  const auto right = -16.f * unit;
+  const auto names = right - 84.f * unit;
+  auto y = 14.f * unit;
+  overlay.DrawText(frameLine, {right, y}, 20.f * unit, {1.f, 1.f, 1.f, .7f}, TextAnchor::TopRight);
+  y += 30.f * unit;
+  for (const auto &[name, time] : scopeLines) {
+    if (name.empty())
+      break;
+    overlay.DrawText(time, {right, y}, size, {1.f, 1.f, 1.f, .7f}, TextAnchor::TopRight);
+    overlay.DrawText(name, {names, y}, size, {1.f, 1.f, 1.f, .5f}, TextAnchor::TopRight);
+    y += 24.f * unit;
+  }
 }
 auto SettingsMenu::ShowNotice(std::string text) -> void {
   notice = std::move(text);
@@ -378,12 +463,21 @@ auto SettingsMenu::Assign(const std::string &name, const InputManager::Trigger &
     ShowNotice(std::format("{} is now unbound", Label(displaced)));
   SaveBindings();
 }
-auto SettingsMenu::Step(const Row &row, const int delta) -> void {
+auto SettingsMenu::Step(const Row &row, const int delta, const bool coarse) -> void {
   if (row.kind != Row::Kind::Entry || row.entry >= entries.size())
     return;
   const auto &entry = entries[row.entry];
   if (entry.kind == EntryKind::Action)
     return;
+  if (entry.kind == EntryKind::Number) {
+    // Counted in whole steps from the bottom of the range and put back on that grid, so a value
+    // stepped up and down again lands where it was rather than a rounding error away, and one set
+    // from outside -- a scene's own value -- joins the grid on its first step.
+    const auto &range = entry.range;
+    const auto steps = std::round((entry.getNumber() - range.min) / range.step) + static_cast<float>(delta * (coarse ? 10 : 1));
+    entry.setNumber(std::clamp(range.min + steps * range.step, range.min, range.max));
+    return;
+  }
   const auto count = static_cast<int>(entry.options.size());
   const auto current = static_cast<int>(std::min(entry.get(), entry.options.size() - 1));
   entry.set(static_cast<size_t>(((current + delta) % count + count) % count));
@@ -421,7 +515,9 @@ auto SettingsMenu::Activate(const int id, const std::vector<Row> &rows) -> void 
       const auto run = entries[row.entry].set;
       Close();
       run(0);
-    } else
+    } else if (row.entry < entries.size() && entries[row.entry].kind != EntryKind::Number)
+      // A number is moved by its arrows only: the line stepping it up, as it steps a choice on, would
+      // have a click meant for the row nudge a value nobody asked to change.
       Step(row, 1);
     return;
   case Row::Kind::Binding:
@@ -487,7 +583,7 @@ auto SettingsMenu::Handle(const Event &event, const std::vector<Row> &rows) -> v
       if (focus == TAB_ROW)
         CyclePage(event.key == GLFW_KEY_RIGHT ? 1 : -1);
       else if (focus < rowCount)
-        Step(rows[static_cast<size_t>(focus)], event.key == GLFW_KEY_RIGHT ? 1 : -1);
+        Step(rows[static_cast<size_t>(focus)], event.key == GLFW_KEY_RIGHT ? 1 : -1, (event.mods & GLFW_MOD_SHIFT) != 0);
       else
         focus = event.key == GLFW_KEY_RIGHT ? rowCount + 1 : rowCount;
       return;
@@ -563,6 +659,8 @@ auto SettingsMenu::ValueText(const Row &row) const -> std::string {
     const auto &entry = entries[row.entry];
     if (entry.kind == EntryKind::Action)
       return "";
+    if (entry.kind == EntryKind::Number)
+      return std::format("{:.{}f}", entry.getNumber(), std::max(entry.range.decimals, 0));
     return entry.options[std::min(entry.get(), entry.options.size() - 1)].label;
   }
   case Row::Kind::Binding: {
@@ -591,7 +689,9 @@ auto SettingsMenu::Update(const float deltaTime) -> void {
   }
   events.clear();
   if (!open) {
-    if (graphics.showFrameRate && height > 0)
+    if (graphics.showTimings && height > 0)
+      DrawTimings(deltaTime, unit);
+    else if (graphics.showFrameRate && height > 0)
       if (const auto *rendering = app.GetRenderingSystem(); rendering)
         overlay.DrawText(std::format("{} fps", rendering->GetFPS()), {-16.f * unit, 14.f * unit}, 20.f * unit, {1.f, 1.f, 1.f, .6f}, TextAnchor::TopRight);
     return;
@@ -730,8 +830,8 @@ auto SettingsMenu::Draw(const std::vector<Row> &rows) -> void {
     case Row::Kind::Entry: {
       const auto &entry = entries[row.entry];
       label = entry.label;
-      choice = entry.kind == EntryKind::Choice;
-      if (choice)
+      choice = entry.kind == EntryKind::Choice || entry.kind == EntryKind::Number;
+      if (entry.kind == EntryKind::Choice)
         swatches = &entry.options[std::min(entry.get(), entry.options.size() - 1)].swatches;
       break;
     }

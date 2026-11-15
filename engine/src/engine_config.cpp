@@ -101,6 +101,7 @@ auto EngineConfig::Load() -> EngineConfig {
     Flag("ambientOcclusion", config.ambientOcclusion);
     Flag("depthOfField", config.depthOfField);
     Flag("showFrameRate", config.showFrameRate);
+    Flag("showTimings", config.showTimings);
     // By name, like the tone mapper, so that a level added between two others reads back as itself.
     if (const auto it = json.find("lighting"); it != json.end() && it->is_string()) {
       const auto name = it->get<std::string>();
@@ -143,6 +144,7 @@ auto EngineConfig::Save() const -> bool {
   json["lighting"] = lighting == LightingQuality::Low ? "low" : lighting == LightingQuality::Medium ? "medium"
                                                                                                    : "high";
   json["showFrameRate"] = showFrameRate;
+  json["showTimings"] = showTimings;
   std::ofstream stream(path);
   if (!stream) {
     spdlog::error("[Config] Could not write {}", path.string());

@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <engine_config.hpp>
@@ -8,6 +9,7 @@
 #include <input_manager.hpp>
 #include <kuki_engine_export.h>
 #include <string>
+#include <utility>
 #include <vector>
 namespace kuki {
 class Application;
@@ -19,6 +21,14 @@ enum class SettingsPage : uint8_t {
   Game,
   Graphics,
   Controls
+};
+/// @brief The range a number entry moves in: from `min` to `max` by `step`, shown to `decimals`
+/// places. Shift with an arrow moves ten steps.
+struct SettingsRange {
+  float min{};
+  float max{1.f};
+  float step{.1f};
+  int decimals{1};
 };
 /// @brief One of the values a choice can take: its name, and optionally a few colours shown beside
 /// it, which is how a board's look is chosen by the look rather than by the word for it.
@@ -66,6 +76,24 @@ public:
   auto AddChoice(const SettingsPage, std::string, std::vector<SettingsOption>, std::function<size_t()>, std::function<void(size_t)>, std::function<bool()> = {}) -> void;
   /// @brief A choice between off and on.
   auto AddToggle(const SettingsPage, std::string, std::function<bool()>, std::function<void(bool)>, std::function<bool()> = {}) -> void;
+  /// @brief A number moved through a range, step by step, by the arrows either side of it or the
+  /// left and right keys. Stops at the ends rather than wrapping: a value that went from its highest
+  /// to its lowest on one more press is a value that cannot be set by feel. For what has no list of
+  /// named values -- a strength, a distance, a bias -- where a choice would have to invent one.
+  auto AddNumber(const SettingsPage, std::string, SettingsRange, std::function<float()>, std::function<void(float)>, std::function<bool()> = {}) -> void;
+  /// @brief Lists the indirect lighting's values on a page -- the scene's `IndirectLighting`, every
+  /// field but the background colour -- with the camera's shading and probe debug views and a reset.
+  ///
+  /// For a game that studies or tunes the lighting, on a page of its choosing (its own, usually),
+  /// rather than on the graphics page every game has: they are a researcher's knobs, and a player who
+  /// turned the weight floor up would be left with a renderer that leaks for no reason they could
+  /// see. Each value is read from the active scene when shown and written back when moved, so it
+  /// follows a scene change; a row is hidden while the scene has no `IndirectLighting`, and the probe
+  /// rows and views where the backend has no probe field (`RendererCapabilities`). What a change costs
+  /// is in `indirect_lighting.hpp`: the trace values wind the probes' running mean back, so the field
+  /// takes a moment to settle after one. Nothing here is saved. Called once the scene is built: the
+  /// reset puts back the values the scene had then.
+  auto AddLightingEntries(const SettingsPage) -> void;
   /// @brief Something done rather than set: a new game, a new map. The menu closes once it is done.
   auto AddAction(const SettingsPage, std::string, std::function<void()>, std::function<bool()> = {}) -> void;
   /// @brief Forgets every entry. On the way out, since the entries call into systems that are going.
@@ -81,6 +109,7 @@ private:
   enum class EntryKind : uint8_t {
     Choice,
     Toggle,
+    Number,
     Action
   };
   struct Entry {
@@ -91,6 +120,10 @@ private:
     std::function<size_t()> get;
     std::function<void(size_t)> set;
     std::function<bool()> visible;
+    /// @brief A number entry's own, beside the index-based pair above, which it leaves empty.
+    SettingsRange range;
+    std::function<float()> getNumber;
+    std::function<void(float)> setNumber;
   };
   /// @brief A line of the page being shown: one of the entries, one of the bindings, or the line
   /// that puts every binding back.
@@ -172,7 +205,9 @@ private:
   auto BuildRows() const -> std::vector<Row>;
   auto Handle(const Event &, const std::vector<Row> &) -> void;
   auto Activate(const int, const std::vector<Row> &) -> void;
-  auto Step(const Row &, const int) -> void;
+  /// @brief Moves an entry `delta` values along: a choice round its list, a number through its range,
+  /// ten steps at a time when `coarse`.
+  auto Step(const Row &, const int, const bool coarse = false) -> void;
   auto Capture(const InputManager::Trigger &) -> void;
   /// @brief Puts a binding on a trigger, or none, saying which binding lost the key if one did and
   /// refusing the settings binding's key to anything else. What a captured key, a clear and a restore
@@ -188,5 +223,20 @@ private:
   /// rest, so that what is saved is exactly what was changed.
   auto SaveBindings() -> void;
   auto AddGraphicsEntries() -> void;
+  /// @brief The scopes the timings list, costliest first.
+  static constexpr size_t TIMING_SCOPES = 8;
+  /// @brief How often the timings are worked out again, in seconds: often enough to follow a change,
+  /// seldom enough that a number stays still long enough to be read.
+  static constexpr float TIMING_INTERVAL = .5f;
+  /// @brief Each profiler node's own time -- its time less its children's -- summed over the frames
+  /// since the timings were last worked out, by node index. Grows only when a scope is first seen.
+  std::vector<double> scopeOwnMillis;
+  uint32_t timingFrames{};
+  float timingLeft{};
+  /// @brief The lines as last worked out: the frame's, then a name and a time for each scope.
+  std::string frameLine;
+  std::array<std::pair<std::string, std::string>, TIMING_SCOPES> scopeLines;
+  /// @brief Adds the last frame to the sums, works the lines out again when due, and draws them.
+  auto DrawTimings(const float, const float) -> void;
 };
 } // namespace kuki
