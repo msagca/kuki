@@ -16,7 +16,7 @@ inline constexpr float BLOOM_INTENSITY = .5f;
 /// Ignored under `ToneMapper::AgX`, whose curve lands in display space on its own; every other
 /// operator ends in radiance and needs this to get there.
 inline constexpr float GAMMA = 2.2f;
-/// @brief Curve the tone mapping pass starts out using, before a config or the editor says otherwise.
+/// @brief Curve the tone mapping pass starts out using, before `kuki.config.json` says otherwise.
 ///
 /// The curve lives here, and the exposure that feeds it does not: see `Camera::exposureMode`. One
 /// describes the display being worked at and belongs to the installation, the other describes the

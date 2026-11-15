@@ -25,10 +25,10 @@ template <IsWorld W, IsSystem... Systems>
 class SystemApplication : public Application {
 public:
   using WorldType = W;
-  /// @brief Every command-line flag the application reads: the engine's and the editor's, and those
-  /// of each system that declares any. See `Flag`.
+  /// @brief Every command-line flag the application reads: the engine's, and those of each system
+  /// that declares any. See `Flag`.
   static constexpr auto FLAGS = JoinFlags(ENGINE_FLAGS, FlagsOf<Systems>()...);
-  static_assert(HasDistinctNames(FLAGS), "two of this application's systems, or a system and the engine or the editor, read a command-line flag of the same name -- see each system's FLAGS");
+  static_assert(HasDistinctNames(FLAGS), "two of this application's systems, or a system and the engine, read a command-line flag of the same name -- see each system's FLAGS");
   explicit SystemApplication(ApplicationDescription desc = {})
     : Application(std::move(desc)), systemsTuple(Systems(*this)...), systems{&std::get<Systems>(systemsTuple)...} {
     SetArchetypes(W::Specs());
@@ -78,8 +78,8 @@ private:
   std::tuple<Systems...> systemsTuple;
   /// @brief Answers `--help`, and says which arguments nothing in the application reads.
   ///
-  /// A warning and not a refusal: an editor hosting a game is given the game's flags too, which it
-  /// cannot know. In a game's own executable it is the typo it looks like.
+  /// A warning and not a refusal: an argument nothing reads is almost always a typo, and a run that
+  /// stopped over one would be harder to script than one that says so and carries on.
   static auto CheckArguments() -> void {
     const auto arguments = GetCommandLineArguments();
     if (HasFlag(arguments, HELP_FLAG)) {

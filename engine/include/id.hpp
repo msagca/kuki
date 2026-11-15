@@ -21,9 +21,6 @@ public:
   explicit operator bool() const;
   explicit operator int() const;
   operator long long() const;
-  // NOTE: the following is needed for ImGui
-  explicit operator const void *() const;
-  explicit operator void *();
 private:
   long long value{Invalid};
 };
@@ -59,16 +56,8 @@ ID<T>::operator bool() const {
   return *this != Invalid;
 }
 template <typename T>
-ID<T>::operator const void *() const {
-  return static_cast<const void *>(&value);
-}
-template <typename T>
 ID<T>::operator int() const {
   return static_cast<int>(value);
-}
-template <typename T>
-ID<T>::operator void *() {
-  return static_cast<void *>(&value);
 }
 template <typename T>
 ID<T>::operator long long() const {

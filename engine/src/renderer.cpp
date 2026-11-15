@@ -17,8 +17,6 @@ auto Renderer::ExecutePass(const RenderPass pass, std::span<std::string> inputs,
     return ApplyBlurEffect(inputs, outputs);
   case RenderPass::ToneMapping:
     return ApplyToneMapping(inputs, outputs);
-  case RenderPass::Outline:
-    return ApplyOutline(inputs, outputs);
   case RenderPass::Overlay:
     return ApplyOverlay(inputs, outputs);
   case RenderPass::DepthPrepass:
@@ -82,9 +80,7 @@ auto Renderer::BypassPass(const RenderPass pass, std::span<std::string> inputs, 
   case RenderPass::Scene:
     return BypassClear(outputs);
   // Everything else stands in the middle of a chain and is handed a picture to work on, so passing
-  // that picture through unaltered is what not running amounts to. It is also the whole of what a
-  // few of them do when they have nothing to say -- the outline pass already blits its input
-  // through when nothing is selected, and this is that path reached from the other direction.
+  // that picture through unaltered is what not running amounts to.
   //
   // The particle pass is one of these, and standing it down freezes the simulation as well as
   // hiding it: the particles are stepped by the pass that draws them, so they are found exactly

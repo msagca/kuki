@@ -28,7 +28,7 @@ namespace kuki {
 /// @brief Edge length of the directional shadow map, in texels.
 ///
 /// Fixed rather than viewport-derived: shadow quality depends on how much world space each texel
-/// covers, which has nothing to do with the size of the editor panel. 4096 gives a comfortable
+/// covers, which has nothing to do with the size of the window. 4096 gives a comfortable
 /// margin for a single cascade; drop to 2048 if the 67 MB depth surface is not worth it.
 inline constexpr int SHADOW_MAP_RESOLUTION = 4096;
 /// @brief Edge length of each spot-light shadow map layer, in texels.
@@ -47,14 +47,11 @@ public:
   auto Update(const float) -> void override;
   auto Shutdown() -> void override;
   auto GetFPS() const -> size_t;
-  auto GetPreviewSize() const -> int;
   auto GetResolution() const -> std::pair<int, int>;
   auto GetTarget(std::string = "") -> RenderTarget *;
   auto ForEachTarget(auto &&) const -> void;
   auto LoadAssets(const AssetType) -> void;
   auto PickEntity(const int, const int) -> EntityID;
-  auto PreviewAsset(const AssetID) -> RenderTarget *;
-  auto SetPreviewSize(const int) -> void;
   /// @brief Which step of the indirect lighting the scene pass draws instead of the finished pixel.
   ///
   /// The render graph's targets cover the steps that end in a resource and can already be picked one
@@ -113,33 +110,18 @@ public:
   /// @brief What the active backend can do, or none of it when there is no renderer yet.
   auto GetCapabilities() const -> RendererCapabilities;
   auto SetRenderer(const RenderingAPI = RenderingAPI::DirectX) -> void;
-  /// @brief Whether the finished frame is drawn onto the window at the end of every render.
-  ///
-  /// On by default, so that an application which does nothing but run gets a picture. The editor
-  /// turns it off: it composites the same target into a dockable panel through Dear ImGui, and
-  /// blitting it across the whole window first would be work thrown away every frame.
-  ///
-  /// What gets presented is the graph's final output, which is also what `GetTarget("")` returns --
-  /// so a debug view selected in the editor would be presented too, if the editor presented.
-  auto IsPresentEnabled() const -> bool;
-  auto SetPresentEnabled(const bool) -> void;
   /// @brief Requests a render resolution, reallocating only once the request stops moving.
   ///
-  /// The editor derives this from the viewport's content region, which is itself sized from the
-  /// render target, so the two chase each other. Window maximise and dock-splitter settling then
-  /// sweep the width across hundreds of intermediate values in as many frames. Under Direct3D 12
-  /// each step is a full GPU stall plus fresh committed resources, so requests are debounced here
-  /// rather than in any one backend.
+  /// Asked for every frame at the window's size. A window being dragged to a new size sweeps the
+  /// width across hundreds of intermediate values in as many frames, and under Direct3D 12 each step
+  /// is a full GPU stall plus fresh committed resources, so requests are debounced here rather than
+  /// in any one backend.
   ///
   /// A request within `RESOLUTION_CHANGE_THRESHOLD` of the live resolution is dropped outright.
   /// Anything larger becomes a pending candidate that must hold still for
   /// `RESOLUTION_DEBOUNCE_FRAMES` before it is applied, which collapses a sweep of hundreds of
   /// steps into a single reallocation once it settles.
   ///
-  /// Two resolutions alternating forever would never settle and so would never be applied. That is
-  /// the intended outcome rather than a gap: the oscillation is driven by this system resizing the
-  /// target the editor measures, so declining to resize breaks the feedback loop and lets the
-  /// request converge on its own.
   auto SetResolution(const int = 1920, const int = 1080) -> void;
 private:
   /// @brief Edge difference, in pixels, below which two resolutions count as the same.
@@ -159,7 +141,6 @@ private:
   int pendingWidth{};
   int pendingHeight{};
   bool hasPending{};
-  bool presentEnabled{true};
   /// @brief Where `--capture` wants the frame saved, and the frame it wants; empty when it was not given.
   std::filesystem::path capturePath;
   size_t captureFrame{300};

@@ -39,7 +39,7 @@ target_include_directories(
 )
 # `internal/` is the engine's own and is never installed: the backend, the scene loader, the
 # shader constants, and `ApplicationInternal`, the half of the application a game is not given. The
-# editor and the tests are built from this tree and reach it through `KukiEngineInternal`; a game
+# tests are built from this tree and reach it through `KukiEngineInternal`; a game
 # reaches `include/` alone, which is all a release ships. Nothing in `include/` may include a header
 # from here -- `KukiPublicHeaders` below fails to build if one does.
 target_include_directories(
@@ -63,8 +63,8 @@ target_link_libraries(KukiEngineInternal INTERFACE ${PROJECT_NAME})
 # types. spdlog is here because every consumer so far logs with it and expects to keep doing so.
 # glfw is not, though it was: games named their keys by GLFW's constants, so each needed its
 # header. They name them by `Key` now (`key.hpp`, GLFW's numbers under the engine's names), and the
-# installed headers mention glfw only as the opaque `GLFWwindow` -- the editor, which drives Dear
-# ImGui's GLFW backend, links it for itself.
+# installed headers mention glfw only as the opaque `GLFWwindow` -- the tests, which write triggers
+# in GLFW's numbers, link it for themselves.
 #
 # The rest became private when `asset_manager.hpp` stopped declaring Assimp types and defining its
 # loaders inline; before that, assimp, nlohmann, stb and tinyexr were all reachable from any header
@@ -89,8 +89,8 @@ if(WIN32)
   # about it silently produces a binary with no Direct3D backend and no diagnostic.
   #
   # Stated as a definition rather than by exporting `kuki_d3d12`, whose interface would drag the
-  # DirectX-Headers targets into the export set behind it. Anything that genuinely uses the SDK --
-  # the editor does -- links `kuki_d3d12` itself.
+  # DirectX-Headers targets into the export set behind it. Anything else that genuinely uses the
+  # SDK links `kuki_d3d12` itself.
   target_link_libraries(${PROJECT_NAME} PRIVATE kuki_d3d12)
   target_compile_definitions(${PROJECT_NAME} PUBLIC KUKI_HAS_DIRECTX=1)
   # Winsock, for `UdpTransport`. Private: no header names a socket type.

@@ -19,7 +19,6 @@
 ///   exactly one source file and is the only reason that file exists (`stb_image.cpp` and the like).
 /// - What a shader is compiled with, which is `SHADER_DEFINITIONS` (`shader_definitions.hpp`).
 /// - `KUKI_ENGINE_API`, which CMake generates into `kuki_engine_export.h`.
-/// - The editor's own (`KUKI_FIELD`, and the icon font's generated names).
 // --- Game modules (`game_module.hpp`)
 #if defined(_WIN32)
 #define KUKI_MODULE_EXPORT __declspec(dllexport)

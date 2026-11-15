@@ -50,8 +50,7 @@ struct KUKI_ENGINE_API EngineConfig {
   /// @brief What a player chose in a game's settings menu. See `SettingsMenu`.
   ///
   /// Here rather than in the game's `Preferences` for the reason the tone mapper is: they say how
-  /// this machine should draw, not anything about the game, and the engine is what reads them. The
-  /// editor neither shows nor applies them; it reads the file only to write it back whole.
+  /// this machine should draw, not anything about the game, and the engine is what reads them.
   ///
   /// The anti-aliasing replaces whatever the scene's `AntiAliasing` asks for, and the passes turned
   /// off here are stood down rather than taken out, as any disabled pass is.
@@ -81,8 +80,6 @@ struct KUKI_ENGINE_API EngineConfig {
 /// @brief The backend this installation has been set to, falling back to `DefaultAPI`.
 ///
 /// What `ApplicationDescription::api` defaults to, so that every application honours the saved
-/// preference without having to know it exists. The editor used to be the only thing that read it,
-/// by writing `.api = EngineConfig::Load().api` into its own constructor -- which meant a game
-/// built on the engine silently ignored the setting and always took `DefaultAPI`.
+/// preference without having to know it exists.
 auto KUKI_ENGINE_API ConfiguredAPI() -> RenderingAPI;
 } // namespace kuki

@@ -88,7 +88,7 @@ inline auto Dissolve() -> ParticleEmitter {
   return emitter;
 }
 } // namespace ParticlePresets
-/// @brief Every preset above, for whatever wants to offer them by name. The editor does.
+/// @brief Every preset above, for whatever wants to offer them by name.
 inline constexpr ParticlePreset PARTICLE_PRESETS[]{
   {"Fountain", &ParticlePresets::Fountain},
   {"Burst", &ParticlePresets::Burst},

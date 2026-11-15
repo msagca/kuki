@@ -33,13 +33,6 @@ struct KUKI_ENGINE_API DXRenderTarget final : public RenderTarget {
   /// Sampled as `Texture2DMS` when the target is multisampled: entity ids must never be filtered,
   /// since averaging two ids yields one belonging to neither object. Readers take a single sample.
   D3D12_GPU_DESCRIPTOR_HANDLE idSrvGPU{};
-  auto GetTextureHandle() const -> uint64_t override {
-    return srvGPU.ptr;
-  }
-  /// @brief Direct3D samples from a top-left origin, so displaying a target needs no flip.
-  auto NeedsVerticalFlip() const -> bool override {
-    return false;
-  }
 };
 } // namespace kuki
 #endif

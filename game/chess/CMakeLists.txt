@@ -5,8 +5,7 @@ file(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 # The board's rank and file labels are baked from the font at startup; the materials are loaded
-# by name from `material/` beside the executable. The engine and nothing else is linked: imgui and
-# the rest are the editor's, and a game linking them would be carrying an editor it never opens.
+# by name from `material/` beside the executable. The engine and nothing else is linked.
 kuki_add_game(
   ${PROJECT_NAME}
   SOURCES ${CPP_SOURCES}

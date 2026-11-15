@@ -46,7 +46,7 @@ public:
   auto GetCommandList4() const -> ID3D12GraphicsCommandList4 *;
   auto GetCommandQueue() const -> ID3D12CommandQueue *;
   auto GetFrameIndex() const -> uint32_t;
-  /// @brief Shader-visible CBV/SRV/UAV heap. Bound for the whole frame, shared with ImGui.
+  /// @brief Shader-visible CBV/SRV/UAV heap. Bound for the whole frame.
   auto GetSRVHeap() -> DXDescriptorHeap &;
   auto GetRTVHeap() -> DXDescriptorHeap &;
   auto GetDSVHeap() -> DXDescriptorHeap &;

@@ -31,7 +31,6 @@ enum class RenderPass : uint8_t {
   /// fog that follows hazes a distant line as it hazes the wall the line is drawn on, which is what
   /// keeps a far backdrop from being drawn with the same weight of ink as the figures in front of it.
   Ink,
-  Outline,
   /// @brief Text drawn over the finished picture, in the window's own pixels.
   ///
   /// Last in the chain and after tone mapping on purpose: a caption is not part of the shot. It is

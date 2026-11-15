@@ -80,8 +80,7 @@ auto RenderingSystem::Start() -> void {
     }
   }
   // The other half of the installation's display preference, applied here rather than left to each
-  // application to remember. The editor also sets it in its own `Start`, which is now a no-op that
-  // repeats this -- but it is the thing that lets the panel change it afterwards, so it stays.
+  // application to remember.
   SetToneMapper(EngineConfig::Load().toneMapper);
   if (activeRenderer)
     activeRenderer->LoadAssets(AssetType::Mesh);
@@ -218,13 +217,8 @@ auto RenderingSystem::Start() -> void {
                   .AddInput("SceneBlurred")
                   .AddOutput("SceneBloom", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
-                  .BeginPass(RenderPass::Outline)
-                  .AddInput("SceneMulti")
-                  .AddInput("SceneBloom")
-                  .AddOutput("SceneOutlined", {.width = screenWidth, .height = screenHeight, .samples = 1})
-                  .EndPass()
                   .BeginPass(RenderPass::ToneMapping)
-                  .AddInput("SceneOutlined")
+                  .AddInput("SceneBloom")
                   .AddOutput("SceneSRGB", {.width = screenWidth, .height = screenHeight, .samples = 1})
                   .EndPass()
                   // Last, so the text is laid over a picture that is finished being a picture. A
@@ -290,12 +284,11 @@ auto RenderingSystem::Update(float deltaTime) -> void {
   // a new size becomes a candidate and is only committed once the same size has been asked for
   // several frames running, so a single request at startup is recorded and never applied. Asking
   // every frame also means a resized window needs no callback of its own.
-  if (presentEnabled)
-    if (const auto *context = Internal(app).GetGraphicsContext(); context) {
-      const auto [surfaceWidth, surfaceHeight] = context->GetSurfaceSize();
-      if (surfaceWidth > 0 && surfaceHeight > 0)
-        SetResolution(surfaceWidth, surfaceHeight);
-    }
+  if (const auto *context = Internal(app).GetGraphicsContext(); context) {
+    const auto [surfaceWidth, surfaceHeight] = context->GetSurfaceSize();
+    if (surfaceWidth > 0 && surfaceHeight > 0)
+      SetResolution(surfaceWidth, surfaceHeight);
+  }
   // What every camera sees, from where its entity now is and the aspect ratio just set: after both,
   // so neither shows a frame late. Every camera rather than the active one, because a game may read
   // another's view -- a minimap, a picture in picture -- and there are seldom more than one or two.
@@ -347,7 +340,7 @@ auto RenderingSystem::Update(float deltaTime) -> void {
     }
     if (renderGraph)
       renderGraph->Execute(*activeRenderer);
-    if (presentEnabled && renderGraph) {
+    if (renderGraph) {
       KUKI_PROFILE_SCOPE("PresentTarget");
       activeRenderer->PresentTarget(renderGraph->GetFinalOutputName());
     }
@@ -402,12 +395,6 @@ auto RenderingSystem::GetAntiAliasingOverride() const -> std::optional<AntiAlias
 }
 auto RenderingSystem::SetAntiAliasingOverride(const std::optional<AntiAliasingMode> mode) -> void {
   antiAliasingOverride = mode;
-}
-auto RenderingSystem::IsPresentEnabled() const -> bool {
-  return presentEnabled;
-}
-auto RenderingSystem::SetPresentEnabled(const bool enabled) -> void {
-  presentEnabled = enabled;
 }
 auto RenderingSystem::RecordFrame() -> void {
   // Not before the targets are the window's size. They are made at the desktop's, before the window
@@ -498,16 +485,6 @@ auto RenderingSystem::PickEntity(const int x, const int y) -> EntityID {
 auto RenderingSystem::LoadAssets(const AssetType type) -> void {
   if (activeRenderer)
     activeRenderer->LoadAssets(type);
-}
-auto RenderingSystem::GetPreviewSize() const -> int {
-  return activeRenderer ? activeRenderer->GetPreviewSize() : 0;
-}
-auto RenderingSystem::PreviewAsset(const AssetID assetId) -> RenderTarget * {
-  return activeRenderer->PreviewAsset(assetId);
-}
-auto RenderingSystem::SetPreviewSize(const int size) -> void {
-  if (activeRenderer)
-    activeRenderer->SetPreviewSize(size);
 }
 auto RenderingSystem::GetLightingDebugView() const -> LightingDebugView {
   return activeRenderer ? activeRenderer->GetLightingDebugView() : LightingDebugView::None;

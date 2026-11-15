@@ -21,20 +21,6 @@ template <typename... T>
 concept AreUnsignedInt = (std::convertible_to<T, unsigned int> && ...);
 template <typename... T>
 concept AreSizeT = (std::convertible_to<T, size_t> && ...);
-template <typename T>
-struct TrieNode;
-template <typename T>
-concept IsTrieNode = std::is_base_of_v<TrieNode<T>, T>;
-struct SuffixNode;
-template <typename T>
-concept IsSuffixNode = std::is_base_of_v<SuffixNode, T>;
-struct SequenceNode;
-template <typename T>
-concept IsSequenceNode = std::is_base_of_v<SequenceNode, T>;
-template <typename T>
-concept IsCharLike = std::is_same_v<T, char> || std::is_same_v<T, unsigned char>;
-template <typename T>
-concept IsCharIterator = std::input_iterator<T> && IsCharLike<std::iter_value_t<T>>;
 template <typename S, typename T>
 using ConstCorrectPointer = std::conditional_t<std::is_const_v<std::remove_reference_t<S>>, const T *, T *>;
 template <typename S, typename T>

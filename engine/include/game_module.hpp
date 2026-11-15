@@ -6,16 +6,12 @@
 #include <vector>
 namespace kuki {
 class Application;
-/// @brief What a game says about itself to whatever is hosting it.
+/// @brief What a game says about itself to whatever loads its library.
 ///
 /// A game is a library: its systems and components, and one function that loads its assets and
 /// builds its scenes into an application it is handed. Its own executable is a few lines that make
-/// an application of the game's world and systems and call that function. The editor is another
-/// application that can call it -- the same code, built once, set up by a different host.
-///
-/// What the editor cannot yet do is run the game: the game's behaviour is in its systems, which
-/// are part of its application's type, and the editor's application is a different type with its
-/// own list. Until a host can be handed a game's systems, a game set up in the editor is a scene.
+/// an application of the game's world and systems and call that function. The split was made so
+/// that another application could load the game; nothing does now that the editor is gone.
 ///
 /// So `setup` must not assume which application it is in. It is given one; it does not make one,
 /// and anything it would have done in a constructor or a `Start` override belongs in it.
@@ -41,7 +37,7 @@ inline constexpr const char *GAME_MODULE_SYMBOL = "KukiGameModule";
 ///
 /// The second half matters as much as the first. A game names its assets relative to where it was
 /// installed -- `model/fighter.glb` -- and resolves them against the executable's directory, which
-/// is right when the executable is the game and wrong when it is the editor. See `AddAssetRoot`.
+/// is right when the executable is the game and wrong when it is another. See `AddAssetRoot`.
 ///
 /// Empty `module` if the file is not a library, or is one that exports no module.
 KUKI_ENGINE_API auto LoadGame(const std::filesystem::path &) -> LoadedGame;

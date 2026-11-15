@@ -33,7 +33,7 @@ namespace {
   constexpr auto MATERIAL_COUNT = 8u;
   /// @brief The figure: a column of bones, each a tapering six-sided segment of the body, swaying.
   ///
-  /// Built here rather than loaded, because the editor ships no rigged model and a stress test that
+  /// Built here rather than loaded, because the engine ships no rigged model and a stress test that
   /// needed one from a game would only run in that game. Rigidly skinned -- each vertex to the one
   /// bone of its segment -- which costs the shader what a blend of four does, since it reads four
   /// weights either way.
@@ -242,8 +242,7 @@ auto StressSystem::Shutdown() -> void {
 auto StressSystem::HasRoot() -> bool {
   if (root && app.IsEntity(root) && Internal(app).GetEntityName(root) == ROOT_NAME)
     return true;
-  // Found again by its name, which a scene keeps when it is saved and opened where it may not keep
-  // the id: the editor's Stop puts back a copy of the scene, load and all.
+  // Found again by its name, which a scene keeps where it may not keep the id.
   const auto *scene = Internal(app).Scenes().Get();
   root = scene ? scene->Entities().GetID(ROOT_NAME) : EntityID{};
   return static_cast<bool>(root);
@@ -259,7 +258,7 @@ auto StressSystem::SetLoad(const StressLoad &requested) -> void {
     spdlog::warn("[Stress] {} lights asked for; the renderer shades eight point lights and eight spot lights, and draws nothing of the rest", load.lights);
   // In a box that grows with the instances so they are as crowded at any count, its near face a
   // step in front of the camera. Not far enough off to be seen whole, which was tried: the editor's
-  // own scene is a closed room, and a box far enough away to fit the view stood behind its back
+  // own scene was a closed room, and a box far enough away to fit the view stood behind its back
   // wall, where the depth test threw away nearly all it cost and the load measured almost nothing.
   const auto extent = std::max(6.f, .6f * std::cbrt(static_cast<float>(load.instances)));
   auto centre = glm::vec3(.0f, extent, .0f);

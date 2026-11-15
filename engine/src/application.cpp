@@ -38,7 +38,6 @@
 #include <string.h>
 #include <string>
 #include <system.hpp>
-#include <trie.hpp>
 #include <typeindex>
 #include <utility>
 #include <vector>
@@ -109,9 +108,9 @@ auto Application::PreStart() -> void {
   // Before the window, so that even a launch that fails to get one has read them -- and before
   // `Start`, which is where an application picks up whatever it saved last time.
   preferences.Load(desc.name);
-  settingsMenu.SetEnabled(desc.settingsMenu);
-  if (settingsMenu.IsEnabled()) {
-    // The window as the player last left it, which the menu is where they say so.
+  {
+    // The window as the player last left it on the settings menu, whatever the description says:
+    // that is what the game would like, and the menu is what the player said.
     const auto config = EngineConfig::Load();
     desc.fullscreen = config.fullscreen;
     desc.vsync = config.vsync;
@@ -125,12 +124,10 @@ auto Application::PreStart() -> void {
 };
 auto Application::PostStart() -> void {
   PostStartSystems();
-  if (settingsMenu.IsEnabled())
-    settingsMenu.Start();
+  settingsMenu.Start();
 };
 auto Application::UpdateSettingsMenu(const float delta) -> void {
-  if (settingsMenu.IsEnabled())
-    settingsMenu.Update(delta);
+  settingsMenu.Update(delta);
 }
 auto Application::PreUpdate() -> void {
   Profiler::Get().BeginFrame();
@@ -167,9 +164,6 @@ auto Application::PreUpdate() -> void {
     // it happens to come out right, but a rate whose float rounds down would owe a tick short every
     // so often and drop one.
     auto due = playState == PlayState::Playing ? tickClock.Advance(fixedStep ? tickClock.Step() : deltaTime * tickScale) : 0;
-    if (stepRequested && playState == PlayState::Paused)
-      due = 1;
-    stepRequested = false;
     for (; due > 0; --due) {
       inputManager.LatchTick();
       TickSystems();
@@ -204,21 +198,9 @@ auto Application::GetPlayState() const -> PlayState {
   return playState;
 }
 auto Application::SetPlayState(const PlayState state) -> void {
-  if (state == playState)
-    return;
-  if (playState == PlayState::Stopped) {
-    inputManager.BeginSession();
-    tickClock.Reset();
-  }
-  if (state == PlayState::Stopped)
-    inputManager.EndSession();
   playState = state;
 }
 auto Application::Quit() -> void {
-  if (hosting && playState != PlayState::Stopped) {
-    stopRequested = true;
-    return;
-  }
   if (window)
     glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
@@ -268,7 +250,6 @@ auto Application::CreateWindow() -> bool {
   glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   glfwSetKeyCallback(window, KeyCallback);
-  glfwSetCharCallback(window, CharCallback);
   glfwSetMouseButtonCallback(window, MouseButtonCallback);
   glfwSetScrollCallback(window, ScrollCallback);
   glfwSetWindowCloseCallback(window, WindowCloseCallback);
@@ -649,10 +630,6 @@ auto Application::SetWindowIcon() -> void {
     } else
       spdlog::error("[App] Failed to load icon: {}", path);
   }
-}
-auto Application::CharCallback(GLFWwindow *window, unsigned int codepoint) -> void {
-  if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance && !instance->settingsMenu.OnChar())
-    instance->inputManager.CharCallback(window, codepoint);
 }
 auto Application::CursorPosCallback(GLFWwindow *window, double xpos, double ypos) -> void {
   if (auto instance = static_cast<Application *>(glfwGetWindowUserPointer(window)); instance)

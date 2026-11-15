@@ -11,11 +11,8 @@ namespace kuki {
 /// field that relates the two is `viewAltitude` -- how high up the scene is meant to be, stated in
 /// the atmosphere's units because there is no conversion factor to read anywhere.
 ///
-/// A component for the reason `IndirectLighting` and [[anti-aliasing]] are, and it sits on the same
-/// settings entity. Unlike those two it IS serialized, and the divergence is deliberate: a sample
-/// count and a debug view describe how somebody is looking at their work, while "this scene is at
-/// eight kilometres under a setting sun" is the work. It travels with the scene the way a light
-/// does.
+/// A scene singleton, as `IndirectLighting` is: "this scene is at eight kilometres under a setting
+/// sun" describes the scene, not the entity that holds it.
 ///
 /// Present is what switches the procedural sky on. A scene with this component gets its sky from
 /// here and ignores any `SkyboxHandle` texture; a scene without one behaves exactly as before.

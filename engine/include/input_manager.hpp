@@ -8,7 +8,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <trie.hpp>
 #include <unordered_map>
 #include <vector>
 struct GLFWwindow;
@@ -37,19 +36,7 @@ public:
     All };
   InputManager(Application &);
   auto BeginKeyCapture() -> void;
-  /// @brief Marks the start of a stretch whose bindings, buttons and sequences are to be undone.
-  ///
-  /// A game run inside an editor registers what it needs as it starts, the same as it does on its
-  /// own, and that is not harmless there: a binding takes its key from whoever had it, so a game
-  /// that steps with A leaves the editor's own A unbound. `EndSession` puts every binding back as
-  /// it stood here, forgets the buttons, and forgets each sequence registered since.
-  auto BeginSession() -> void;
-  auto EndSession() -> void;
   auto CancelKeyCapture() -> void;
-  /// @brief Feeds a printable character into the key-sequence trie, resetting the sequence when it stops matching a known prefix.
-  ///
-  /// A sequence completed is recorded for `IsSequenceTyped` until the frame ends.
-  auto CharCallback(GLFWwindow *, unsigned int) -> void;
   auto CursorPosCallback(GLFWwindow *, double, double) -> void;
   auto GetBinding(const std::string &) const -> Trigger;
   /// @brief The trigger a binding was registered with, which is what resetting the controls puts back.
@@ -69,21 +56,12 @@ public:
   auto GetInactivityTime() const -> double;
   auto GetMousePosition() const -> glm::vec2;
   auto GetScrollOffset() const -> glm::vec2;
-  auto GetSequenceDescription(const std::string &) const -> std::string;
-  auto GetSequenceNames() const -> const std::vector<std::string> &;
   auto GetState(int) const -> bool;
   auto GetTriggerName(const Trigger &) const -> std::string;
   auto IsBindingHeld(const std::string &) const -> bool;
   auto IsBindingPressed(const std::string &) const -> bool;
   auto IsPressed(int) const -> bool;
   auto IsReleased(int) const -> bool;
-  auto IsSequenceInProgress() const -> bool;
-  /// @brief Whether a registered sequence was typed to its end this frame.
-  ///
-  /// Read by whoever registered it, in its own `Update`, in place of the callback a sequence used to
-  /// run in the middle of the window's event handling -- when nothing about the frame was settled
-  /// and the order among several callbacks was nobody's choice.
-  auto IsSequenceTyped(const std::string_view) const -> bool;
   auto KeyCallback(GLFWwindow *, int, int, int, int) -> void;
   /// @brief Fixes what the keyboard is taken to be doing for the tick about to run.
   ///
@@ -101,15 +79,6 @@ public:
   auto LatchTick() -> void;
   auto MouseButtonCallback(GLFWwindow *, int, int, int) -> void;
   auto PollKeyCapture() -> CaptureOutcome;
-  /// @brief Registers a typed sequence of keys, such as "vp", read with `IsSequenceTyped`.
-  ///
-  /// Lowercased, since that is how characters are typed into it. Refused, with false, if it begins
-  /// a sequence already registered or one begins it: a sequence is done the moment it is typed, so
-  /// the longer of the two could never be reached.
-  ///
-  /// A key or mouse button had a callback form here too, run on its press or release; it is read
-  /// with `IsPressed` and `IsReleased` instead, or a binding's `IsBindingPressed`.
-  auto RegisterSequence(const std::string &, std::string = "") -> bool;
   /// @brief Registers a named binding, on `saved` if one is given and on the trigger otherwise.
   ///
   /// The trigger is the default either way, and is what `GetDefaultBinding` answers. A saved trigger
@@ -139,17 +108,11 @@ public:
   /// In place of six `EnableX`/`DisableX` methods over two booleans. The shape is the one
   /// `Renderer::SetPassEnabled` already uses, and it puts the asymmetry below somewhere it can be
   /// read rather than in whichever of the six bodies you happened to open.
-  ///
-  /// `All` also clears a half-typed key sequence and the single-half cases do not. That is the
-  /// behaviour as it stood, kept deliberately rather than tidied, but it is worth knowing: the
-  /// editor turns keys off while Dear ImGui wants text, so a sequence somebody had started survives
-  /// across the text field and can still complete on the first character after keys come back.
   auto SetEnabled(const InputKind, const bool) -> void;
   auto ResetPulses() -> void;
   auto ResetScroll() -> void;
   auto ScrollCallback(GLFWwindow *, double, double) -> void;
 private:
-  Trie<SequenceNode> keymap;
   bool buttonsEnabled{true};
   bool capturing{};
   bool captureResolved{};
@@ -164,24 +127,10 @@ private:
   std::bitset<256> tickLatch{0};
   uint32_t tickButtons{};
   std::vector<std::string> buttonOrder;
-  struct Session {
-    bool active{};
-    /// How many sequences there were, which those registered since come after.
-    size_t sequenceCount{};
-    std::unordered_map<std::string, Trigger> nameToBinding;
-    std::unordered_map<std::string, std::string> nameToDescription;
-    std::vector<std::string> bindingOrder;
-    std::vector<std::string> buttonOrder;
-  } session;
   std::unordered_map<std::string, Trigger> nameToBinding;
   std::unordered_map<std::string, std::string> nameToDescription;
   std::unordered_map<std::string, Trigger> nameToDefault;
   std::vector<std::string> bindingOrder;
-  std::vector<unsigned char> keyseq;
-  /// The sequences typed to their end this frame, cleared with the pulses.
-  std::vector<std::string> typedSequences;
-  std::unordered_map<std::string, std::string> sequenceToDescription;
-  std::vector<std::string> sequenceOrder;
   auto AssignBinding(const std::string &, const Trigger &) -> void;
   auto CurrentMods() const -> int;
   /// @brief Whether the held modifiers are this trigger's, given every binding on its key.

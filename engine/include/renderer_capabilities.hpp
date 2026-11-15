@@ -11,9 +11,8 @@ namespace kuki {
 /// A control that does nothing is worse than an absent one, because the person using it concludes
 /// the renderer is broken rather than that the feature is elsewhere.
 ///
-/// So a backend says what it has and the editor asks. Read once when the editor starts rather than
-/// polled: a backend cannot be swapped without restarting the process, which is what the graphics
-/// panel says when you pick a different one.
+/// So a backend says what it has and the settings menu asks. Read once when the menu's entries are
+/// added rather than polled: a backend cannot be swapped without restarting the process.
 ///
 /// Every field defaults to false and the base `Renderer` returns the struct as it stands, so a
 /// backend that says nothing is taken to have none of this. That is the safe direction -- a new

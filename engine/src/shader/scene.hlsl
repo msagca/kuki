@@ -1052,7 +1052,7 @@ PSOutput PSMain(PSInput input) {
   // Everything below was computed above for the finished pixel, so a view costs a branch and no
   // arithmetic, and the branch is uniform across the draw. It runs after the entity id is written so
   // that picking still works while a view is up: the views are for looking at a scene, not for
-  // leaving the editor unable to select anything in it.
+  // leaving a game unable to pick anything in it.
   if (u_debug.x != DEBUG_VIEW_NONE) {
     float3 shown = 0.0;
     switch (u_debug.x) {

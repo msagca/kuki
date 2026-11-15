@@ -23,14 +23,10 @@ enum class FlagKind : uint8_t {
 /// @brief A command-line flag, declared by whatever reads it.
 ///
 /// A system that reads the command line lists its flags as `static constexpr std::array FLAGS`,
-/// and `SystemApplication` puts every listed system's together with the editor's and checks at
+/// and `SystemApplication` puts every listed system's together with the engine's and checks at
 /// compile time that no two share a name. So two parts of one application cannot quietly read the
-/// same flag as two different things, and a game cannot take one of the editor's: that is a build
+/// same flag as two different things, and a game cannot take one of the engine's: that is a build
 /// that fails, not a flag that does two things at once.
-///
-/// The check covers what is compiled together. A game loaded into the editor brings its systems'
-/// flags with it, which the editor never sees, and those are checked against the editor's in the
-/// game's own build instead -- every application's check includes the editor's flags.
 struct Flag {
   /// With its dashes: `--host`.
   std::string_view name;
@@ -72,9 +68,6 @@ constexpr auto FlagsOf() {
   else
     return std::array<Flag, 0>{};
 }
-/// @brief What the editor reads, which every application's check includes so that no game can take them.
-inline constexpr Flag GAME_FLAG{"--game", FlagKind::Value, "<name>", "open the game whose library's name has this in it (the editor)"};
-inline constexpr Flag PLAY_FLAG{"--play", FlagKind::Switch, "", "start the game it opened playing (the editor)"};
 /// @brief Lists every flag the application knows and does nothing else.
 inline constexpr Flag HELP_FLAG{"--help", FlagKind::Switch, "", "list these and stop"};
 /// @brief Saves one finished frame as a picture and closes, for a look at what a build draws without
@@ -89,7 +82,7 @@ inline constexpr Flag RECORD_FRAMES_FLAG{"--record-frames", FlagKind::Value, "<c
 /// @brief Starts with the settings menu open on a page, which is how a capture shows it: nobody is
 /// there to press Escape.
 inline constexpr Flag SETTINGS_FLAG{"--settings", FlagKind::Value, "<page>", "start with the settings open on a page: game, graphics or controls"};
-inline constexpr std::array ENGINE_FLAGS{GAME_FLAG, PLAY_FLAG, HELP_FLAG, CAPTURE_FLAG, CAPTURE_FRAME_FLAG, RECORD_FLAG, RECORD_FRAMES_FLAG, SETTINGS_FLAG};
+inline constexpr std::array ENGINE_FLAGS{HELP_FLAG, CAPTURE_FLAG, CAPTURE_FRAME_FLAG, RECORD_FLAG, RECORD_FRAMES_FLAG, SETTINGS_FLAG};
 /// @brief Whether a flag was given.
 KUKI_ENGINE_API auto HasFlag(const std::span<const std::string>, const Flag &) -> bool;
 /// @brief What follows a flag, if it was given with something after it.

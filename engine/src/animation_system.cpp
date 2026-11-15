@@ -398,10 +398,7 @@ auto AnimationSystem::Tick() -> void {
 }
 void AnimationSystem::Update(const float deltaTime) {
   KUKI_PROFILE_SCOPE("Animation");
-  const auto stopped = app.GetPlayState() == PlayState::Stopped;
   const ModelLookup lookup = [this](const AssetID id) -> const ModelAsset * { return app.GetAsset<ModelAsset>(id); };
-  preview.SetRate(app.TickRate());
-  const auto previewTicks = stopped ? preview.Advance(deltaTime) : 0;
   Internal(app).ForEachEntity<Animator, Skeleton>([&](const EntityID id, Animator *animator, Skeleton *) {
     auto *rig = app.GetRig(id);
     if (!animator || !rig)
@@ -410,14 +407,10 @@ void AnimationSystem::Update(const float deltaTime) {
     if (!modelAsset)
       return;
     if (const auto *controller = app.GetAsset<AnimatorController>(animator->controller); controller && !controller->states.empty()) {
-      // Stepped by `Tick` while the game plays, and from here while it is stopped -- see `preview`.
-      // Either way all that is left for the frame to do is draw where that has got to. A stopped
-      // animator that is not playing is drawn at the tick it stands on rather than between two.
-      const auto previewing = stopped && animator->playing;
-      for (auto tick = 0; previewing && tick < previewTicks; ++tick)
-        StepAnimator(*animator, *controller, *modelAsset, app.TickRate(), lookup);
-      PoseAnimator(*animator, *rig, *controller, *modelAsset, app.TickRate(), stopped ? (previewing ? preview.Alpha() : 1.f) : app.TickAlpha(), lookup);
-      // Which clip is showing, for the editor to name. A blend has none of its own to name.
+      // Stepped by `Tick`, so all that is left for the frame to do is draw where that has got to,
+      // between the last tick and the next.
+      PoseAnimator(*animator, *rig, *controller, *modelAsset, app.TickRate(), app.TickAlpha(), lookup);
+      // Which clip is showing. A blend has none of its own to name.
       if (animator->state >= 0 && animator->state < static_cast<int>(controller->states.size()))
         animator->clipIndex = controller->Bind(*modelAsset)[animator->state].clip.clipIndex;
       for (size_t node = 0; node < rig->pose.size() && node < rig->nodes.size(); ++node) {

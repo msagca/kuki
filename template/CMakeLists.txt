@@ -3,7 +3,7 @@
 # kuki is added as a subdirectory rather than found as an installed package, so the engine is built
 # from source with the game: a change to it is one rebuild away, and the submodule's commit says
 # exactly which engine the game was built against. kuki builds only its engine when it is not the
-# top-level project -- no editor, no sample games, no tests, no installer.
+# top-level project -- no CLI, no sample games, no tests, no installer.
 cmake_minimum_required(VERSION 3.31)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

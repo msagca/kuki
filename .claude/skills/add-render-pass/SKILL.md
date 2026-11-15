@@ -18,8 +18,7 @@ description: Checklist for adding a render pass to Kuki's render graph -- the en
    `AddOutput` block, placed in the chain where it belongs (the root `CLAUDE.md` lists the chain
    after the scene pass).
 7. If only one backend implements it, a flag in `RendererCapabilities`, set by that backend's
-   `GetCapabilities()`, and a case in `Editor::IsSupported` for the components that drive it, so the
-   editor hides controls that would reach nothing.
+   `GetCapabilities()`, so the settings menu hides entries that would reach nothing.
 
 Shaders go in `engine/src/shader/` and are embedded at build time; any constant the C++ side also
 needs goes in `SHADER_DEFINITIONS` (`shader_definitions.hpp`).

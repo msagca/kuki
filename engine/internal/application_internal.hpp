@@ -6,11 +6,11 @@
 #include <vector>
 struct GLFWwindow;
 namespace kuki {
-/// @brief What the engine's own code and the editor reach in an application, and a game does not.
+/// @brief What the engine's own code reaches in an application, and a game does not.
 ///
 /// The other half of `Application`, in a header that is not installed: a game built against a
 /// release cannot include it, so nothing here is a promise to one, and it can change as the engine
-/// and the editor need. What used to be here was public on `Application` -- a hundred and more
+/// needs. What used to be here was public on `Application` -- a hundred and more
 /// methods, of which the games called a third -- and so every one of them looked like something a
 /// game was meant to call, the window and the play state as much as the bindings.
 ///
@@ -18,8 +18,8 @@ namespace kuki {
 /// const application is const, and offers only what reads.
 ///
 /// The managers are handed out whole rather than forwarded a method at a time, since the code
-/// that reaches past the facade at all -- the renderer, the scene loader, the editor's panels --
-/// wants a manager's whole surface, and a forward per method was most of what made the facade long.
+/// that reaches past the facade at all -- the renderer, the settings menu, the tests -- wants a
+/// manager's whole surface, and a forward per method was most of what made the facade long.
 class KUKI_ENGINE_API ApplicationInternal {
 public:
   explicit ApplicationInternal(Application &app)
@@ -63,25 +63,6 @@ public:
   auto GetArchetypes() const -> const std::vector<ArchetypeSpec> & {
     return app.archetypes;
   }
-  /// @brief What the editor has selected; nothing in a game. The renderer outlines it.
-  auto GetSelectedEntity() const -> EntityID {
-    return app.GetSelectedEntity();
-  }
-  auto GetSelectedEntities() const -> std::vector<EntityID> {
-    return app.GetSelectedEntities();
-  }
-  /// @brief Changes whether the game is running.
-  ///
-  /// Leaving `Stopped` begins an input session and starts the tick count again from nought;
-  /// arriving at it ends the session, which undoes whatever the game bound and registered. See
-  /// `InputManager::BeginSession`. The scene is the caller's to save and put back.
-  auto SetPlayState(const PlayState state) -> void {
-    app.SetPlayState(state);
-  }
-  /// @brief Asks for exactly one tick to be run on the next frame, for stepping while paused.
-  auto StepTick() -> void {
-    app.stepRequested = true;
-  }
   /// @brief Makes every frame stand for exactly one tick, however long it really took.
   ///
   /// For a run that is read back frame by frame, as `RECORD_FLAG` reads it: the readback stalls the
@@ -95,17 +76,6 @@ public:
   /// pace, and nothing recorded offline has one.
   auto SetFixedStep(const bool value) -> void {
     app.fixedStep = value;
-  }
-  /// @brief Makes this application a host: a request to quit stops the game instead of the application.
-  ///
-  /// A game is ended by the settings menu's Quit. Hosted, that would close the editor around it, so
-  /// while a game is playing the request is kept for the host to collect with `TakeStopRequest` and
-  /// act on. Stopped, `Quit` still means quit.
-  auto SetHosting(const bool value) -> void {
-    app.hosting = value;
-  }
-  auto TakeStopRequest() -> bool {
-    return std::exchange(app.stopRequested, false);
   }
   /// @brief Asks the loop to stop after the current frame.
   ///
@@ -137,19 +107,7 @@ public:
   auto SetNetwork(NetworkSystem *value) -> void {
     app.network = value;
   }
-  /// @brief Whether the pointer is over the editor's viewport, which its camera controls read.
-  auto IsViewportHovered() const -> bool {
-    return app.viewportHovered;
-  }
-  auto SetViewportHovered(const bool hovered) -> void {
-    app.viewportHovered = hovered;
-  }
   auto SetCursorLocked(const bool) -> void;
-  /// @brief Registers a binding whose default may carry modifiers, as the editor's shortcuts do.
-  /// On a rebound key as `Application::RegisterBinding` is.
-  auto RegisterBinding(const std::string &name, const InputManager::Trigger &trigger, std::string description = "") -> void {
-    app.RegisterTrigger(name, trigger, std::move(description));
-  }
   /// @brief The id of the overlay text under a point in window coordinates, or `Overlay::NoHit`.
   ///
   /// The overlay's counterpart of `PickEntity`, and there for the same reason that one is: the

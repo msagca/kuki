@@ -19,8 +19,8 @@ namespace kuki {
 /// Where a scene does carry an `AtmosphereSky`, `aerialPerspective` below hands the distance haze
 /// over to that component's medium instead, so the two do not both describe the same air.
 ///
-/// A scene singleton and serialized, on the same footing as `AtmosphereSky` and for the same
-/// reason: how thick a room's air is describes the work rather than how somebody is looking at it.
+/// A scene singleton, on the same footing as `AtmosphereSky` and for the same reason: how thick a
+/// room's air is describes the scene rather than the entity holding it.
 struct VolumetricFog {
   /// @brief Extinction of the medium at `baseHeight`, per unit of scene distance.
   ///

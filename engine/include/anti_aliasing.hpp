@@ -48,10 +48,8 @@ inline auto SampleCount(const AntiAliasingMode mode) -> int {
 /// integer: the sample count has to be one the hardware rasterises, and a target asked for three
 /// samples fails to allocate with nothing on screen to say why.
 ///
-/// Not in `SERIALIZED_TYPES`, matching `IndirectLighting`. A sample count is the one setting here
-/// that is also a cost, and a scene authored on a machine that could afford eight would impose
-/// eight on one that cannot. The editor puts a fresh one on the settings entity when a scene has
-/// none, so the control is always there; what it is not is a value that travels.
+/// A sample count is the one setting here that is also a cost, so the player's choice on the
+/// graphics page (`EngineConfig::antiAliasing`) overrides what a scene asks for.
 struct AntiAliasing {
   AntiAliasingMode mode{AntiAliasingMode::MSAA4x};
 };

@@ -87,7 +87,7 @@ inline constexpr size_t MAX_IK_GOALS = 6;
 /// Two ways, and which one depends on whether it has a `controller` with any states.
 ///
 /// With none it is what it always was: one clip by index, advanced by the frame's own length. That
-/// is the editor's preview, and what a model dropped into a scene does by default.
+/// is what a model placed in a scene does by default.
 ///
 /// With states it is a small machine stepped by the fixed tick (`StepAnimator`), whose states are
 /// the controller's and shared with every animator on the same moves. It is in one state at a time;

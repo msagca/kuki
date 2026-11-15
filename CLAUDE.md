@@ -3,7 +3,7 @@
 Guidance for Claude Code in this repository. This file holds what nearly every change needs; the
 rest is read where it is used:
 
-- `engine/`, `editor/`, `game/duel/`, `game/frontier/` and `engine/src/shader/` have a `CLAUDE.md`
+- `engine/`, `game/duel/`, `game/frontier/` and `engine/src/shader/` have a `CLAUDE.md`
   of their own, loaded with the files there.
 - Recipes are skills in `.claude/skills/`: `capture`, `add-game`, `add-binding`,
   `add-graphics-setting`, `add-engine-component`, `add-render-pass`, `add-compile-fail-check`.
@@ -32,7 +32,7 @@ compile. Games are on everywhere; the tests (`KUKI_BUILD_TESTS`) cover what has 
 tick, gestures, the ECS, rollback, networking, the duel's rules. A `test/compile_fail/*.cpp` passes
 only if the compiler prints its expected message on the first line.
 
-Executables land in `build/editor/`, `build/game/<name>/`, `build/test/`. A game's folder gets fresh
+Executables land in `build/game/<name>/`, `build/cli/`, `build/test/`. A game's folder gets fresh
 DLLs from its `<Target>Runtime` target: build both, or the game runs against the old engine.
 `--capture <file.png>` saves the frame after `--capture-frame <n>` (300) and quits -- how to see
 what a build draws (the `capture` skill). `--record <file.mp4>` pipes `--record-frames <n>` (600)
@@ -41,7 +41,7 @@ linked or shipped, and without it the run exits 1. `<Game> --stress <load>` (`dr
 `particles`, `all`; `--stress-scale`, `--stress-budget`, `--stress-report <file.json>`) ramps a load
 up in front of the camera with vsync off, logs each step's frame times and costliest scopes, and
 exits 1 if the full load's p95 is over budget -- how to measure what a change costs
-(`StressSystem`, which every game lists before `RenderingSystem`, and the editor's Stress panel). The
+(`StressSystem`, which every game lists before `RenderingSystem`). The
 graphics page's Performance choice puts the frame rate or the timings -- the frame time's mean, p95
 and worst, and the costliest profiler scopes by their own time, all CPU -- in the corner while it
 runs (`EngineConfig::showTimings`). Assets are staged beside the binary and found through
@@ -55,15 +55,14 @@ beside each executable -- without them nothing is drawn.
 
 - `engine/` -- `KukiEngine`, linked by everything. Headers are included by bare name
   (`#include <entity_manager.hpp>`): `include/` is what a game is given and a release installs;
-  `internal/` (the backend, the scene loader, shader constants, `ApplicationInternal`) is reached
-  only by the engine and, through `KukiEngineInternal`, the editor and tests. No `include/` header
+  `internal/` (the backend, shader constants, `ApplicationInternal`) is reached only by the engine
+  and, through `KukiEngineInternal`, the tests. No `include/` header
   may include an `internal/` one -- `KukiPublicHeaders`, built with the tests, fails if one does.
-- `editor/` -- `KukiEditor` (Dear ImGui), the only target linking imgui/imguizmo/file-browser.
 - `game/` -- a subdirectory with a `CMakeLists.txt` is a game, found without registration. It links
   `KukiEngine` alone, through `kuki_add_game` (`cmake/KukiGame.cmake`).
 - `template/` -- a game laid out as a repository of its own, which `kuki new` copies out of the
   engine it pins: kuki as the submodule external/kuki, added with `add_subdirectory`, after which
-  kuki builds only its engine (no editor, CLI, games, tests or installer). Its placeholders are
+  kuki builds only its engine (no CLI, games, tests or installer). Its placeholders are
   `MyGame`, `my_game` and `My Game`, renamed by `RenameTemplate`. Its `game/` is built here with
   the games, so it cannot drift from `cmake/KukiGame.cmake`. Nothing in `cmake/KukiGame.cmake` or
   the engine's CMake may name `CMAKE_SOURCE_DIR`/`CMAKE_BINARY_DIR`, which are the game's there;
@@ -157,10 +156,8 @@ A tick reads the player as a `ButtonMask` (`GetButtons()`). A button is a rebind
 in a small notation (`"left right punch"`, `"guard*30 -guard"`); it keeps nothing but the masks, so
 fed a peer's it reproduces the peer's gestures. A game's keys are `Key`s (`key.hpp`, GLFW's numbers
 under the engine's names, so glfw is private to the engine), given only as a binding's default; it
-reads no key directly. Mouse buttons are read directly (`IsMousePressed(MouseButton::Left)`). Typed
-sequences (`InputManager::RegisterSequence`, read with `IsSequenceTyped`) are the editor's, reached
-through `ApplicationInternal`. Nothing in the input takes a callback: keys, buttons and sequences
-are all read in `Update`.
+reads no key directly. Mouse buttons are read directly (`IsMousePressed(MouseButton::Left)`).
+Nothing in the input takes a callback: keys and buttons are read in `Update`.
 
 An `Animator` is plain data, stepped by the tick through the states of a shared
 `AnimatorController` and changed with `Play(animator, controller, name)`; it reports what it fired
@@ -169,8 +166,7 @@ see a tick's events that tick. Rigs, crossfades and IK are in `engine/CLAUDE.md`
 
 ### Settings menu
 
-Every game has a `SettingsMenu` (`settings_menu.hpp`; off in the editor through
-`ApplicationDescription::settingsMenu`), opened and closed by Escape, the `Settings` binding,
+Every game has a `SettingsMenu` (`settings_menu.hpp`), opened and closed by Escape, the `Settings` binding,
 registered first. Its pages are the game's (`GetSettingsMenu().AddChoice/AddToggle/AddNumber/
 AddAction(SettingsPage::Game, ...)`; `AddLightingEntries` lists the scene's `IndirectLighting` and the
 shading and probe views there, for a game that studies the lighting), graphics (saved in `EngineConfig`) and controls (every binding,
@@ -185,8 +181,8 @@ A game is a library plus the launcher every game shares, `cmake/game_main.cpp`, 
 `kuki_add_game(<Target> SOURCES ... [ASSETS <dir>...] [FONT])`, which also stages the DLLs, the HLSL
 compiler and the assets beside the executable and installs them.
 Its sources define `Setup<Game>(Application &)`, `KUKI_GAME_MODULE(name, setup)` and
-`KUKI_GAME_MAIN(App)` (the `add-game` skill); a shared build makes `<Target>Game.dll` and `KukiEngine.dll`. Games are
-always `Playing`; only the editor stops and pauses (`PlayState`).
+`KUKI_GAME_MAIN(App)` (the `add-game` skill); a shared build makes `<Target>Game.dll` and `KukiEngine.dll`. A game is
+`Playing` but while the settings menu has paused it (`PlayState`).
 
 Scenes are built with the builder in `game_builder.hpp`, which checks each call against the
 entity's archetype at compile time
@@ -196,10 +192,10 @@ entity's archetype at compile time
 
 `Application`'s public surface is what a game calls, and only that: time, bindings and the mouse,
 assets, the active scene's entities, and the settings menu, overlay, preferences and network. What
-the engine's own code and the editor need besides -- the managers, the window, the graphics
-context, play states, the editor's selection, unchecked creation from a mask -- is
-`ApplicationInternal` (`internal/application_internal.hpp`), used as `Internal(app).Assets()`.
-Something a game needs goes on `Application`; something only the engine or editor needs goes there.
+the engine's own code needs besides -- the managers, the window, the graphics context, unchecked
+creation from a mask -- is `ApplicationInternal` (`internal/application_internal.hpp`), used as
+`Internal(app).Assets()`. Something a game needs goes on `Application`; something only the engine
+needs goes there.
 
 A game never holds a `Scene` (`internal/scene.hpp`): it reads the camera with `GetCamera()` and a
 scene singleton with `GetSceneSingleton<T>()`, which refuses a component that is not one. `Scene`
@@ -243,8 +239,9 @@ moves its camera through `GetCameraEntity`. Scene singletons (`Component::IsScen
 e.g. `IndirectLighting`, `AtmosphereSky`) describe the scene, not the entity holding them, and a
 game reads one with `GetSceneSingleton<T>()`.
 
-A game's component is a struct, `KUKI_COMPONENT` and an archetype that has it. An engine component touches five places (the
-`add-engine-component` skill); an enum shown in the editor needs `EnumTraits<T>` (`enum_traits.hpp`).
+A game's component is a struct, `KUKI_COMPONENT` and an archetype that has it. An engine component touches four places (the
+`add-engine-component` skill); an enum listed on the settings menu by name has `EnumTraits<T>`
+(`enum_traits.hpp`).
 
 ### Rendering
 
@@ -263,8 +260,9 @@ described in `engine/CLAUDE.md`.
 ### Assets and scenes
 
 Assets are keyed by `AssetID` (a 128-bit UUID). One with no file goes in through
-`Application::AddAsset` with a `MakeBuiltInAssetID`, so saved scenes still resolve it. A scene is
-saved as JSON with each entity's archetype; the format is in `engine/CLAUDE.md`.
+`Application::AddAsset` with a `MakeBuiltInAssetID`, a name hashed into an id. A scene is not
+saved: it is built in code, every time, by the game's setup and systems. A material can also be a
+`.mat` JSON file loaded by name from beside the executable (chess's, staged with `ASSETS`).
 
 `EngineConfig` (`kuki.config.json`) is installation-wide: backend, tone mapper, graphics settings.
 `Preferences` are per application, loaded before `Start` and written after shutdown, rebound keys

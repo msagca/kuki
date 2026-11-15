@@ -21,7 +21,7 @@ auto KUKI_ENGINE_API ResolvePath(const std::filesystem::path &) -> std::filesyst
 /// @brief Adds a directory that relative paths are looked for in when the executable's has no such file.
 ///
 /// For a game hosted by another application. The game says `model/fighter.glb` and means the file
-/// beside itself, and when it is the editor that is running, beside itself is not beside the
+/// beside itself, and when another application loaded it, beside itself is not beside the
 /// executable. The executable's directory is still asked first, so nothing the host resolves
 /// changes; a path found in neither is answered as it always was, against the executable.
 auto KUKI_ENGINE_API AddAssetRoot(const std::filesystem::path &) -> void;

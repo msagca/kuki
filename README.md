@@ -3,7 +3,7 @@
 A game engine written in C++23, made up of:
 
 - **KukiEngine**, the engine library: an archetype-based ECS fixed at compile time, a fixed-tick game loop with rebindable buttons and a gesture recognizer, skeletal animation with state machines and inverse kinematics, rollback networking, procedural generation (irregular grids, wave function collapse over any graph, noise), navigation meshes, flocking, and a render graph with a Direct3D 12 backend (physically based lighting, image-based lighting, shadows, bloom, a computed sky with clouds and fog, anti-aliasing).
-- **KukiEditor**, a [Dear ImGui](https://github.com/ocornut/imgui) editor for building, saving and playing scenes.
+- **Sample games**: chess, a networked one-on-one fight and a procedurally generated strategy map, each built entirely in code.
 - **kuki**, the command a game is started and looked after with, in a repository of its own with the engine as a submodule.
 
 ## Starting a game
@@ -53,7 +53,7 @@ sudo apt install -y build-essential clang cmake git git-lfs ninja-build xorg-dev
 
 > Your distribution's CMake may be older than 3.31; if so, install a newer one from [cmake.org](https://cmake.org/download/) or with `pip install cmake`.
 
-Direct3D 12 is the only graphics backend, so on Linux the engine and its windowless tests build, but the editor and the games stop at startup with no backend to draw with. Continuous integration only builds on Windows at the moment, so Linux builds may break without notice.
+Direct3D 12 is the only graphics backend, so on Linux the engine and its windowless tests build, but the games stop at startup with no backend to draw with. Continuous integration only builds on Windows at the moment, so Linux builds may break without notice.
 
 ### Build Instructions
 
@@ -85,7 +85,7 @@ This builds and nothing else: no tests and no installer. See [Presets](#presets)
 
 > If it fails due to missing dependencies, refer to the error messages to install the required packages. Then, run the command again.
 
-If it succeeds, you can launch `KukiEditor` from `build/editor/` and the games from `build/game/<name>/`.
+If it succeeds, you can launch the games from `build/game/<name>/` and `kuki` from `build/cli/`.
 
 > Refer to the build output for the exact path of each executable.
 
