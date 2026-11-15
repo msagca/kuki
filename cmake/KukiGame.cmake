@@ -264,7 +264,54 @@ function(kuki_add_game target)
   kuki_stage_shader_compiler(${target} ${target})
   kuki_hide_console(${target})
   kuki_report_binary(${target})
+  # What `games/CMakeLists.txt` lists a game by, for the installer to offer it.
+  set_property(TARGET ${target} PROPERTY KUKI_GAME TRUE)
   set(KUKI_GAME_CODE ${code} PARENT_SCOPE)
+endfunction()
+# Declares a game's tests: gtest cases, compiled with the parts of the game they test.
+#
+#   kuki_add_game_tests(<target>
+#     SOURCES <file>...         the tests, and the game's sources they test
+#     [INCLUDE <dir>...])       its headers; `include/` beside the call if absent
+#
+# Makes `<target>Test`, an executable beside the game's, whose cases ctest finds by running it.
+# Nothing when KUKI_BUILD_TESTS is off, so a game calls this unconditionally.
+#
+# What is tested is a game's rules, which know nothing of a window or a scene -- the duel's
+# `duel_sim.cpp`, the frontier's `terrain.cpp` -- so the sources are compiled in as they are, and the
+# game's own library is not linked: it holds the systems and the module entry point too, and in a
+# static build it is the game's executable. Only `KukiEngine`, as the game itself is given, so a
+# test can reach nothing the game could not.
+#
+# The same call in a repository of its own, whose top-level CMakeLists.txt sets KUKI_BUILD_TESTS
+# (kuki then builds googletest, and none of its own tests) and calls `enable_testing()`, without
+# which ctest finds nothing.
+function(kuki_add_game_tests target)
+  if(NOT KUKI_BUILD_TESTS)
+    return()
+  endif()
+  cmake_parse_arguments(PARSE_ARGV 1 TESTS "" "" "SOURCES;INCLUDE")
+  if(NOT TESTS_SOURCES)
+    message(FATAL_ERROR "kuki_add_game_tests(${target}) was given no SOURCES")
+  endif()
+  if(NOT TESTS_INCLUDE AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    set(TESTS_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  endif()
+  include(GoogleTest)
+  set(test ${target}Test)
+  add_executable(${test} ${TESTS_SOURCES})
+  target_link_libraries(${test} PRIVATE KukiEngine gtest_main)
+  if(TESTS_INCLUDE)
+    target_include_directories(${test} PRIVATE ${TESTS_INCLUDE})
+  endif()
+  if(KUKI_ENABLE_LINTING AND CLANG_TIDY_EXE)
+    enable_clang_tidy(${test})
+  endif()
+  kuki_stage_runtime(${test})
+  # Discovered when the tests are run and not when the binary links. Discovery runs the binary, and
+  # in a shared build it does not start until the engine has been staged beside it, which happens
+  # after the link and not as part of it.
+  gtest_discover_tests(${test} DISCOVERY_MODE PRE_TEST)
 endfunction()
 # Blender, for the games whose models are kept as .blend files and exported at build time.
 #

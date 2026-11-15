@@ -21,7 +21,7 @@
 #include <string>
 #include <utility>
 using namespace kuki;
-using namespace my_game;
+namespace my_game {
 namespace {
 /// Assets made in code have no file to be known by, so each gets an id made from a name, which a
 /// saved scene can resolve again.
@@ -78,6 +78,9 @@ auto SetupMyGame(Application &app) -> void {
     .Material("Painted")
     .With<Spin>([](Spin &spin) { spin.speed = 1.2f; });
 }
-// Once, in one source file of the game: what the launcher starts.
-KUKI_GAME_MODULE("My Game", SetupMyGame)
-KUKI_GAME_MAIN(MyGame)
+} // namespace my_game
+// Once, in one source file of the game, outside its namespace: what the launcher starts. The macros
+// define `extern "C"` functions at global scope, so they name the game's setup and application in
+// full.
+KUKI_GAME_MODULE("My Game", my_game::SetupMyGame)
+KUKI_GAME_MAIN(my_game::MyGame)

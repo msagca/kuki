@@ -42,6 +42,6 @@ inline constexpr const char *GAME_MODULE_SYMBOL = "KukiGameModule";
 /// Empty `module` if the file is not a library, or is one that exports no module.
 KUKI_ENGINE_API auto LoadGame(const std::filesystem::path &) -> LoadedGame;
 /// @brief The game libraries found near the running executable: beside it, and in the directories
-/// of a build tree's `game/`.
+/// of a build tree's `games/`.
 KUKI_ENGINE_API auto FindGames() -> std::vector<std::filesystem::path>;
 } // namespace kuki

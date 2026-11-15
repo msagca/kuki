@@ -5,12 +5,23 @@ A game on the [Kuki](https://github.com/msagca/kuki) engine, which is the submod
 
 ## Building and running
 
-With the `kuki` command, which the engine's installer puts on the PATH:
+With the `kuki` command, which the engine's installer puts on the PATH. Build the game
+(`kuki build --release` for a release build):
 
 ```bash
-kuki build              # or: kuki build --release
-kuki run                # arguments after it go to the game: kuki run --help
-kuki update             # move the engine to its latest main, then build, run and commit
+kuki build
+```
+
+Run it; any arguments after `run` go to the game (`kuki run --help` lists them):
+
+```bash
+kuki run
+```
+
+Move the engine to its latest main, then build, run and commit:
+
+```bash
+kuki update
 ```
 
 Or by hand: `cmake --workflow Debug`, and the executable is in `build/game/` (in a folder per
