@@ -58,12 +58,17 @@ beside each executable -- without them nothing is drawn.
 - `editor/` -- `KukiEditor` (Dear ImGui), the only target linking imgui/imguizmo/file-browser.
 - `game/` -- a subdirectory with a `CMakeLists.txt` is a game, found without registration. It links
   `KukiEngine` alone, through `kuki_add_game` (`cmake/KukiGame.cmake`).
-- `template/` -- a game laid out as a repository of its own: kuki pinned as a submodule in
-  external/kuki and added with `add_subdirectory`, after which kuki builds only its engine (no
-  editor, games, tests or installer). Its `game/` is built here with the games, so it cannot drift
-  from `cmake/KukiGame.cmake`. Nothing in `cmake/KukiGame.cmake` or the engine's CMake may name
-  `CMAKE_SOURCE_DIR`/`CMAKE_BINARY_DIR`, which are the game's there; kuki's own root is
-  `Kuki_SOURCE_DIR`.
+- `template/` -- a game laid out as a repository of its own, which `kuki new` copies out of the
+  engine it pins: kuki as the submodule external/kuki, added with `add_subdirectory`, after which
+  kuki builds only its engine (no editor, CLI, games, tests or installer). Its placeholders are
+  `MyGame`, `my_game` and `My Game`, renamed by `RenameTemplate`. Its `game/` is built here with
+  the games, so it cannot drift from `cmake/KukiGame.cmake`. Nothing in `cmake/KukiGame.cmake` or
+  the engine's CMake may name `CMAKE_SOURCE_DIR`/`CMAKE_BINARY_DIR`, which are the game's there;
+  kuki's own root is `Kuki_SOURCE_DIR`.
+- `cli/` -- `kuki` (`KukiCli`), installed on the PATH: `new <game_name>` makes a game's repository
+  (git, the engine pinned, the template renamed), `update` moves its engine to the latest main,
+  `build` and `run` wrap `cmake --workflow` and the executable. Standard library only, no engine;
+  `ParseGameName` and `RenameTemplate` are compiled into the tests.
 - `test/` -- gtest, with the duel's rules and the frontier's map compiled in.
 - `external/` -- submodules, never patched; their quirks are worked around, and explained, in the
   root `CMakeLists.txt`.

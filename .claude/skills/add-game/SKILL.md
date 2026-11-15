@@ -9,10 +9,10 @@ The frontier (`game/frontier/`) is the one to copy: everything in it is made in 
 a new game should start. Below, `<name>` is the directory and namespace (`frontier`), `<Name>` the
 class (`Frontier`).
 
-A game kept in a repository of its own starts from `template/` instead: copy it, add kuki as the
-submodule external/kuki, and follow its `README.md`. The steps below are the same there, with
-`game/` in place of `game/<name>/`; the rules (step 6) are tested in that repository, since kuki's
-tests cannot see them.
+A game kept in a repository of its own starts with `kuki new <game_name>` instead (`cli/`): the
+repository, the engine pinned as its submodule, and the template renamed for the game, already
+building. The steps below are the same there, with `game/` in place of `game/<name>/`; the rules
+(step 6) are tested in that repository, since kuki's tests cannot see them.
 
 1. `game/<name>/CMakeLists.txt` -- `project(Kuki<Name>)`, a glob of `src/*.cpp`, and
    `kuki_add_game(${PROJECT_NAME} SOURCES ${CPP_SOURCES} FONT)` (`cmake/KukiGame.cmake`), which
