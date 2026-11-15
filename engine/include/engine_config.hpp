@@ -66,6 +66,10 @@ struct KUKI_ENGINE_API EngineConfig {
   bool depthOfField{true};
   LightingQuality lighting{LightingQuality::High};
   bool showFrameRate{};
+  /// @brief The frame's timings in the corner instead of the frame rate alone: the frame time's
+  /// mean, 95th percentile and worst, and the profiler's costliest scopes by their own time. What a
+  /// change to the renderer costs, read while it runs. Wins over `showFrameRate`.
+  bool showTimings{};
   /// @brief Location of the config file, alongside the executable.
   static auto GetPath() -> std::filesystem::path;
   /// @brief Reads the config, falling back to defaults when the file is missing or malformed.

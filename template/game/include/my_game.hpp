@@ -1,6 +1,7 @@
 #pragma once
 #include <my_game_world.hpp>
 #include <rendering_system.hpp>
+#include <stress_system.hpp>
 #include <spin_system.hpp>
 #include <system_application.hpp>
 namespace kuki {
@@ -9,8 +10,9 @@ class Application;
 /// @brief Registers the controls, makes the assets and builds the scene.
 auto SetupMyGame(kuki::Application &) -> void;
 /// @brief The application: the game's world, and its systems in the order they run.
-/// `RenderingSystem` is required, and last.
-class MyGame final : public kuki::SystemApplication<my_game::MyGameWorld, my_game::SpinSystem, kuki::RenderingSystem> {
+/// `RenderingSystem` is required, and last; `StressSystem` before it is what `--stress` needs, and
+/// does nothing without it.
+class MyGame final : public kuki::SystemApplication<my_game::MyGameWorld, my_game::SpinSystem, kuki::StressSystem, kuki::RenderingSystem> {
 public:
   MyGame();
 private:

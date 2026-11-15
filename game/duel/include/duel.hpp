@@ -5,6 +5,7 @@
 #include <duel_world.hpp>
 #include <network_system.hpp>
 #include <rendering_system.hpp>
+#include <stress_system.hpp>
 #include <stage_system.hpp>
 #include <system_application.hpp>
 inline constexpr const char *DUEL_FONT = "font/Inter-VariableFont_opsz,wght.ttf";
@@ -26,7 +27,7 @@ auto SetupDuel(kuki::Application &) -> void;
 /// the duel's own system: that draws the game, and finds the rules where this tick left them. The
 /// scene's animators are listed ahead of both only because they always were; the rules step their
 /// own. The stage comes after the fight, so its lightning is laid over the fight's own flashes.
-class Duel final : public kuki::SystemApplication<duel::DuelWorld, kuki::AnimationSystem, kuki::NetworkSystem, DuelSystem, StageSystem, kuki::RenderingSystem> {
+class Duel final : public kuki::SystemApplication<duel::DuelWorld, kuki::AnimationSystem, kuki::NetworkSystem, DuelSystem, StageSystem, kuki::StressSystem, kuki::RenderingSystem> {
 public:
   Duel();
 private:
