@@ -276,6 +276,11 @@ included.
 - Every engine macro is in `macros.hpp`. Third-party configuration (`NOMINMAX`,
   `GLM_ENABLE_EXPERIMENTAL`, ...) is `target_compile_definitions` in `engine/CMakeLists.txt`, and a
   single-header library's `..._IMPLEMENTATION` stays in its one source file.
+- Export annotations stay, whether or not a build is shared: everything a game reaches is marked
+  `KUKI_ENGINE_API` (generated into `kuki_engine_export.h`), and a new public type or function is
+  marked too. Unmarked, it links in a static build and fails only in a shared one, so the engine
+  could not go back to being a DLL without a hunt for what to mark. Do not remove one because the
+  build in front of you does not need it.
 - `.clang-format`: `ColumnLimit: 0` (no wrapping, one statement per line) and
   `MaxEmptyLinesToKeep: 0` (no blank lines in bodies). CMake: gersemi, 2-space indent.
 - Comments explain *why*, at length, often with what was tried before; match them, and keep them
