@@ -4,39 +4,15 @@ file(
   CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
-# The board's rank and file labels are baked from this at startup. Shared with the editor rather
-# than copied here, because it is most of a megabyte and neither target has a claim on it.
-set(FONT_SOURCE_DIR "${CMAKE_SOURCE_DIR}/asset/font")
-# The one file and not the directory: the editor keeps its icon font there too, which is most of a
-# megabyte that a game would carry and never open.
-set(FONT_SOURCES "${FONT_SOURCE_DIR}/Inter-VariableFont_opsz,wght.ttf")
-set(MATERIAL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/material")
-file(
-  GLOB_RECURSE MATERIAL_SOURCES
-  CONFIGURE_DEPENDS
-  "${MATERIAL_SOURCE_DIR}/*.mat"
+# The board's rank and file labels are baked from the font at startup; the materials are loaded
+# by name from `material/` beside the executable. The engine and nothing else is linked: imgui and
+# the rest are the editor's, and a game linking them would be carrying an editor it never opens.
+kuki_add_game(
+  ${PROJECT_NAME}
+  SOURCES ${CPP_SOURCES}
+  ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/src/material"
+  FONT
 )
-# A library the editor can load and an executable that starts it. See `kuki_add_game`.
-kuki_add_game(${PROJECT_NAME} ${CPP_SOURCES})
-if(KUKI_ENABLE_LINTING AND CLANG_TIDY_EXE)
-  enable_clang_tidy(${KUKI_GAME_CODE})
-endif()
-target_include_directories(
-  ${KUKI_GAME_CODE}
-  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
-)
-# The engine and nothing else. No imgui, no imguizmo, no file browser: those are the editor's
-# dependencies, and a game linking them would be carrying an editor it never opens.
-if(UNIX AND NOT APPLE)
-  find_package(X11 REQUIRED)
-  target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
-  set_target_properties(
-    ${PROJECT_NAME}
-    PROPERTIES INSTALL_RPATH "$ORIGIN" BUILD_WITH_INSTALL_RPATH TRUE
-  )
-endif()
-# Listed as sources so an edited material shows up in the IDE and triggers the staging below.
-target_sources(${PROJECT_NAME} PRIVATE ${FONT_SOURCES} ${MATERIAL_SOURCES})
 # Pieces, board and clock, modelled in one .blend and exported to `model/` beside the executable
 # as one glTF a mesh. `Chess::Start` loads them by those names.
 kuki_add_blender_models(
@@ -44,56 +20,3 @@ kuki_add_blender_models(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/model/chess.blend"
   model
 )
-# Its own component, named after the target, so the installer can offer this game on its own. Every
-# game does the same, and `game/CMakeLists.txt` collects the names for the installer to list.
-install(
-  FILES ${FONT_SOURCES}
-  DESTINATION "${CMAKE_INSTALL_BINDIR}/font"
-  COMPONENT ${PROJECT_NAME}
-)
-install(
-  DIRECTORY "${MATERIAL_SOURCE_DIR}"
-  DESTINATION "${CMAKE_INSTALL_BINDIR}"
-  COMPONENT ${PROJECT_NAME}
-)
-install(
-  TARGETS ${PROJECT_NAME}
-  DESTINATION "${CMAKE_INSTALL_BINDIR}"
-  COMPONENT ${PROJECT_NAME}
-)
-kuki_hide_console(${PROJECT_NAME})
-kuki_report_binary(${PROJECT_NAME})
-# Assets resolve against the executable's directory rather than the working directory, so they are
-# staged beside it -- see `ResolvePath`. Same shape as the editor's staging, for the same reason.
-add_custom_command(
-  TARGET ${PROJECT_NAME}
-  POST_BUILD
-  COMMAND
-    ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${PROJECT_NAME}>/font
-  COMMAND
-    ${CMAKE_COMMAND} -E copy_if_different ${FONT_SOURCES}
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>/font
-  COMMAND
-    ${CMAKE_COMMAND} -E copy_directory "${MATERIAL_SOURCE_DIR}"
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>/material
-  COMMENT "Staging chess fonts and materials next to the executable"
-  VERBATIM
-)
-if(WIN32 AND DXCOMPILER_DLL AND DXIL_DLL)
-  # The Direct3D 12 backend compiles its HLSL at runtime, so a game that might select that backend
-  # needs the compiler beside it exactly as the editor does. Without these it draws nothing.
-  add_custom_command(
-    TARGET ${PROJECT_NAME}
-    POST_BUILD
-    COMMAND
-      ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "${DXIL_DLL}"
-      $<TARGET_FILE_DIR:${PROJECT_NAME}>
-    COMMENT "Staging the HLSL compiler next to the executable"
-    VERBATIM
-  )
-  install(
-    FILES "${DXCOMPILER_DLL}" "${DXIL_DLL}"
-    DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    COMPONENT ${PROJECT_NAME}
-  )
-endif()

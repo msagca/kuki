@@ -3,11 +3,8 @@
 # new one. Globbed with CONFIGURE_DEPENDS so that adding one reconfigures rather than being missed.
 #
 # Reached from the root only when KUKI_BUILD_GAMES is on, so the ordinary editor build pays nothing
-# for games it is not building.
-#
-# One thing a new game does have to say for itself: `kuki_report_binary(${PROJECT_NAME})`, which
-# prints where its executable landed. That cannot be applied from here -- a custom command may only
-# be attached to a target in the directory that created it.
+# for games it is not building. A game declares itself with `kuki_add_game` (`cmake/KukiGame.cmake`),
+# the same call a game in a repository of its own makes -- see `template/`.
 file(GLOB GAME_ENTRIES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*")
 set(KUKI_GAME_TARGETS "")
 foreach(GAME_ENTRY ${GAME_ENTRIES})

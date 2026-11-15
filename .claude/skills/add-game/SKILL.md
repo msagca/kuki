@@ -9,11 +9,19 @@ The frontier (`game/frontier/`) is the one to copy: everything in it is made in 
 a new game should start. Below, `<name>` is the directory and namespace (`frontier`), `<Name>` the
 class (`Frontier`).
 
-1. `game/<name>/CMakeLists.txt` -- copy the frontier's and rename `project(Kuki<Name>)` and the
-   staging comment. It is found without registration (`game/CMakeLists.txt` globs for it). Keep
-   `kuki_add_game` (the library and launcher; include directories go on `${KUKI_GAME_CODE}`, not
-   on the executable), `kuki_report_binary`, the font staging if anything is written on screen,
-   and the dxcompiler staging -- without it nothing is drawn. Link nothing but the engine.
+A game kept in a repository of its own starts from `template/` instead: copy it, add kuki as the
+submodule external/kuki, and follow its `README.md`. The steps below are the same there, with
+`game/` in place of `game/<name>/`; the rules (step 6) are tested in that repository, since kuki's
+tests cannot see them.
+
+1. `game/<name>/CMakeLists.txt` -- `project(Kuki<Name>)`, a glob of `src/*.cpp`, and
+   `kuki_add_game(${PROJECT_NAME} SOURCES ${CPP_SOURCES} FONT)` (`cmake/KukiGame.cmake`), which
+   makes the library and the launcher, takes `include/` as the game's headers, and stages the
+   DLLs, the HLSL compiler -- without it nothing is drawn -- and the font beside the executable.
+   `FONT` if anything is written on screen, the settings menu included; `ASSETS <dir>` for a
+   directory loaded at run time (chess's `material`). Anything else about the game's code goes on
+   `${KUKI_GAME_CODE}`, not on the executable. It is found without registration
+   (`game/CMakeLists.txt` globs for it). Link nothing but the engine.
 2. `game/<name>/include/<name>_world.hpp` -- the game's archetypes and `using <Name>World = kuki::World<...>`,
    all in `namespace <name>`. A game's component is a plain struct, declared with
    `KUKI_COMPONENT(<name>::Type, index)` at global scope after its definition, indices from 0 and
