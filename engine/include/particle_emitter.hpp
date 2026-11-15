@@ -83,8 +83,7 @@ enum class ParticleSprite : uint8_t {
 /// surface of a mesh, along its normals; see `ParticleShape`. A particle that has left the emitter
 /// no longer follows it, which is what makes a moving emitter leave a trail.
 ///
-/// Not a scene singleton -- a scene has as many of these as it has things on fire -- and serialized,
-/// because where the sparks come from is part of the work.
+/// Not a scene singleton: a scene has as many of these as it has things on fire.
 struct ParticleEmitter {
   /// @brief Slots in the pool, which is the most particles this emitter can have alive at once.
   ///

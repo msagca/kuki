@@ -14,7 +14,7 @@ struct SlotHandle {
 /// @brief Data of a length that varies, one slot for each entity that has some.
 ///
 /// A slot remembers the entity it was claimed for and answers to that entity alone. A component
-/// copied to another entity -- a prefab placed, an entity duplicated in the editor -- carries its
+/// copied to another entity -- a prefab placed, an entity duplicated -- carries its
 /// handle with it, finds nothing behind it, and claims a slot of its own, rather than sharing one
 /// with the entity it was copied from and each writing over the other's. Entity ids are never given
 /// out twice in a scene, so an entity that has gone cannot be mistaken for one that came after it.

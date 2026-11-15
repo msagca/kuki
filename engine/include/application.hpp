@@ -29,24 +29,19 @@ namespace kuki {
 class ApplicationInternal;
 class NetworkSystem;
 class RenderingSystem;
-/// @brief Whether the game in an application is running, as opposed to the application.
+/// @brief Whether the game is running.
 ///
-/// A game on its own is `Playing` from start to finish and never thinks about this. An editor is
-/// the application that does: it starts `Stopped`, with the scene standing still to be worked on,
-/// and plays, pauses and stops the game inside it.
-///
-/// Stopped and paused both mean no tick is run. What tells them
-/// apart is what the host does about it: stopping puts the scene back as it was before play.
-enum class PlayState : uint8_t { Stopped,
-  Playing,
+/// `Playing` from start to finish, but for while the settings menu is open in a game played alone:
+/// then it is `Paused`, and no tick is run. A clock a game keeps in `Update` looks here.
+enum class PlayState : uint8_t { Playing,
   Paused };
 /// @brief What a game is given: its time, its input, its assets, its scene, and the few services
 /// every game has.
 ///
 /// Kept to what a game calls, and that is a rule rather than a tidying. Everything here is in the
 /// installed headers and so is a promise to every game built against a release; what only the
-/// engine's own code and the editor reach -- the managers themselves, the window, play states, the
-/// editor's selection -- is `ApplicationInternal`'s, in a header that is not installed. A method a
+/// engine's own code reaches -- the managers themselves, the window, the graphics context -- is
+/// `ApplicationInternal`'s, in a header that is not installed. A method a
 /// game has no use for was a second way to do something, or a way past a rule the engine keeps:
 /// raw keys past the bindings (every action is a named binding, rebindable), callbacks past the
 /// polling (`RegisterInputAction`), an unchecked archetype past the `World` that checks it.
@@ -69,7 +64,7 @@ public:
   auto Run() -> int;
   /// @brief How long the frame being updated took, in seconds. For presentation; rules count ticks.
   auto DeltaTime() const -> float;
-  /// @brief Whether the game is running, paused by the settings menu, or (in an editor) stopped.
+  /// @brief Whether the game is running or paused by the settings menu.
   auto GetPlayState() const -> PlayState;
   /// @brief The fixed step: how far through the next tick drawing is, which tick is running, how many
   /// make a second and how long one lasts.
@@ -91,7 +86,7 @@ public:
   /// The key given is the default, which the settings menu's reset puts back. A rebinding is kept in
   /// the preferences under `input.` and the name; see `SettingsMenu::SaveBindings`. A default is a
   /// key alone: the player may rebind it to a key with modifiers, but a game does not start one
-  /// there, since a chord is the editor's kind of shortcut and not a game's kind of action.
+  /// there, since a chord is a tool's kind of shortcut and not a game's kind of action.
   auto RegisterBinding(const std::string &, const Key, std::string = "") -> void;
   /// @brief Registers a binding that is also one of the game's buttons, on a rebound key as
   /// `RegisterBinding` is. See `InputManager::RegisterButton`.
@@ -174,15 +169,12 @@ public:
   /// against bounding volumes: what it returns is the thing whose pixel is actually there.
   ///
   /// Takes window coordinates -- the space `GetMousePosition` reports in -- and converts to the
-  /// render target's texels here, because the two are only the same size by coincidence. The editor
-  /// does its own conversion instead, from a panel that is a third space again, and calls the
-  /// rendering system directly.
+  /// render target's texels here, because the two are only the same size by coincidence.
   auto PickEntity(const glm::vec2 &) -> EntityID;
   /// @brief The network system, if this application has one, and null if it does not.
   ///
   /// Set by the system when it starts and cleared when it shuts down. A game that wants to be played
-  /// over a network asks for it and falls back on running its own rules when there is none, which is
-  /// the case in an editor that hosts the game without listing the system.
+  /// over a network asks for it and falls back on running its own rules when there is none.
   auto GetNetwork() const -> NetworkSystem *;
   /// @brief Named values this application keeps between runs. See `Preferences`.
   ///
@@ -223,7 +215,7 @@ protected:
   /// the frame it was called from. Neither is a thing anyone did; both were a thing the type
   /// permitted, and `Run` is the only caller either ever had.
   ///
-  /// The access level does not affect overriding, and `Editor` keeps its own overrides private.
+  /// The access level does not affect overriding.
   ///
   /// `Run` is still public and still reentrant, since `main` has to reach it and C++ has no way to
   /// say "public to `main` alone". A guard on it would close that, and is deliberately not here:
@@ -246,7 +238,7 @@ protected:
   /// @brief Replaces the archetypes scenes are made with. For `SystemApplication`, before any scene is.
   auto SetArchetypes(std::vector<ArchetypeSpec>) -> void;
 private:
-  /// @brief The engine's own code and the editor, through the one door. See `ApplicationInternal`.
+  /// @brief The engine's own code, through the one door. See `ApplicationInternal`.
   friend class ApplicationInternal;
   /// @brief The menu reaches past the facade: it takes the keyboard, lists and rebinds every binding,
   /// switches the window to fullscreen and sets the renderer's passes -- each a thing the facade
@@ -271,24 +263,11 @@ private:
   NetworkSystem *network{};
   PlayState playState{PlayState::Playing};
   int exitCode{};
-  bool hosting{};
-  bool stopRequested{};
-  bool stepRequested{};
   bool fixedStep{};
-  bool viewportHovered{};
-  /// @brief Private and virtual: `SystemApplication` and `Editor` say what they are, and only the
+  /// @brief Private and virtual: `SystemApplication` says what it is, and only the
   /// engine asks, through `ApplicationInternal`. Overriding does not need access.
   virtual auto GetRenderingSystem() -> RenderingSystem * {
     return nullptr;
-  }
-  virtual auto GetSelectedEntity() const -> EntityID {
-    return {};
-  }
-  virtual auto GetSelectedEntities() const -> std::vector<EntityID> {
-    const auto id = GetSelectedEntity();
-    if (!id)
-      return {};
-    return {id};
   }
   virtual auto StartSystems() -> void {}
   virtual auto PostStartSystems() -> void {}
@@ -332,22 +311,19 @@ private:
   auto PostUpdate() -> void;
   auto PreShutdown() -> void;
   auto SetWindowIcon() -> void;
-  /// @brief Asks the loop to stop after the current frame, or the host to stop the game. See
-  /// `ApplicationInternal::Quit`.
+  /// @brief Asks the loop to stop after the current frame. See `ApplicationInternal::Quit`.
   auto Quit() -> void;
-  /// @brief Changes whether the game is running. See `ApplicationInternal::SetPlayState`.
+  /// @brief Pauses the game or plays it again: the settings menu's, which pauses a game played alone.
   auto SetPlayState(const PlayState) -> void;
   /// @brief Takes the window to borderless fullscreen on the primary monitor, or back to a window.
   auto SetFullscreen(const bool) -> void;
   /// @brief Registers a binding on a trigger that may carry modifiers, on the saved one if there
-  /// is one. Behind `RegisterBinding` here and in `ApplicationInternal`, which the editor's chorded
-  /// shortcuts go through.
+  /// is one. Behind `RegisterBinding`, which gives it a key alone.
   auto RegisterTrigger(const std::string &, const InputManager::Trigger &, std::string) -> void;
   /// @brief The trigger a binding was last saved on, if it was.
   auto SavedBinding(const std::string &) const -> std::optional<InputManager::Trigger>;
   /// @brief The overlay text under a point in window coordinates. See `ApplicationInternal::PickOverlay`.
   auto PickOverlay(const glm::vec2 &) -> int;
-  static auto CharCallback(GLFWwindow *, unsigned int) -> void;
   static auto CursorPosCallback(GLFWwindow *, double, double) -> void;
   static auto FramebufferSizeCallback(GLFWwindow *, int, int) -> void;
   static auto KeyCallback(GLFWwindow *, int, int, int, int) -> void;

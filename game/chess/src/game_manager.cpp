@@ -534,7 +534,7 @@ auto GameManager::Orbit(Application &application) -> void {
     return;
   // Dragging right turns the board right, which means the camera goes the other way; dragging up
   // brings the far edge up, which lowers the camera. Both are the sense of taking hold of the board
-  // rather than of the camera, and both match the editor's own orbit.
+  // rather than of the camera.
   orbitYaw -= drag.x * ORBIT_SPEED;
   orbitPitch = std::clamp(orbitPitch + drag.y * ORBIT_SPEED, MIN_PITCH, MAX_PITCH);
   const auto cosPitch = std::cos(orbitPitch);

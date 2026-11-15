@@ -2,7 +2,7 @@
 # here with a `CMakeLists.txt` in it is a game, and nothing has to be added to this file to build a
 # new one. Globbed with CONFIGURE_DEPENDS so that adding one reconfigures rather than being missed.
 #
-# Reached from the root only when KUKI_BUILD_GAMES is on, so the ordinary editor build pays nothing
+# Reached from the root only when KUKI_BUILD_GAMES is on, so a build of the engine alone pays nothing
 # for games it is not building. A game declares itself with `kuki_add_game` (`cmake/KukiGame.cmake`),
 # the same call a game in a repository of its own makes -- see `template/`.
 file(GLOB GAME_ENTRIES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*")

@@ -2816,8 +2816,8 @@ auto DXRenderer::ResolvePoolMaterial(const PoolKey &pool) -> const DXMaterial * 
     type = modelMaterial.type;
     index = pool.materialIndex;
   }
-  // Written again every frame, as the per-entity binding was, so a material edited in place -- the
-  // editor's sliders, a game fading one -- is drawn as it now is.
+  // Written again every frame, as the per-entity binding was, so a material edited in place -- a
+  // game fading one -- is drawn as it now is.
   auto &shared = materialTables[pool.material][index];
   shared.fallback = fallback;
   shared.type = type;
@@ -3916,88 +3916,6 @@ auto DXRenderer::ApplyOverlay(std::span<std::string> inputs, std::span<std::stri
     commandList->DrawInstanced(static_cast<UINT>(run.count), 1, static_cast<UINT>(run.first), 0);
   }
 }
-auto DXRenderer::ApplyOutline(std::span<std::string> inputs, std::span<std::string> outputs) -> void {
-  std::array<std::string, 1> colorInput{};
-  // The picking buffer is what distinguishes the scene target from the finished picture, here and
-  // in the search below. A sample count did while the scene was always multisampled; with
-  // antialiasing off it has one sample like its neighbour, and the scene would be taken for the
-  // picture with the bloom silently dropped.
-  for (const auto &name : inputs)
-    if (auto it = nameToTarget.find(name); it != nameToTarget.end() && it->second.resource && !it->second.idResource && it->second.desc.samples <= 1) {
-      colorInput[0] = name;
-      break;
-    }
-  const auto PassThrough = [&] {
-    if (colorInput[0].empty())
-      BlitOrResolve(inputs, outputs);
-    else
-      BlitOrResolve(colorInput, outputs);
-  };
-  auto context = GetContext();
-  if (!context || outputs.empty()) {
-    PassThrough();
-    return;
-  }
-  auto *commandList = context->GetCommandList();
-  auto destinationIt = nameToTarget.find(outputs[0]);
-  if (!commandList || destinationIt == nameToTarget.end() || !destinationIt->second.resource) {
-    PassThrough();
-    return;
-  }
-  DXRenderTarget *colorSource{};
-  DXRenderTarget *idSource{};
-  for (const auto &name : inputs) {
-    auto it = nameToTarget.find(name);
-    if (it == nameToTarget.end() || !it->second.resource)
-      continue;
-    if (!idSource && it->second.idResource && it->second.idSrvGPU.ptr)
-      idSource = &it->second;
-    if (!colorSource && !it->second.idResource && it->second.desc.samples <= 1 && it->second.srvIndex != DXDescriptorHeap::InvalidIndex)
-      colorSource = &it->second;
-  }
-  auto &destination = destinationIt->second;
-  const auto selected = Internal(app).GetSelectedEntities();
-  if (!colorSource || !idSource || selected.empty()) {
-    PassThrough();
-    return;
-  }
-  const auto pipeline = pipelines.GetOutlinePipeline(context->GetDevice(), TargetFormatToRTVDXGI(destination.desc.format));
-  if (!pipeline || !*pipeline) {
-    PassThrough();
-    return;
-  }
-  Transition(*colorSource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-  Transition(destination, D3D12_RESOURCE_STATE_RENDER_TARGET);
-  const auto idToShaderResource = CD3DX12_RESOURCE_BARRIER::Transition(idSource->idResource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-  commandList->ResourceBarrier(1, &idToShaderResource);
-  const auto rtv = context->GetRTVHeap().GetCPUHandle(destination.rtvIndex);
-  commandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-  const auto viewport = CD3DX12_VIEWPORT(0.f, 0.f, static_cast<float>(destination.desc.width), static_cast<float>(destination.desc.height));
-  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(destination.desc.width), static_cast<LONG>(destination.desc.height));
-  commandList->RSSetViewports(1, &viewport);
-  commandList->RSSetScissorRects(1, &scissor);
-  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
-  commandList->SetPipelineState(pipeline->pipelineState.Get());
-  DXOutlineConstants constants{};
-  constants.color[0] = 1.f;
-  constants.color[1] = .6f;
-  constants.color[2] = 0.f;
-  constants.color[3] = 2.f;
-  constants.texelSize[0] = destination.desc.width > 0 ? 1.f / destination.desc.width : 0.f;
-  constants.texelSize[1] = destination.desc.height > 0 ? 1.f / destination.desc.height : 0.f;
-  const auto count = static_cast<uint32_t>(std::min<size_t>(selected.size(), MAX_OUTLINE_SELECTED));
-  constants.selectedCount[0] = count;
-  for (uint32_t i = 0; i < count; ++i)
-    constants.selected[i] = static_cast<uint32_t>(static_cast<long long>(selected[i])) & 0xFFFFFFu;
-  commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXOutlineConstants) / sizeof(uint32_t), &constants, 0);
-  commandList->SetGraphicsRootDescriptorTable(1, colorSource->srvGPU);
-  commandList->SetGraphicsRootDescriptorTable(2, idSource->idSrvGPU);
-  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  commandList->IASetVertexBuffers(0, 0, nullptr);
-  commandList->DrawInstanced(3, 1, 0, 0);
-  const auto idBack = CD3DX12_RESOURCE_BARRIER::Transition(idSource->idResource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-  commandList->ResourceBarrier(1, &idBack);
-}
 auto DXRenderer::CreateShadowMap(std::span<std::string>, std::span<std::string> outputs) -> void {
   ClearOutputs(outputs);
   auto context = GetContext();
@@ -4126,10 +4044,6 @@ auto DXRenderer::Clear() -> void {
   for (auto &[assetId, byIndex] : modelToTextures)
     for (auto &[index, texture] : byIndex)
       ReleaseTexture(texture);
-  // Render targets rather than textures, so these carry a full set of views apiece -- shader
-  // resource, render target, depth stencil -- and were being dropped with all of them.
-  for (auto &[assetId, target] : assetToPreviewTarget)
-    ReleaseTarget(target);
   ReleaseMaterialTable(fallbackMaterial);
   fallbackMaterial = {};
   fallbackMaterialTable = {};
@@ -4140,7 +4054,6 @@ auto DXRenderer::Clear() -> void {
     for (auto &[index, material] : byIndex)
       ReleaseMaterialTable(material);
   materialTables.clear();
-  assetToPreviewTarget.clear();
   ReleaseComputeTexture(skyboxCubemap);
   ReleaseComputeTexture(transmittanceLUT);
   ReleaseComputeTexture(multiscatterLUT);
@@ -4203,7 +4116,6 @@ auto DXRenderer::Clear() -> void {
   retiredRanges.clear();
   spotShadowCount = 0;
   assetToMesh.clear();
-  assetToPreview.clear();
   assetToTexture.clear();
   modelToMeshes.clear();
   modelToTextures.clear();
@@ -4390,186 +4302,6 @@ auto DXRenderer::PickEntity(const int x, const int y) -> EntityID {
   if (value == ENTITY_ID_ENCODED_INVALID)
     return Finish(EntityID::Invalid);
   return Finish(static_cast<EntityID>(value));
-}
-auto DXRenderer::EnsurePreviewMaterial(const AssetID assetId, const MaterialAsset &materialAsset) -> const DXMaterial * {
-  auto &shared = materialTables[assetId][0];
-  shared.fallback = materialAsset.fallback;
-  shared.type = materialAsset.type;
-  if (shared.textureTableGPU)
-    return &shared;
-  std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> textures{};
-  for (const auto textureId : materialAsset.textures)
-    if (auto texture = EnsureTexture(textureId); texture && *texture)
-      if (const auto slot = static_cast<uint32_t>(texture->content); slot < MATERIAL_TEXTURE_SLOTS)
-        textures[slot] = texture;
-  shared.fallback.textureMask = MaskForTextures(textures);
-  BuildMaterialTable(shared, textures);
-  return &shared;
-}
-auto DXRenderer::RenderPreview(const AssetID assetId, const std::vector<std::pair<const DXMesh *, const DXMaterial *>> &draws, const BoundingBox &bounds) -> RenderTarget * {
-  if (auto it = assetToPreviewTarget.find(assetId); it != assetToPreviewTarget.end())
-    return it->second.resource ? &it->second : nullptr;
-  auto context = GetContext();
-  if (!context || draws.empty())
-    return nullptr;
-  auto *commandList = context->GetCommandList();
-  auto fallbackTexture = EnsureDummyTexture();
-  if (!commandList || !fallbackTexture || !EnsureComputeFallbacks())
-    return nullptr;
-  auto &target = assetToPreviewTarget[assetId];
-  const TargetDescription desc{.format = TargetFormat::RGBA16, .width = previewSize, .height = previewSize};
-  if (!AllocateTarget(target, desc, "Preview " + Internal(app).Assets().GetName(assetId)) || !EnsureDepthBuffer(target))
-    return nullptr;
-  const auto pipeline = pipelines.GetScenePipeline(context->GetDevice(), TargetFormatToRTVDXGI(desc.format), 1);
-  if (!pipeline || !*pipeline)
-    return nullptr;
-  // A camera and a light of the preview's own, placed by matrices made here rather than by entities:
-  // the preview is drawn outside any scene.
-  Camera camera{};
-  const auto framing = Frame(camera, bounds);
-  camera.farPlane = framing.farPlane;
-  camera.transform = ComputeCameraTransform(camera, glm::translate(glm::mat4(1.f), framing.position) * glm::toMat4(framing.rotation));
-  Light light{};
-  const auto lightForward = WorldForward(glm::toMat4(glm::quat(glm::vec3(.52f, .0f, .52f))));
-  DXFrameConstants frameConstants{};
-  const auto viewProjection = camera.transform.projection * camera.transform.view;
-  memcpy(frameConstants.viewProjection, glm::value_ptr(viewProjection), sizeof(frameConstants.viewProjection));
-  memcpy(frameConstants.viewPosition, glm::value_ptr(camera.transform.position), sizeof(float) * 3);
-  memcpy(frameConstants.directionalDirection, glm::value_ptr(lightForward), sizeof(float) * 3);
-  memcpy(frameConstants.directionalAmbient, glm::value_ptr(light.ambient), sizeof(float) * 3);
-  memcpy(frameConstants.directionalDiffuse, glm::value_ptr(light.diffuse), sizeof(float) * 3);
-  memcpy(frameConstants.directionalSpecular, glm::value_ptr(light.specular), sizeof(float) * 3);
-  frameConstants.directionalIntensity[0] = light.intensity;
-  frameConstants.counts[2] = 1u;
-  frameConstants.flags[0] = 1u;
-  frameConstants.flags[2] = environmentReady ? 1u : 0u;
-  const auto frameConstantAddress = UploadFrameConstants(frameConstants);
-  if (!frameConstantAddress)
-    return nullptr;
-  Transition(target, D3D12_RESOURCE_STATE_RENDER_TARGET);
-  const auto rtv = context->GetRTVHeap().GetCPUHandle(target.rtvIndex);
-  const auto dsv = context->GetDSVHeap().GetCPUHandle(target.depthDsvIndex);
-  commandList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-  commandList->ClearRenderTargetView(rtv, TARGET_CLEAR_COLOR, 0, nullptr);
-  commandList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
-  const auto viewport = CD3DX12_VIEWPORT(0.f, 0.f, static_cast<float>(desc.width), static_cast<float>(desc.height));
-  const auto scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(desc.width), static_cast<LONG>(desc.height));
-  commandList->RSSetViewports(1, &viewport);
-  commandList->RSSetScissorRects(1, &scissor);
-  commandList->SetGraphicsRootSignature(pipeline->rootSignature.Get());
-  commandList->SetPipelineState(pipeline->pipelineState.Get());
-  commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  commandList->SetGraphicsRootConstantBufferView(1, frameConstantAddress);
-  commandList->SetGraphicsRootDescriptorTable(3, fallbackTexture->srvGPU);
-  commandList->SetGraphicsRootDescriptorTable(4, dummyArraySrvGPU.ptr ? dummyArraySrvGPU : fallbackTexture->srvGPU);
-  commandList->SetGraphicsRootDescriptorTable(7, environmentReady ? environmentTable : fallbackEnvironmentTable);
-  commandList->SetGraphicsRootDescriptorTable(11, fallbackTexture->srvGPU);
-  commandList->SetGraphicsRootDescriptorTable(13, fallbackTexture->srvGPU);
-  BindProbeVolume(frameConstantAddress);
-  const glm::mat4 origin{1.f};
-  const auto instanceAddress = AllocateInstances(std::span(&origin, 1));
-  const auto nobody = EntityID::Invalid;
-  const auto entityAddress = AllocateEntities(std::span(&nobody, 1));
-  if (!instanceAddress || !entityAddress)
-    return nullptr;
-  commandList->SetGraphicsRootShaderResourceView(5, instanceAddress);
-  commandList->SetGraphicsRootShaderResourceView(6, instanceAddress);
-  commandList->SetGraphicsRootShaderResourceView(12, entityAddress);
-  for (const auto &[mesh, material] : draws) {
-    if (!mesh || !*mesh || mesh->skinned)
-      continue;
-    DXSceneConstants constants{};
-    const auto fallback = material ? material->fallback : MaterialFallback{};
-    memcpy(constants.albedo, glm::value_ptr(fallback.albedo), sizeof(constants.albedo));
-    memcpy(constants.specular, glm::value_ptr(fallback.specular), sizeof(constants.specular));
-    memcpy(constants.emissive, glm::value_ptr(fallback.emissive), sizeof(constants.emissive));
-    constants.surface[0] = fallback.metalness;
-    constants.surface[1] = fallback.occlusion;
-    constants.surface[2] = fallback.roughness;
-    memcpy(constants.attenuation, glm::value_ptr(fallback.attenuation), sizeof(constants.attenuation));
-    constants.volume[0] = fallback.transmission;
-    constants.volume[1] = fallback.thickness;
-    constants.volume[2] = fallback.ior;
-    const auto hasTable = material && material->textureTableGPU;
-    constants.textureMask = hasTable ? static_cast<uint32_t>(fallback.textureMask.to_ulong()) : 0u;
-    constants.unlit = material && material->type == MaterialType::Unlit ? 1u : 0u;
-    commandList->SetGraphicsRoot32BitConstants(0, sizeof(DXSceneConstants) / sizeof(uint32_t), &constants, 0);
-    D3D12_GPU_DESCRIPTOR_HANDLE materialTable{hasTable ? material->textureTableGPU : fallbackMaterialTable.ptr};
-    commandList->SetGraphicsRootDescriptorTable(2, materialTable);
-    commandList->IASetVertexBuffers(0, 1, &mesh->vertexBufferView);
-    if (mesh->indexCount > 0) {
-      commandList->IASetIndexBuffer(&mesh->indexBufferView);
-      commandList->DrawIndexedInstanced(mesh->indexCount, 1, 0, 0, 0);
-    } else
-      commandList->DrawInstanced(mesh->vertexCount, 1, 0, 0);
-  }
-  Transition(target, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-  spdlog::info("[DXRenderer] Created preview for asset: {}", Internal(app).Assets().GetName(assetId));
-  return &target;
-}
-auto DXRenderer::PreviewAsset(const AssetID assetId) -> RenderTarget * {
-  if (auto textureAsset = app.GetAsset<TextureAsset>(assetId); textureAsset) {
-    auto texture = EnsureTexture(assetId);
-    if (!texture)
-      return nullptr;
-    auto &view = assetToPreview[assetId];
-    view.srvGPU = texture->srvGPU;
-    view.desc.width = textureAsset->texture.width;
-    view.desc.height = textureAsset->texture.height;
-    return &view;
-  }
-  if (auto meshAsset = app.GetAsset<MeshAsset>(assetId); meshAsset) {
-    auto mesh = EnsureMesh(assetId);
-    if (!mesh)
-      return nullptr;
-    const DXMaterial *material{};
-    if (auto materialAsset = app.GetAsset<MaterialAsset>(meshAsset->material); materialAsset)
-      material = EnsurePreviewMaterial(materialAsset->id, *materialAsset);
-    return RenderPreview(assetId, {{mesh, material}}, meshAsset->bounds);
-  }
-  if (auto materialAsset = app.GetAsset<MaterialAsset>(assetId); materialAsset) {
-    auto sphere = app.GetAsset("Sphere");
-    if (!sphere)
-      return nullptr;
-    auto meshAsset = app.GetAsset<MeshAsset>(sphere->id);
-    auto mesh = EnsureMesh(sphere->id);
-    if (!mesh || !meshAsset)
-      return nullptr;
-    return RenderPreview(assetId, {{mesh, EnsurePreviewMaterial(assetId, *materialAsset)}}, meshAsset->bounds);
-  }
-  if (auto modelAsset = app.GetAsset<ModelAsset>(assetId); modelAsset) {
-    if (modelAsset->nodes.empty())
-      return nullptr;
-    std::vector<std::pair<const DXMesh *, const DXMaterial *>> draws;
-    for (size_t i = 0; i < modelAsset->meshes.size(); ++i) {
-      auto mesh = EnsureModelMesh(assetId, i);
-      if (!mesh)
-        continue;
-      const DXMaterial *material{};
-      if (const auto materialIndex = modelAsset->meshes[i].material; materialIndex < modelAsset->materials.size()) {
-        std::array<const DXTexture *, MATERIAL_TEXTURE_SLOTS> textures{};
-        for (const auto textureIndex : modelAsset->materials[materialIndex].textures)
-          if (auto texture = EnsureModelTexture(assetId, textureIndex); texture && *texture)
-            if (const auto slot = static_cast<uint32_t>(texture->content); slot < MATERIAL_TEXTURE_SLOTS)
-              textures[slot] = texture;
-        auto &shared = materialTables[assetId][materialIndex];
-        shared.fallback = modelAsset->materials[materialIndex].fallback;
-        shared.type = modelAsset->materials[materialIndex].type;
-        if (!shared.textureTableGPU)
-          BuildMaterialTable(shared, textures);
-        material = &shared;
-      }
-      draws.emplace_back(mesh, material);
-    }
-    return RenderPreview(assetId, draws, modelAsset->nodes[0].bounds);
-  }
-  return nullptr;
-}
-auto DXRenderer::GetPreviewSize() const -> int {
-  return previewSize;
-}
-auto DXRenderer::SetPreviewSize(const int size) -> void {
-  previewSize = size;
 }
 auto DXRenderer::SetResolution(const int width, const int height) -> void {
   if (width <= 0 || height <= 0)

@@ -23,8 +23,7 @@ namespace kuki {
 /// Command-line arguments choose how the match is played, so that every game gets them without
 /// asking: see `NetworkOptions`. Nothing given, it is played alone and this does no more than step
 /// the rules. An application without this system in its list has no `Application::GetNetwork`, and
-/// a game that asks for it and finds none steps its own rules, which is what an editor hosting the
-/// game does.
+/// a game that asks for it and finds none steps its own rules.
 ///
 /// It also slows the tick clock a little when this machine is ahead of the other, and writes how the
 /// match is going in the corner of the screen while one is under way over a network. Both want the

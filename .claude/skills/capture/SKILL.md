@@ -1,6 +1,6 @@
 ---
 name: capture
-description: Build a Kuki game or the editor and look at a frame it draws, through --capture, or record a video of it, through --record. Use to see what a rendering, shader, scene or game change looks like, to compare before and after, or when asked to run, screenshot or record a game -- no one needs to be at the screen.
+description: Build a Kuki game and look at a frame it draws, through --capture, or record a video of it, through --record. Use to see what a rendering, shader, scene or game change looks like, to compare before and after, or when asked to run, screenshot or record a game -- no one needs to be at the screen.
 ---
 
 # Capture a frame
@@ -15,7 +15,6 @@ sixty), saves the last one and quits.
 | chess | `KukiChess` | `build/game/chess/KukiChess.exe` |
 | duel | `KukiDuel` | `build/game/duel/KukiDuel.exe` |
 | frontier | `KukiFrontier` | `build/game/frontier/KukiFrontier.exe` |
-| editor | `KukiEditor` | `build/editor/KukiEditor.exe` |
 
 Build the target **and** `<Target>Runtime`. The game alone leaves the DLLs from the last build
 beside it, and the game then runs against the engine from before -- the change you want to see is
@@ -43,7 +42,6 @@ What sets up the picture (`--help` on any executable lists everything it reads):
   `--distance <6..70>` (camera distance), `--demo` (a path and a few buildings).
 - duel: `--stage alley|temple|rooftop|shrine`, `--no-flash`, `--no-ik`. It opens on its select
   screen, which is what a capture shows.
-- editor: `--play` to capture the scene playing rather than stopped.
 - any: `--capture-frame <n>` for a later or earlier frame -- later for something that settles
   (probes, clouds), earlier to catch a start-up state.
 - any game: `--settings game|graphics|controls` to capture the settings menu open on that page.

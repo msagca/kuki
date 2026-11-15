@@ -15,7 +15,6 @@
 #include <dx_probe_volume.hpp>
 #include <dx_render_target.hpp>
 #include <dx_texture.hpp>
-#include <dx_texture_view.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <id.hpp>
 #include <kuki_engine_export.h>
@@ -209,21 +208,12 @@ public:
   auto ApplyBlurEffect(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyBrightPassFilter(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyToneMapping(std::span<std::string>, std::span<std::string>) -> void override;
-  /// @brief Draws the selection outline over the scene, or passes the scene through unchanged.
-  ///
-  /// Takes the colour to draw over from the first single-sampled input and the entity ids from the
-  /// input that carries an id buffer, rather than by name, so the pass works wherever a graph puts
-  /// it. The pass-through taken when nothing is selected has to copy that same colour input: the
-  /// multisampled input is listed first and copying it instead would silently discard whatever the
-  /// passes in between had already applied.
-  auto ApplyOutline(std::span<std::string>, std::span<std::string>) -> void override;
   auto ApplyOverlay(std::span<std::string>, std::span<std::string>) -> void override;
   auto Clear() -> void override;
   auto CreateDepthPrepass(std::span<std::string>, std::span<std::string>) -> void override;
   auto CreateShadowMap(std::span<std::string>, std::span<std::string>) -> void override;
   auto CreateSpotShadowMap(std::span<std::string>, std::span<std::string>) -> void override;
   auto CreateTarget(const TargetDescription &, const std::string & = "") -> EntityID override;
-  auto GetPreviewSize() const -> int override;
   auto GetTarget(const std::string &) -> RenderTarget * override;
   auto LoadAsset(const AssetID) -> void override;
   auto LoadAssets(const AssetType) -> void override;
@@ -241,14 +231,6 @@ public:
   ///
   /// @return The entity under the pixel, or an invalid id when nothing was hit.
   auto PickEntity(const int, const int) -> EntityID override;
-  /// @brief Returns something the editor can display for an asset, or null when it cannot.
-  ///
-  /// A texture asset previews as itself, through the shader resource view its upload already
-  /// produced. Everything else is rendered off-screen once, framed by its own bounds, and cached.
-  ///
-  /// Callers must still cope with null: an asset whose geometry has not finished loading has
-  /// nothing to draw yet, and the editor puts a plain button in its place until it has.
-  auto PreviewAsset(const AssetID) -> RenderTarget * override;
   auto RenderScene(std::span<std::string>, std::span<std::string>) -> void override;
   /// @brief Per-frame reset hook, called by the render graph before it recreates its targets.
   ///
@@ -265,7 +247,6 @@ public:
   auto CaptureTarget(const std::string &, const std::filesystem::path &) -> bool override;
   auto ReadTarget(const std::string &, std::vector<uint8_t> &, int &, int &) -> bool override;
   auto Reset() -> void override;
-  auto SetPreviewSize(const int) -> void override;
   /// @brief Bytes of upload staging allowed in flight before the upload path stops and waits.
   auto GetUploadBudget() const -> size_t;
   /// @brief Resizes the upload batch. Safe at any time; takes effect at the next texture.
@@ -279,7 +260,7 @@ public:
   /// The probe field needs bindless descriptors to reach its material table and inline raytracing
   /// to cast a ray at all, and the context already says at startup when the hardware has neither
   /// and that the traced passes will be skipped. Reporting the field as present anyway would leave
-  /// the editor offering a panel of knobs onto passes that are not running, which is the same
+  /// the settings menu offering rows of knobs onto passes that are not running, which is the same
   /// complaint one level down.
   auto GetCapabilities() const -> RendererCapabilities override;
   auto TraceProbes(std::span<std::string>, std::span<std::string>) -> void override;
@@ -312,8 +293,6 @@ private:
   DXProbeVolume probeVolume;
   std::unordered_map<AssetID, DXMesh> assetToMesh;
   std::unordered_map<AssetID, DXTexture> assetToTexture;
-  std::unordered_map<AssetID, DXTextureView> assetToPreview;
-  std::unordered_map<AssetID, DXRenderTarget> assetToPreviewTarget;
   std::unordered_map<AssetID, std::unordered_map<size_t, DXMesh>> modelToMeshes;
   std::unordered_map<AssetID, std::unordered_map<size_t, DXTexture>> modelToTextures;
   std::unordered_map<std::string, DXRenderTarget> nameToTarget;
@@ -380,7 +359,7 @@ private:
   /// describe changes. Nothing in `VolumetricClouds` can change what is in these: the component's
   /// scales say how large a feature is in kilometres and its coverage says how much of the field
   /// survives, and both of those are applied where the volume is read rather than where it is
-  /// written. So a layer can be retuned from the editor without rebuilding anything.
+  /// written. So a layer can be retuned while the game runs without rebuilding anything.
   DXComputeTexture cloudShapeNoise;
   DXComputeTexture cloudDetailNoise;
   /// @brief One texel: what the sun has left after the cloud layer, for the passes below it.
@@ -549,7 +528,6 @@ private:
   ComPtr<ID3D12Resource> targetReadbackBuffer;
   UINT64 targetReadbackSize{};
   EntityID nextTargetId{1};
-  int previewSize{128};
   /// @brief Staging buffers whose copies are recorded into the open command list but not yet run.
   std::vector<ComPtr<ID3D12Resource>> pendingStaging;
   /// @brief Upload-heap bytes those buffers hold. The quantity the budget actually bounds.
@@ -653,7 +631,7 @@ private:
   /// @brief Creates the one-pixel white texture that stands in for any unbound descriptor table.
   ///
   /// A descriptor table the shader can reach must point at a real descriptor. Leaving one unbound
-  /// carries the same risk as the editor's zero `ImTextureID`: whatever the previous draw left in
+  /// carries a risk: whatever the previous draw left in
   /// that root slot is what the shader reads, and on the first draw of a frame there is nothing
   /// there at all. Materials without an albedo map and scenes without a shadow map both hit this,
   /// so both bind this instead of skipping the table.
@@ -958,20 +936,6 @@ private:
   auto DispatchCloudSunTransmittance(const DXCloudConstants &) -> bool;
   /// @brief Creates the one-texel cube and the coefficient buffer the compute tables always bind.
   auto EnsureComputeFallbacks() -> bool;
-  /// @brief Renders an asset once into a small cached target, framed by its own bounds.
-  ///
-  /// Runs in the middle of the frame, from the editor's UI code rather than from the render graph,
-  /// so it takes care to leave nothing behind: it binds its own target, draws, and transitions the
-  /// result to a shader resource for the UI to sample in the same frame. Uploading the geometry may
-  /// flush the command list, which is why it happens before any pipeline state is bound.
-  ///
-  /// The light is fixed rather than taken from the scene, so an asset looks the same in the browser
-  /// no matter what the open scene happens to be lit by.
-  ///
-  /// @return The cached target, or null when the asset has nothing to draw.
-  auto RenderPreview(const AssetID, const std::vector<std::pair<const DXMesh *, const DXMaterial *>> &, const BoundingBox &) -> RenderTarget *;
-  /// @brief Resolves a standalone material asset to its shared texture table, uploading as needed.
-  auto EnsurePreviewMaterial(const AssetID, const MaterialAsset &) -> const DXMaterial *;
   /// @brief Builds the view and projection one spot light's shadow map is rendered with.
   ///
   /// The cone's full angle is widened slightly so the shadow map covers a little more than the lit

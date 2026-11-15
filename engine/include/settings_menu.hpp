@@ -98,9 +98,6 @@ public:
   auto AddAction(const SettingsPage, std::string, std::function<void()>, std::function<bool()> = {}) -> void;
   /// @brief Forgets every entry. On the way out, since the entries call into systems that are going.
   auto Clear() -> void;
-  auto IsEnabled() const -> bool;
-  /// @brief Whether the menu can be opened at all. The editor's is off: it has panels of its own.
-  auto SetEnabled(const bool) -> void;
   auto IsOpen() const -> bool;
   auto Open() -> void;
   auto Close() -> void;
@@ -156,7 +153,6 @@ private:
   Application &app;
   std::vector<Entry> entries;
   std::vector<Event> events;
-  bool enabled{true};
   bool open{};
   /// @brief Whether opening the menu paused the game, and so whether closing it should play it again.
   bool pausedGame{};
@@ -198,7 +194,6 @@ private:
   /// @brief The window's events, offered to the menu before the input manager sees them. Each says
   /// whether it kept the event.
   auto OnKey(const int, const int, const int) -> bool;
-  auto OnChar() const -> bool;
   auto OnMouseButton(const int, const int) -> bool;
   auto OnScroll(const double) -> bool;
   auto Pages() const -> std::vector<SettingsPage>;

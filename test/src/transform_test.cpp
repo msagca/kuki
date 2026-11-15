@@ -3,8 +3,6 @@
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <gtest/gtest.h>
-#include <nlohmann/json.hpp>
-#include <serdes.hpp>
 #include <transform.hpp>
 using namespace kuki;
 namespace {
@@ -18,14 +16,4 @@ TEST(Transform, DefaultRotationIsTheIdentity) {
   EXPECT_TRUE(IsIdentity(transform.rotation));
   const glm::vec3 v{1.f, 2.f, 3.f};
   EXPECT_LT(glm::length(transform.rotation * v - v), 1e-6f);
-}
-TEST(Transform, SavedZeroRotationReadsAsTheIdentity) {
-  // What every scene saved before the default was fixed holds for an entity never turned.
-  const auto saved = nlohmann::json::parse(R"({"w": 0.0, "x": 0.0, "y": 0.0, "z": 0.0})");
-  EXPECT_TRUE(IsIdentity(saved.get<glm::quat>()));
-  // Any other rotation is read as written.
-  const auto turned = nlohmann::json::parse(R"({"w": 0.0, "x": 1.0, "y": 0.0, "z": 0.0})");
-  const auto read = turned.get<glm::quat>();
-  EXPECT_EQ(read.w, .0f);
-  EXPECT_EQ(read.x, 1.f);
 }

@@ -12,10 +12,10 @@ inline constexpr const char *DUEL_FONT = "font/Inter-VariableFont_opsz,wght.ttf"
 namespace kuki {
 class Application;
 } // namespace kuki
-/// @brief Loads the game's assets and builds its scene into whichever application is hosting it.
+/// @brief Loads the game's assets and builds its scene into the application it is given.
 ///
-/// The game's own, below, or the editor. The scene is all it builds: what plays the game is
-/// `DuelSystem`, which a host that wants the game played lists among its systems.
+/// The scene is all it builds: what plays the game is `DuelSystem`, which the application lists
+/// among its systems.
 auto SetupDuel(kuki::Application &) -> void;
 /// @brief A fighter picked from a roster, and a match against another, one of them played from the
 /// keyboard.

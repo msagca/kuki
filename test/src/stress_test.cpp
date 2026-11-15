@@ -17,7 +17,7 @@ TEST(Stress, FindsEveryPresetByItsNameAndNoOther) {
   EXPECT_FALSE(FindStressPreset("everything"));
   EXPECT_FALSE(FindStressPreset(""));
 }
-// `all` is what `--stress all` and the editor's panel start from, and is meant to be every other
+// `all` is what `--stress all` starts from, and is meant to be every other
 // load at once; one changed without the other would make `all` quietly test something else.
 TEST(Stress, AllIsEveryOtherLoadAtOnce) {
   const auto all = FindStressPreset("all");

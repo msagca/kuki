@@ -191,67 +191,6 @@ auto DXPipelineCache::GetPostPipeline(ID3D12Device *device, const DXGI_FORMAT fo
   spdlog::info("[DX12] Created post pipeline: {}", effect);
   return &pipeline;
 }
-auto DXPipelineCache::GetOutlineRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
-  if (outlineRootSignature)
-    return outlineRootSignature.Get();
-  CD3DX12_DESCRIPTOR_RANGE sourceRange{};
-  sourceRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-  CD3DX12_DESCRIPTOR_RANGE idRange{};
-  idRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
-  CD3DX12_ROOT_PARAMETER parameters[3]{};
-  parameters[0].InitAsConstants(sizeof(DXOutlineConstants) / sizeof(uint32_t), 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
-  parameters[1].InitAsDescriptorTable(1, &sourceRange, D3D12_SHADER_VISIBILITY_PIXEL);
-  parameters[2].InitAsDescriptorTable(1, &idRange, D3D12_SHADER_VISIBILITY_PIXEL);
-  CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
-  sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-  CD3DX12_ROOT_SIGNATURE_DESC desc{};
-  desc.Init(3, parameters, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-  ComPtr<ID3DBlob> serialized;
-  ComPtr<ID3DBlob> errors;
-  if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors))) {
-    const auto log = errors ? std::string(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize()) : std::string("no output");
-    spdlog::error("[DX12] Failed to serialise the outline root signature: {}", log);
-    return nullptr;
-  }
-  if (DXFailed(device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&outlineRootSignature)), "CreateRootSignature"))
-    return nullptr;
-  return outlineRootSignature.Get();
-}
-auto DXPipelineCache::GetOutlinePipeline(ID3D12Device *device, const DXGI_FORMAT format) -> const DXPipeline * {
-  if (!device)
-    return nullptr;
-  const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}("outline");
-  if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
-  auto &pipeline = pipelines[key];
-  auto *rootSignature = GetOutlineRootSignature(device);
-  if (!rootSignature)
-    return nullptr;
-  pipeline.rootSignature = outlineRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::outline_hlsl, "VSMain", "vs_6_0", "outline");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::outline_hlsl, "PSOutline", "ps_6_0", "outline");
-  if (!vertexShader || !pixelShader)
-    return nullptr;
-  D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
-  desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
-  desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-  desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-  desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-  desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-  desc.DepthStencilState.DepthEnable = FALSE;
-  desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
-  desc.SampleMask = UINT_MAX;
-  desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-  desc.NumRenderTargets = 1;
-  desc.RTVFormats[0] = format;
-  desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created outline pipeline");
-  return &pipeline;
-}
 auto DXPipelineCache::GetStylizeRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (stylizeRootSignature)
     return stylizeRootSignature.Get();
@@ -1326,7 +1265,6 @@ auto DXPipelineCache::Clear() -> void {
   pipelines.clear();
   sceneRootSignature.Reset();
   postRootSignature.Reset();
-  outlineRootSignature.Reset();
   shadowRootSignature.Reset();
   skyboxRootSignature.Reset();
   computeRootSignature.Reset();

@@ -3,7 +3,6 @@
 #include <id.hpp>
 #include <kuki_engine_export.h>
 #include <system.hpp>
-#include <tick_clock.hpp>
 namespace kuki {
 struct Animator;
 struct AnimatorController;
@@ -37,15 +36,5 @@ public:
   /// characters and targets where the game's systems have put them.
   auto LateUpdate(const float) -> void override;
   void Shutdown() override;
-private:
-  /// @brief Counts ticks for animators to be stepped by while the game is stopped.
-  ///
-  /// The tick is what steps an animator that has states, and a stopped application runs no ticks:
-  /// in an editor, a character whose states were being set up would stand in its bind pose until
-  /// the game was played. So while stopped, an animator marked as playing is stepped from here
-  /// instead, at the same rate, for the sake of being looked at. Nothing reads what it reports --
-  /// there is no game running to take an event or apply the root's travel -- and the count is
-  /// forgotten the moment the game starts, which begins every state again from its first tick.
-  TickClock preview;
 };
 } // namespace kuki

@@ -20,7 +20,7 @@ measure it with `KUKI_PROFILE_SCOPE` and give the cost in the commit.
      `rendering->SetPassEnabled(RenderPass::X, graphics.field)` (a disabled pass is stood down to
      its bypass, not taken out of the graph), or a setter on `RenderingSystem`.
    - `SettingsMenu::SaveGraphics` copies it into the config it reads back, or it is never saved:
-     only the fields listed there are written, so the editor's backend and tone mapper survive.
+     only the fields listed there are written, so the backend and tone mapper, set by hand in the file, survive.
    - `SettingsMenu::AddGraphicsEntries` adds its row: `Flag("Label", &EngineConfig::field)` for a
      switch, `AddChoice` for a level, in the order the page should read.
 4. If not every backend can act on it, a flag in `RendererCapabilities`

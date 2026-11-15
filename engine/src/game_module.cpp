@@ -57,7 +57,7 @@ auto FindGames() -> std::vector<std::filesystem::path> {
   std::vector<std::filesystem::path> found;
   const auto &here = GetLaunchPath();
   Collect(here, found);
-  // In a build tree the editor is in `build/editor` and each game in `build/game/<name>`. In an
+  // In a build tree each game is in `build/game/<name>`. In an
   // install they are all in one directory, and the line above has found them.
   std::error_code error;
   for (const auto &entry : std::filesystem::directory_iterator(here.parent_path() / "game", error))

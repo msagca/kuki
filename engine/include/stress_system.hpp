@@ -85,8 +85,8 @@ enum class StressPhase : uint8_t {
 /// @brief A stress test: a load put into the active scene, and frame times measured under it.
 ///
 /// Run from the command line with `--stress`, which ramps the named load up in `STRESS_STEPS` steps
-/// once the scene is built, logs each step, writes `--stress-report` if given and quits; or from the
-/// editor's Stress panel, through `SetLoad` and `BeginRun`. Not a rule and not part of any game: its
+/// once the scene is built, logs each step, writes `--stress-report` if given and quits; or through
+/// `SetLoad` and `BeginRun`. Not a rule and not part of any game: its
 /// load is put in and measured in `Update`, and nothing it does reaches a tick.
 ///
 /// A ramp turns vsync off while it runs, which would otherwise hold every frame to the display's
@@ -140,9 +140,9 @@ private:
   auto LoadAssets() -> void;
   /// @brief Whether the scene has the entity a load hangs from, which is then `root`.
   ///
-  /// Asked again each time rather than trusted: a scene opened or put back since (the editor's Stop)
-  /// may have taken the load away, or brought it back under another id and given its old one to
-  /// something else -- which a load deleted by id alone would have taken with it.
+  /// Asked again each time rather than trusted: a scene opened since may have taken the load away,
+  /// or brought it back under another id and given its old one to something else -- which a load
+  /// deleted by id alone would have taken with it.
   auto HasRoot() -> bool;
   auto BeginStep() -> void;
   auto EndStep() -> void;

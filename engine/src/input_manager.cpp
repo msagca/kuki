@@ -9,7 +9,6 @@
 #include <span>
 #include <spdlog/spdlog.h>
 #include <string>
-#include <trie.hpp>
 #include <utility>
 namespace kuki {
 // `Key` and `MouseButton` are GLFW's numbers under the engine's names, which is what lets a saved
@@ -30,15 +29,6 @@ static_assert(std::to_underlying(Key::LeftShift) == GLFW_KEY_LEFT_SHIFT && std::
 static_assert(std::to_underlying(MouseButton::Left) == GLFW_MOUSE_BUTTON_LEFT && std::to_underlying(MouseButton::Right) == GLFW_MOUSE_BUTTON_RIGHT && std::to_underlying(MouseButton::Middle) == GLFW_MOUSE_BUTTON_MIDDLE);
 static inline auto IsASCII(unsigned int codepoint) -> bool {
   return codepoint <= 0x7F;
-}
-static inline auto IsASCIIPrintable(unsigned int codepoint) -> bool {
-  return codepoint >= 0x20 && codepoint <= 0x7E;
-}
-static inline auto ToASCII(unsigned int codepoint) -> unsigned char {
-  return static_cast<unsigned char>(codepoint);
-}
-static inline auto ToLowerASCII(unsigned char c) -> unsigned char {
-  return static_cast<unsigned char>(std::tolower(c));
 }
 static inline auto IsModifierKey(int key) -> bool {
   switch (key) {
@@ -61,45 +51,9 @@ auto InputManager::BeginKeyCapture() -> void {
   capturing = true;
   captureResolved = false;
 }
-auto InputManager::BeginSession() -> void {
-  session = {true, sequenceOrder.size(), nameToBinding, nameToDescription, bindingOrder, buttonOrder};
-}
-auto InputManager::EndSession() -> void {
-  if (!session.active)
-    return;
-  for (auto i = session.sequenceCount; i < sequenceOrder.size(); ++i) {
-    keymap.Remove(sequenceOrder[i]);
-    sequenceToDescription.erase(sequenceOrder[i]);
-  }
-  if (session.sequenceCount < sequenceOrder.size())
-    sequenceOrder.resize(session.sequenceCount);
-  nameToBinding = std::move(session.nameToBinding);
-  nameToDescription = std::move(session.nameToDescription);
-  bindingOrder = std::move(session.bindingOrder);
-  buttonOrder = std::move(session.buttonOrder);
-  tickButtons = 0;
-  tickLatch.reset();
-  keyseq.clear();
-  session = {};
-}
 auto InputManager::CancelKeyCapture() -> void {
   capturing = false;
   captureResolved = false;
-}
-auto InputManager::CharCallback(GLFWwindow *window, unsigned int codepoint) -> void {
-  if (!keysEnabled)
-    return;
-  if (!IsASCIIPrintable(codepoint))
-    return;
-  const auto c = ToLowerASCII(ToASCII(codepoint));
-  keyseq.push_back(c);
-  const auto match = keymap.Find(keyseq.begin(), keyseq.end());
-  if (match == TrieMatch::WordFound) {
-    typedSequences.emplace_back(keyseq.begin(), keyseq.end());
-    spdlog::info("[InputManager] Typed {}", typedSequences.back());
-  }
-  if (match != TrieMatch::PrefixFound)
-    keyseq.clear();
 }
 auto InputManager::CursorPosCallback(GLFWwindow *window, double xpos, double ypos) -> void {
   if (!buttonsEnabled)
@@ -156,10 +110,6 @@ auto InputManager::SetEnabled(const InputKind kind, const bool enabled) -> void 
     keysEnabled = enabled;
   if (kind != InputKind::Keys)
     buttonsEnabled = enabled;
-  // Only the both-halves case clears the sequence, which is what `DisableAll` did and the
-  // single-half calls did not. See the note on the declaration.
-  if (kind == InputKind::All && !enabled)
-    keyseq.clear();
 }
 auto InputManager::GetInactivityTime() const -> double {
   return glfwGetTime() - lastInputTime;
@@ -231,10 +181,6 @@ auto InputManager::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
   if (!keysEnabled)
     return;
   lastInputTime = glfwGetTime();
-  static constexpr int cancelKeys[] = {GLFW_KEY_ESCAPE, GLFW_KEY_BACKSPACE, GLFW_KEY_DELETE, GLFW_KEY_SPACE};
-  for (const auto &k : std::span(cancelKeys))
-    if (key == k)
-      keyseq.clear();
   inputState[index] = action == GLFW_PRESS || action == GLFW_REPEAT;
   pressState[index] = pressState[index] || action == GLFW_PRESS;
   releaseState[index] = releaseState[index] || action == GLFW_RELEASE;
@@ -267,7 +213,6 @@ auto InputManager::RegisterBinding(const std::string &name, const Trigger &trigg
   AssignBinding(name, saved.value_or(trigger));
 }
 auto InputManager::ReleaseAll() -> void {
-  keyseq.clear();
   for (size_t index = 0; index < inputState.size(); ++index)
     if (inputState[index]) {
       inputState[index] = false;
@@ -282,13 +227,13 @@ auto InputManager::SetBinding(const std::string &name, const Trigger &trigger) -
 }
 auto InputManager::AssignBinding(const std::string &name, const Trigger &trigger) -> void {
   // A key belongs to one binding, so claiming it takes it from whoever had it. That has always been
-  // the rule; what is new is that it says so. Silence here is what made a game and an editor
-  // shortcut wanting the same key look like the game's binding simply not working -- the game
-  // registers later, wins, and the shortcut stops responding with nothing anywhere to say why.
+  // the rule; what is new is that it says so. Silence here is what made two bindings wanting the
+  // same key look like one of them simply not working -- the later one wins, and the earlier stops
+  // responding with nothing anywhere to say why.
   //
   // Here rather than at either call site, because both of them displace: a game registering on
-  // start, and a rebind from a panel. And in the engine rather than the editor, so that a stripped
-  // build running two systems that both want the same key still reports it. That is the case with no
+  // start, and a rebind on the settings menu. And in the engine, so that a build running two
+  // systems that both want the same key reports it. That is the case with no
   // other way of being found out -- there is no shortcut list to look at and no panel to open.
   if (trigger.key != 0)
     for (auto &[otherName, otherTrigger] : nameToBinding)
@@ -301,7 +246,6 @@ auto InputManager::AssignBinding(const std::string &name, const Trigger &trigger
 auto InputManager::ResetPulses() -> void {
   pressState.reset();
   releaseState.reset();
-  typedSequences.clear();
 }
 auto InputManager::ResetScroll() -> void {
   scrollOffset = {};
@@ -312,33 +256,6 @@ auto InputManager::ScrollCallback(GLFWwindow *window, double xoffset, double yof
   lastInputTime = glfwGetTime();
   scrollOffset.x += static_cast<float>(xoffset);
   scrollOffset.y += static_cast<float>(yoffset);
-}
-auto InputManager::RegisterSequence(const std::string &trigger, std::string description) -> bool {
-  auto sequence = trigger;
-  for (auto &c : sequence)
-    c = static_cast<char>(ToLowerASCII(static_cast<unsigned char>(c)));
-  // Registered already: only its description can be new.
-  if (sequenceToDescription.contains(sequence)) {
-    sequenceToDescription[sequence] = std::move(description);
-    return true;
-  }
-  if (!keymap.Insert(sequence)) {
-    spdlog::warn("[InputManager] Failed to register sequence {}: it begins another, or another begins it", sequence);
-    return false;
-  }
-  sequenceOrder.push_back(sequence);
-  sequenceToDescription[sequence] = std::move(description);
-  return true;
-}
-auto InputManager::IsSequenceTyped(const std::string_view sequence) const -> bool {
-  return std::ranges::find(typedSequences, sequence) != typedSequences.end();
-}
-auto InputManager::GetSequenceDescription(const std::string &sequence) const -> std::string {
-  auto it = sequenceToDescription.find(sequence);
-  return it != sequenceToDescription.end() ? it->second : "";
-}
-auto InputManager::GetSequenceNames() const -> const std::vector<std::string> & {
-  return sequenceOrder;
 }
 auto InputManager::CurrentMods() const -> int {
   auto mods = 0;
@@ -359,9 +276,6 @@ auto InputManager::ModsSatisfy(const Trigger &trigger, const int mods) const -> 
     if (other.key == trigger.key && other.mods != trigger.mods && (other.mods & trigger.mods) == trigger.mods && (mods & other.mods) == other.mods)
       return false;
   return true;
-}
-auto InputManager::IsSequenceInProgress() const -> bool {
-  return !keyseq.empty();
 }
 auto InputManager::GLFWInputToIndex(int key) -> unsigned char {
   if (key >= GLFW_KEY_SPACE && key <= GLFW_KEY_GRAVE_ACCENT)

@@ -30,7 +30,7 @@ building. The steps below are the same there, with `game/` in place of `game/<na
 3. `game/<name>/include/<name>.hpp` -- the application class,
    `SystemApplication<<name>::<Name>World, <Name>'s systems..., kuki::RenderingSystem>`, in the
    order they are to run (each system's `Tick`/`Update` in list order; `RenderingSystem` last), and
-   `Setup<Name>(kuki::Application &)`, which the editor calls to load the game into itself.
+   `Setup<Name>(kuki::Application &)`, which `Start` calls and `KUKI_GAME_MODULE` names.
 4. `game/<name>/src/<name>.cpp` -- the constructor
    (`SystemApplication(ApplicationDescription{.name = "Kuki <Name>"})`), `Start` calling
    `Setup<Name>(*this)` and nothing else, and `Setup<Name>`: register the controls first (the

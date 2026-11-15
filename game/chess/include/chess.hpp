@@ -14,16 +14,14 @@
 namespace kuki {
 class Application;
 } // namespace kuki
-/// @brief Loads the game's assets and builds its scene into whichever application is hosting it:
-/// the game's own, below, or the editor.
+/// @brief Loads the game's assets and builds its scene into the application it is given.
 auto SetupChess(kuki::Application &) -> void;
 inline constexpr const char *CHESS_FONT = "font/Inter-VariableFont_opsz,wght.ttf";
 /// @brief The chess application: a window, a renderer, the game, and nothing else.
 ///
 /// `SystemApplication` takes the systems as template parameters, so the ones a game does not use
 /// cost it nothing. There is no `AnimationSystem` and no `PhysicsSystem` here: chess has neither
-/// skinned meshes nor anything that falls, and the editor's list is not the list every application
-/// wants. `RenderingSystem` is the one that has to be present -- `Application`'s own startup
+/// skinned meshes nor anything that falls. `RenderingSystem` is the one that has to be present -- `Application`'s own startup
 /// depends on it, and leaving it out is a `static_assert` rather than a crash.
 class Chess final : public kuki::SystemApplication<chess::ChessWorld, GameManager, kuki::StressSystem, kuki::RenderingSystem> {
 public:

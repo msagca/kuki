@@ -53,7 +53,7 @@ function(enable_clang_tidy target)
     PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_OPTS}"
   )
 endfunction()
-# Nought throughout until there is something to call a release. The number is shown in the editor
+# Nought throughout until there is something to call a release. The number is printed by `kuki`
 # and stamped on the installer, and anything higher would be a claim.
 project(Kuki VERSION 0.0.0)
 string(TOUPPER ${PROJECT_NAME} PROJECT_NAME_UPPER)
@@ -297,8 +297,8 @@ add_subdirectory(engine)
 #
 # Nearly every library here is used on terms that come to the same thing: do as you like, and keep
 # this notice with whatever you give out. A binary carries no notices, so they are carried beside
-# it -- staged next to the editor, which shows them in its Help window, and installed with the
-# engine, since it is the engine that the libraries are linked into and every game ships that.
+# it -- installed with the engine, since it is the engine that the libraries are linked into and
+# every game ships that.
 #
 # Copied at configure time from where each project keeps its own, so the text is theirs and is
 # never a copy that could go stale in this repository. What is used only to build or to test is
@@ -308,16 +308,12 @@ set(
   KUKI_LICENSES
   "Kuki|LICENSE"
   "Assimp|external/assimp/LICENSE"
-  "Dear ImGui|external/imgui/LICENSE.txt"
   "DirectX-Headers|external/DirectX-Headers/LICENSE"
   "GLFW|external/glfw/LICENSE.md"
   "GLM|external/glm/copying.txt"
-  "ImGuizmo|external/ImGuizmo/LICENSE"
-  "imgui-filebrowser|external/imgui-filebrowser/LICENSE"
   "Inter|asset/font/Inter-LICENSE.txt"
   "JSON for Modern C++|external/json/LICENSE.MIT"
   "Kaitai Struct|external/kaitai-struct/LICENSE"
-  "Lucide|asset/font/Lucide-LICENSE.txt"
   "spdlog|external/spdlog/LICENSE"
   "stb|external/stb/LICENSE"
   "tinyexr|external/tinyexr/LICENSE"
@@ -340,59 +336,11 @@ install(
 )
 # The engine is all a game in a repository of its own takes from here. Such a game pins kuki as a
 # submodule and adds it with `add_subdirectory` (see `template/`), and everything below -- the
-# editor, the games, the tests, the installer -- is this repository's own product, which the game
+# CLI, the games, the tests, the installer -- is this repository's own product, which the game
 # would otherwise build, test and package as part of itself.
 if(NOT PROJECT_IS_TOP_LEVEL)
   return()
 endif()
-# The editor's libraries, after the cut above so a game's repository does not build them.
-## imgui
-set(
-  IMGUI_CPP_SOURCES
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_demo.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_draw.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_tables.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_widgets.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp"
-)
-if(WIN32)
-  list(
-    APPEND IMGUI_CPP_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx12.cpp"
-  )
-endif()
-add_library(imgui STATIC ${IMGUI_CPP_SOURCES})
-target_include_directories(
-  imgui
-  PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui"
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends"
-)
-target_link_libraries(imgui PUBLIC glfw)
-if(WIN32)
-  target_link_libraries(imgui PUBLIC kuki_d3d12)
-endif()
-## imgui-filebrowser
-add_library(imgui_filebrowser INTERFACE)
-target_include_directories(
-  imgui_filebrowser
-  INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui-filebrowser"
-)
-## imguizmo
-add_library(
-  imguizmo
-  STATIC
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/ImGuizmo.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/GraphEditor.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src/ImSequencer.cpp"
-)
-target_include_directories(
-  imguizmo
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/ImGuizmo/src"
-)
-target_link_libraries(imguizmo PUBLIC imgui)
-add_subdirectory(editor)
 add_subdirectory(cli)
 if(${PROJECT_NAME_UPPER}_BUILD_GAMES)
   add_subdirectory(game)
@@ -421,49 +369,18 @@ else()
     "${CMAKE_CURRENT_BINARY_DIR}/test/CTestTestfile.cmake"
   )
 endif()
-if(WIN32)
+# What Visual Studio runs on F5: the frontier, the game made entirely in code and the one a new
+# game is modelled on, when the games are built.
+if(WIN32 AND TARGET KukiFrontier)
   set_property(
     DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    PROPERTY VS_STARTUP_PROJECT "KukiEditor"
+    PROPERTY VS_STARTUP_PROJECT "KukiFrontier"
   )
 endif()
 # installer
 set(PROJECT_MAINTAINER "Mustafa Said Agca")
 set(PROJECT_URL "https://github.com/msagca/kuki")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A 3D ECS game engine")
-# The Start Menu shortcut is written by hand rather than through CPACK_PACKAGE_EXECUTABLES, which
-# would place it in the installer's core section -- the part that runs whatever was selected. With
-# the editor now optional, that would leave anyone who unticked it holding a Start Menu entry that
-# points at an executable which was never installed.
-#
-# Guarded by the section's own flag instead, in plain NSIS: `SectionGetFlags` and a bit test against
-# 1, which is what `SF_SELECTED` is. LogicLib's `${If}` would read better, but CPack's template
-# includes only WinMessages.NSH, and adding includes to reach it is a larger change than the two
-# lines it would save.
-#
-# Escaped for one more round than looks necessary, and written as a bracket argument so that what is
-# escaped is exactly what appears here. This text is not handed to NSIS directly: CPack copies it
-# verbatim into `CPackConfig.cmake` as a quoted string and parses that file as CMake again on the
-# way to generating the installer script. So the quotes, the backslashes NSIS wants in its paths,
-# and `${KukiEditor}` -- which is NSIS's reference to the section, not a CMake variable -- all have
-# to survive that second parse, and each is escaped for it here.
-set(
-  CPACK_NSIS_CREATE_ICONS_EXTRA
-  [[
-  SectionGetFlags \${KukiEditor} $R9
-  IntOp $R9 $R9 & 1
-  StrCmp $R9 1 0 +2
-    CreateShortCut \"$SMPROGRAMS\\$STARTMENU_FOLDER\\Kuki Editor.lnk\" \"$INSTDIR\\bin\\KukiEditor.exe\"
-  ]]
-)
-# Deleted unconditionally, since removing a shortcut that was never created is not an error and the
-# uninstaller has no record of what was ticked when it was installed.
-set(
-  CPACK_NSIS_DELETE_ICONS_EXTRA
-  [[
-  Delete \"$SMPROGRAMS\\$MUI_TEMP\\Kuki Editor.lnk\"
-  ]]
-)
 set(CPACK_PACKAGE_HOMEPAGE_URL ${PROJECT_URL})
 set(CPACK_PACKAGE_INSTALL_DIRECTORY ${PROJECT_NAME})
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
@@ -495,14 +412,6 @@ cpack_add_component(
   DESCRIPTION "Engine core library."
   HIDDEN
 )
-# Not REQUIRED, so someone who only wants to play the games can leave it out. Selected by default
-# all the same: it is what this project mostly is.
-cpack_add_component(
-  KukiEditor
-  DISPLAY_NAME "Kuki Editor"
-  DESCRIPTION "An ImGui-based editor application."
-  DEPENDS KukiEngine
-)
 # `kuki`, which starts a game's repository and builds and runs it there. Its own component so it can
 # be left out, and selected by default: a game is not made on this engine without it.
 cpack_add_component(
@@ -510,7 +419,7 @@ cpack_add_component(
   DISPLAY_NAME "Kuki CLI"
   DESCRIPTION "The kuki command: start a game with `kuki new`, then build, run and update it."
 )
-set(CPACK_COMPONENTS_ALL KukiEngine KukiEditor KukiCli)
+set(CPACK_COMPONENTS_ALL KukiEngine KukiCli)
 # One entry per game rather than one for all of them, gathered under a group so they read as a set
 # in the installer's tree. The names come from `game/CMakeLists.txt`, which discovers them, so a new
 # game appears here by existing rather than by being listed.

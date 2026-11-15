@@ -144,12 +144,6 @@ struct DXPostConstants {
   /// is the value it should be, which a tone mapper makes impossible.
   uint32_t raw{};
 };
-/// @brief Largest number of selected entities the outline pass can consider in one draw.
-inline constexpr uint32_t MAX_OUTLINE_SELECTED = 16;
-/// @brief Root constants for the outline pass.
-///
-/// The selected set is passed inline rather than through a buffer because it is tiny and changes
-/// every frame; `uint4` groups keep the HLSL packing rules from padding each id to 16 bytes.
 /// @brief Root constants for one run of overlay text: where it goes and what colour it is.
 ///
 /// Twenty dwords of the root signature's sixty-four, which is what lets the projection ride in the
@@ -234,12 +228,6 @@ struct DXFocusConstants {
   float maxBlur{};
 };
 static_assert(sizeof(DXFocusConstants) == 48, "DXFocusConstants must stay three float4 rows to match the HLSL cbuffer");
-struct DXOutlineConstants {
-  float color[4]{};
-  float texelSize[4]{};
-  uint32_t selectedCount[4]{};
-  uint32_t selected[MAX_OUTLINE_SELECTED]{};
-};
 /// @brief Number of shader resource and unordered access slots the shared compute signature binds.
 ///
 /// Every image-based lighting shader is compiled against one root signature, so the tables are
@@ -656,11 +644,6 @@ public:
   /// @param effect Selects the pixel shader entry point, so all post passes share one cache.
   /// @return Null when compilation or creation failed; the caller should fall back to a blit.
   auto GetPostPipeline(ID3D12Device *, const DXGI_FORMAT, const char *) -> const DXPipeline *;
-  /// @brief Returns the outline pipeline for a target format, building it once.
-  ///
-  /// Distinct from the generic post pipeline because it binds a second resource: the multisampled
-  /// entity id buffer, read with `Load` so ids are never filtered.
-  auto GetOutlinePipeline(ID3D12Device *, const DXGI_FORMAT) -> const DXPipeline *;
   /// @brief Returns the ink or stylize pipeline for a target format, building it once.
   ///
   /// Apart from the generic post pipeline because its constants are larger and it binds a depth
@@ -785,7 +768,6 @@ private:
   DXShaderCompiler shaderCompiler;
   ComPtr<ID3D12RootSignature> sceneRootSignature;
   ComPtr<ID3D12RootSignature> postRootSignature;
-  ComPtr<ID3D12RootSignature> outlineRootSignature;
   ComPtr<ID3D12RootSignature> stylizeRootSignature;
   ComPtr<ID3D12RootSignature> reflectionRootSignature;
   ComPtr<ID3D12RootSignature> occlusionRootSignature;
@@ -819,8 +801,6 @@ private:
   auto GetParticleDrawRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature shared by every post pass: one source texture plus a scalar parameter.
   auto GetPostRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
-  /// @brief Root signature for the outline pass: source colour, entity ids, and the selected set.
-  auto GetOutlineRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   auto GetStylizeRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   auto GetReflectionRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief A root signature of the shape the fullscreen passes share -- a block of root constants

@@ -19,8 +19,8 @@ struct ApplicationDescription {
   /// from maximised is the size of the display it is on. See `DesktopSize`.
   int width{DesktopWidth()};
   int height{DesktopHeight()};
-  /// @brief Opens maximised on the primary monitor. The editor's long-standing behaviour, so it is
-  /// the default; a game that wants the size above should turn it off.
+  /// @brief Opens maximised on the primary monitor, the default; a game that wants the size above
+  /// should turn it off.
   bool maximized{true};
   /// @brief Opens borderless on the primary monitor at its current video mode.
   ///
@@ -33,11 +33,5 @@ struct ApplicationDescription {
   /// On by default, which is the right answer for anything shipping: a scene this small otherwise
   /// runs the GPU flat out to draw frames nobody sees. Turn it off to measure frame cost.
   bool vsync{true};
-  /// @brief Whether the application has the settings menu, opened with Escape. See `SettingsMenu`.
-  ///
-  /// On for a game, which is what nearly every application is. Where it is on, the window is also
-  /// made fullscreen and synced as the player last chose in it, whatever the two fields above say:
-  /// those are what the game would like, and the menu is what the player said.
-  bool settingsMenu{true};
 };
 } // namespace kuki

@@ -37,11 +37,9 @@ public:
   virtual auto CreateShadowMap(std::span<std::string>, std::span<std::string>) -> void = 0;
   virtual auto CreateSpotShadowMap(std::span<std::string>, std::span<std::string>) -> void = 0;
   virtual auto CreateTarget(const TargetDescription &, const std::string & = "") -> EntityID = 0;
-  virtual auto GetPreviewSize() const -> int = 0;
   virtual auto GetTarget(const std::string &) -> RenderTarget * = 0;
   virtual auto LoadAsset(const AssetID) -> void = 0;
   virtual auto LoadAssets(const AssetType) -> void = 0;
-  virtual auto ApplyOutline(std::span<std::string>, std::span<std::string>) -> void = 0;
   /// @brief Copies the finished picture through and draws the frame's overlay text onto it.
   ///
   /// The copy is not conditional on there being any text. The graph gives every pass its own
@@ -50,8 +48,6 @@ public:
   virtual auto ApplyOverlay(std::span<std::string>, std::span<std::string>) -> void = 0;
   virtual auto LoadScene(Scene &) -> void = 0;
   virtual auto PickEntity(const int, const int) -> EntityID = 0;
-  virtual auto PreviewAsset(const AssetID) -> RenderTarget * = 0;
-  virtual auto SetPreviewSize(const int) -> void = 0;
   virtual auto RenderScene(std::span<std::string>, std::span<std::string>) -> void = 0;
   /// @brief Fills the irradiance probe field for this frame, where the backend keeps one.
   ///
@@ -115,10 +111,10 @@ public:
   virtual auto ApplyPlanarReflection(std::span<std::string>, std::span<std::string>) -> void = 0;
   /// @brief Draws a finished target onto the window's own surface, scaled to fill it.
   ///
-  /// The render graph ends in an offscreen target, which is the right shape for an editor: the
-  /// image is a texture it puts inside a panel. An application without a panel needs the same
-  /// image on the swapchain, and until this existed there was nothing to put it there -- both
-  /// backends presented whatever the surface happened to hold, which is to say nothing.
+  /// The render graph ends in an offscreen target, which a later pass or a capture can read as a
+  /// texture. The window needs the same image on the swapchain, and until this existed there was
+  /// nothing to put it there -- both backends presented whatever the surface happened to hold,
+  /// which is to say nothing.
   ///
   /// Defaults to doing nothing so that a backend without a route to its own surface degrades to a
   /// blank window rather than failing to build. Both implemented backends override it.
@@ -155,7 +151,7 @@ public:
   auto SetPassEnabled(const RenderPass pass, const bool enabled) -> void { passEnabled[static_cast<size_t>(pass)] = enabled; }
   /// @brief What the backend's resource pools are holding. Empty where the backend has none.
   virtual auto GetPoolUsage() const -> PoolUsage { return {}; }
-  /// @brief What this backend can do, so the editor offers only controls that reach something.
+  /// @brief What this backend can do, so the settings menu offers only entries that reach something.
   ///
   /// Defaults to none of it. See `RendererCapabilities` for why that is the safe direction.
   virtual auto GetCapabilities() const -> RendererCapabilities { return {}; }
@@ -191,8 +187,8 @@ public:
   /// The Direct3D 12 backend reads all of them. A backend with no probe field reads only the two
   /// terms it has a route for -- `skyIntensity` scales its irradiance cubemap and `ambientFallback`
   /// is the flat ambient it falls back on -- as OpenGL's did. `GetCapabilities().probeVolume` is
-  /// what says which a build is looking at, and the editor hides the rest rather than drawing
-  /// sliders that reach nothing.
+  /// what says which a build is looking at, and the settings menu hides the rest rather than
+  /// listing rows that reach nothing.
   auto GetIndirectLighting() const -> const IndirectLighting & { return indirect; }
   auto SetIndirectLighting(const IndirectLighting &settings) -> void { indirect = settings; }
   template <typename T>
@@ -219,8 +215,8 @@ protected:
   /// @brief Held here for the same reason as the two above, and deliberately not saved with them.
   ///
   /// A tone mapping curve is a preference and belongs in the config; a debug view is a thing you are
-  /// in the middle of looking at. Restoring one on the next launch would leave the editor opening on
-  /// a picture of a weight buffer with no obvious way back, which is a worse failure than having to
+  /// in the middle of looking at. Restoring one on the next launch would leave a game opening on a
+  /// picture of a weight buffer with no obvious way back, which is a worse failure than having to
   /// pick the view again.
   LightingDebugView lightingDebugView{};
   ProbeDebugView probeDebugView{};

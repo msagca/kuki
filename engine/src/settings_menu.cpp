@@ -122,19 +122,11 @@ auto SettingsMenu::Clear() -> void {
   entries.clear();
   events.clear();
 }
-auto SettingsMenu::IsEnabled() const -> bool {
-  return enabled;
-}
-auto SettingsMenu::SetEnabled(const bool value) -> void {
-  if (!value)
-    Close();
-  enabled = value;
-}
 auto SettingsMenu::IsOpen() const -> bool {
   return open;
 }
 auto SettingsMenu::Open() -> void {
-  if (!enabled || open)
+  if (open)
     return;
   // Without a font nothing of it could be drawn, and a menu nobody can see that has taken the
   // keyboard and paused the game is worse than no menu.
@@ -172,8 +164,6 @@ auto SettingsMenu::Close() -> void {
   pausedGame = false;
 }
 auto SettingsMenu::OnKey(const int key, const int action, const int mods) -> bool {
-  if (!enabled)
-    return false;
   if (!open) {
     if (action != GLFW_PRESS)
       return false;
@@ -189,11 +179,8 @@ auto SettingsMenu::OnKey(const int key, const int action, const int mods) -> boo
     events.push_back({Event::Kind::KeyUp, key, mods});
   return true;
 }
-auto SettingsMenu::OnChar() const -> bool {
-  return enabled && open;
-}
 auto SettingsMenu::OnMouseButton(const int button, const int action) -> bool {
-  if (!enabled || !open)
+  if (!open)
     return false;
   if (action == GLFW_PRESS && button == GLFW_MOUSE_BUTTON_LEFT)
     events.push_back({Event::Kind::Click});
@@ -202,7 +189,7 @@ auto SettingsMenu::OnMouseButton(const int button, const int action) -> bool {
   return true;
 }
 auto SettingsMenu::OnScroll(const double offset) -> bool {
-  if (!enabled || !open)
+  if (!open)
     return false;
   events.push_back({Event::Kind::Scroll, 0, 0, static_cast<float>(offset)});
   return true;
@@ -266,8 +253,8 @@ auto SettingsMenu::ApplyGraphics() -> void {
     app.graphicsContext->SetVSync(graphics.vsync);
 }
 auto SettingsMenu::SaveGraphics() const -> void {
-  // Read again and only these fields written, so that the backend and the tone mapper -- the
-  // editor's to set -- are left as the file has them.
+  // Read again and only these fields written, so that the backend and the tone mapper -- set by
+  // hand in the file -- are left as it has them.
   auto config = EngineConfig::Load();
   config.fullscreen = graphics.fullscreen;
   config.vsync = graphics.vsync;
@@ -552,7 +539,7 @@ auto SettingsMenu::Handle(const Event &event, const std::vector<Row> &rows) -> v
   switch (event.kind) {
   case Event::Kind::Key: {
     if (!capturing.empty()) {
-      // Escape lets go of the binding as it was, as the editor's rebinding does; a modifier waits
+      // Escape lets go of the binding as it was; a modifier waits
       // to see whether it is being held for another key or is the key wanted.
       if (event.key == GLFW_KEY_ESCAPE) {
         capturing.clear();

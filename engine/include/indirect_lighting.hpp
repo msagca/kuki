@@ -4,14 +4,10 @@
 namespace kuki {
 /// @brief Every value the indirect lighting is shaped by, as a component on an entity.
 ///
-/// A component rather than a panel of its own, because that is what it is: a thing in the scene with
-/// properties, which the hierarchy lists and the properties window edits like any other. The editor
-/// puts it on a `Settings` entity so there is somewhere to find it, and `RenderingSystem::Update`
-/// hands it to whichever backend is running.
-///
-/// Not in `SERIALIZED_TYPES`, so it never travels inside a scene file. What a renderer is being
-/// asked to do while somebody looks at it is not part of the work, and a scene carrying one
-/// person's half-finished tuning onto another machine would override the settings there.
+/// A scene singleton rather than a setting of the renderer's, because it is the scene's: a game
+/// builds one with the values its scene wants (the frontier's sky is brighter than the default),
+/// `RenderingSystem::Update` hands it to whichever backend is running, and
+/// `SettingsMenu::AddLightingEntries` lists its values for a game that tunes them while it runs.
 ///
 /// These were constants until it became clear what the difficulty with them is. Each one is a
 /// tradeoff between two artefacts rather than a value with a right answer -- a surface bias too
@@ -37,13 +33,13 @@ namespace kuki {
 /// `skyIntensity` and `ambientFallback` describe light arriving by a route any backend can have --
 /// an irradiance cubemap, and the flat term for a scene with no sky at all -- while everything from
 /// `bounceIntensity` down describes a probe field, which a backend may not have (OpenGL's did not).
-/// The editor hides what the backend cannot reach rather than drawing the slider anyway; see
+/// The settings menu hides what the backend cannot reach rather than listing the row anyway; see
 /// `RendererCapabilities::probeVolume`.
 ///
 /// Not saved to `EngineConfig` either, for the reason the debug views are not: a session that comes
 /// back with the bounce turned down to a tenth and no memory of having done it is a renderer that
-/// looks broken. Removing the component and letting the editor put a fresh one back is the way to
-/// the defaults, and restarting is another.
+/// looks broken. The menu's "Reset lighting" is the way back to the scene's values, and restarting
+/// is another.
 struct IndirectLighting {
   /// @brief What the probe volume's bounce is multiplied by before it is added to the ambient term.
   ///

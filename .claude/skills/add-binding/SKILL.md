@@ -16,7 +16,7 @@ Every action is a binding: rebindable in the settings menu's controls, saved in 
    header (`game/frontier/include/controls.hpp`) so every system reads it by the same name. The
    description is the third argument, in the words the controls page shows ("Pull down the
    building under the cursor").
-3. **The default key.** A `Key` alone (`key.hpp`), never a chord: modifiers are the editor's. A
+3. **The default key.** A `Key` alone (`key.hpp`), never a chord: a game's action is one key. A
    key belongs to one binding, so a second binding on the same key takes it from the first. One
    key meaning two things in two modes (the frontier's turn keys turn a building in hand, the
    camera otherwise) is one binding read by two systems, not two bindings.

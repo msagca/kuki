@@ -6,7 +6,7 @@
 #include <kuki_engine_export.h>
 #include <ostream>
 namespace kuki {
-/// @brief Where an entity is relative to its parent: what a game or the editor writes.
+/// @brief Where an entity is relative to its parent: what a game writes.
 ///
 /// The world matrix this works out to is a component of its own, `WorldMatrix`, kept in a column
 /// beside this one. The two were one struct, and the struct was some 180 bytes of which a renderer
