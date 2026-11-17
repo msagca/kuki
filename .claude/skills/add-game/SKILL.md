@@ -52,8 +52,8 @@ building. The steps below are the same there, with `game/` in place of `games/<n
    `kuki_add_game_tests(${PROJECT_NAME} SOURCES <the tests> <the rules' sources>)`, which makes
    `Kuki<Name>Test` when the tests are on (the frontier's is the one to copy). `tests/` is the
    engine's and the CLI's, and names no game.
-7. `games/<name>/CLAUDE.md` -- what the game is, what is in it and where, its frame budget, and the
-   flags that set up what a `--capture` shows. How things are, not plans: those are issues.
+7. `games/<name>/CLAUDE.md` -- what the game is, what is in it and where, its systems' shares of
+   the frame budget (the root `CLAUDE.md`), and the flags that set up what a `--capture` shows. How things are, not plans: those are issues.
 8. Build the game and its runtime together, or it runs against an old engine DLL:
    `cmake --build --preset Debug --target Kuki<Name> Kuki<Name>Runtime`. Then look at it with the
    `capture` skill, and play it from the keyboard alone -- every action a binding.
