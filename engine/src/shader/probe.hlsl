@@ -20,6 +20,8 @@ struct Probe {
   uint behind[64];
   uint neighbours[6];
   float exterior;
+  // Unread here; see `DXProbe::samples`. Declared so the stride matches the trace's.
+  uint samples;
 };
 StructuredBuffer<OctreeNode> g_nodes : register(t0);
 StructuredBuffer<Probe> g_probes : register(t1);

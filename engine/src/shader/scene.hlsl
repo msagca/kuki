@@ -114,6 +114,8 @@ struct Probe {
   uint behind[64];
   uint neighbours[6];
   float exterior;
+  // Unread here; see `DXProbe::samples`. Declared so the stride matches the trace's.
+  uint samples;
 };
 cbuffer DrawConstants : register(b0) {
   float4 u_albedo;

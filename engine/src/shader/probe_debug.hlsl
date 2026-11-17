@@ -10,6 +10,7 @@ static const uint PROBE_VIEW_VARIANCE = 3;
 static const uint PROBE_VIEW_TRUST = 4;
 static const uint PROBE_VIEW_RELOCATION = 5;
 static const uint PROBE_VIEW_CLASSIFICATION = 6;
+static const uint PROBE_VIEW_SAMPLES = 7;
 // Spread of distances, as a fraction of the volume's reach, that the variance view shows as white.
 //
 // The quantity itself is small -- a texel looking at one flat surface has almost none, and even one
@@ -38,6 +39,8 @@ struct Probe {
   uint behind[64];
   uint neighbours[6];
   float exterior;
+  // Unread here; see `DXProbe::samples`. Declared so the stride matches the trace's.
+  uint samples;
 };
 cbuffer DebugConstants : register(b0) {
   float4x4 u_viewProjection;
@@ -139,6 +142,15 @@ float3 ProbeColour(uint probe, float3 n) {
     if (trust < PROBE_TRUSTED_LIMIT)
       return float3(0.9, 0.15, 0.1);
     return ProbeTravelled(probe) > PROBE_MOVED_LIMIT ? float3(0.15, 0.4, 0.9) : float3(0.1, 0.8, 0.2);
+  case PROBE_VIEW_SAMPLES: {
+    // On a log scale, since what matters is the ratio to the step: yellow at 2^6.25, about the 76 a
+    // change winds a probe back to at the default step, and green at 2^10. A count is a hue apart
+    // from the next few doublings rather than a shade, so a wound-back patch reads against a settled field.
+    float doublings = log2(float(g_probes[probe].samples & 0xFFFF) + 1.0);
+    if (doublings < 6.25)
+      return lerp(float3(0.9, 0.15, 0.1), float3(0.95, 0.85, 0.1), doublings / 6.25);
+    return lerp(float3(0.95, 0.85, 0.1), float3(0.1, 0.8, 0.2), saturate((doublings - 6.25) / 3.75));
+  }
   default:
     return EvaluateProbe(probe, n) / PI;
   }

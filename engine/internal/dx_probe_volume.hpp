@@ -13,7 +13,6 @@
 #include <indirect_lighting.hpp>
 #include <primitive.hpp>
 #include <probe_limits.hpp>
-#include <random>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -135,7 +134,7 @@ inline constexpr float PROBE_VOLUME_KEEP_FRACTION = .5f;
 ///
 /// Also the thread group size: one group per probe, one thread per ray, so the group can reduce its
 /// rays into coefficients through shared memory instead of atomics. Sixty-four rays sample a sphere
-/// far too sparsely on their own; the per-frame rotation and the temporal blend are what turn the
+/// far too sparsely on their own; the per-trace rotation and the temporal blend are what turn the
 /// sequence of sparse estimates into a converged one.
 inline constexpr uint32_t PROBE_RAY_COUNT = 64;
 /// @brief How fast a fresh estimate is folded in, as `PROBE_MEAN_STEP / (n + PROBE_MEAN_STEP)`.
@@ -143,7 +142,7 @@ inline constexpr uint32_t PROBE_RAY_COUNT = 64;
 /// The weight has to shrink with the number of estimates `n` already in the probe, or the field
 /// never converges. Sixty-four rays sample a sphere far too sparsely to be right on their own, and
 /// a blend weight that does not shrink leaves a fixed fraction of that error permanently resident,
-/// redrawn every frame by the per-frame ray rotation: shading that keeps shifting under a scene
+/// redrawn every trace by the per-trace ray rotation: shading that keeps shifting under a scene
 /// where nothing has moved and no light has changed. A shrinking weight makes the probe the mean of
 /// every estimate since the scene last changed, and the error in a mean falls off with `n`.
 ///
@@ -157,7 +156,7 @@ inline constexpr uint32_t PROBE_RAY_COUNT = 64;
 /// it in noise at a given `n`: four is bounces settled by the time the noise is already quieter
 /// than the fixed blend ever was.
 inline constexpr uint32_t PROBE_MEAN_STEP = 4;
-/// @brief Estimates the count is wound back to when the scene the trace looks at changes.
+/// @brief Estimates a probe's count is wound back to when what it looks at changes.
 ///
 /// Converging is only wanted while the answer is not moving, and a mean allowed to grow without
 /// bound would take as long to forget a light as it took to settle on one. So a change winds the
@@ -166,6 +165,13 @@ inline constexpr uint32_t PROBE_MEAN_STEP = 4;
 /// the field settles again once the changing stops. Resetting to zero instead would be worse than
 /// either, since the next estimate would land whole and unaveraged — the noise of a single trace,
 /// as a flash, every frame of a drag.
+///
+/// Which probes are wound back depends on what changed. A light or a trace setting reaches every
+/// probe, so it winds back all of them. Geometry winds back only the probes around the boxes it
+/// stood in before and stands in now (see `CSWindBack` in probe_update.hlsl). It used to wind back
+/// the whole field: every probe kept one shared count, the trace was keyed on a hash of the whole
+/// ray scene, and a gull flying past put the far side of the island back to a one-in-twenty blend.
+/// How quickly a probe answered a change then depended on whatever else happened to be moving.
 inline constexpr uint32_t PROBE_REACTIVE_SAMPLES = 19 * PROBE_MEAN_STEP;
 /// @brief Most probes traced in one frame.
 ///
@@ -177,9 +183,15 @@ inline constexpr uint32_t PROBE_REACTIVE_SAMPLES = 19 * PROBE_MEAN_STEP;
 /// size of the scene. Volumes within it -- the rooms, the chess board -- are traced every frame as
 /// before.
 ///
-/// What the sweep costs is reaction time, not convergence. A probe's mean is counted in sweeps, not
-/// frames (see `tracedSamples`), so the weights it is folded in at are exactly those a probe traced
-/// every frame would get; a change in the light reaches every probe within one sweep.
+/// What the sweep costs is reaction time, not convergence. Each probe counts the estimates it has
+/// been given itself (`DXProbe::samples`), so the weights it is folded in at are exactly those a
+/// probe traced every frame would get; a change in the light reaches every probe within one sweep.
+///
+/// A swept volume is lit a slice at a time for its first sweep, which on the frontier is a third of
+/// a second as the scene opens. It used to be traced in full for its first few estimates to hide
+/// that, which needed the count shared across the volume to know when to stop. With a count per
+/// probe there is no one moment the volume has had enough, and the slice is the honest cost: every
+/// probe is the furthest from converged it will ever be exactly once, at its first trace.
 ///
 /// The number is set by the frame, measured on the frontier once its volume was fitted to the land:
 /// a thousand probes cost 1.35 ms, because probes standing among geometry shade nearly every ray
@@ -187,14 +199,6 @@ inline constexpr uint32_t PROBE_REACTIVE_SAMPLES = 19 * PROBE_MEAN_STEP;
 /// vsync on a frame that misses is shown at thirty. 2048 is about 14.6 and sweeps the frontier's
 /// 35937 slots in eighteen frames, a third of a second.
 inline constexpr uint32_t PROBE_TRACE_BUDGET = 2048;
-/// @brief Estimates a probe is given every frame before the sweep starts, after a volume is laid down.
-///
-/// A swept volume would otherwise light a slice of itself on the first frame, another on the next,
-/// and show the uneven field in between. Tracing everything for the first few estimates costs
-/// a handful of slow frames as the scene opens -- already the frames that load and build -- and
-/// leaves a field the sweep then only has to refine. A wind-back on a change never reaches this low
-/// (`PROBE_REACTIVE_SAMPLES` is far above it), so a scene that keeps changing stays on the budget.
-inline constexpr uint32_t PROBE_FULL_RATE_SAMPLES = 8;
 /// @brief Byte layout of `Vertex` as `probe_trace.hlsl` hardcodes it to fetch a hit's surface.
 ///
 /// A raw buffer load needs a byte offset and the shader has no reflection to derive one from, so
@@ -307,7 +311,7 @@ inline constexpr float PROBE_RELOCATION_DAMPING = .25f;
 ///
 /// A quarter separates the cases with room to spare. A probe in open air sits near nought, one just
 /// inside a surface sees about half its sphere blocked, and nothing real sits close enough to the
-/// line for the per-frame rotation of the rays to walk it across.
+/// line for the per-trace rotation of the rays to walk it across.
 inline constexpr float PROBE_BURIED_LIMIT = .25f;
 /// @brief Neighbours a probe borrows from, one per face of the lattice.
 inline constexpr uint32_t PROBE_NEIGHBOURS = 6;
@@ -417,6 +421,17 @@ static_assert(sizeof(DXOctreeNode) == 96, "probe_update.hlsl, probe_trace.hlsl, 
 /// ends. Found by the update rather than the trace, because the lattice knows where its corners are
 /// and the trace does not.
 ///
+/// `samples` is the probe's own history, two counts of sixteen bits in one word. The low half is how
+/// many estimates its mean is over, which sets the weight the next is folded in at,
+/// `PROBE_MEAN_STEP / (n + PROBE_MEAN_STEP)`; it saturates rather than wraps, since by then a fresh
+/// estimate is worth nothing anyone could see, and it is what a change winds back. The high half is
+/// how many times the probe has been traced, which only rises (and wraps), and picks the rotation of
+/// its ray set. Two counts and not one because the rotation must not repeat: a probe held at the
+/// wound-back count by a change every frame would otherwise be traced along the same sixty-four
+/// directions every frame, and the bias of one ray set is exactly what the rotation exists to
+/// average out. Both are the probe's own, so the same scene gives the same field after the same
+/// number of traces, whatever else in the volume moved or however the sweep fell.
+///
 /// `exterior` is how far the probe is standing behind the scene's surfaces rather than in front of
 /// them, from nought to one. It is the thing `trust` could not work out for itself. Relocation and the
 /// buried test both read the probe's own rays near it, so both see a probe sealed inside geometry and
@@ -442,9 +457,10 @@ struct DXProbe {
   uint32_t behind[PROBE_BEHIND_WORDS]{};
   uint32_t neighbours[PROBE_NEIGHBOURS]{};
   float exterior{};
+  uint32_t samples{};
 };
-static_assert(sizeof(DXProbe) == 36 + PROBE_SH_COEFFICIENTS * 16 + PROBE_DEPTH_TEXELS * 4 + PROBE_BEHIND_WORDS * 4 + PROBE_NEIGHBOURS * 4);
-static_assert(sizeof(DXProbe) == 1484);
+static_assert(sizeof(DXProbe) == 40 + PROBE_SH_COEFFICIENTS * 16 + PROBE_DEPTH_TEXELS * 4 + PROBE_BEHIND_WORDS * 4 + PROBE_NEIGHBOURS * 4);
+static_assert(sizeof(DXProbe) == 1488);
 static_assert(sizeof(DXProbe) <= 2048, "a structured buffer element cannot be larger than this");
 /// @brief One placement of a mesh, as the volume reads geometry.
 ///
@@ -464,10 +480,16 @@ static_assert(sizeof(DXProbe) <= 2048, "a structured buffer element cannot be la
 /// The frontier's sea did reach the volume, which then spanned 898 units and spaced its probes 28
 /// apart over an island a few dozen across. Such a placement is still traced against and still
 /// re-measured where it moves; it only stops deciding how big the volume is.
+///
+/// `look` is what the placement is made of to a ray, hashed: its material's colours, transmission,
+/// alpha and textures. A material edited in place changes what the probes around the placement see
+/// as surely as moving it does, so a placement whose look changes winds those probes back too. It is
+/// not a move: the placement still decides the volume's size.
 struct DXProbeGeometry {
   uint64_t entity{};
   std::span<const Vertex> vertices;
   glm::mat4 transform{1.f};
+  size_t look{};
   bool fits{true};
 };
 /// @brief Where irradiance is sampled from and how a shading point finds the samples near it.
@@ -544,17 +566,19 @@ public:
   /// error the hysteresis hides.
   ///
   /// Each estimate is folded in as a running mean rather than at a fixed rate, so the field
-  /// converges on a still scene instead of shimmering around the answer forever. What decides when
-  /// that mean starts over is the caller's hash: see `PROBE_REACTIVE_SAMPLES`.
+  /// converges on a still scene instead of shimmering around the answer forever. Each probe keeps
+  /// its own count, wound back for every probe by a change in the caller's hash and for the probes
+  /// around it by geometry `Update` saw change. See `PROBE_REACTIVE_SAMPLES`.
   ///
   /// Records into the frame's command list and never stalls. Runs every frame.
   ///
   /// @param frameConstants Address of the lights the hit shading reads, in the scene pass's layout.
-  /// @param sceneHash Everything the trace looks at that the camera does not move: the lights, and
-  /// the placements and materials in the acceleration structure. A probe's mean is only worth
-  /// keeping while the thing it is a mean of holds still, and this is what says whether it has. It
-  /// must not fold in the camera, or the field would restart on every mouse movement.
-  /// @param settings The values shaping what the trace gathers. Hashed in alongside `sceneHash`, so
+  /// @param lightHash What the trace looks at that reaches every probe and the camera does not move:
+  /// the lights, the sky, and the reconstruction values the trace samples the field with. A change
+  /// winds every probe back. The placements and materials are not in it: they reach the probes near
+  /// them, and `Update` winds those back from the boxes it already tracks. It must not fold in the
+  /// camera, or the field would restart on every mouse movement.
+  /// @param settings The values shaping what the trace gathers. Hashed in alongside `lightHash`, so
   /// changing one winds the mean back exactly as a light moving does -- which is the honest
   /// treatment, since a mean of estimates taken under two different settings is a mean of nothing.
   auto Trace(DXContext &, DXPipelineCache &, const DXAccelerationStructure &, const D3D12_GPU_VIRTUAL_ADDRESS, const D3D12_GPU_VIRTUAL_ADDRESS, const size_t, const IndirectLighting &) -> void;
@@ -596,6 +620,7 @@ private:
   struct Placement {
     const void *mesh{};
     glm::mat4 transform{1.f};
+    size_t look{};
     glm::vec3 low{};
     glm::vec3 high{};
     uint64_t seen{};
@@ -637,8 +662,6 @@ private:
   /// they are told apart by this and ignored.
   std::array<uint64_t, DX_FRAME_COUNT> readbackGeneration{};
   uint64_t generation{};
-  /// @brief Source of the per-frame ray rotation. Seeded fixed, so a run reproduces the one before it.
-  std::mt19937 random{1u};
   D3D12_RESOURCE_STATES probeState{D3D12_RESOURCE_STATE_COMMON};
   D3D12_RESOURCE_STATES nodeState{D3D12_RESOURCE_STATE_COMMON};
   D3D12_RESOURCE_STATES lookupState{D3D12_RESOURCE_STATE_COMMON};
@@ -664,21 +687,24 @@ private:
   bool settled{};
   uint32_t loggedProbes{};
   uint32_t loggedLeaves{};
+  /// @brief Traces since the volume was laid down, for the report and for whose turn `CSClassify`
+  /// takes. No probe's weight reads it: each probe counts its own estimates.
   uint32_t tracedFrames{};
-  /// @brief Estimates folded into the probes since the last change, which sets the blend weight.
-  ///
-  /// Not `tracedFrames`: that one only ever counts up, because what it reports is how long the
-  /// field has had to settle. This one is wound back whenever the scene changes, and it is the
-  /// wind-back that keeps a converged field able to react at all.
-  uint32_t tracedSamples{};
   /// @brief Which part of the sweep the next trace takes, from nought to the stride less one.
-  ///
-  /// `tracedSamples` rises when this wraps rather than every frame, because that is when every probe
-  /// has been given one more estimate. See `PROBE_TRACE_BUDGET`.
   uint32_t sweepPhase{};
   uint32_t traceBudget{PROBE_TRACE_BUDGET};
-  /// @brief The scene hash the accumulated estimates belong to. A different one winds them back.
+  /// @brief The light hash the accumulated estimates belong to. A different one winds them all back.
   size_t traceHash{};
+  /// @brief Whether the next update winds every probe back, because the light hash changed.
+  ///
+  /// Set by `Trace`, which is where the light hash is known, and acted on by the next `Update`, which
+  /// is where the pass that winds probes back runs and has the change boxes bound. One frame late, so
+  /// the first estimate under a new light is folded in at the old weight: one estimate of the dozens
+  /// the field takes to follow the change, for not binding the update's buffers a second time.
+  bool windBackAll{};
+  /// @brief The count a change winds a probe back to, `PROBE_REACTIVE_SAMPLES` at the step the last
+  /// trace ran at. Kept here because the step is a trace setting and the wind-back is the update's.
+  uint32_t reactiveSamples{PROBE_REACTIVE_SAMPLES};
   bool ready{};
   bool validated{};
   bool reported{};

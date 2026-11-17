@@ -25,7 +25,7 @@ namespace kuki {
 /// - The reconstruction group is read per pixel out of `DXFrameConstants`, against a field that has
 ///   already been traced. Moving one repaints the next frame.
 /// - The trace group is read by the compute pass that fills the probes, out of
-///   `DXProbeTraceConstants`. Moving one changes what gets stored, so the running mean is wound
+///   `DXProbeTraceConstants`. Moving one changes what gets stored, so every probe's running mean is wound
 ///   back to `PROBE_REACTIVE_SAMPLES` and the field takes a few dozen frames to settle again. This
 ///   is the same treatment a light moving gets, and it happens on its own: the trace hash covers
 ///   this group.

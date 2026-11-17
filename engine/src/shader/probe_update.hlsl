@@ -63,6 +63,9 @@ struct Probe {
   uint behind[64];
   uint neighbours[6];
   float exterior;
+  // How many estimates the mean is over in the low half, how many traces the probe has had in the
+  // high half. See `DXProbe::samples`.
+  uint samples;
 };
 cbuffer UpdateConstants : register(b0) {
   // The volume's minimum corner, and its cubic side in the fourth component.
@@ -76,6 +79,8 @@ cbuffer UpdateConstants : register(b0) {
   // may stray from its corner as a fraction of its leaf's extent, and the distance a fresh probe's
   // visibility is seeded at.
   float4 u_tuning;
+  // The count a probe a change reached is wound back to, and whether a change reached every probe.
+  uint4 u_windBack;
 };
 RaytracingAccelerationStructure g_scene : register(t0);
 // Pairs of minimum and maximum corners, one pair for each box of space whose geometry changed.
@@ -240,6 +245,47 @@ void CSDirty(uint id : SV_DispatchThreadID) {
     g_nodes[id].surface = 0.0;
     return;
   }
+}
+// Winds back the count of every probe a change reached, so its mean starts following again.
+//
+// A probe used to share one count with the whole field, and any change anywhere wound all of them
+// back: a gull flying past, or a chess clock digit swapping its mesh, put every probe in the volume
+// back to a one-in-twenty blend, including ones a hundred units from either. Here a change in the
+// geometry reaches the probes around the boxes `CSDirty` was handed, and a change in the light -- which
+// reaches everywhere -- reaches every probe. Only ever down: a probe already below the count, because
+// it is new or was reached a frame ago, keeps the count it has. The count of traces, which turns the
+// ray set, is left alone, so a probe a change holds at the wound-back count still sees a fresh
+// rotation every trace.
+//
+// Each box is widened before it is tested, by its own largest side or one uniform cell, whichever is
+// more. The cell is the floor because the boxes are often smaller than one -- a gull, a clock digit --
+// and a box between the probes would reach none of them, while every point inside it is shaded from
+// the corners of the leaf it is in, and no leaf is wider than a uniform cell. Its own size is the rest
+// because a probe sees a thing across the room as well as one beside it: past one of its sides away,
+// the thing fills about a thirtieth of a probe's sphere, and the probes beyond that answer what is
+// left at the converged rate. A shadow it throws further off is one of those, and is not chased.
+//
+// From the anchor rather than where the probe has walked to, since the anchor is the corner shading
+// interpolates it as standing at.
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSWindBack(uint id : SV_DispatchThreadID) {
+  if (id >= u_counts.x || g_probes[id].anchor.w <= 0.0)
+    return;
+  uint history = g_probes[id].samples;
+  if ((history & 0xFFFF) <= u_windBack.x)
+    return;
+  bool reached = u_windBack.y != 0;
+  float3 at = g_probes[id].anchor.xyz;
+  float cell = u_volume.w / float(1u << u_counts.y);
+  for (uint box = 0; !reached && box < u_counts.z; ++box) {
+    float3 low = g_boxes[box * 2].xyz;
+    float3 high = g_boxes[box * 2 + 1].xyz;
+    float3 size = high - low;
+    float margin = max(cell, max(size.x, max(size.y, size.z)));
+    reached = all(at >= low - margin) && all(at <= high + margin);
+  }
+  if (reached)
+    g_probes[id].samples = (history & 0xFFFF0000u) | u_windBack.x;
 }
 // Gathers the nodes that have a decision outstanding and have not yet been measured enough to make it.
 //
@@ -501,6 +547,9 @@ void CSAcquire(uint id : SV_DispatchThreadID) {
   for (uint face = 0; face < 6; ++face)
     g_probes[slot].neighbours[face] = INVALID_INDEX;
   g_probes[slot].exterior = 0.0;
+  // Nothing averaged yet and never traced, so its first estimate lands whole: the probe is as far
+  // from converged as it will ever be, and its own count says so whatever the field around it holds.
+  g_probes[slot].samples = 0;
   g_corners[id] = slot;
 }
 // Starts each fresh probe from what the field already says about where it stands.
@@ -509,7 +558,10 @@ void CSAcquire(uint id : SV_DispatchThreadID) {
 // exactly where an old one had. Here every new probe is one a split has just put between probes that
 // were already there -- on an edge, a face or the middle of the leaf that split -- so the field at its
 // position is a trilinear blend of the corners of the coarser cell around it. It is seeded with that
-// blend and converges from there, rather than appearing black and being visible as it brightens.
+// blend, rather than appearing black and being visible as it brightens, and holds it until it is
+// first traced. Its count is nought, so that first estimate replaces the seed rather than being
+// averaged into it: a seed is a guess from somewhere else, and is not worth a single estimate of its
+// own.
 //
 // Only probes that were not fresh are read from. A fresh probe's neighbours may be fresh too and be
 // written by this same dispatch; reading them would be reading something half set up. The coarsest
