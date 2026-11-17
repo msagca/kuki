@@ -102,11 +102,11 @@ struct Probe {
   uint behind[64];
   uint neighbours[6];
   float exterior;
+  // How many estimates the mean is over in the low half, how many traces the probe has had in the
+  // high half. See `DXProbe::samples`.
+  uint samples;
 };
 cbuffer TraceConstants : register(b0) {
-  float4 u_rotation0;
-  float4 u_rotation1;
-  float4 u_rotation2;
   float4 u_volume;
   uint4 u_counts;
   float4 u_params;
@@ -177,8 +177,31 @@ float3 SphericalFibonacci(uint index, uint count) {
   float sinTheta = sqrt(saturate(1.0 - cosTheta * cosTheta));
   return float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
 }
-float3 Rotate(float3 direction) {
-  return float3(dot(u_rotation0.xyz, direction), dot(u_rotation1.xyz, direction), dot(u_rotation2.xyz, direction));
+// The rotation the ray set is turned by on a probe's `index`th trace, as a quaternion.
+//
+// It used to be drawn on the CPU, once a frame for the whole field, from one `std::mt19937` stream
+// through `std::uniform_real_distribution` -- which is free to draw differently under another
+// standard library, and which put every later rotation one draw along whenever a frame skipped the
+// trace. Indexed by the probe's own count instead, a probe's history decides its rotations and
+// nothing else does.
+//
+// The three numbers are Roberts' R3 sequence, the additive recurrence on the powers of the plastic
+// number's three-dimensional sibling, which covers the unit cube more evenly over any run of
+// consecutive indices than independent draws do. In 32-bit fixed point so the recurrence is exact
+// and wraps rather than losing digits as the index grows. Shoemake's construction then takes a
+// point of the cube to a rotation, uniformly over all of them, so an even cover of the cube is an
+// even cover of the orientations the ray set is turned through.
+float4 TraceRotation(uint index) {
+  uint3 fixed = 2147483648u + index * uint3(3518319155u, 2882110345u, 2360945575u);
+  float3 u = float3(fixed >> 8) / 16777216.0;
+  float a = sqrt(1.0 - u.x);
+  float b = sqrt(u.x);
+  float2 turn = 2.0 * PI * u.yz;
+  return float4(a * sin(turn.x), a * cos(turn.x), b * sin(turn.y), b * cos(turn.y));
+}
+float3 Rotate(float4 rotation, float3 direction) {
+  float3 twist = 2.0 * cross(rotation.xyz, direction);
+  return direction + rotation.w * twist + cross(rotation.xyz, twist);
 }
 void SHBasis(float3 d, out float basis[9]) {
   basis[0] = 0.282095;
@@ -600,11 +623,18 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
   // the count never comes back to the CPU in time to size the dispatch; an empty slot costs one read.
   if (g_probes[probe].anchor.w <= 0.0)
     return;
+  // Read by every thread before the barrier below, and written by thread nought only after it.
+  uint history = g_probes[probe].samples;
+  uint estimates = history & 0xFFFF;
+  uint traces = history >> 16;
+  // How much of the mean survives this estimate: `n / (n + step)`, from this probe's own count. A
+  // probe with nothing accumulated takes the estimate whole.
+  float keep = float(estimates) / (float(estimates) + u_params.x);
   if (thread == 0)
     gs_buried = 0;
   GroupMemoryBarrierWithGroupSync();
   float3 origin = g_probes[probe].position.xyz;
-  float3 direction = Rotate(SphericalFibonacci(thread, RAYS_PER_PROBE));
+  float3 direction = Rotate(TraceRotation(traces), SphericalFibonacci(thread, RAYS_PER_PROBE));
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
@@ -678,11 +708,11 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
     float2 pair = float2(moments.x, sqrt(max(0.0, moments.y - moments.x * moments.x)));
     // blended on the same schedule as the irradiance, so the geometry a probe believes in and the
     // light it believes in are never a different number of frames old
-    pair = lerp(pair, UnpackDepth(g_probes[probe].depth[texel]), u_params.x);
+    pair = lerp(pair, UnpackDepth(g_probes[probe].depth[texel]), keep);
     g_probes[probe].depth[texel] = f32tof16(pair.x) | (f32tof16(pair.y) << 16);
     // on the same schedule, so which side a probe is of a surface converges with how far away it
     // thinks the surface is, rather than switching about under a ray set that rotates every frame
-    gs_behindTexel[texel] = lerp(behind, UnpackBehind(g_probes[probe].behind[texel >> 2], texel & 3), u_params.x);
+    gs_behindTexel[texel] = lerp(behind, UnpackBehind(g_probes[probe].behind[texel >> 2], texel & 3), keep);
   }
   GroupMemoryBarrierWithGroupSync();
   for (uint word = thread; word < PROBE_BEHIND_WORDS; word += RAYS_PER_PROBE) {
@@ -698,7 +728,7 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
     // from the nearest one of them.
     //
     // The nearest is the obvious choice and it is the one that flickers. The ray set is turned by a
-    // fresh random rotation every trace, so "which ray was nearest" is redrawn from scratch each
+    // fresh rotation every trace, so "which ray was nearest" is redrawn from scratch each
     // frame: for a probe sitting just above a ceiling, every downward ray hits it, the shortest is
     // whichever happens to be most vertical this frame, and its direction wanders by the ray spacing
     // -- thirteen degrees -- from one frame to the next. Three quarters of that step is taken, so
@@ -784,9 +814,11 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
     // inner face with nothing in it that repeats with the lattice. `CSClassify` decides which probes
     // those are.
     float own = saturate(1.0 - sealed / max(u_relocation.w, EPSILON)) * (1.0 - g_probes[probe].exterior);
-    float trust = lerp(own, placement.w, u_params.x);
+    float trust = lerp(own, placement.w, keep);
     gs_trust = trust;
     g_probes[probe].position = float4(lerp(anchor.xyz + offset, placement.xyz, u_relocation.y), trust);
+    // One more estimate, saturating, and one more trace, wrapping. See `DXProbe::samples`.
+    g_probes[probe].samples = min(estimates + 1, 0xFFFFu) | (((traces + 1) & 0xFFFF) << 16);
   }
   // every thread waits, because a thread that has returned cannot arrive at a barrier
   GroupMemoryBarrierWithGroupSync();
@@ -801,9 +833,9 @@ void CSTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
   }
   sum *= 4.0 * PI / float(RAYS_PER_PROBE);
   float3 previous = g_probes[probe].irradiance[thread].rgb;
-  // a running mean while the scene holds still, so the field converges instead of circling; the
-  // weight is the processor's to decide, since only it knows how many estimates are already here
-  float3 settled = lerp(sum, previous, u_params.x);
+  // a running mean while what this probe sees holds still, so the field converges instead of
+  // circling; the weight is the probe's own, from how many estimates are already here
+  float3 settled = lerp(sum, previous, keep);
   if (trusted < 1.0) {
     // Sealed in geometry, so its own rays have nothing to say about this room. Borrowing from the
     // neighbours that do leaves it holding a plausible value instead of black, which is what lets
@@ -893,7 +925,9 @@ void CSClassify(uint3 group : SV_GroupID, uint thread : SV_GroupIndex) {
   if (probe >= u_counts.x || g_probes[probe].anchor.w <= 0.0)
     return;
   float3 origin = g_probes[probe].anchor.xyz;
-  float3 direction = Rotate(SphericalFibonacci(thread, RAYS_PER_PROBE));
+  // Turned by how many times this probe has been classified, which is the frame count over the
+  // stride: a probe's own history, as the trace's rotation is, and a fresh rotation each time.
+  float3 direction = Rotate(TraceRotation(u_counts.z / CLASSIFY_STRIDE), SphericalFibonacci(thread, RAYS_PER_PROBE));
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;

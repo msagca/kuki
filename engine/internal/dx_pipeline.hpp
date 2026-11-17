@@ -512,22 +512,21 @@ struct DXProbeVolumeConstants {
 };
 /// @brief Root constants for the compute shader that traces rays out of every probe.
 ///
-/// The rotation is a per-frame random orthonormal basis applied to the fixed spherical Fibonacci
-/// ray set. Without it the same sixty-four directions are sampled every frame, so the estimate
-/// converges to whatever those directions happen to see and the bias never averages out; with it,
-/// the temporal blend is what integrates the sphere rather than the ray count alone.
+/// No rotation for the ray set: that used to be drawn here once a frame from one stream for the
+/// whole field, and is now worked out in the shader from each probe's own count of traces, so it
+/// depends on nothing but that probe's history. See `TraceRotation` in probe_trace.hlsl.
 ///
 /// `volume` is the probe volume's minimum corner and cubic side, `counts` holds the probe count,
-/// the node count, the frame index and the lookup resolution, and `params` the temporal hysteresis,
-/// the furthest a ray may travel, the distance a hit is nudged along its normal before shading, and
-/// how tightly a ray must line up with a visibility texel to count towards it.
+/// the node count, the frame index and the lookup resolution, and `params` the mean step each
+/// probe's own count is weighed against, the furthest a ray may travel, the distance a hit is nudged
+/// along its normal before shading, and how tightly a ray must line up with a visibility texel to
+/// count towards it.
 ///
 /// The two vectors after it were constants in the shader until it became clear that each is a
 /// tradeoff rather than a value with a right answer -- see `IndirectLighting`. Root
 /// constants rather than a buffer because there is one dispatch a frame and this signature spends
-/// 48 of its 64 DWORDs even with them, so a constant here costs nothing that is scarce.
+/// 40 of its 64 DWORDs even with them, so a constant here costs nothing that is scarce.
 struct DXProbeTraceConstants {
-  float rotation[3][4]{};
   float volume[4]{};
   uint32_t counts[4]{};
   float params[4]{};
@@ -554,12 +553,14 @@ struct DXProbeTraceConstants {
 /// `limits` holds the slot count before a growth, the most nodes measured in one frame, the lines a
 /// node must be measured with before it is judged, and how many lattice steps a neighbour search may
 /// take. `tuning` holds the surface threshold, the hysteresis either side of it, the relocation limit
-/// and the distance a fresh probe's visibility is seeded at.
+/// and the distance a fresh probe's visibility is seeded at. `windBack` holds the count a probe
+/// near a changed box is wound back to, and the count every probe is, or nought when none is.
 struct DXProbeUpdateConstants {
   float volume[4]{};
   uint32_t counts[4]{};
   uint32_t limits[4]{};
   float tuning[4]{};
+  uint32_t windBack[4]{};
 };
 /// @brief Root constants for the pass that draws the probe volume as a field of spheres.
 ///

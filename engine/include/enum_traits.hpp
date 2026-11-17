@@ -40,7 +40,7 @@ struct EnumTraits<LightingDebugView> {
 template <>
 struct EnumTraits<ProbeDebugView> {
   static const std::vector<const char *> &GetNames() {
-    static const std::vector<const char *> names = {"Off", "Irradiance", "Distance", "Variance", "Trust", "Relocation", "Classification"};
+    static const std::vector<const char *> names = {"Off", "Irradiance", "Distance", "Variance", "Trust", "Relocation", "Classification", "Samples"};
     return names;
   }
 };

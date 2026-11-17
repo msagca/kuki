@@ -9,14 +9,11 @@
 #include <dx_pipeline.hpp>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
-#include <glm/gtc/constants.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/vector_relational.hpp>
 #include <hash_utils.hpp>
 #include <limits>
 #include <profiler.hpp>
-#include <random>
 #include <spdlog/spdlog.h>
 #include <unordered_map>
 #include <vector>
@@ -48,15 +45,6 @@ enum ProbeCounter : uint32_t {
 constexpr uint64_t COUNTER_BYTES = CounterCount * sizeof(int32_t);
 /// @brief Bytes one frame's region of the changed-box buffer takes: a minimum and a maximum per box.
 constexpr uint64_t BOX_REGION_BYTES = PROBE_MAX_DIRTY_BOXES * 2 * sizeof(glm::vec4);
-auto RandomRotation(std::mt19937 &engine) -> glm::mat3 {
-  std::uniform_real_distribution<float> distribution(0.f, 1.f);
-  const auto u1 = distribution(engine);
-  const auto u2 = distribution(engine) * glm::two_pi<float>();
-  const auto u3 = distribution(engine) * glm::two_pi<float>();
-  const auto a = std::sqrt(1.f - u1);
-  const auto b = std::sqrt(u1);
-  return glm::mat3_cast(glm::quat(b * std::cos(u3), a * std::sin(u2), a * std::cos(u2), b * std::sin(u3)));
-}
 constexpr auto UnpackHalf(const uint32_t half) -> float {
   const auto exponent = (half >> 10) & 0x1Fu;
   if (exponent == 0)
@@ -99,7 +87,7 @@ auto GroupsFor(const uint32_t threads) -> uint32_t {
 /// first run long after the scene opens -- the one that forgets measurements runs on the first frame
 /// anything moves, and the one that extends the free list on the first growth -- and compiling one
 /// then is a hitch of fifty milliseconds at exactly the moment this volume was written to remove one.
-constexpr const char *UPDATE_ENTRY_POINTS[]{"CSReset", "CSBeginFrame", "CSDirty", "CSQueue", "CSMeasure", "CSDecideMerge", "CSDecideSplit", "CSLookup", "CSRelease", "CSAcquire", "CSSeed", "CSRefresh", "CSLeafProbes", "CSExtendFree"};
+constexpr const char *UPDATE_ENTRY_POINTS[]{"CSReset", "CSBeginFrame", "CSDirty", "CSWindBack", "CSQueue", "CSMeasure", "CSDecideMerge", "CSDecideSplit", "CSLookup", "CSRelease", "CSAcquire", "CSSeed", "CSRefresh", "CSLeafProbes", "CSExtendFree"};
 } // namespace
 auto DXProbeVolume::Transition(ID3D12Resource *resource, D3D12_RESOURCE_STATES &state, const D3D12_RESOURCE_STATES target) -> void {
   auto *commandList = owner ? owner->GetCommandList() : nullptr;
@@ -253,8 +241,12 @@ auto DXProbeVolume::TrackGeometry(const std::vector<DXProbeGeometry> &geometry, 
       Dirty(placed.low, placed.high);
       Dirty(worldLow, worldHigh);
       moved = true;
-    }
-    placed = Placement{.mesh = mesh, .transform = item.transform, .low = worldLow, .high = worldHigh, .seen = geometryFrame, .moved = moved};
+    } else if (placed.look != item.look)
+      // Repainted where it stands. The tree's measure of the space is unchanged, but the probes
+      // around it were averaging light off a surface that is no longer there, and the box is how
+      // they hear of it. Not a move: a surface that changes colour is still a fixed part of the scene.
+      Dirty(worldLow, worldHigh);
+    placed = Placement{.mesh = mesh, .transform = item.transform, .look = item.look, .low = worldLow, .high = worldHigh, .seen = geometryFrame, .moved = moved};
     allLow = glm::min(allLow, worldLow);
     allHigh = glm::max(allHigh, worldHigh);
     // Only what has stood still since it appeared decides the volume's size. Something that moves is
@@ -362,6 +354,10 @@ auto DXProbeVolume::RecordPasses(DXContext &context, DXPipelineCache &pipelines,
   constants.tuning[1] = PROBE_SURFACE_HYSTERESIS;
   constants.tuning[2] = PROBE_RELOCATION_LIMIT;
   constants.tuning[3] = PROBE_DEPTH_RANGE * side;
+  constants.windBack[0] = reactiveSamples;
+  constants.windBack[1] = windBackAll ? 1u : 0u;
+  const auto windBack = boxCount > 0 || windBackAll;
+  windBackAll = false;
   const auto boxAddress = boxBuffer->GetGPUVirtualAddress() + slot * BOX_REGION_BYTES;
   commandList->SetComputeRootSignature(layout->rootSignature.Get());
   commandList->SetComputeRoot32BitConstants(0, sizeof(DXProbeUpdateConstants) / sizeof(uint32_t), &constants, 0);
@@ -401,6 +397,8 @@ auto DXProbeVolume::RecordPasses(DXContext &context, DXPipelineCache &pipelines,
   recorded &= Run("CSBeginFrame", 1);
   if (boxCount > 0)
     recorded &= Run("CSDirty", GroupsFor(PROBE_OCTREE_NODE_COUNT));
+  if (windBack)
+    recorded &= Run("CSWindBack", GroupsFor(capacity));
   recorded &= Run("CSQueue", GroupsFor(PROBE_OCTREE_NODE_COUNT));
   // Without an acceleration structure there is nothing to measure against, so nothing settles and
   // nothing splits; the tree stays as it is until there is.
@@ -480,9 +478,9 @@ auto DXProbeVolume::Update(DXContext &context, DXPipelineCache &pipelines, const
     validated = false;
     reported = false;
     tracedFrames = 0;
-    tracedSamples = 0;
     sweepPhase = 0;
     traceHash = 0;
+    windBackAll = false;
     spdlog::info("[DX12] Probe volume: laid down over {:.2f} units, uniform to depth {} for {:.2f} units between probes against a target of {:.2f}, {} probe slots", side, uniformDepth, side / static_cast<float>(1u << uniformDepth), PROBE_TARGET_SPACING, capacity);
   } else
     ReadCounters(context);
@@ -574,7 +572,7 @@ auto DXProbeVolume::Validate(DXContext &context, DXPipelineCache &pipelines) -> 
 auto DXProbeVolume::SetTraceBudget(const uint32_t budget) -> void {
   traceBudget = std::max(budget, 1u);
 }
-auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const DXAccelerationStructure &scene, const D3D12_GPU_VIRTUAL_ADDRESS frameConstants, const D3D12_GPU_VIRTUAL_ADDRESS skyHarmonics, const size_t sceneHash, const IndirectLighting &settings) -> void {
+auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const DXAccelerationStructure &scene, const D3D12_GPU_VIRTUAL_ADDRESS frameConstants, const D3D12_GPU_VIRTUAL_ADDRESS skyHarmonics, const size_t lightHash, const IndirectLighting &settings) -> void {
   KUKI_PROFILE_SCOPE("ProbeVolume::Trace");
   if (!ready || !scene.IsReady() || !frameConstants)
     return;
@@ -593,39 +591,37 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   // to put into the dispatch and it is the only place that knows which they are. Every one of them
   // changes what a ray measures or where a probe stands, so an estimate taken before a change and
   // one taken after are not estimates of the same thing and must not be averaged together.
-  auto settled = sceneHash;
+  auto settled = lightHash;
   hash_combine(settled, HashTraceSettings(settings));
-  // a change does not throw the mean away, it only stops it from being old enough to be rigid
+  // A change does not throw the means away, it only stops them from being old enough to be rigid.
+  // Every probe's, since a light reaches all of them; the next update does it.
+  reactiveSamples = ReactiveSamples(settings);
   if (settled != traceHash) {
     traceHash = settled;
-    tracedSamples = std::min(tracedSamples, ReactiveSamples(settings));
+    windBackAll = true;
   }
-  const auto rotation = RandomRotation(random);
   DXProbeTraceConstants constants{};
-  for (auto row = 0; row < 3; ++row)
-    for (auto column = 0; column < 3; ++column)
-      constants.rotation[row][column] = rotation[column][row];
   constants.volume[0] = origin.x;
   constants.volume[1] = origin.y;
   constants.volume[2] = origin.z;
   constants.volume[3] = side;
   constants.counts[0] = capacity;
   constants.counts[1] = PROBE_OCTREE_NODE_COUNT;
-  // Which sixteenth of the pool `CSClassify` looks at this frame. A frame count rather than the sample
-  // count, which is wound back on every change and would ask the same probes twice running.
+  // Which sixteenth of the pool `CSClassify` looks at this frame, and over the stride, how many times
+  // each probe in it has been classified, which turns its rays. A count that only rises, so no probe
+  // is asked twice running or along the same rays twice.
   constants.counts[2] = tracedFrames;
   constants.counts[3] = GetLookupResolution();
-  // how much of the mean survives: nothing accumulated yet means the estimate is taken whole
-  const auto step = std::max(settings.meanStep, 1u);
-  constants.params[0] = static_cast<float>(tracedSamples) / static_cast<float>(tracedSamples + step);
-  // The whole volume while it is first being lit, and a stride's worth of it after. Sized by the
-  // probes in use rather than the slots: a slot holding none returns at once, and the pool starts at
-  // `PROBE_POOL_MINIMUM` whatever the scene, so counting slots would sweep a small room that fits the
-  // budget many times over. The count comes back from the GPU a few frames late, and the slots stand
-  // in until it does. Worked out afresh each frame because either can change under it; a phase left
-  // past the new stride starts the sweep over rather than skipping the slots it would have missed.
+  // What each probe's own count is weighed against: how much of its mean survives is `n / (n + step)`.
+  constants.params[0] = static_cast<float>(std::max(settings.meanStep, 1u));
+  // A stride's worth of the volume. Sized by the probes in use rather than the slots: a slot holding
+  // none returns at once, and the pool starts at `PROBE_POOL_MINIMUM` whatever the scene, so counting
+  // slots would sweep a small room that fits the budget many times over. The count comes back from
+  // the GPU a few frames late, and the slots stand in until it does. Worked out afresh each frame
+  // because either can change under it; a phase left past the new stride starts the sweep over rather
+  // than skipping the slots it would have missed.
   const auto probes = liveProbes ? liveProbes : capacity;
-  const auto stride = tracedSamples < PROBE_FULL_RATE_SAMPLES ? 1u : std::max(1u, (probes + traceBudget - 1) / traceBudget);
+  const auto stride = std::max(1u, (probes + traceBudget - 1) / traceBudget);
   if (sweepPhase >= stride)
     sweepPhase = 0;
   constants.schedule[0] = stride;
@@ -669,13 +665,9 @@ auto DXProbeVolume::Trace(DXContext &context, DXPipelineCache &pipelines, const 
   commandList->ResourceBarrier(1, &barrier);
   probeState = PROBE_READ_STATE;
   ++tracedFrames;
-  // An estimate is counted once every probe has had it, which is the end of a sweep. Counting every
-  // frame would weight each new estimate as though the probe had a stride's more behind it than it
-  // has, and a swept field would settle that many times too slowly.
-  if (++sweepPhase >= stride) {
+  // Each traced probe has counted its own estimate, so the sweep only has to move on.
+  if (++sweepPhase >= stride)
     sweepPhase = 0;
-    ++tracedSamples;
-  }
 }
 auto DXProbeVolume::Report(DXContext &context) -> void {
   if (reported || !ready || !settled || tracedFrames < REPORT_AFTER_FRAMES)
@@ -923,9 +915,10 @@ auto DXProbeVolume::Clear() -> void {
   loggedProbes = 0;
   loggedLeaves = 0;
   tracedFrames = 0;
-  tracedSamples = 0;
   sweepPhase = 0;
   traceHash = 0;
+  windBackAll = false;
+  reactiveSamples = PROBE_REACTIVE_SAMPLES;
   ready = false;
   validated = false;
   reported = false;
