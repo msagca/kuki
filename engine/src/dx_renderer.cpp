@@ -2929,7 +2929,6 @@ auto DXRenderer::BuildRayScene(const Camera &camera, std::span<const DXPoolDraw>
   if (!context || !context->GetCapabilities().SupportsInlineRaytracing())
     return;
   std::vector<DXRayInstance> instances;
-  raySceneHash = 0;
   for (const auto &draw : pools) {
     if (draw.skinned || !draw.mesh || !*draw.mesh)
       continue;
@@ -2970,22 +2969,8 @@ auto DXRenderer::BuildRayScene(const Camera &camera, std::span<const DXPoolDraw>
         placement.entityId = static_cast<uint32_t>(static_cast<long long>(draw.table->entities[row])) & 0xFFFFFFu;
         cache.rays.push_back(placement);
       }
-      // What the probe trace sees of the pool, so it can tell whether its estimates are still of
-      // it. The mesh is hashed by address and the rest as words, up to the last field rather than to
-      // the end of the structure: the padding after it is never written and would hash differently
-      // every time, which would read as a scene that never holds still. Hashed here, when the pool
-      // changes, rather than every frame: a pool that was marked as moved and did not move hashes
-      // the same, and the trace keeps what it has.
-      constexpr auto begin = offsetof(DXRayInstance, transform);
-      constexpr auto end = offsetof(DXRayInstance, entityId) + sizeof(DXRayInstance::entityId);
-      cache.rayHash = cache.rays.size();
-      for (const auto &placement : cache.rays) {
-        hash_combine(cache.rayHash, reinterpret_cast<uintptr_t>(placement.mesh));
-        HashWords(cache.rayHash, reinterpret_cast<const uint8_t *>(&placement) + begin, end - begin);
-      }
     }
     instances.insert(instances.end(), cache.rays.begin(), cache.rays.end());
-    hash_combine(raySceneHash, cache.rayHash);
   }
   if (!rayScene.Build(*context, instances))
     return;
@@ -3016,7 +3001,9 @@ auto DXRenderer::CollectProbeGeometry(Scene &) -> std::vector<DXProbeGeometry> {
     if (!mesh || mesh->vertices.empty())
       continue;
     auto &cache = poolCache[draw.table];
-    if (cache.probeVersion != draw.table->version || (!cache.probes.empty() && cache.probes.front().vertices.data() != mesh->vertices.data())) {
+    // The look is the key `BuildRayScene` made this frame, which runs first. A pool it skipped --
+    // a mesh not yet uploaded -- keeps the key it had, and changes it when the mesh arrives.
+    if (cache.probeVersion != draw.table->version || (!cache.probes.empty() && (cache.probes.front().vertices.data() != mesh->vertices.data() || cache.probes.front().look != cache.rayKey))) {
       cache.probeVersion = draw.table->version;
       cache.probes.clear();
       // Keyed by entity, with the low bit saying which kind of mesh placed it, so an entity moved
@@ -3026,7 +3013,7 @@ auto DXRenderer::CollectProbeGeometry(Scene &) -> std::vector<DXProbeGeometry> {
       // Empty, not merely flat: a floor's box has no height and still holds the floor.
       const auto fits = static_cast<bool>(draw.table->bounds);
       for (size_t row = 0; worlds && row < draw.table->entities.size(); ++row)
-        cache.probes.push_back({.entity = static_cast<uint64_t>(static_cast<long long>(draw.table->entities[row])) << 1 | kind, .vertices = mesh->vertices, .transform = worlds->components[row].matrix, .fits = fits});
+        cache.probes.push_back({.entity = static_cast<uint64_t>(static_cast<long long>(draw.table->entities[row])) << 1 | kind, .vertices = mesh->vertices, .transform = worlds->components[row].matrix, .look = cache.rayKey, .fits = fits});
     }
     geometry.insert(geometry.end(), cache.probes.begin(), cache.probes.end());
   }
@@ -3442,8 +3429,10 @@ auto DXRenderer::TraceProbes(std::span<std::string>, std::span<std::string>) -> 
   const auto frameConstantAddress = UploadFrameConstants(frameConstants);
   if (!frameConstantAddress)
     return;
-  auto traceHash = raySceneHash;
-  hash_combine(traceHash, HashLighting(frameConstants));
+  // What reaches every probe at once. The placements and their materials are not in it: they reach
+  // the probes near them, and the volume winds those back from the geometry it was handed above.
+  // They used to be, and a gull flying past then wound back every probe on the island.
+  auto traceHash = HashLighting(frameConstants);
   hash_combine(traceHash, HashProbeTuning(frameConstants));
   // The trace's own settings are hashed by the volume rather than here, since it is the one that
   // knows which of them it actually put into the dispatch.

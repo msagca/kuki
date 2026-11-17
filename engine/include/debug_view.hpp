@@ -144,6 +144,14 @@ enum class ProbeDebugView : uint8_t {
   /// surface and is now fine, red for one still sealed and being filled in from its neighbours. The
   /// summary view: it answers "is the volume healthy" at a glance, and the three views above answer
   /// "why not" once the answer is no.
-  Classification
+  Classification,
+  /// @brief How many estimates the probe's mean is over, from red through yellow to green.
+  ///
+  /// Each probe counts its own, and a change winds back only the probes it reached, so this is where
+  /// to see what a change reached: red for a probe just placed, yellow around the count a change
+  /// winds a probe back to, green once it has a thousand estimates behind it. Move one thing in a
+  /// settled scene and a yellow patch should open around it and nowhere else; light changing turns
+  /// the whole field yellow at once.
+  Samples
 };
 } // namespace kuki

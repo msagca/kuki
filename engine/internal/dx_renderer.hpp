@@ -64,12 +64,12 @@ struct DXPoolDraw {
 struct DXPoolCache {
   uint64_t boundsVersion{~0ull};
   BoundingBox bounds{};
-  /// The pool's placements for the acceleration structure, and a hash of them, with what they were
-  /// made from: a material edited in place changes what a ray sees without moving anything.
+  /// The pool's placements for the acceleration structure, with what they were made from: a material
+  /// edited in place changes what a ray sees without moving anything. The key is also each probe
+  /// placement's `look`, which is how the probes near the pool hear of such an edit.
   uint64_t rayVersion{~0ull};
   size_t rayKey{};
   std::vector<DXRayInstance> rays;
-  size_t rayHash{};
   uint64_t probeVersion{~0ull};
   std::vector<DXProbeGeometry> probes;
 };
@@ -280,12 +280,6 @@ private:
   /// Rebuilt from the scene pass's own batches, so the two can never disagree about what is in the
   /// scene. Nothing reads it yet; it exists for the indirect lighting that will.
   DXAccelerationStructure rayScene;
-  /// @brief What `rayScene` was last filled with, as one number: placements and their materials.
-  ///
-  /// The probe volume averages its estimates over as many frames as the scene stays the scene, so
-  /// it has to be told when that stops being true. Its own rebuild hash cannot answer this: that
-  /// one covers where the geometry is, and light bounces off a surface's colour just as much.
-  size_t raySceneHash{};
   /// @brief Where indirect light is gathered, and how a shading point finds the nearest gatherings.
   ///
   /// Built from the same geometry `rayScene` is, but from the processor-side copy rather than the
