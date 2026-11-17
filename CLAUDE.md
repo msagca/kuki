@@ -102,7 +102,18 @@ commit. Where the repo falls short of one, the shortfall is a GitHub issue, not 
   GPU work on a table's `version` or an asset's `revision`. A readback says beside it why.
 - **Performance before looks.** An effect's cost is measured (`KUKI_PROFILE_SCOPE`) and stated in
   its commit; one that is not cheap is a graphics setting with a `RendererCapabilities` flag. Against
-  the frame budget -- each game's own, in its `CLAUDE.md` -- the effect gives way.
+  its share of the frame budget (below), the effect gives way.
+- **Every frame fits the budget, from the first.** A frame is at most 16 ms of work on the CPU and
+  16 ms on the GPU, so a game holds 60 fps at the least, in a Release build on the reference machine
+  (an RTX 3070 with an i5-3470). That holds for the frames that open the application, build a
+  scene, load assets or generate a map, not only for the frames of play. The budget is split, and
+  the shares add up to no more than the whole: the engine's own frame work (input, assets,
+  presenting) and each system -- its `Tick`, `Update` and `LateUpdate`, at one tick a frame -- have
+  a share of the CPU's 16 ms, and each render pass a share of the GPU's. A system or pass whose work
+  will not fit its share slices it across frames or moves it to a worker thread, and the window
+  keeps presenting while it runs: a pass whose pipeline or resources are not ready runs its bypass,
+  and a scene still being built is drawn as far as it has got. Waiting on the OS, the driver or the
+  display is outside the promise; nothing the engine or a game does is.
 - **Low-poly by default**: flat-shaded, built with `MeshBuilder` or a script, unless a game's
   `CLAUDE.md` says otherwise, and coloured by its vertices rather than textures.
 - **Variety from instances, not variants.** Vary the transforms and per-instance parameters (a tint)
