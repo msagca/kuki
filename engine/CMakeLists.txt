@@ -118,9 +118,8 @@ if(WIN32)
     PRIVATE GLFW_EXPOSE_NATIVE_WIN32
   )
 endif()
-# Listed so they show up in an IDE, and marked so nothing tries to compile them. Every one of
-# these is embedded as text by the custom command below and handed to a compiler at run time: dxc,
-# through dxcompiler.dll.
+# Listed so they show up in an IDE, and marked so nothing tries to compile them as sources of the
+# engine. Every one of these is compiled to DXIL by `KukiShaderCompiler` below instead.
 #
 # The marking is not cosmetic. MSBuild assigns `.hlsl` to FxCompile on sight, so the Visual Studio
 # generator was calling FXC on shaders that have no `main` -- every entry point here is named for
@@ -132,18 +131,73 @@ set_source_files_properties(
   ${SHADER_SOURCES}
   PROPERTIES HEADER_FILE_ONLY TRUE VS_TOOL_OVERRIDE "None"
 )
-set(EMBEDDED_SHADER_HEADER "${CMAKE_CURRENT_BINARY_DIR}/embedded_shaders.hpp")
-add_custom_command(
-  OUTPUT "${EMBEDDED_SHADER_HEADER}"
-  COMMAND
-    ${CMAKE_COMMAND} "-DSHADER_FILES=${SHADER_SOURCES}"
-    "-DOUT_FILE=${EMBEDDED_SHADER_HEADER}" -P
-    "${Kuki_SOURCE_DIR}/cmake/EmbedShaders.cmake"
-  DEPENDS ${SHADER_SOURCES} "${Kuki_SOURCE_DIR}/cmake/EmbedShaders.cmake"
-  COMMENT "Embedding shader sources into ${EMBEDDED_SHADER_HEADER}"
-  VERBATIM
-)
-target_sources(${PROJECT_NAME} PRIVATE "${EMBEDDED_SHADER_HEADER}")
+# The shaders are compiled while the engine is built, by a tool built first for the purpose, and
+# their DXIL is compiled into the engine as a generated source (`FindCompiledShader`). They were
+# embedded as text and compiled by `dxcompiler.dll` at run time, the first time each pipeline was
+# asked for, which was most of the seconds every game's first frame took; and a shader that did not
+# compile showed only when run. Now a shader that does not compile fails the build.
+#
+# A tool and not `dxc.exe` run once per entry point, because the shaders are given
+# `SHADER_DEFINITIONS`, values the C++ decides: the tool includes `shader_definitions.hpp` and so
+# hands them over as they are, where a command line would need them copied out of the C++ by some
+# other step first. It is rebuilt when they change, and the shaders with it, since the command
+# depends on the tool.
+#
+# The compiler is copied beside the tool, which loads it from there: `dxcompiler.dll` loads
+# `dxil.dll`, which signs the output, by bare name, and so finds it only in the directory of the
+# executable. Nothing else is given either, since nothing else compiles HLSL any more.
+if(WIN32)
+  add_executable(
+    KukiShaderCompiler
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/compile_shaders.cpp"
+  )
+  target_include_directories(
+    KukiShaderCompiler
+    PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/internal"
+      "${CMAKE_CURRENT_BINARY_DIR}"
+  )
+  target_link_libraries(KukiShaderCompiler PRIVATE glm)
+  # Not WIN32_LEAN_AND_MEAN, as the engine is: it leaves out the COM headers `dxcapi.h` is
+  # written against (`IUnknown`, `IStream`).
+  target_compile_definitions(
+    KukiShaderCompiler
+    PRIVATE GLM_ENABLE_EXPERIMENTAL NOMINMAX
+  )
+  add_custom_command(
+    TARGET KukiShaderCompiler
+    POST_BUILD
+    COMMAND
+      ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "${DXIL_DLL}"
+      $<TARGET_FILE_DIR:KukiShaderCompiler>
+    COMMENT "Staging the HLSL compiler next to KukiShaderCompiler"
+    VERBATIM
+  )
+  # One file a configuration, since Debug and Release compile the shaders differently (Debug
+  # without optimisation, its debug information in PDBs beside the file for PIX).
+  set(
+    COMPILED_SHADER_SOURCE
+    "${CMAKE_CURRENT_BINARY_DIR}/compiled_shaders_$<CONFIG>.cpp"
+  )
+  add_custom_command(
+    OUTPUT "${COMPILED_SHADER_SOURCE}"
+    COMMAND
+      KukiShaderCompiler --output "${COMPILED_SHADER_SOURCE}"
+      "$<$<CONFIG:Debug>:--debug;--pdb;${CMAKE_CURRENT_BINARY_DIR}/shader_pdb_$<CONFIG>>"
+      ${SHADER_SOURCES}
+    DEPENDS KukiShaderCompiler ${SHADER_SOURCES}
+    COMMENT "Compiling the shaders to DXIL"
+    COMMAND_EXPAND_LISTS
+    VERBATIM
+  )
+  target_sources(${PROJECT_NAME} PRIVATE "${COMPILED_SHADER_SOURCE}")
+  # Bytes, and a lookup over them: nothing for clang-tidy to find, and a long file for it to read.
+  set_source_files_properties(
+    "${COMPILED_SHADER_SOURCE}"
+    PROPERTIES SKIP_LINTING TRUE
+  )
+endif()
 # A find_package-able install is generated for a shared build only, and the reason is CMake's,
 # not a shortcut. install(EXPORT) requires every target the exported one links to be exported as
 # well; a SHARED library links its private dependencies internally and so declares none of them,
@@ -196,8 +250,8 @@ install(
   PATTERN "*.hpp"
   PATTERN "*.h"
 )
-# Generated, and referenced by 66 of the installed headers, so it ships with them. The embedded
-# shader header is generated too but included by no public header, so it stays behind.
+# Generated, and referenced by 66 of the installed headers, so it ships with them. The compiled
+# shaders are generated too, but as a source compiled into the engine, so nothing of them ships.
 install(
   FILES "${CMAKE_CURRENT_BINARY_DIR}/kuki_engine_export.h"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/kuki"

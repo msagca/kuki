@@ -53,7 +53,7 @@ Nothing is committed by `kuki new`; the first commit is yours. Git and Git LFS a
 
 - [Visual Studio](https://visualstudio.microsoft.com) 2022 (with the C++ workload and a Windows SDK)
 
-The Direct3D 12 backend compiles its shaders at runtime with `dxcompiler.dll` and `dxil.dll`, which are found in the Windows SDK and copied next to each executable. If they are missing, nothing is drawn.
+The engine's shaders are compiled while it is built, with `dxcompiler.dll` and `dxil.dll` from the Windows SDK; configuring fails if they are missing. Nothing compiles HLSL at run time, so neither is shipped.
 
 #### Linux
 

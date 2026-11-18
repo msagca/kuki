@@ -45,9 +45,9 @@ cases in `GraphicsContext::Create`, `RenderingSystem::SetRenderer` and `IsAvaila
 (`engine_config.cpp`), and its `RendererCapabilities`; the HLSL
 reaches it through dxc `-spirv`, given `SHADER_DEFINITIONS`.
 
-Shaders are HLSL (Shader Model 6) in `src/shader/`, embedded as strings and compiled at run time,
-so editing one is a rebuild. Constants shared with C++ are `SHADER_DEFINITIONS`
-(`shader_definitions.hpp`).
+Shaders are HLSL (Shader Model 6) in `src/shader/`, compiled to DXIL while the engine is built
+(`src/shader/CLAUDE.md`) and looked up by file and entry point with `FindCompiledShader`.
+Constants shared with C++ are `SHADER_DEFINITIONS` (`shader_definitions.hpp`).
 
 `Wind` (`wind.hpp`) is a scene singleton; a material's `MaterialFallback::sway` and `waves` say how
 much of it a surface takes. Both are displaced in the vertex shader by `Displace`, kept word for

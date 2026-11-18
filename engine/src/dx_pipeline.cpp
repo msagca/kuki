@@ -1,8 +1,6 @@
 #include <dx_pipeline.hpp>
 #ifdef KUKI_HAS_DIRECTX
-#include <embedded_shaders.hpp>
-#endif
-#ifdef KUKI_HAS_DIRECTX
+#include <compiled_shaders.hpp>
 #include <functional>
 #include <primitive.hpp>
 #include <spdlog/spdlog.h>
@@ -12,8 +10,14 @@ namespace {
 auto MakeKey(const DXGI_FORMAT format, const uint32_t samples) -> uint64_t {
   return (static_cast<uint64_t>(format) << 32) | samples;
 }
-auto ToBytecode(const ComPtr<IDxcBlob> &blob) -> D3D12_SHADER_BYTECODE {
-  return CD3DX12_SHADER_BYTECODE(blob->GetBufferPointer(), blob->GetBufferSize());
+// Compiled when the engine was built (`FindCompiledShader`). Empty only for a name no shader
+// defines, which is a mistake in the C++ rather than in a shader: one that did not compile would
+// have failed the build.
+auto FindShader(const char *file, const char *entryPoint) -> D3D12_SHADER_BYTECODE {
+  const auto bytecode = FindCompiledShader(file, entryPoint);
+  if (bytecode.empty())
+    spdlog::error("[DX12] {}.hlsl has no entry point {}", file, entryPoint);
+  return CD3DX12_SHADER_BYTECODE(bytecode.data(), bytecode.size());
 }
 } // namespace
 auto DXPipelineCache::GetSceneRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
@@ -81,9 +85,9 @@ auto DXPipelineCache::GetScenePipeline(ID3D12Device *device, const DXGI_FORMAT f
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = sceneRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::scene_hlsl, skinned ? "VSSkinned" : "VSMain", "vs_6_0", "scene");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::scene_hlsl, "PSMain", "ps_6_0", "scene");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("scene", skinned ? "VSSkinned" : "VSMain");
+  const auto pixelShader = FindShader("scene", "PSMain");
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   const D3D12_INPUT_ELEMENT_DESC inputLayout[]{
     {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -99,8 +103,8 @@ auto DXPipelineCache::GetScenePipeline(ID3D12Device *device, const DXGI_FORMAT f
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.InputLayout = {inputLayout, static_cast<UINT>(skinned ? _countof(inputLayout) : _countof(inputLayout) - 2)};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.FrontCounterClockwise = TRUE;
   desc.RasterizerState.MultisampleEnable = samples > 1 ? TRUE : FALSE;
@@ -167,14 +171,14 @@ auto DXPipelineCache::GetPostPipeline(ID3D12Device *device, const DXGI_FORMAT fo
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = postRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::post_hlsl, "VSMain", "vs_6_0", "post");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::post_hlsl, effect, "ps_6_0", "post");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("post", "VSMain");
+  const auto pixelShader = FindShader("post", effect);
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
   desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -230,14 +234,14 @@ auto DXPipelineCache::GetStylizePipeline(ID3D12Device *device, const DXGI_FORMAT
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = stylizeRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::stylize_hlsl, "VSMain", "vs_6_0", "stylize");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::stylize_hlsl, entryPoint, "ps_6_0", "stylize");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("stylize", "VSMain");
+  const auto pixelShader = FindShader("stylize", entryPoint);
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
   desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -291,14 +295,14 @@ auto DXPipelineCache::GetReflectionPipeline(ID3D12Device *device, const DXGI_FOR
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = reflectionRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::reflect_hlsl, "VSMain", "vs_6_0", "reflect");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::reflect_hlsl, "PSReflect", "ps_6_0", "reflect");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("reflect", "VSMain");
+  const auto pixelShader = FindShader("reflect", "PSReflect");
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
   desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -341,7 +345,7 @@ auto DXPipelineCache::GetFullscreenRootSignature(ID3D12Device *device, ComPtr<ID
     return nullptr;
   return signature.Get();
 }
-auto DXPipelineCache::GetFullscreenPipeline(ID3D12Device *device, const DXGI_FORMAT format, const ComPtr<ID3D12RootSignature> &rootSignature, const std::string_view source, const char *name, const char *entryPoint) -> const DXPipeline * {
+auto DXPipelineCache::GetFullscreenPipeline(ID3D12Device *device, const DXGI_FORMAT format, const ComPtr<ID3D12RootSignature> &rootSignature, const char *file, const char *name, const char *entryPoint) -> const DXPipeline * {
   if (!device || !rootSignature || !entryPoint)
     return nullptr;
   const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(std::string(name) + entryPoint);
@@ -349,14 +353,14 @@ auto DXPipelineCache::GetFullscreenPipeline(ID3D12Device *device, const DXGI_FOR
     return it->second ? &it->second : nullptr;
   auto &pipeline = pipelines[key];
   pipeline.rootSignature = rootSignature;
-  const auto vertexShader = shaderCompiler.Compile(source, "VSMain", "vs_6_0", name);
-  const auto pixelShader = shaderCompiler.Compile(source, entryPoint, "ps_6_0", name);
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader(file, "VSMain");
+  const auto pixelShader = FindShader(file, entryPoint);
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature.Get();
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
   desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -376,12 +380,12 @@ auto DXPipelineCache::GetFullscreenPipeline(ID3D12Device *device, const DXGI_FOR
 auto DXPipelineCache::GetOcclusionPipeline(ID3D12Device *device, const DXGI_FORMAT format, const char *entryPoint) -> const DXPipeline * {
   if (!device || !GetFullscreenRootSignature(device, occlusionRootSignature, sizeof(DXOcclusionConstants) / sizeof(uint32_t), "occlusion"))
     return nullptr;
-  return GetFullscreenPipeline(device, format, occlusionRootSignature, embedded_shader::occlusion_hlsl, "occlusion", entryPoint);
+  return GetFullscreenPipeline(device, format, occlusionRootSignature, "occlusion", "occlusion", entryPoint);
 }
 auto DXPipelineCache::GetFocusPipeline(ID3D12Device *device, const DXGI_FORMAT format) -> const DXPipeline * {
   if (!device || !GetFullscreenRootSignature(device, focusRootSignature, sizeof(DXFocusConstants) / sizeof(uint32_t), "focus"))
     return nullptr;
-  return GetFullscreenPipeline(device, format, focusRootSignature, embedded_shader::depth_of_field_hlsl, "focus", "PSFocus");
+  return GetFullscreenPipeline(device, format, focusRootSignature, "depth_of_field", "focus", "PSFocus");
 }
 auto DXPipelineCache::GetOverlayRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (overlayRootSignature)
@@ -422,9 +426,9 @@ auto DXPipelineCache::GetOverlayPipeline(ID3D12Device *device, const DXGI_FORMAT
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = overlayRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::overlay_hlsl, "VSMain", "vs_6_0", "overlay");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::overlay_hlsl, "PSMain", "ps_6_0", "overlay");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("overlay", "VSMain");
+  const auto pixelShader = FindShader("overlay", "PSMain");
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   // The buffer is laid out as `Vertex` like any other mesh, so the stride steps over a normal and
   // a tangent that nothing here names. Two elements is what the text reads.
@@ -435,8 +439,8 @@ auto DXPipelineCache::GetOverlayPipeline(ID3D12Device *device, const DXGI_FORMAT
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.InputLayout = {inputLayout, _countof(inputLayout)};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
   desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -494,8 +498,8 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device, const bool skinned
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = shadowRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::shadow_hlsl, skinned ? "VSSkinned" : "VSMain", "vs_6_0", "shadow");
-  if (!vertexShader)
+  const auto vertexShader = FindShader("shadow", skinned ? "VSSkinned" : "VSMain");
+  if (!vertexShader.BytecodeLength)
     return nullptr;
   const D3D12_INPUT_ELEMENT_DESC inputLayout[]{
     {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -508,7 +512,7 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device, const bool skinned
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.InputLayout = {inputLayout, static_cast<UINT>(skinned ? _countof(inputLayout) : _countof(inputLayout) - 2)};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
+  desc.VS = vertexShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.FrontCounterClockwise = TRUE;
   desc.RasterizerState.DepthBias = 1000;
@@ -561,14 +565,14 @@ auto DXPipelineCache::GetSkyboxPipeline(ID3D12Device *device, const DXGI_FORMAT 
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = skyboxRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::skybox_hlsl, "VSMain", "vs_6_0", "skybox");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::skybox_hlsl, "PSMain", "ps_6_0", "skybox");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("skybox", "VSMain");
+  const auto pixelShader = FindShader("skybox", "PSMain");
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
   desc.RasterizerState.MultisampleEnable = samples > 1 ? TRUE : FALSE;
@@ -652,12 +656,12 @@ auto DXPipelineCache::GetAtmospherePipeline(ID3D12Device *device, const char *en
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = atmosphereRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::atmosphere_hlsl, entryPoint, "cs_6_0", "atmosphere");
-  if (!computeShader)
+  const auto computeShader = FindShader("atmosphere", entryPoint);
+  if (!computeShader.BytecodeLength)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.CS = ToBytecode(computeShader);
+  desc.CS = computeShader;
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
   spdlog::info("[DX12] Created atmosphere pipeline: {}", entryPoint);
@@ -737,12 +741,12 @@ auto DXPipelineCache::GetCloudComputePipeline(ID3D12Device *device, const char *
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = cloudRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::clouds_hlsl, entryPoint, "cs_6_0", "clouds");
-  if (!computeShader)
+  const auto computeShader = FindShader("clouds", entryPoint);
+  if (!computeShader.BytecodeLength)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.CS = ToBytecode(computeShader);
+  desc.CS = computeShader;
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
   spdlog::info("[DX12] Created cloud compute pipeline: {}", entryPoint);
@@ -759,14 +763,14 @@ auto DXPipelineCache::GetCloudPipeline(ID3D12Device *device, const DXGI_FORMAT f
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = cloudRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::clouds_hlsl, "VSMain", "vs_6_0", "clouds");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::clouds_hlsl, "PSMain", "ps_6_0", "clouds");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("clouds", "VSMain");
+  const auto pixelShader = FindShader("clouds", "PSMain");
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
   desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -794,14 +798,14 @@ auto DXPipelineCache::GetVolumetricPipeline(ID3D12Device *device, const DXGI_FOR
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = volumetricRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::volumetric_hlsl, "VSMain", "vs_6_0", "volumetric");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::volumetric_hlsl, "PSMain", "ps_6_0", "volumetric");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("volumetric", "VSMain");
+  const auto pixelShader = FindShader("volumetric", "PSMain");
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
   desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -852,12 +856,12 @@ auto DXPipelineCache::GetParticleUpdatePipeline(ID3D12Device *device) -> const D
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = particleUpdateRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::particles_hlsl, "CSSimulate", "cs_6_0", "particles");
-  if (!computeShader)
+  const auto computeShader = FindShader("particles", "CSSimulate");
+  if (!computeShader.BytecodeLength)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.CS = ToBytecode(computeShader);
+  desc.CS = computeShader;
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
   spdlog::info("[DX12] Created particle update pipeline");
@@ -897,14 +901,14 @@ auto DXPipelineCache::GetParticleDrawPipeline(ID3D12Device *device, const DXGI_F
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = particleDrawRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::particles_hlsl, "VSMain", "vs_6_0", "particles");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::particles_hlsl, opaque ? "PSOpaque" : veil ? "PSAlpha" : "PSMain", "ps_6_0", "particles");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("particles", "VSMain");
+  const auto pixelShader = FindShader("particles", opaque ? "PSOpaque" : veil ? "PSAlpha" : "PSMain");
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   // A quad built from the camera's own axes has no back to cull, and winding it to suit a culling
   // mode would be an order to keep right for nothing.
@@ -961,12 +965,12 @@ auto DXPipelineCache::GetComputePipeline(ID3D12Device *device, const char *entry
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = computeRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::ibl_hlsl, entryPoint, "cs_6_0", "ibl");
-  if (!computeShader)
+  const auto computeShader = FindShader("ibl", entryPoint);
+  if (!computeShader.BytecodeLength)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.CS = ToBytecode(computeShader);
+  desc.CS = computeShader;
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
   spdlog::info("[DX12] Created compute pipeline: {}", entryPoint);
@@ -1005,12 +1009,12 @@ auto DXPipelineCache::GetPickPipeline(ID3D12Device *device) -> const DXPipeline 
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = pickRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::pick_hlsl, "CSPick", "cs_6_0", "pick");
-  if (!computeShader)
+  const auto computeShader = FindShader("pick", "CSPick");
+  if (!computeShader.BytecodeLength)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.CS = ToBytecode(computeShader);
+  desc.CS = computeShader;
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
   spdlog::info("[DX12] Created pick pipeline");
@@ -1048,12 +1052,12 @@ auto DXPipelineCache::GetRayProbePipeline(ID3D12Device *device) -> const DXPipel
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = rayProbeRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::raytrace_hlsl, "CSProbe", "cs_6_5", "raytrace");
-  if (!computeShader)
+  const auto computeShader = FindShader("raytrace", "CSProbe");
+  if (!computeShader.BytecodeLength)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.CS = ToBytecode(computeShader);
+  desc.CS = computeShader;
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
   spdlog::info("[DX12] Created ray probe pipeline (shader model 6.5, inline raytracing)");
@@ -1092,12 +1096,12 @@ auto DXPipelineCache::GetProbeAuditPipeline(ID3D12Device *device) -> const DXPip
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = probeAuditRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::probe_hlsl, "CSAudit", "cs_6_0", "probe");
-  if (!computeShader)
+  const auto computeShader = FindShader("probe", "CSAudit");
+  if (!computeShader.BytecodeLength)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.CS = ToBytecode(computeShader);
+  desc.CS = computeShader;
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
   spdlog::info("[DX12] Created probe audit pipeline");
@@ -1146,12 +1150,12 @@ auto DXPipelineCache::GetProbeTracePipeline(ID3D12Device *device, const char *en
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = probeTraceRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::probe_trace_hlsl, entryPoint, "cs_6_5", "probe_trace");
-  if (!computeShader)
+  const auto computeShader = FindShader("probe_trace", entryPoint);
+  if (!computeShader.BytecodeLength)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.CS = ToBytecode(computeShader);
+  desc.CS = computeShader;
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
   spdlog::info("[DX12] Created probe trace pipeline {} (shader model 6.5, inline raytracing, bindless)", entryPoint);
@@ -1190,12 +1194,12 @@ auto DXPipelineCache::GetProbeUpdatePipeline(ID3D12Device *device, const char *e
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = probeUpdateRootSignature;
-  const auto computeShader = shaderCompiler.Compile(embedded_shader::probe_update_hlsl, entryPoint, "cs_6_5", "probe_update");
-  if (!computeShader)
+  const auto computeShader = FindShader("probe_update", entryPoint);
+  if (!computeShader.BytecodeLength)
     return nullptr;
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
-  desc.CS = ToBytecode(computeShader);
+  desc.CS = computeShader;
   if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
     return nullptr;
   spdlog::debug("[DX12] Created probe update pipeline {}", entryPoint);
@@ -1231,9 +1235,9 @@ auto DXPipelineCache::GetProbeDebugPipeline(ID3D12Device *device, const DXGI_FOR
   if (!rootSignature)
     return nullptr;
   pipeline.rootSignature = probeDebugRootSignature;
-  const auto vertexShader = shaderCompiler.Compile(embedded_shader::probe_debug_hlsl, "VSMain", "vs_6_0", "probe_debug");
-  const auto pixelShader = shaderCompiler.Compile(embedded_shader::probe_debug_hlsl, "PSMain", "ps_6_0", "probe_debug");
-  if (!vertexShader || !pixelShader)
+  const auto vertexShader = FindShader("probe_debug", "VSMain");
+  const auto pixelShader = FindShader("probe_debug", "PSMain");
+  if (!vertexShader.BytecodeLength || !pixelShader.BytecodeLength)
     return nullptr;
   const D3D12_INPUT_ELEMENT_DESC inputLayout[]{
     {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -1242,8 +1246,8 @@ auto DXPipelineCache::GetProbeDebugPipeline(ID3D12Device *device, const DXGI_FOR
   D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
   desc.InputLayout = {inputLayout, _countof(inputLayout)};
   desc.pRootSignature = rootSignature;
-  desc.VS = ToBytecode(vertexShader);
-  desc.PS = ToBytecode(pixelShader);
+  desc.VS = vertexShader;
+  desc.PS = pixelShader;
   desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
   desc.RasterizerState.FrontCounterClockwise = TRUE;
   desc.RasterizerState.MultisampleEnable = samples > 1 ? TRUE : FALSE;

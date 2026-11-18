@@ -79,27 +79,6 @@ function(kuki_report_binary target)
     VERBATIM
   )
 endfunction()
-# Puts the HLSL compiler beside an executable, and in its install. The Direct3D 12 backend compiles
-# its shaders at run time, so without these nothing is drawn. Found in the Windows SDK by the root.
-function(kuki_stage_shader_compiler target component)
-  if(NOT (WIN32 AND DXCOMPILER_DLL AND DXIL_DLL))
-    return()
-  endif()
-  add_custom_command(
-    TARGET ${target}
-    POST_BUILD
-    COMMAND
-      ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "${DXIL_DLL}"
-      $<TARGET_FILE_DIR:${target}>
-    COMMENT "Staging the HLSL compiler next to ${target}"
-    VERBATIM
-  )
-  install(
-    FILES "${DXCOMPILER_DLL}" "${DXIL_DLL}"
-    DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    COMPONENT ${component}
-  )
-endfunction()
 # Copies files or directories beside an executable, under `destination`, and installs them there.
 #
 # Assets resolve against the executable's directory rather than the working directory (see
@@ -201,8 +180,8 @@ set(
 #     [FONTS])                  stages `KUKI_FONTS` in `fonts/`
 #
 # Everything a game needs to start comes with it: the launcher, the engine's DLLs beside it, the
-# HLSL compiler, the console hidden in a release build, its install under a component named after
-# it, and the line saying where it landed. A game's own CMakeLists.txt is then this call and
+# console hidden in a release build, its install under a component named after it, and the line
+# saying where it landed. No HLSL compiler: the engine's shaders are compiled when it is built. A game's own CMakeLists.txt is then this call and
 # whatever is particular to it -- `kuki_add_blender_models`, say.
 #
 # The library is the game. Under BUILD_SHARED_LIBS it is a shared one named `<target>Game`, which
@@ -266,7 +245,6 @@ function(kuki_add_game target)
     kuki_stage_assets(${target} ${name} "${directory}")
   endforeach()
   kuki_stage_runtime(${target})
-  kuki_stage_shader_compiler(${target} ${target})
   kuki_hide_console(${target})
   kuki_report_binary(${target})
   # What `games/CMakeLists.txt` lists a game by, for the installer to offer it.
