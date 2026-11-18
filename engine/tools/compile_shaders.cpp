@@ -189,6 +189,22 @@ auto WriteSource(const Options &options, const std::vector<EntryPoint> &entries)
   for (const auto &entry : entries)
     text += std::format("  {{\"{}\", \"{}\", {}_{}}},\n", entry.stem, entry.name, entry.stem, entry.name);
   text += "};\n} // namespace\n";
+  // FNV-1a over every name and every byte, in the sorted order, so the same shaders give the same
+  // digest on every machine. The pipeline library on disk is keyed on it: a pipeline the driver
+  // compiled from other bytecode is not one to load.
+  auto digest = 0xcbf29ce484222325ull;
+  const auto Mix = [&](const auto &bytes) {
+    for (const auto byte : bytes) {
+      digest ^= static_cast<unsigned char>(byte);
+      digest *= 0x100000001b3ull;
+    }
+  };
+  for (const auto &entry : entries) {
+    Mix(entry.stem);
+    Mix(entry.name);
+    Mix(entry.bytecode);
+  }
+  text += std::format("auto CompiledShadersDigest() -> uint64_t {{\n  return 0x{:016x}ull;\n}}\n", digest);
   text += "auto FindCompiledShader(const std::string_view file, const std::string_view entryPoint) -> std::span<const unsigned char> {\n";
   text += "  for (const auto &entry : ENTRIES)\n    if (entry.file == file && entry.name == entryPoint)\n      return entry.bytecode;\n  return {};\n}\n";
   text += "} // namespace kuki\n";

@@ -47,6 +47,11 @@ reaches it through dxc `-spirv`, given `SHADER_DEFINITIONS`.
 
 Shaders are HLSL (Shader Model 6) in `src/shader/`, compiled to DXIL while the engine is built
 (`src/shader/CLAUDE.md`) and looked up by file and entry point with `FindCompiledShader`.
+Pipelines are made off the frame: `DXPipelineCache` hands a description to worker threads the first
+time it is asked for and returns null until it is made, so a pass draws its bypass meanwhile -- a
+pass that needs several pipelines asks for all of them before it checks any, or they arrive a frame
+apart. What the driver compiled is kept between runs in a pipeline library beside the executable,
+under cache/pipeline, stamped with `CompiledShadersDigest` and written back by `Clear`.
 Constants shared with C++ are `SHADER_DEFINITIONS` (`shader_definitions.hpp`).
 
 `Wind` (`wind.hpp`) is a scene singleton; a material's `MaterialFallback::sway` and `waves` say how

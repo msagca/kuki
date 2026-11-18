@@ -32,4 +32,10 @@ TEST(CompiledShaders, FindsNothingThatIsNotAnEntryPoint) {
   EXPECT_TRUE(FindCompiledShader("scene", "PSMissing").empty());
   EXPECT_TRUE(FindCompiledShader("missing", "VSMain").empty());
 }
+// The stamp on the pipeline library: something was mixed in, so it is not FNV-1a's empty hash, and
+// it is the generator's constant rather than worked out at run time, so it reads the same each call.
+TEST(CompiledShaders, HasADigestOfWhatWasCompiled) {
+  EXPECT_NE(kuki::CompiledShadersDigest(), 0xcbf29ce484222325ull);
+  EXPECT_EQ(kuki::CompiledShadersDigest(), kuki::CompiledShadersDigest());
+}
 #endif

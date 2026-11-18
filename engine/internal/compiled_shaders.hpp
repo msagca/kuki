@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <kuki_engine_export.h>
 #include <span>
 #include <string_view>
@@ -14,4 +15,8 @@ namespace kuki {
 /// @return The signed bytecode, or an empty span when the file has no such entry point -- a name the
 ///   C++ asks for and no shader defines, since one that does not compile fails the build instead.
 KUKI_ENGINE_API auto FindCompiledShader(std::string_view file, std::string_view entryPoint) -> std::span<const unsigned char>;
+/// @brief A hash of every entry point's name and bytecode, the same for the same shaders on every
+/// machine. What the pipeline library on disk is stamped with (`DXPipelineCache`): a library made
+/// from other shaders is thrown away rather than searched.
+KUKI_ENGINE_API auto CompiledShadersDigest() -> uint64_t;
 } // namespace kuki

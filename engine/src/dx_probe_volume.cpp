@@ -462,9 +462,17 @@ auto DXProbeVolume::Update(DXContext &context, DXPipelineCache &pipelines, const
     uniformDepth = ProbeUniformDepth(side);
     if (!EnsureFixedBuffers())
       return ready = false;
+    // Every pass the volume runs is asked for before any is checked, the trace's and the audit's
+    // with them, so they are all made at once on the workers. Checked one by one, they were asked
+    // for a frame apart, each when the one before it had come.
+    auto updatesReady = true;
     for (const auto *entryPoint : UPDATE_ENTRY_POINTS)
-      if (const auto *pipeline = pipelines.GetProbeUpdatePipeline(context.GetDevice(), entryPoint); !pipeline || !*pipeline)
-        return ready = false;
+      updatesReady &= static_cast<bool>(pipelines.GetProbeUpdatePipeline(context.GetDevice(), entryPoint));
+    pipelines.GetProbeTracePipeline(context.GetDevice());
+    pipelines.GetProbeTracePipeline(context.GetDevice(), "CSClassify");
+    pipelines.GetProbeAuditPipeline(context.GetDevice());
+    if (!updatesReady)
+      return ready = false;
     if (const auto wanted = InitialPoolSize(uniformDepth); capacity < wanted && !CreatePool(wanted))
       return ready = false;
     resetPending = true;
@@ -518,10 +526,14 @@ auto DXProbeVolume::Validate(DXContext &context, DXPipelineCache &pipelines) -> 
   // corners are being allocated this frame, and would be reported as broken for being unfinished.
   if (validated || !ready || !settled)
     return;
-  validated = true;
   auto *commandList = context.GetCommandList();
   const auto pipeline = pipelines.GetProbeAuditPipeline(context.GetDevice());
-  if (!commandList || !pipeline || !*pipeline || !EnsureAuditBuffers())
+  if (!commandList || !pipeline || !*pipeline)
+    return;
+  // Marked done only once there is a pipeline to do it with. Made off the frame, it is not there
+  // the first time it is asked for, and marking it done then would have skipped the check for good.
+  validated = true;
+  if (!EnsureAuditBuffers())
     return;
   uint32_t seed[AUDIT_SLOTS]{};
   seed[6] = PROBE_OCTREE_MAX_DEPTH;

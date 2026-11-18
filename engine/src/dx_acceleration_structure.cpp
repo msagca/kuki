@@ -283,10 +283,14 @@ auto DXAccelerationStructure::EnsureValidationBuffers() -> bool {
 auto DXAccelerationStructure::Validate(DXContext &context, DXPipelineCache &pipelines, const float *inverseViewProjection, const float *position) -> void {
   if (validated || !ready || !inverseViewProjection || !position)
     return;
-  validated = true;
   auto *commandList = context.GetCommandList();
   const auto pipeline = pipelines.GetRayProbePipeline(context.GetDevice());
-  if (!commandList || !pipeline || !*pipeline || !EnsureValidationBuffers())
+  if (!commandList || !pipeline || !*pipeline)
+    return;
+  // Marked done only once there is a pipeline to do it with. Made off the frame, it is not there
+  // the first time it is asked for, and marking it done then would have skipped the check for good.
+  validated = true;
+  if (!EnsureValidationBuffers())
     return;
   uint32_t seed[VALIDATION_SLOTS]{};
   seed[2] = 0xFFFFFFFFu;

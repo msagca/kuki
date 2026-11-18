@@ -1,14 +1,96 @@
 #include <dx_pipeline.hpp>
 #ifdef KUKI_HAS_DIRECTX
+#include <algorithm>
 #include <compiled_shaders.hpp>
+#include <format>
+#include <fstream>
 #include <functional>
 #include <primitive.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <system_error>
 namespace kuki {
+struct DXPipelineJob {
+  uint64_t key{};
+  std::string label;
+  bool compute{};
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC graphicsDesc{};
+  D3D12_COMPUTE_PIPELINE_STATE_DESC computeDesc{};
+  /// @brief The description's input layout, which it points into: the caller's was on its stack.
+  std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout;
+  ComPtr<ID3D12RootSignature> rootSignature;
+  ComPtr<ID3D12Device> device;
+  ComPtr<ID3D12PipelineState> result;
+  bool loaded{};
+  double milliseconds{};
+  /// @brief Set by the worker last, after everything above it is written; read by the main thread
+  /// before it touches any of it.
+  std::atomic<bool> done{};
+};
 namespace {
 auto MakeKey(const DXGI_FORMAT format, const uint32_t samples) -> uint64_t {
   return (static_cast<uint64_t>(format) << 32) | samples;
+}
+// A pipeline's name in the library is its key, which already says which shaders, which variant and
+// which target it was made for.
+auto LibraryName(const uint64_t key) -> std::wstring {
+  return std::format(L"{:016x}", key);
+}
+// What the file starts with, before the driver's own serialised library. The driver checks its part
+// against itself; this checks that the library was made from these shaders, which the driver cannot.
+constexpr char LIBRARY_MAGIC[4]{'K', 'P', 'S', 'O'};
+constexpr uint32_t LIBRARY_VERSION = 1;
+struct LibraryHeader {
+  char magic[4]{};
+  uint32_t version{};
+  uint64_t shaders{};
+  uint64_t bytes{};
+};
+auto ReadLibraryFile(const std::filesystem::path &path, std::vector<char> &blob) -> bool {
+  std::ifstream in(path, std::ios::binary);
+  if (!in)
+    return false;
+  LibraryHeader header{};
+  in.read(reinterpret_cast<char *>(&header), sizeof(header));
+  if (!in || !std::equal(std::begin(header.magic), std::end(header.magic), std::begin(LIBRARY_MAGIC)) || header.version != LIBRARY_VERSION || header.bytes == 0)
+    return false;
+  if (header.shaders != CompiledShadersDigest()) {
+    spdlog::info("[DX12] The pipeline library at {} was made from other shaders, and is made again", path.string());
+    return false;
+  }
+  blob.resize(static_cast<size_t>(header.bytes));
+  in.read(blob.data(), static_cast<std::streamsize>(blob.size()));
+  return in.gcount() == static_cast<std::streamsize>(blob.size());
+}
+auto WriteLibraryFile(const std::filesystem::path &path, const std::vector<char> &blob) -> bool {
+  std::error_code error;
+  std::filesystem::create_directories(path.parent_path(), error);
+  if (error)
+    return false;
+  // A temporary of this process's own and a rename, so a game closed while another copy of it is
+  // closing leaves one whole library rather than two halves of one.
+  auto temporary = path;
+  temporary += std::format(".{}.tmp", GetCurrentProcessId());
+  {
+    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+    if (!out)
+      return false;
+    LibraryHeader header{};
+    std::copy(std::begin(LIBRARY_MAGIC), std::end(LIBRARY_MAGIC), header.magic);
+    header.version = LIBRARY_VERSION;
+    header.shaders = CompiledShadersDigest();
+    header.bytes = blob.size();
+    out.write(reinterpret_cast<const char *>(&header), sizeof(header));
+    out.write(blob.data(), static_cast<std::streamsize>(blob.size()));
+    if (!out)
+      return false;
+  }
+  std::filesystem::rename(temporary, path, error);
+  if (error) {
+    std::filesystem::remove(temporary, error);
+    return false;
+  }
+  return true;
 }
 // Compiled when the engine was built (`FindCompiledShader`). Empty only for a name no shader
 // defines, which is a mistake in the C++ rather than in a shader: one that did not compile would
@@ -79,7 +161,7 @@ auto DXPipelineCache::GetScenePipeline(ID3D12Device *device, const DXGI_FORMAT f
   const auto variant = std::string(skinned ? "sceneSkinned" : "scene") + (blended ? "Blended" : "");
   const auto key = MakeKey(format, samples) ^ std::hash<std::string>{}(variant);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetSceneRootSignature(device);
   if (!rootSignature)
@@ -129,10 +211,7 @@ auto DXPipelineCache::GetScenePipeline(ID3D12Device *device, const DXGI_FORMAT f
   desc.RTVFormats[0] = format;
   desc.RTVFormats[1] = DXGI_FORMAT_R8G8B8A8_UNORM;
   desc.SampleDesc.Count = samples > 0 ? samples : 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created {} {} scene pipeline (format {}, {}x MSAA)", skinned ? "skinned" : "static", blended ? "blended" : "opaque", static_cast<int>(format), samples);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("{} {} scene pipeline (format {}, {}x MSAA)", skinned ? "skinned" : "static", blended ? "blended" : "opaque", static_cast<int>(format), samples));
 }
 auto DXPipelineCache::GetPostRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (postRootSignature)
@@ -165,7 +244,7 @@ auto DXPipelineCache::GetPostPipeline(ID3D12Device *device, const DXGI_FORMAT fo
     return nullptr;
   const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(effect);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetPostRootSignature(device);
   if (!rootSignature)
@@ -190,10 +269,7 @@ auto DXPipelineCache::GetPostPipeline(ID3D12Device *device, const DXGI_FORMAT fo
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = format;
   desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created post pipeline: {}", effect);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("post pipeline: {}", effect));
 }
 auto DXPipelineCache::GetStylizeRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (stylizeRootSignature)
@@ -228,7 +304,7 @@ auto DXPipelineCache::GetStylizePipeline(ID3D12Device *device, const DXGI_FORMAT
     return nullptr;
   const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(std::string("stylize") + entryPoint);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetStylizeRootSignature(device);
   if (!rootSignature)
@@ -253,10 +329,7 @@ auto DXPipelineCache::GetStylizePipeline(ID3D12Device *device, const DXGI_FORMAT
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = format;
   desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created stylize pipeline: {}", entryPoint);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("stylize pipeline: {}", entryPoint));
 }
 auto DXPipelineCache::GetReflectionRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (reflectionRootSignature)
@@ -289,7 +362,7 @@ auto DXPipelineCache::GetReflectionPipeline(ID3D12Device *device, const DXGI_FOR
     return nullptr;
   const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}("reflection");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetReflectionRootSignature(device);
   if (!rootSignature)
@@ -314,10 +387,7 @@ auto DXPipelineCache::GetReflectionPipeline(ID3D12Device *device, const DXGI_FOR
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = format;
   desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created reflection pipeline");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, "reflection pipeline");
 }
 auto DXPipelineCache::GetFullscreenRootSignature(ID3D12Device *device, ComPtr<ID3D12RootSignature> &signature, const uint32_t constantDwords, const char *name) -> ID3D12RootSignature * {
   if (signature)
@@ -350,7 +420,7 @@ auto DXPipelineCache::GetFullscreenPipeline(ID3D12Device *device, const DXGI_FOR
     return nullptr;
   const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(std::string(name) + entryPoint);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   pipeline.rootSignature = rootSignature;
   const auto vertexShader = FindShader(file, "VSMain");
@@ -372,10 +442,7 @@ auto DXPipelineCache::GetFullscreenPipeline(ID3D12Device *device, const DXGI_FOR
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = format;
   desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created {} pipeline: {}", name, entryPoint);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("{} pipeline: {}", name, entryPoint));
 }
 auto DXPipelineCache::GetOcclusionPipeline(ID3D12Device *device, const DXGI_FORMAT format, const char *entryPoint) -> const DXPipeline * {
   if (!device || !GetFullscreenRootSignature(device, occlusionRootSignature, sizeof(DXOcclusionConstants) / sizeof(uint32_t), "occlusion"))
@@ -420,7 +487,7 @@ auto DXPipelineCache::GetOverlayPipeline(ID3D12Device *device, const DXGI_FORMAT
     return nullptr;
   const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}("overlay");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetOverlayRootSignature(device);
   if (!rootSignature)
@@ -460,10 +527,7 @@ auto DXPipelineCache::GetOverlayPipeline(ID3D12Device *device, const DXGI_FORMAT
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = format;
   desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created overlay pipeline");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, "overlay pipeline");
 }
 auto DXPipelineCache::GetShadowRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (shadowRootSignature)
@@ -492,7 +556,7 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device, const bool skinned
     return nullptr;
   const auto key = std::hash<std::string>{}(skinned ? "shadowSkinned" : "shadow");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetShadowRootSignature(device);
   if (!rootSignature)
@@ -524,10 +588,7 @@ auto DXPipelineCache::GetShadowPipeline(ID3D12Device *device, const bool skinned
   desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
   desc.NumRenderTargets = 0;
   desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created {} shadow pipeline", skinned ? "skinned" : "static");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("{} shadow pipeline", skinned ? "skinned" : "static"));
 }
 auto DXPipelineCache::GetSkyboxRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (skyboxRootSignature)
@@ -559,7 +620,7 @@ auto DXPipelineCache::GetSkyboxPipeline(ID3D12Device *device, const DXGI_FORMAT 
     return nullptr;
   const auto key = MakeKey(format, samples) ^ std::hash<std::string>{}("skybox");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetSkyboxRootSignature(device);
   if (!rootSignature)
@@ -587,10 +648,7 @@ auto DXPipelineCache::GetSkyboxPipeline(ID3D12Device *device, const DXGI_FORMAT 
   desc.RTVFormats[0] = format;
   desc.RTVFormats[1] = DXGI_FORMAT_R8G8B8A8_UNORM;
   desc.SampleDesc.Count = samples > 0 ? samples : 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created skybox pipeline (format {}, {}x MSAA)", static_cast<int>(format), samples);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("skybox pipeline (format {}, {}x MSAA)", static_cast<int>(format), samples));
 }
 auto DXPipelineCache::GetComputeRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (computeRootSignature)
@@ -650,7 +708,7 @@ auto DXPipelineCache::GetAtmospherePipeline(ID3D12Device *device, const char *en
     return nullptr;
   const auto key = std::hash<std::string>{}(std::string("atmosphere:") + entryPoint);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetAtmosphereRootSignature(device);
   if (!rootSignature)
@@ -662,10 +720,7 @@ auto DXPipelineCache::GetAtmospherePipeline(ID3D12Device *device, const char *en
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
   desc.CS = computeShader;
-  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created atmosphere pipeline: {}", entryPoint);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("atmosphere pipeline: {}", entryPoint));
 }
 auto DXPipelineCache::GetCloudRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (cloudRootSignature)
@@ -735,7 +790,7 @@ auto DXPipelineCache::GetCloudComputePipeline(ID3D12Device *device, const char *
     return nullptr;
   const auto key = std::hash<std::string>{}(std::string("cloud:") + entryPoint);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetCloudRootSignature(device);
   if (!rootSignature)
@@ -747,17 +802,14 @@ auto DXPipelineCache::GetCloudComputePipeline(ID3D12Device *device, const char *
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
   desc.CS = computeShader;
-  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created cloud compute pipeline: {}", entryPoint);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("cloud compute pipeline: {}", entryPoint));
 }
 auto DXPipelineCache::GetCloudPipeline(ID3D12Device *device, const DXGI_FORMAT format) -> const DXPipeline * {
   if (!device)
     return nullptr;
   const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}("cloudDraw");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetCloudRootSignature(device);
   if (!rootSignature)
@@ -782,17 +834,14 @@ auto DXPipelineCache::GetCloudPipeline(ID3D12Device *device, const DXGI_FORMAT f
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = format;
   desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created cloud pipeline");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, "cloud pipeline");
 }
 auto DXPipelineCache::GetVolumetricPipeline(ID3D12Device *device, const DXGI_FORMAT format) -> const DXPipeline * {
   if (!device)
     return nullptr;
   const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}("volumetric");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetVolumetricRootSignature(device);
   if (!rootSignature)
@@ -817,10 +866,7 @@ auto DXPipelineCache::GetVolumetricPipeline(ID3D12Device *device, const DXGI_FOR
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = format;
   desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created volumetric pipeline");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, "volumetric pipeline");
 }
 auto DXPipelineCache::GetParticleUpdateRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (particleUpdateRootSignature)
@@ -850,7 +896,7 @@ auto DXPipelineCache::GetParticleUpdatePipeline(ID3D12Device *device) -> const D
     return nullptr;
   const auto key = std::hash<std::string>{}("particles:CSSimulate");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetParticleUpdateRootSignature(device);
   if (!rootSignature)
@@ -862,10 +908,7 @@ auto DXPipelineCache::GetParticleUpdatePipeline(ID3D12Device *device) -> const D
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
   desc.CS = computeShader;
-  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created particle update pipeline");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, "particle update pipeline");
 }
 auto DXPipelineCache::GetParticleDrawRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (particleDrawRootSignature)
@@ -895,7 +938,7 @@ auto DXPipelineCache::GetParticleDrawPipeline(ID3D12Device *device, const DXGI_F
   const char *name = opaque ? "particleDrawOpaque" : veil ? "particleDrawAlpha" : "particleDraw";
   const auto key = MakeKey(format, 0) ^ std::hash<std::string>{}(name);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetParticleDrawRootSignature(device);
   if (!rootSignature)
@@ -949,17 +992,15 @@ auto DXPipelineCache::GetParticleDrawPipeline(ID3D12Device *device, const DXGI_F
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = format;
   desc.SampleDesc.Count = 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created {} particle draw pipeline", opaque ? "opaque" : veil ? "alpha" : "additive");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("{} particle draw pipeline", opaque ? "opaque" : veil ? "alpha"
+                                                                                                               : "additive"));
 }
 auto DXPipelineCache::GetComputePipeline(ID3D12Device *device, const char *entryPoint) -> const DXPipeline * {
   if (!device || !entryPoint)
     return nullptr;
   const auto key = std::hash<std::string>{}(std::string("compute:") + entryPoint);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetComputeRootSignature(device);
   if (!rootSignature)
@@ -971,10 +1012,7 @@ auto DXPipelineCache::GetComputePipeline(ID3D12Device *device, const char *entry
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
   desc.CS = computeShader;
-  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created compute pipeline: {}", entryPoint);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("compute pipeline: {}", entryPoint));
 }
 auto DXPipelineCache::GetPickRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (pickRootSignature)
@@ -1003,7 +1041,7 @@ auto DXPipelineCache::GetPickPipeline(ID3D12Device *device) -> const DXPipeline 
     return nullptr;
   const auto key = std::hash<std::string>{}("pick:CSPick");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetPickRootSignature(device);
   if (!rootSignature)
@@ -1015,10 +1053,7 @@ auto DXPipelineCache::GetPickPipeline(ID3D12Device *device) -> const DXPipeline 
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
   desc.CS = computeShader;
-  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created pick pipeline");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, "pick pipeline");
 }
 auto DXPipelineCache::GetRayProbeRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (rayProbeRootSignature)
@@ -1046,7 +1081,7 @@ auto DXPipelineCache::GetRayProbePipeline(ID3D12Device *device) -> const DXPipel
     return nullptr;
   const auto key = std::hash<std::string>{}("raytrace:CSProbe");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetRayProbeRootSignature(device);
   if (!rootSignature)
@@ -1058,10 +1093,7 @@ auto DXPipelineCache::GetRayProbePipeline(ID3D12Device *device) -> const DXPipel
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
   desc.CS = computeShader;
-  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created ray probe pipeline (shader model 6.5, inline raytracing)");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, "ray probe pipeline (shader model 6.5, inline raytracing)");
 }
 auto DXPipelineCache::GetProbeAuditRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (probeAuditRootSignature)
@@ -1090,7 +1122,7 @@ auto DXPipelineCache::GetProbeAuditPipeline(ID3D12Device *device) -> const DXPip
     return nullptr;
   const auto key = std::hash<std::string>{}("probe:CSAudit");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetProbeAuditRootSignature(device);
   if (!rootSignature)
@@ -1102,10 +1134,7 @@ auto DXPipelineCache::GetProbeAuditPipeline(ID3D12Device *device) -> const DXPip
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
   desc.CS = computeShader;
-  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created probe audit pipeline");
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, "probe audit pipeline");
 }
 auto DXPipelineCache::GetProbeTraceRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (probeTraceRootSignature)
@@ -1144,7 +1173,7 @@ auto DXPipelineCache::GetProbeTracePipeline(ID3D12Device *device, const char *en
     return nullptr;
   const auto key = std::hash<std::string>{}(std::string("probe_trace:") + entryPoint);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetProbeTraceRootSignature(device);
   if (!rootSignature)
@@ -1156,10 +1185,7 @@ auto DXPipelineCache::GetProbeTracePipeline(ID3D12Device *device, const char *en
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
   desc.CS = computeShader;
-  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
-    return nullptr;
-  spdlog::info("[DX12] Created probe trace pipeline {} (shader model 6.5, inline raytracing, bindless)", entryPoint);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("probe trace pipeline {} (shader model 6.5, inline raytracing, bindless)", entryPoint));
 }
 auto DXPipelineCache::GetProbeUpdateRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (probeUpdateRootSignature)
@@ -1188,7 +1214,7 @@ auto DXPipelineCache::GetProbeUpdatePipeline(ID3D12Device *device, const char *e
     return nullptr;
   const auto key = std::hash<std::string>{}(std::string("probe_update:") + entryPoint);
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetProbeUpdateRootSignature(device);
   if (!rootSignature)
@@ -1200,10 +1226,7 @@ auto DXPipelineCache::GetProbeUpdatePipeline(ID3D12Device *device, const char *e
   D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
   desc.pRootSignature = rootSignature;
   desc.CS = computeShader;
-  if (DXFailed(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateComputePipelineState"))
-    return nullptr;
-  spdlog::debug("[DX12] Created probe update pipeline {}", entryPoint);
-  return &pipeline;
+  return Submit(device, key, pipeline, desc, std::format("probe update pipeline {}", entryPoint));
 }
 auto DXPipelineCache::GetProbeDebugRootSignature(ID3D12Device *device) -> ID3D12RootSignature * {
   if (probeDebugRootSignature)
@@ -1229,7 +1252,7 @@ auto DXPipelineCache::GetProbeDebugPipeline(ID3D12Device *device, const DXGI_FOR
     return nullptr;
   const auto key = MakeKey(format, samples) ^ std::hash<std::string>{}("probeDebug");
   if (auto it = pipelines.find(key); it != pipelines.end())
-    return it->second ? &it->second : nullptr;
+    return Poll(key, it->second);
   auto &pipeline = pipelines[key];
   auto *rootSignature = GetProbeDebugRootSignature(device);
   if (!rootSignature)
@@ -1260,12 +1283,203 @@ auto DXPipelineCache::GetProbeDebugPipeline(ID3D12Device *device, const DXGI_FOR
   desc.RTVFormats[0] = format;
   desc.RTVFormats[1] = DXGI_FORMAT_R8G8B8A8_UNORM;
   desc.SampleDesc.Count = samples > 0 ? samples : 1;
-  if (DXFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline.pipelineState)), "CreateGraphicsPipelineState"))
+  return Submit(device, key, pipeline, desc, std::format("probe debug pipeline (format {}, {}x MSAA)", static_cast<int>(format), samples));
+}
+DXPipelineCache::~DXPipelineCache() {
+  StopWorkers();
+}
+auto DXPipelineCache::SetLibraryPath(std::filesystem::path path) -> void {
+  libraryPath = std::move(path);
+}
+auto DXPipelineCache::Poll(const uint64_t key, DXPipeline &pipeline) -> const DXPipeline * {
+  if (pipeline)
+    return &pipeline;
+  const auto it = pending.find(key);
+  if (it == pending.end() || !it->second->done.load(std::memory_order_acquire))
     return nullptr;
-  spdlog::info("[DX12] Created probe debug pipeline (format {}, {}x MSAA)", static_cast<int>(format), samples);
-  return &pipeline;
+  auto &job = *it->second;
+  pipeline.pipelineState = std::move(job.result);
+  if (pipeline) {
+    ++(job.loaded ? loadedCount : createdCount);
+    spdlog::debug("[DX12] {} {} in {:.1f} ms", job.loaded ? "Loaded" : "Created", job.label, job.milliseconds);
+  }
+  pending.erase(it);
+  // Once for each burst of requests rather than once for each pipeline: the first frames ask for
+  // most of them at once, and how long the lot took to arrive is the number worth reading.
+  if (pending.empty()) {
+    const auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - busySince).count();
+    spdlog::info("[DX12] {} pipelines ready {:.0f} ms after the first was asked for: {} loaded from the library, {} compiled by the driver", loadedCount + createdCount, elapsed, loadedCount, createdCount);
+    loadedCount = 0;
+    createdCount = 0;
+  }
+  return pipeline ? &pipeline : nullptr;
+}
+auto DXPipelineCache::Collect() -> void {
+  // `Poll` erases what it picks up, so the keys are gathered first. Only while something is
+  // pending, which is the first frames and a setting changed: the rest of the time this is nothing.
+  if (pending.empty())
+    return;
+  for (auto it = pending.begin(); it != pending.end();) {
+    const auto key = (it++)->first;
+    if (auto found = pipelines.find(key); found != pipelines.end())
+      Poll(key, found->second);
+  }
+}
+auto DXPipelineCache::Submit(ID3D12Device *device, const uint64_t key, DXPipeline &pipeline, const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc, std::string label) -> const DXPipeline * {
+  auto job = std::make_shared<DXPipelineJob>();
+  job->key = key;
+  job->label = std::move(label);
+  job->graphicsDesc = desc;
+  if (desc.InputLayout.NumElements > 0)
+    job->inputLayout.assign(desc.InputLayout.pInputElementDescs, desc.InputLayout.pInputElementDescs + desc.InputLayout.NumElements);
+  job->graphicsDesc.InputLayout = {job->inputLayout.empty() ? nullptr : job->inputLayout.data(), static_cast<UINT>(job->inputLayout.size())};
+  job->rootSignature = pipeline.rootSignature;
+  Enqueue(device, std::move(job));
+  return nullptr;
+}
+auto DXPipelineCache::Submit(ID3D12Device *device, const uint64_t key, DXPipeline &pipeline, const D3D12_COMPUTE_PIPELINE_STATE_DESC &desc, std::string label) -> const DXPipeline * {
+  auto job = std::make_shared<DXPipelineJob>();
+  job->key = key;
+  job->label = std::move(label);
+  job->compute = true;
+  job->computeDesc = desc;
+  job->rootSignature = pipeline.rootSignature;
+  Enqueue(device, std::move(job));
+  return nullptr;
+}
+auto DXPipelineCache::Enqueue(ID3D12Device *device, std::shared_ptr<DXPipelineJob> job) -> void {
+  // Started on the first request, not before: a run that draws nothing makes no threads. One core
+  // is left to the main thread, which goes on presenting frames while these run; past four, the
+  // driver's compile is the limit rather than the number of threads asking for it.
+  if (workers.empty()) {
+    const auto count = std::clamp(std::thread::hardware_concurrency(), 2u, 5u) - 1;
+    for (unsigned worker = 0; worker < count; ++worker)
+      workers.emplace_back([this](const std::stop_token stop) { Work(stop); });
+  }
+  job->device = device;
+  if (pending.empty())
+    busySince = std::chrono::steady_clock::now();
+  pending[job->key] = job;
+  {
+    const std::scoped_lock lock(queueMutex);
+    queue.push_back(std::move(job));
+  }
+  queueReady.notify_one();
+}
+auto DXPipelineCache::Work(const std::stop_token stop) -> void {
+  for (;;) {
+    std::shared_ptr<DXPipelineJob> job;
+    {
+      std::unique_lock lock(queueMutex);
+      if (!queueReady.wait(lock, stop, [this] { return !queue.empty(); }))
+        return;
+      job = std::move(queue.front());
+      queue.pop_front();
+    }
+    Run(*job);
+  }
+}
+auto DXPipelineCache::Run(DXPipelineJob &job) -> void {
+  const auto start = std::chrono::steady_clock::now();
+  // Opened by whichever worker gets here first, and the others wait for it: reading the file and
+  // having the driver parse it is a few milliseconds the main thread need not spend.
+  {
+    const std::scoped_lock lock(libraryMutex);
+    if (!libraryOpened)
+      OpenLibrary(job.device.Get());
+  }
+  // The library is safe to use from several threads at once for different names, and every key is
+  // asked for once, so no two workers ever load the same name.
+  const auto name = LibraryName(job.key);
+  if (library) {
+    const auto loaded = job.compute ? library->LoadComputePipeline(name.c_str(), &job.computeDesc, IID_PPV_ARGS(&job.result)) : library->LoadGraphicsPipeline(name.c_str(), &job.graphicsDesc, IID_PPV_ARGS(&job.result));
+    job.loaded = SUCCEEDED(loaded);
+  }
+  if (!job.loaded) {
+    job.result.Reset();
+    const auto created = job.compute ? job.device->CreateComputePipelineState(&job.computeDesc, IID_PPV_ARGS(&job.result)) : job.device->CreateGraphicsPipelineState(&job.graphicsDesc, IID_PPV_ARGS(&job.result));
+    if (DXFailed(created, std::format("Creating the {}", job.label)))
+      job.result.Reset();
+    else if (library) {
+      // Refused with this code when the name is already taken, which after a failed load means the
+      // library holds an older description under it.
+      if (const auto stored = library->StorePipeline(name.c_str(), job.result.Get()); SUCCEEDED(stored))
+        libraryChanged = true;
+      else if (stored == E_INVALIDARG)
+        libraryStale = true;
+      else
+        DXFailed(stored, "ID3D12PipelineLibrary::StorePipeline");
+    }
+  }
+  job.milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+  job.done.store(true, std::memory_order_release);
+}
+auto DXPipelineCache::OpenLibrary(ID3D12Device *device) -> void {
+  libraryOpened = true;
+  if (libraryPath.empty() || !device || FAILED(device->QueryInterface(IID_PPV_ARGS(&libraryDevice))))
+    return;
+  D3D12_FEATURE_DATA_SHADER_CACHE support{};
+  if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_SHADER_CACHE, &support, sizeof(support))) || !(support.SupportFlags & D3D12_SHADER_CACHE_SUPPORT_LIBRARY)) {
+    spdlog::info("[DX12] The driver keeps no pipeline library, so every run compiles its pipelines");
+    libraryDevice.Reset();
+    return;
+  }
+  if (ReadLibraryFile(libraryPath, libraryBlob))
+    if (const auto opened = libraryDevice->CreatePipelineLibrary(libraryBlob.data(), libraryBlob.size(), IID_PPV_ARGS(&library)); FAILED(opened)) {
+      spdlog::info("[DX12] The pipeline library at {} was refused ({}), and is made again", libraryPath.string(), DXResultToString(opened));
+      library.Reset();
+    }
+  if (library)
+    return;
+  libraryBlob = {};
+  if (DXFailed(libraryDevice->CreatePipelineLibrary(nullptr, 0, IID_PPV_ARGS(&library)), "CreatePipelineLibrary")) {
+    library.Reset();
+    libraryDevice.Reset();
+  }
+}
+auto DXPipelineCache::SaveLibrary() -> void {
+  if (!library || !libraryDevice || libraryPath.empty() || (!libraryChanged && !libraryStale))
+    return;
+  // Made again from this run's pipelines when an old description held a name, since an entry
+  // cannot be replaced in place. What this run did not ask for is lost from it, and made once more
+  // the next time something asks.
+  auto output = library;
+  if (libraryStale) {
+    output.Reset();
+    if (DXFailed(libraryDevice->CreatePipelineLibrary(nullptr, 0, IID_PPV_ARGS(&output)), "CreatePipelineLibrary"))
+      return;
+    for (const auto &[key, pipeline] : pipelines)
+      if (pipeline.pipelineState)
+        output->StorePipeline(LibraryName(key).c_str(), pipeline.pipelineState.Get());
+  }
+  std::vector<char> blob(output->GetSerializedSize());
+  if (blob.empty() || DXFailed(output->Serialize(blob.data(), blob.size()), "ID3D12PipelineLibrary::Serialize"))
+    return;
+  if (WriteLibraryFile(libraryPath, blob))
+    spdlog::info("[DX12] Saved the pipeline library ({:.1f} MB) to {}", static_cast<double>(blob.size()) / (1024. * 1024.), libraryPath.string());
+  else
+    spdlog::warn("[DX12] Could not save the pipeline library to {}", libraryPath.string());
+}
+auto DXPipelineCache::StopWorkers() -> void {
+  // What has not been started is dropped; what has is waited for, since it holds the device.
+  {
+    const std::scoped_lock lock(queueMutex);
+    queue.clear();
+  }
+  workers.clear();
 }
 auto DXPipelineCache::Clear() -> void {
+  StopWorkers();
+  SaveLibrary();
+  pending.clear();
+  loadedCount = 0;
+  createdCount = 0;
+  library.Reset();
+  libraryBlob = {};
+  libraryDevice.Reset();
+  libraryOpened = false;
+  libraryChanged = false;
+  libraryStale = false;
   pipelines.clear();
   sceneRootSignature.Reset();
   postRootSignature.Reset();
