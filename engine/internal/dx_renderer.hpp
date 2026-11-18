@@ -882,6 +882,15 @@ private:
   ///        reason the procedural sky is a different first dispatch rather than a second pipeline.
   /// @param sunDirection Direction towards the sun, unit length. Read only for an atmosphere.
   auto BuildEnvironmentMaps(const AssetID, const DXTexture *, const AtmosphereSky *, const glm::vec3 &) -> bool;
+  /// @brief Asks for every pipeline `BuildEnvironmentMaps` dispatches, from a photograph or from an
+  /// atmosphere, and says whether all of them are there yet.
+  ///
+  /// Asked first, because the chain is a dozen dispatches with textures made and the GPU waited on
+  /// before the first: started without them, it would stop at whichever pipeline was still being
+  /// made, every frame until the last arrived, and ask for each one only once the one before it
+  /// had come. Until they are all there the scene keeps the sky it has -- the analytic one on the
+  /// first frames.
+  auto EnvironmentPipelinesReady(const bool atmosphere) -> bool;
   /// @brief Creates a plain non-square table a compute shader writes and another samples.
   ///
   /// `CreateComputeTexture` cannot: it takes one extent for both axes and gives every mip its own

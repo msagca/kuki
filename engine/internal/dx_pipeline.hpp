@@ -1,11 +1,22 @@
 #pragma once
 #ifdef KUKI_HAS_DIRECTX
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <dx_common.hpp>
+#include <filesystem>
 #include <kuki_engine_export.h>
 #include <light_limits.hpp>
+#include <memory>
+#include <mutex>
 #include <particle_emitter.hpp>
+#include <stop_token>
+#include <string>
+#include <thread>
 #include <unordered_map>
+#include <vector>
 namespace kuki {
 /// @brief Number of texture slots a material's descriptor table holds, one per `TextureContent`.
 inline constexpr uint32_t MATERIAL_TEXTURE_SLOTS = 7;
@@ -615,10 +626,30 @@ struct DXPipeline {
     return rootSignature && pipelineState;
   }
 };
+/// @brief One pipeline being made on a worker thread: its description, and what came of it.
+struct DXPipelineJob;
 /// @brief Builds and caches the pipelines the Direct3D 12 passes draw with.
 ///
 /// A pipeline state object bakes in the render-target format and sample count, so a separate
 /// object is needed per target configuration. They are cached on that pair.
+///
+/// Made off the frame. The first time a pipeline is asked for, its description is put together
+/// here and handed to a worker thread, and every `Get` returns null until the worker is done --
+/// which every pass already treats as a pipeline it cannot have this frame, drawing its bypass, so
+/// the first frames come out plainer rather than late. Creating a pipeline is the driver compiling
+/// DXIL to the GPU's own code: up to a few hundred milliseconds each, and on the main thread it
+/// was most of every game's first frames. `ID3D12Device` is free-threaded, so nothing else is
+/// needed of the workers but a copy of the description.
+///
+/// The driver's work is kept between runs in an `ID3D12PipelineLibrary`, read from
+/// `SetLibraryPath`'s file on the first request and written back by `Clear` when anything new went
+/// into it. A worker looks a pipeline up there before it creates one, by its cache key, so a second
+/// launch loads in a fraction of a millisecond what the first compiled. The file is stamped with
+/// `CompiledShadersDigest`: a library made from other shaders is thrown away whole, and one the
+/// driver refuses (another driver, another GPU) is replaced. A pipeline whose description changed
+/// under the same key and the same shaders -- a root signature or a blend state edited in the C++
+/// -- fails to load, is created, cannot be stored under its taken name, and has the library made
+/// again from the pipelines this run holds.
 ///
 /// The raster and compute pipelines here are built at Shader Model 6.0, the lowest the standalone
 /// compiler emits and a floor every Direct3D 12 driver clears. Only a pass that needs a later
@@ -762,9 +793,63 @@ public:
   /// The opaque one is the same draw with the blend off and the depth write on, and needs no sort
   /// for the opposite reason: the depth buffer decides.
   auto GetParticleDrawPipeline(ID3D12Device *, const DXGI_FORMAT, const ParticleBlend = ParticleBlend::Additive) -> const DXPipeline *;
+  /// @brief Where the pipeline library is kept between runs. Empty, the default, keeps none.
+  auto SetLibraryPath(std::filesystem::path) -> void;
+  /// @brief Picks up every pipeline a worker has finished, once a frame, so one nobody asks for
+  /// again still arrives and is counted in the summary the last of a burst logs.
+  auto Collect() -> void;
+  /// @brief Waits for the workers, writes the library back if it changed, and drops everything.
   auto Clear() -> void;
+  DXPipelineCache() = default;
+  DXPipelineCache(const DXPipelineCache &) = delete;
+  auto operator=(const DXPipelineCache &) -> DXPipelineCache & = delete;
+  ~DXPipelineCache();
 private:
+  /// @brief What a `Get` returns for a key asked for before: the pipeline once its worker is done,
+  /// null while it runs and for good if it failed.
+  auto Poll(const uint64_t key, DXPipeline &) -> const DXPipeline *;
+  /// @brief Hands a description to the workers and returns null, as `Poll` will until they are done.
+  ///
+  /// The description is copied, and its input layout with it; the shaders are the engine's own
+  /// static bytecode and the root signature is held by `pipeline`, so nothing it points to can go
+  /// before the worker reads it.
+  auto Submit(ID3D12Device *, const uint64_t key, DXPipeline &pipeline, const D3D12_GRAPHICS_PIPELINE_STATE_DESC &, std::string label) -> const DXPipeline *;
+  auto Submit(ID3D12Device *, const uint64_t key, DXPipeline &pipeline, const D3D12_COMPUTE_PIPELINE_STATE_DESC &, std::string label) -> const DXPipeline *;
+  auto Enqueue(ID3D12Device *, std::shared_ptr<DXPipelineJob>) -> void;
+  auto OpenLibrary(ID3D12Device *) -> void;
+  auto SaveLibrary() -> void;
+  auto StopWorkers() -> void;
+  auto Work(std::stop_token) -> void;
+  auto Run(DXPipelineJob &) -> void;
   std::unordered_map<uint64_t, DXPipeline> pipelines;
+  /// @brief The pipelines asked for and not yet picked up, by key. Read and written on the main
+  /// thread alone; a job's own `done` is all a worker and the main thread share.
+  std::unordered_map<uint64_t, std::shared_ptr<DXPipelineJob>> pending;
+  /// @brief When the first of the pipelines now pending was asked for, and how many of them a
+  /// worker loaded from the library and how many it had to create: the summary logged when the
+  /// last one arrives.
+  std::chrono::steady_clock::time_point busySince;
+  uint32_t loadedCount{};
+  uint32_t createdCount{};
+  std::filesystem::path libraryPath;
+  /// @brief Held by a worker while it opens the library, which the first worker to run does.
+  std::mutex libraryMutex;
+  bool libraryOpened{};
+  ComPtr<ID3D12Device1> libraryDevice;
+  ComPtr<ID3D12PipelineLibrary> library;
+  /// @brief The serialised library as read from disk. The library reads from this memory for as
+  /// long as it lives, so it is kept, and never resized, until the library is released.
+  std::vector<char> libraryBlob;
+  /// @brief Set by a worker that stored a pipeline the library did not have, and by one whose store
+  /// was refused because the name was taken by an older description: the second means writing a
+  /// fresh library from what this run holds rather than the old one with additions.
+  std::atomic<bool> libraryChanged{};
+  std::atomic<bool> libraryStale{};
+  std::mutex queueMutex;
+  std::condition_variable_any queueReady;
+  std::deque<std::shared_ptr<DXPipelineJob>> queue;
+  /// @brief Last, so they are joined before anything they read is destroyed.
+  std::vector<std::jthread> workers;
   ComPtr<ID3D12RootSignature> sceneRootSignature;
   ComPtr<ID3D12RootSignature> postRootSignature;
   ComPtr<ID3D12RootSignature> stylizeRootSignature;

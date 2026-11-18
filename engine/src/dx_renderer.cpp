@@ -6,40 +6,42 @@
 #include <application.hpp>
 #include <bounding_box.hpp>
 #include <camera.hpp>
+#include <cctype>
 #include <depth_of_field.hpp>
 #include <dx_context.hpp>
 #include <dx_format.hpp>
-#include <limits>
-#include <hash_utils.hpp>
-#include <post_process.hpp>
-#include <profiler.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/quaternion.hpp>
-#include <material_asset.hpp>
-#include <mesh_asset.hpp>
+#include <hash_utils.hpp>
+#include <launch_path.hpp>
 #include <light.hpp>
+#include <limits>
+#include <material_asset.hpp>
 #include <material_handle.hpp>
+#include <mesh_asset.hpp>
 #include <particle_emitter.hpp>
 #include <particle_limits.hpp>
-#include <texture.hpp>
-#include <texture_asset.hpp>
-#include <variant>
+#include <planar_reflection.hpp>
+#include <post_process.hpp>
 #include <primitive.hpp>
+#include <profiler.hpp>
 #include <random>
 #include <scene.hpp>
+#include <screen_effects.hpp>
 #include <skeleton.hpp>
 #include <skybox_handle.hpp>
-#include <transform.hpp>
 #include <spdlog/spdlog.h>
-#include <planar_reflection.hpp>
-#include <screen_effects.hpp>
 #include <stb_image_write.h>
-#include <stylization.hpp>
 #include <string>
+#include <stylization.hpp>
+#include <texture.hpp>
+#include <texture_asset.hpp>
+#include <transform.hpp>
 #include <utility>
+#include <variant>
 #include <vector>
 #include <wind.hpp>
 namespace kuki {
@@ -287,7 +289,13 @@ auto HashProbeTuning(const DXFrameConstants &constants) -> size_t {
 }
 } // namespace
 DXRenderer::DXRenderer(Application &app)
-  : Renderer(std::in_place_type<DXRenderer>, app) {}
+  : Renderer(std::in_place_type<DXRenderer>, app) {
+  // Beside the texture cache, under the application's name: each game asks for its own set, and
+  // each writes back the set it asked for.
+  auto name = Internal(app).GetDescription().name;
+  std::ranges::replace_if(name, [](const char c) { return !std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_'; }, '_');
+  pipelines.SetLibraryPath(GetLaunchPath() / "cache" / "pipeline" / ((name.empty() ? std::string("Application") : name) + ".dxpl"));
+}
 auto DXRenderer::GetContext() const -> DXContext * {
   return dynamic_cast<DXContext *>(Internal(app).GetGraphicsContext());
 }
@@ -1338,6 +1346,11 @@ auto DXRenderer::EnsureCloudNoise() -> bool {
   auto *device = context ? context->GetDevice() : nullptr;
   if (!commandList || !device || !EnsureComputeFallbacks())
     return false;
+  // Both asked for before either is checked, and before the volumes are made, so a frame whose
+  // pipelines are still being made costs nothing and both are made at once.
+  const auto shapeReady = static_cast<bool>(pipelines.GetCloudComputePipeline(device, "CSShapeNoise"));
+  if (const auto detailReady = static_cast<bool>(pipelines.GetCloudComputePipeline(device, "CSDetailNoise")); !shapeReady || !detailReady)
+    return false;
   // Eight bits a channel, which is all either volume needs: both hold a density between nothing and
   // everything, and the march remaps whatever comes back against a coverage threshold before using
   // it. Sixteen would be four times the memory to describe the same cloud.
@@ -1489,9 +1502,12 @@ auto DXRenderer::MarchClouds(std::span<std::string> inputs, std::span<std::strin
   auto &destination = destinationIt->second;
   if (destination.rtvIndex == DXDescriptorHeap::InvalidIndex)
     return;
+  // The march's own pipelines are asked for before the noise is built, so all five are made at once
+  // rather than each after the one before it.
+  pipelines.GetCloudComputePipeline(device, "CSSunTransmittance");
+  const auto pipeline = pipelines.GetCloudPipeline(device, TargetFormatToRTVDXGI(destination.desc.format));
   if (!EnsureCloudNoise())
     return;
-  const auto pipeline = pipelines.GetCloudPipeline(device, TargetFormatToRTVDXGI(destination.desc.format));
   if (!pipeline || !*pipeline)
     return;
   // Advanced here rather than from a clock, so that changing the wind changes where the layer goes
@@ -2447,6 +2463,22 @@ auto DXRenderer::DispatchAtmosphere(const AtmosphereSky &sky, const glm::vec3 &s
   skyConstants.height = TRANSMITTANCE_HEIGHT;
   skyConstants.size = SKYBOX_CUBE_SIZE;
   return Dispatch("CSSkyToCubemap", skyConstants, {transmittanceLUT.srvIndex, multiscatterLUT.srvIndex}, INVALID, skyboxCubemap.mipUavIndices[0], GroupCount(SKYBOX_CUBE_SIZE), GroupCount(SKYBOX_CUBE_SIZE), 6);
+}
+auto DXRenderer::EnvironmentPipelinesReady(const bool atmosphere) -> bool {
+  auto context = GetContext();
+  auto *device = context ? context->GetDevice() : nullptr;
+  if (!device)
+    return false;
+  // Every one asked for before any is checked, so they are all made at once.
+  auto ready = true;
+  for (const auto *entryPoint : {"CSDownsampleCubemap", "CSIrradiance", "CSPrefilter", "CSBRDF", "CSSHProject"})
+    ready &= static_cast<bool>(pipelines.GetComputePipeline(device, entryPoint));
+  if (atmosphere)
+    for (const auto *entryPoint : {"CSTransmittance", "CSMultiscatter", "CSSunTransmittance", "CSSkyToCubemap"})
+      ready &= static_cast<bool>(pipelines.GetAtmospherePipeline(device, entryPoint));
+  else
+    ready &= static_cast<bool>(pipelines.GetComputePipeline(device, "CSEquirectToCubemap"));
+  return ready;
 }
 auto DXRenderer::BuildEnvironmentMaps(const AssetID assetId, const DXTexture *equirect, const AtmosphereSky *atmosphere, const glm::vec3 &sunDirection) -> bool {
   auto context = GetContext();
@@ -3464,6 +3496,13 @@ auto DXRenderer::RenderScene(std::span<std::string> inputs, std::span<std::strin
   EnsureSceneResources(*scene);
   const auto pools = PreparePools();
   const auto samples = static_cast<uint32_t>(target.desc.samples > 0 ? target.desc.samples : 1);
+  // The skinned and blended variants are asked for with the plain one, so all four are made at once.
+  // Otherwise each would be asked for only on reaching a draw that needs it, and the pass returns
+  // below until the plain one is there, so they would arrive frames apart.
+  for (const auto skinned : {false, true})
+    for (const auto blended : {false, true})
+      if (skinned || blended)
+        pipelines.GetScenePipeline(context->GetDevice(), TargetFormatToRTVDXGI(target.desc.format), samples, skinned, blended);
   const auto pipeline = pipelines.GetScenePipeline(context->GetDevice(), TargetFormatToRTVDXGI(target.desc.format), samples);
   if (!pipeline || !*pipeline)
     return;
@@ -4129,7 +4168,7 @@ auto DXRenderer::EnsureSceneResources(Scene &scene) -> void {
   // precedence and not a warning.
   if (const auto *sky = scene.Entities().GetAny<AtmosphereSky>()) {
     const auto sunDirection = SunDirection(scene);
-    if (const auto key = HashAtmosphere(*sky, sunDirection); key != environmentAtmosphere)
+    if (const auto key = HashAtmosphere(*sky, sunDirection); key != environmentAtmosphere && EnvironmentPipelinesReady(true))
       if (!BuildEnvironmentMaps({}, nullptr, sky, sunDirection)) {
         environmentReady = false;
         environmentAtmosphere = 0;
@@ -4141,7 +4180,7 @@ auto DXRenderer::EnsureSceneResources(Scene &scene) -> void {
     if (!handle->assetId || !Internal(app).Assets().IsLoaded(handle->assetId))
       return;
     auto texture = EnsureTexture(handle->assetId);
-    if (!texture || (environmentReady && !environmentAtmosphere && environmentAsset == handle->assetId))
+    if (!texture || (environmentReady && !environmentAtmosphere && environmentAsset == handle->assetId) || !EnvironmentPipelinesReady(false))
       return;
     auto textureAsset = app.GetAsset<TextureAsset>(handle->assetId);
     if (!textureAsset)
@@ -4347,6 +4386,7 @@ auto DXRenderer::PresentTarget(const std::string &name) -> void {
   commandList->DrawInstanced(3, 1, 0, 0);
 }
 auto DXRenderer::Reset() -> void {
+  pipelines.Collect();
   instanceCursor = 0;
   frameConstantCursor = 0;
   ++uploadEpoch;
