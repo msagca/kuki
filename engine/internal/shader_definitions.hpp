@@ -17,14 +17,16 @@ struct ShaderDefinition {
 /// Writing it in both is what the codebase did, and the failure is silent in both directions -- see
 /// the note on `MAX_POINT_LIGHTS`.
 ///
-/// No shader is compiled ahead of time, and that is what makes this fixable. The HLSL goes through
-/// `dxcompiler.dll` at runtime, so it is taken as a string and can be handed definitions alongside
-/// it -- as a second backend's shaders must be, whether HLSL through dxc or another language. The shader declares
-/// nothing and reads the macro; the C++ constant above is the only place the number appears.
+/// The shaders are compiled by a tool of the engine's own, `KukiShaderCompiler`, while the engine is
+/// built, and that is what makes this fixable: the tool includes this header and hands each shader
+/// these as definitions -- as a second backend's shaders must be given them, whether HLSL through
+/// dxc or another language. The shader declares nothing and reads the macro; the C++ constant above
+/// is the only place the number appears. A change to one rebuilds the tool, and the tool's rebuild
+/// recompiles the shaders.
 ///
 /// A shader that reads one of these without being given it does not fall back on a stale copy. It
-/// fails to compile, with the compiler naming the macro it could not resolve, which is what makes
-/// this safe to rely on rather than merely tidy.
+/// fails to compile, and so fails the build, with the compiler naming the macro it could not
+/// resolve, which is what makes this safe to rely on rather than merely tidy.
 ///
 /// Prefixed because these land in every shader in the engine, including the ones with no interest
 /// in them, and a macro that broad should be obvious about where it came from.

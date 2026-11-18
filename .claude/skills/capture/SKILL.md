@@ -30,7 +30,7 @@ at its end; trust that over the table.
 ## 2. Run it
 
 Give an absolute path in the session's scratchpad, never one in the repository, and a timeout: the
-run is a few seconds plus shader compilation.
+run is a few seconds.
 
 ```bash
 build/games/frontier/KukiFrontier.exe --capture "<scratchpad>/frontier.png" --seed 7 --demo
@@ -49,9 +49,8 @@ What sets up the picture (`--help` on any executable lists everything it reads):
 ## 3. Look
 
 Open the PNG with the Read tool. If there is no file, or it is empty, read the run's log: the usual
-causes are `dxcompiler.dll`/`dxil.dll` missing beside the executable (nothing compiles, so nothing
-is drawn), no Direct3D 12 device (the run stops at startup), and a shader that failed to compile,
-which is reported at run time, not at build time.
+cause is no Direct3D 12 device (the run stops at startup). A shader that does not compile fails the
+build, not the run.
 
 To compare, capture before and after with the same flags and frame, and name the files for what
 they show.

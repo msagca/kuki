@@ -2,7 +2,6 @@
 #ifdef KUKI_HAS_DIRECTX
 #include <cstddef>
 #include <dx_common.hpp>
-#include <dx_shader_compiler.hpp>
 #include <kuki_engine_export.h>
 #include <light_limits.hpp>
 #include <particle_emitter.hpp>
@@ -766,7 +765,6 @@ public:
   auto Clear() -> void;
 private:
   std::unordered_map<uint64_t, DXPipeline> pipelines;
-  DXShaderCompiler shaderCompiler;
   ComPtr<ID3D12RootSignature> sceneRootSignature;
   ComPtr<ID3D12RootSignature> postRootSignature;
   ComPtr<ID3D12RootSignature> stylizeRootSignature;
@@ -810,8 +808,8 @@ private:
   /// size of their constants and come through here.
   auto GetFullscreenRootSignature(ID3D12Device *, ComPtr<ID3D12RootSignature> &signature, const uint32_t constantDwords, const char *name) -> ID3D12RootSignature *;
   /// @brief A fullscreen pipeline over such a root signature: one oversized triangle, no depth, one
-  /// target of the format, `VSMain` and `entryPoint` from `source`.
-  auto GetFullscreenPipeline(ID3D12Device *, const DXGI_FORMAT, const ComPtr<ID3D12RootSignature> &, const std::string_view source, const char *name, const char *entryPoint) -> const DXPipeline *;
+  /// target of the format, `VSMain` and `entryPoint` from the shader file `file` (its stem).
+  auto GetFullscreenPipeline(ID3D12Device *, const DXGI_FORMAT, const ComPtr<ID3D12RootSignature> &, const char *file, const char *name, const char *entryPoint) -> const DXPipeline *;
   /// @brief Root signature for the overlay pass: the projection and colour, and the glyph atlas.
   auto GetOverlayRootSignature(ID3D12Device *) -> ID3D12RootSignature *;
   /// @brief Root signature for the shadow pass: a single light-space matrix.

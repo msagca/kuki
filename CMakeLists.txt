@@ -220,7 +220,7 @@ if(WIN32)
     PATH_SUFFIXES x64
     NO_DEFAULT_PATH
     DOC
-      "Standalone HLSL compiler, loaded at runtime to build Shader Model 6 bytecode"
+      "Standalone HLSL compiler, loaded by KukiShaderCompiler to compile the shaders while the engine is built"
   )
   find_file(
     DXIL_DLL
@@ -231,12 +231,14 @@ if(WIN32)
     DOC
       "Signs compiled bytecode; unsigned bytecode is rejected outside developer mode"
   )
+  # Fatal, where it was a warning when the shaders were compiled at run time: the engine is built
+  # with their DXIL now, so without a compiler there is no engine to build.
   if(DXCOMPILER_DLL AND DXIL_DLL)
     message(STATUS "HLSL compiler: ${DXCOMPILER_DLL}")
   else()
     message(
-      WARNING
-      "dxcompiler.dll or dxil.dll not found in the Windows SDK. The Direct3D 12 backend will fail to compile its shaders."
+      FATAL_ERROR
+      "dxcompiler.dll or dxil.dll not found in the Windows SDK, and the engine's shaders are compiled with them while it is built. Install the Windows SDK."
     )
   endif()
 endif()

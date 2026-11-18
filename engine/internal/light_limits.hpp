@@ -19,12 +19,11 @@ namespace kuki {
 /// scene simply stops lighting from a light that is plainly there in the hierarchy. The two shader
 /// copies failed the same way in reverse.
 ///
-/// So the shaders no longer declare these at all. The compiler takes their source as a string at
-/// runtime, which means it can be handed the values as preprocessor definitions -- see
-/// `SHADER_DEFINITIONS` in `shader_definitions.hpp`, which `DXShaderCompiler::Compile` carries to
-/// the HLSL, and which a second backend's compiler must carry too. A shader that reads one of these
-/// without being given it fails to compile with a message naming the macro, which is the loud
-/// failure the comment was standing in for.
+/// So the shaders no longer declare these at all. They are handed the values as preprocessor
+/// definitions -- see `SHADER_DEFINITIONS` in `shader_definitions.hpp`, which `KukiShaderCompiler`
+/// includes and carries to the HLSL when the engine is built, and which a second backend's compiler
+/// must carry too. A shader that reads one of these without being given it fails the build with a
+/// message naming the macro, which is the loud failure the comment was standing in for.
 inline constexpr uint32_t MAX_POINT_LIGHTS = 8;
 /// @brief How many spot lights one draw can be shaded by, on the same footing.
 inline constexpr uint32_t MAX_SPOT_LIGHTS = 8;

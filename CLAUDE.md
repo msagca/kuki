@@ -48,9 +48,11 @@ and worst, and the costliest profiler scopes by their own time, all CPU -- in th
 runs (`EngineConfig::showTimings`). Assets are staged beside the binary and found through
 `ResolvePath` against the executable's directory, never the working directory.
 
-Direct3D 12 is the only backend; without it the application stops at startup. HLSL is compiled at
-run time by `dxcompiler.dll`/`dxil.dll`, found in the Windows SDK at configure time and copied
-beside each executable -- without them nothing is drawn.
+Direct3D 12 is the only backend; without it the application stops at startup. HLSL is compiled to
+DXIL while the engine is built, by `KukiShaderCompiler` with the Windows SDK's
+`dxcompiler.dll`/`dxil.dll` (found at configure time, which fails without them), and the DXIL is
+compiled into the engine: a shader that does not compile fails the build, and nothing beside an
+executable compiles HLSL.
 
 ## Layout
 
