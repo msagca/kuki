@@ -151,16 +151,17 @@ option(${PROJECT_NAME_UPPER}_BUILD_GAMES "Build sample games" OFF)
 option(${PROJECT_NAME_UPPER}_ENABLE_LINTING "Enable linting" OFF)
 # Claims the cache entry for the generator list before any vendored project can.
 #
-# CPack picks its generators from the platform when this is empty -- an installer on Windows, a
-# tarball on Linux, a drag-and-drop bundle on macOS -- and picking them per platform is exactly
-# what this project wants, so empty is the value it wants to keep.
+# Empty means the generators are picked per platform, which is exactly what this project wants, so
+# empty is the value it wants to keep: on Windows the installer section below reads it as Inno
+# Setup, elsewhere CPack picks from the platform -- a tarball on Linux, a drag-and-drop bundle on
+# macOS.
 #
 # It has to be claimed rather than simply left alone, because `external/spdlog/cmake/spdlogCPack.cmake`
 # pins it to "TGZ;ZIP" for spdlog's own releases and does it in the cache, which every project in
 # the build shares. That file is reached because SPDLOG_INSTALL is on, which is wanted for the
 # install rules that come with it, so the setting arrives as a side effect of something worth
 # having. The effect was that a vendored logging library decided what this project ships: two
-# archives, on a machine with NSIS installed and an installer configured for it.
+# archives, on a machine with an installer's tools installed and an installer configured for it.
 #
 # Writing the entry first is what settles it. `set(... CACHE ...)` without FORCE only writes when
 # the entry does not already exist, so spdlog's copy becomes a no-op -- and by the same rule this
@@ -170,7 +171,7 @@ set(
   CPACK_GENERATOR
   ""
   CACHE STRING
-  "Generators CPack builds packages with. Empty means the platform's own default."
+  "Generators CPack builds packages with. Empty means Inno Setup on Windows, the platform's own default elsewhere."
 )
 # third party libraries
 ## glm
@@ -403,14 +404,46 @@ set(CPACK_PACKAGE_VENDOR ${PROJECT_MAINTAINER})
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 if(WIN32)
-  set(CPACK_NSIS_DISPLAY_NAME ${PROJECT_NAME})
-  set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
-  set(CPACK_NSIS_URL_INFO_ABOUT ${PROJECT_URL})
-  # The installer's page offering to put `bin` on the PATH, so `kuki` can be typed anywhere. CPack's
-  # NSIS template adds `$INSTDIRin` and no other directory, which is why the CLI is installed
-  # there rather than in a directory of its own. The engine's and the games' DLLs come onto the
-  # PATH with it; Windows looks there last for a DLL, after an application's own directory.
-  set(CPACK_NSIS_MODIFY_PATH ON)
+  # Inno Setup rather than NSIS, CPack's default on Windows: the GitHub runner's image ships Inno
+  # Setup and not NSIS, so the release job builds the installer without installing anything first
+  # (winget, which fetched NSIS there, had failed CI twice in a day fetching Ninja). Its script is
+  # also the plainer one to extend, which the PATH needs (`cmake/installer_path.iss`). A normal
+  # variable over the empty cache entry above, so a -DCPACK_GENERATOR still wins.
+  if(NOT CPACK_GENERATOR)
+    set(CPACK_GENERATOR INNOSETUP)
+  endif()
+  # CPack runs ISCC by name, from the PATH, where Inno Setup's own installer does not put it. Its
+  # install location is in the registry instead: under HKLM for an installation for all users (the
+  # runner's, by Chocolatey), under HKCU for one for the current user only. Inno Setup's installer
+  # is 32-bit, so the HKLM key can be in either registry view.
+  find_program(
+    KUKI_INNOSETUP_COMPILER
+    ISCC
+    PATHS
+      "[HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows/CurrentVersion/Uninstall/Inno Setup 6_is1;InstallLocation]"
+      "[HKEY_CURRENT_USER/SOFTWARE/Microsoft/Windows/CurrentVersion/Uninstall/Inno Setup 6_is1;InstallLocation]"
+      REGISTRY_VIEW
+      BOTH
+    DOC "The Inno Setup compiler the Windows installer is built with."
+  )
+  if(KUKI_INNOSETUP_COMPILER)
+    set(CPACK_INNOSETUP_EXECUTABLE ${KUKI_INNOSETUP_COMPILER})
+  endif()
+  set(CPACK_INNOSETUP_ARCHITECTURE x64)
+  set(CPACK_INNOSETUP_USE_MODERN_WIZARD ON)
+  set(CPACK_INNOSETUP_SETUP_AppPublisherURL ${PROJECT_URL})
+  # Setup broadcasts the change when it finishes, so a terminal opened afterwards sees the PATH.
+  set(CPACK_INNOSETUP_SETUP_ChangesEnvironment ON)
+  # For all users, in Program Files, by default, with a dialog offering the current user alone
+  # instead (`{autopf}`, CPack's default root, is then `%LOCALAPPDATA%\Programs`), which installs
+  # without an administrator. The PATH script edits the machine's PATH or the user's to match.
+  set(CPACK_INNOSETUP_SETUP_PrivilegesRequired admin)
+  set(CPACK_INNOSETUP_SETUP_PrivilegesRequiredOverridesAllowed dialog)
+  # The PATH, which CPack's Inno Setup generator has no option for; why is in the script.
+  set(
+    CPACK_INNOSETUP_EXTRA_SCRIPTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/installer_path.iss"
+  )
 elseif(APPLE)
   set(CPACK_BUNDLE_NAME ${PROJECT_NAME})
   set(CPACK_DMG_VOLUME_NAME ${PROJECT_NAME})
@@ -421,6 +454,10 @@ elseif(UNIX)
   set(CPACK_RPM_PACKAGE_URL ${PROJECT_URL})
 endif()
 include(CPackComponent)
+# What the installer selects unless its user changes it: everything but the tests. Inno Setup ticks a
+# component by default only when the selected setup type lists it, and CPack gives none a setup
+# type of its own -- without this the wizard opened on the engine alone, CLI and games unticked.
+cpack_add_install_type(Full DISPLAY_NAME "Full installation")
 cpack_add_component(
   KukiEngine
   DISPLAY_NAME "Kuki Engine"
@@ -434,6 +471,7 @@ cpack_add_component(
   DISPLAY_NAME "Kuki CLI"
   DESCRIPTION
     "The kuki command: start a game with `kuki new`, then build, run and update it."
+  INSTALL_TYPES Full
 )
 set(CPACK_COMPONENTS_ALL KukiEngine KukiCli)
 # One entry per game rather than one for all of them, gathered under a group so they read as a set
@@ -459,8 +497,14 @@ if(${PROJECT_NAME_UPPER}_BUILD_GAMES AND KUKI_GAME_TARGETS)
       DESCRIPTION "The ${GAME_DISPLAY_NAME} game and the assets it runs on."
       GROUP Games
       DEPENDS KukiEngine
+      INSTALL_TYPES Full
     )
     list(APPEND CPACK_COMPONENTS_ALL ${GAME_TARGET})
+    # A Start menu shortcut for each game installed, and a desktop one too when the wizard's
+    # checkbox for it is ticked: the shortcuts follow the executable's component, so a game left
+    # out gets none.
+    list(APPEND CPACK_PACKAGE_EXECUTABLES ${GAME_TARGET} "${GAME_DISPLAY_NAME}")
+    list(APPEND CPACK_CREATE_DESKTOP_LINKS ${GAME_TARGET})
   endforeach()
 endif()
 if(${PROJECT_NAME_UPPER}_BUILD_TESTS)

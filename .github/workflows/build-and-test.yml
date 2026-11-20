@@ -37,11 +37,8 @@ jobs:
       # Nothing to install on Windows for a build: the runner has Visual Studio, which CMake picks
       # by default and the presets build with. Ninja was installed here on every push and never
       # used, and winget failed two runs in a day doing it -- once exiting 1 after saying it had
-      # installed, once on a download timeout (0x80072ee2). The installer's tools are fetched only
-      # where an installer is made.
-      - name: Install packaging prerequisites
-        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
-        run: winget install nsis --accept-source-agreements --disable-interactivity
+      # installed, once on a download timeout (0x80072ee2). Nor for the installer: it is built with
+      # Inno Setup, which the runner's image ships, where NSIS had to be fetched by winget first.
       - uses: actions/cache@v6
         with:
           path: build
