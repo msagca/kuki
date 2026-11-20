@@ -22,7 +22,8 @@ target_compile_definitions(
 if(KUKI_ENABLE_LINTING AND CLANG_TIDY_EXE)
   enable_clang_tidy(${PROJECT_NAME})
 endif()
-# Beside the engine in `bin`, the one directory CPack's NSIS installer can put on the PATH.
+# Beside the engine in `bin`, the directory the Windows installer offers to put on the PATH
+# (`cmake/installer_path.iss`).
 install(
   TARGETS ${PROJECT_NAME}
   DESTINATION "${CMAKE_INSTALL_BINDIR}"
