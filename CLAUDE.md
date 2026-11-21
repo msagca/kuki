@@ -193,8 +193,8 @@ Mouse buttons are read directly and cannot be rebound.
 ### Games and scenes
 
 A game is a library plus the launcher every game shares, `cmake/game_main.cpp`, both made by
-`kuki_add_game(<Target> SOURCES ... [ASSETS <dir>...] [FONTS])`, which also stages the DLLs, the HLSL
-compiler and the assets beside the executable and installs them.
+`kuki_add_game(<Target> SOURCES ... [ASSETS <dir>...] [FONTS])`, which also stages the engine's DLLs
+and the assets beside the executable and installs them.
 Its sources define `Setup<Game>(Application &)`, `KUKI_GAME_MODULE(name, setup)` and
 `KUKI_GAME_MAIN(App)` (the `add-game` skill); a shared build makes `<Target>Game.dll` and `KukiEngine.dll`. A game is
 `Playing` but while the settings menu has paused it (`PlayState`).
