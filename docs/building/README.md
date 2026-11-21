@@ -1,0 +1,109 @@
+# Building Kuki
+
+## Prerequisites
+
+- [CMake](https://cmake.org) 3.31 or newer
+- [Git](https://git-scm.com) with [Git LFS](https://git-lfs.com) (binary assets such as models, textures and fonts are stored in LFS)
+- A C++23 compiler: Visual Studio 2022, Clang 18+ or GCC 14+
+- [Blender](https://www.blender.org) (optional), which exports the games' `.blend` models during the build; without it the games build, with a warning, but have no models
+
+### Windows
+
+- [Visual Studio](https://visualstudio.microsoft.com) 2022 (with the C++ workload and a Windows SDK)
+
+The engine's shaders are compiled while it is built, with `dxcompiler.dll` and `dxil.dll` from the Windows SDK; configuring fails if they are missing. Nothing compiles HLSL at run time, so neither is shipped.
+
+### Linux
+
+- [Clang](https://llvm.org) or [GCC](https://gcc.gnu.org)
+- [Ninja](https://ninja-build.org)
+- [X.Org](https://www.x.org)
+
+On [Debian](https://www.debian.org)-based systems (e.g., [Ubuntu](https://ubuntu.com)), you can install the prerequisites using the following commands:
+
+```bash
+sudo apt update
+```
+
+```bash
+sudo apt install -y build-essential clang cmake git git-lfs ninja-build xorg-dev
+```
+
+> Your distribution's CMake may be older than 3.31; if so, install a newer one from [cmake.org](https://cmake.org/download/) or with `pip install cmake`.
+
+Direct3D 12 is the only graphics backend, so on Linux the engine and its windowless tests build, but the games stop at startup with no backend to draw with. Continuous integration only builds on Windows at the moment, so Linux builds may break without notice.
+
+## Build instructions
+
+- Clone the repository with submodules
+
+```bash
+git lfs install
+```
+
+```bash
+git clone --recursive https://github.com/msagca/kuki
+```
+
+> If you have already cloned it without `--recursive`, run `git submodule update --init --recursive` to fetch the submodules. If you cloned it before installing Git LFS, run `git lfs pull` to fetch the assets.
+
+- Navigate to the project directory
+
+```bash
+cd kuki
+```
+
+- Configure and build the project
+
+```bash
+cmake --workflow Release
+```
+
+This builds and nothing else: no tests and no installer. See [Presets](#presets) for those.
+
+> If it fails due to missing dependencies, refer to the error messages to install the required packages. Then, run the command again.
+
+If it succeeds, you can launch the games from `build/games/<name>/` and `kuki` from `build/cli/`.
+
+> Refer to the build output for the exact path of each executable.
+
+## Presets
+
+All presets share the `build/` directory, so switching between them reconfigures in place.
+
+| Preset | What it adds | Generator |
+| --- | --- | --- |
+| `Debug`, `Release` | Nothing: configure and build | CMake's default |
+| `Test` | `Debug` with the tests, which its workflow runs | CMake's default |
+| `Lint` | `Test` with clang-tidy on every target | CMake's default |
+| `Package` | `Release` with the tests, and the installer: for a release | CMake's default |
+| `MSVC` (build presets `MSVC-Debug`, `MSVC-Release`) | Nothing | Visual Studio |
+| `Clang-Debug`, `Clang-Release` | Nothing | Ninja with Clang |
+
+Each has a workflow of the same name (`cmake --workflow Test`), `MSVC` has two (`MSVC-Debug`, `MSVC-Release`), and only `Package` makes an installer. To iterate, configure and build separately:
+
+```bash
+cmake --preset Debug
+```
+
+```bash
+cmake --build --preset Debug
+```
+
+## Tests and linting
+
+Tests and linting are off in `Debug` and `Release`; `Test` turns the tests on and `Lint` adds clang-tidy.
+
+```bash
+cmake --preset Test
+```
+
+```bash
+cmake --build --preset Test
+```
+
+```bash
+ctest --preset Test
+```
+
+Switching to or from `Lint` rebuilds everything, since clang-tidy runs with every compile.
