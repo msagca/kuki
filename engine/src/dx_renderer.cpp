@@ -294,7 +294,7 @@ DXRenderer::DXRenderer(Application &app)
   // each writes back the set it asked for.
   auto name = Internal(app).GetDescription().name;
   std::ranges::replace_if(name, [](const char c) { return !std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_'; }, '_');
-  pipelines.SetLibraryPath(GetLaunchPath() / "cache" / "pipeline" / ((name.empty() ? std::string("Application") : name) + ".dxpl"));
+  pipelines.SetLibraryPath(GetUserDataPath() / "cache" / "pipeline" / ((name.empty() ? std::string("Application") : name) + ".dxpl"));
 }
 auto DXRenderer::GetContext() const -> DXContext * {
   return dynamic_cast<DXContext *>(Internal(app).GetGraphicsContext());

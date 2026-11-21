@@ -274,7 +274,7 @@ auto GetTextureCachePath(const Texture &texture) -> std::filesystem::path {
   hash = HashBytes(hash, &range, sizeof(range));
   hash = HashBytes(hash, &flipY, sizeof(flipY));
   hash = HashBytes(hash, &TEXTURE_CACHE_VERSION, sizeof(TEXTURE_CACHE_VERSION));
-  return GetLaunchPath() / "cache" / "texture" / (std::format("{:016x}", hash) + ".ktex");
+  return GetUserDataPath() / "cache" / "texture" / (std::format("{:016x}", hash) + ".ktex");
 }
 auto ReadCachedTexture(Texture &texture) -> bool {
   const auto path = GetTextureCachePath(texture);

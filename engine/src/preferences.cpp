@@ -23,7 +23,7 @@ auto SanitiseName(const std::string &name) -> std::string {
 } // namespace
 namespace kuki {
 auto Preferences::GetPath(const std::string &application) -> std::filesystem::path {
-  return GetLaunchPath() / (SanitiseName(application) + ".prefs.json");
+  return GetUserDataPath() / (SanitiseName(application) + ".prefs.json");
 }
 auto Preferences::Load(const std::string &application) -> bool {
   values.clear();
@@ -61,6 +61,8 @@ auto Preferences::Save() const -> bool {
   std::error_code error;
   if (values.empty() && !std::filesystem::exists(path, error))
     return true;
+  // The user's data folder does not exist until something is first kept in it.
+  std::filesystem::create_directories(path.parent_path(), error);
   std::ofstream stream(path);
   if (!stream) {
     spdlog::warn("[Preferences] Could not write {}", path.string());
