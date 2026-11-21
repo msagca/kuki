@@ -18,7 +18,7 @@ building. The steps below are the same there, with `game/` in place of `games/<n
 1. `games/<name>/CMakeLists.txt` -- `project(Kuki<Name>)`, a glob of `src/*.cpp`, and
    `kuki_add_game(${PROJECT_NAME} SOURCES ${CPP_SOURCES} FONTS)` (`cmake/KukiGame.cmake`), which
    makes the library and the launcher, takes `include/` as the game's headers, and stages the
-   DLLs, the HLSL compiler -- without it nothing is drawn -- and the font beside the executable.
+   engine's DLLs and the font beside the executable.
    `FONTS` if anything is written on screen, the settings menu included; `ASSETS <dir>` for a
    directory loaded at run time (chess's `material`). Anything else about the game's code goes on
    `${KUKI_GAME_CODE}`, not on the executable. It is found without registration
