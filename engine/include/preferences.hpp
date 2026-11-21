@@ -30,10 +30,11 @@ namespace kuki {
 /// about this game rather than about the machine. See `SettingsMenu`.
 class KUKI_ENGINE_API Preferences {
 public:
-  /// @brief Where an application's preferences live: beside the executable, named after it.
+  /// @brief Where an application's preferences live: in `GetUserDataPath`, named after it.
   ///
-  /// Named after the application so that two games installed side by side keep their own, and
-  /// beside the executable so it travels with the build exactly as `kuki.config.json` does.
+  /// Named after the application so that two games installed side by side keep their own, and in
+  /// the same folder as `kuki.config.json`: beside the executable in a build tree, and in the
+  /// user's own data folder once installed.
   static auto GetPath(const std::string &) -> std::filesystem::path;
   /// @brief Reads the file, leaving this empty when it is missing or malformed.
   auto Load(const std::string &) -> bool;

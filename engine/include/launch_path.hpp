@@ -25,4 +25,28 @@ auto KUKI_ENGINE_API ResolvePath(const std::filesystem::path &) -> std::filesyst
 /// executable. The executable's directory is still asked first, so nothing the host resolves
 /// changes; a path found in neither is answered as it always was, against the executable.
 auto KUKI_ENGINE_API AddAssetRoot(const std::filesystem::path &) -> void;
+/// @brief The file an install puts beside the executables, which says they are installed.
+///
+/// Its presence is the whole message. The install rule writes it, and the build tree never has
+/// it, so the same binary knows which of the two it is running from without being built twice.
+inline constexpr auto INSTALLED_MARKER = "kuki.installed";
+/// @brief Where an executable in the given directory writes what it keeps between runs.
+///
+/// The directory itself in a build tree, and the user's own data folder (`%LOCALAPPDATA%\Kuki` on
+/// Windows) when `INSTALLED_MARKER` is beside it. An install for all users is in Program Files,
+/// which a normal user cannot write to, so a game that wrote beside itself there lost its settings
+/// on quitting and made its pipelines from scratch every launch. A build in the build tree goes on
+/// writing beside itself: it is always writable, and keeping out of the user's folder means a
+/// development build never shares a pipeline library, stamped with other shaders, or a player's
+/// settings with an installed game.
+///
+/// Falls back to the directory when the user's folder cannot be found, so a lookup that fails
+/// writes where it always did rather than nowhere.
+auto KUKI_ENGINE_API GetUserDataPath(const std::filesystem::path &) -> std::filesystem::path;
+/// @brief `GetUserDataPath` for the running executable, resolved once and kept.
+///
+/// The root of everything the engine writes: `kuki.config.json`, each game's preferences, and the
+/// pipeline and texture caches under `cache/`. Reads of assets stay on `ResolvePath`, beside the
+/// executable.
+auto KUKI_ENGINE_API GetUserDataPath() -> const std::filesystem::path &;
 } // namespace kuki

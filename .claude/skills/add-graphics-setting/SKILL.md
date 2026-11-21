@@ -6,7 +6,7 @@ description: Checklist for adding a graphics setting to Kuki -- the EngineConfig
 # Add a graphics setting
 
 A graphics setting says how this machine draws, not anything about a game, so it lives in
-`EngineConfig` (`kuki.config.json`, beside the executable) and not in a game's `Preferences`.
+`EngineConfig` (`kuki.config.json`, under `GetUserDataPath()`) and not in a game's `Preferences`.
 An effect that is not cheap becomes one (the root `CLAUDE.md`'s "Performance before looks"):
 measure it with `KUKI_PROFILE_SCOPE` and give the cost in the commit.
 
@@ -30,4 +30,4 @@ measure it with `KUKI_PROFILE_SCOPE` and give the cost in the commit.
 5. A new pass behind it follows the `add-render-pass` skill.
 
 Then open the page with `--settings graphics` and the `capture` skill, turn it off and on, and
-check `kuki.config.json` beside the executable holds it after a restart.
+check `kuki.config.json` holds it after a restart -- beside the executable in the build tree.

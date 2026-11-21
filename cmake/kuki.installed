@@ -1,0 +1,5 @@
+This file says the executables beside it were installed rather than built here.
+
+While it is here, they keep their settings and caches in the user's own data folder
+(%LOCALAPPDATA%\Kuki on Windows) instead of in this folder, which a normal user may not be able to
+write to. See GetUserDataPath in the engine's launch_path.hpp.

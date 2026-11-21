@@ -69,7 +69,7 @@ auto DefaultAPI() -> RenderingAPI {
   return RenderingAPI::DirectX;
 }
 auto EngineConfig::GetPath() -> std::filesystem::path {
-  return GetLaunchPath() / CONFIG_FILE_NAME;
+  return GetUserDataPath() / CONFIG_FILE_NAME;
 }
 auto EngineConfig::Load() -> EngineConfig {
   EngineConfig config;
@@ -145,6 +145,9 @@ auto EngineConfig::Save() const -> bool {
                                                                                                    : "high";
   json["showFrameRate"] = showFrameRate;
   json["showTimings"] = showTimings;
+  // The user's data folder does not exist until something is first kept in it.
+  std::error_code error;
+  std::filesystem::create_directories(path.parent_path(), error);
   std::ofstream stream(path);
   if (!stream) {
     spdlog::error("[Config] Could not write {}", path.string());

@@ -279,9 +279,11 @@ Assets are keyed by `AssetID` (a 128-bit UUID). One with no file goes in through
 saved: it is built in code, every time, by the game's setup and systems. A material can also be a
 `.mat` JSON file loaded by name from beside the executable (chess's, staged with `ASSETS`).
 
-`EngineConfig` (`kuki.config.json`) is installation-wide: backend, tone mapper, graphics settings.
+`EngineConfig` (`kuki.config.json`) is shared by every game: backend, tone mapper, graphics settings.
 `Preferences` are per application, loaded before `Start` and written after shutdown, rebound keys
-included.
+included. Both, and the pipeline and texture caches, are written under `GetUserDataPath()`: beside
+the executable in the build tree, and in `%LOCALAPPDATA%\Kuki` once installed (the install puts
+`kuki.installed` beside the executables), since Program Files cannot be written by a normal user.
 
 ## Conventions
 

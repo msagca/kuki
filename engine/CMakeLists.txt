@@ -95,6 +95,9 @@ if(WIN32)
   target_compile_definitions(${PROJECT_NAME} PUBLIC KUKI_HAS_DIRECTX=1)
   # Winsock, for `UdpTransport`. Private: no header names a socket type.
   target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
+  # The shell's known folders, for `GetUserDataPath`, and COM's allocator, which frees the path the
+  # shell hands back.
+  target_link_libraries(${PROJECT_NAME} PRIVATE shell32 ole32)
 endif()
 # Configuration of the libraries the engine is built on, which has to be seen before their headers
 # are, and so is given to the compiler here rather than written at the top of each file that needs
@@ -240,6 +243,16 @@ else()
     "KukiEngine: static build, so no CMake package is generated. Configure with -DBUILD_SHARED_LIBS=ON for a find_package(KukiEngine) install."
   )
 endif()
+# What tells an installed executable it is installed, so it keeps its settings and caches in the
+# user's data folder rather than beside itself (`GetUserDataPath`). Installed and never staged: the
+# build tree has no such file, so a development build writes beside itself as it always has. Under
+# the engine's component, which every game's depends on, and from this file rather than the root's,
+# so a game in a repository of its own, which adds only the engine, installs it too.
+install(
+  FILES "${Kuki_SOURCE_DIR}/cmake/kuki.installed"
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  COMPONENT ${PROJECT_NAME}
+)
 # `include/` whole and nothing else. What a game is not to reach is in `internal/`, so there is no
 # list of exclusions to keep in step -- `model_import.hpp`, which declares Assimp types, was one.
 install(
