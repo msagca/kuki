@@ -66,6 +66,10 @@ auto DuelStates() -> std::vector<AnimationState> {
     {.name = "punch", .clip = "Punch", .fade = 3, .next = "idle", .events = {{PUNCH_TICK, "hit"}}},
     {.name = "kick", .clip = "Kick", .fade = 3, .next = "idle", .events = {{KICK_TICK, "hit"}}},
     {.name = "hit", .clip = "Hit", .fade = 2, .next = "idle"},
+    {.name = "guard", .clip = "Guard", .loop = true, .fade = 3},
+    // Back to the guard and not to standing, since the button that put it up is very likely still
+    // held; if it is not, the guard is free and the next tick drops it.
+    {.name = "block", .clip = "Block", .fade = 2, .next = "guard"},
   };
 }
 auto DuelController(const AssetID id) -> AnimatorController {
@@ -102,7 +106,7 @@ auto RootSpace(const ModelAsset &model, const std::string_view rootNode) -> glm:
 }
 DuelSim::DuelSim(const ModelAsset &model, const int tickRate, const glm::mat3 &rootSpace)
   : model(model), tickRate(tickRate), rootSpace(rootSpace), controller(DuelController()) {
-  const std::vector<std::string> names{"left", "right", "punch", "kick"};
+  const std::vector<std::string> names{"left", "right", "punch", "kick", "guard"};
   for (auto player = 0; player < PLAYERS; ++player) {
     auto &recognizer = gestures[player];
     punch = recognizer.Add("punch", "punch", names);
@@ -132,7 +136,7 @@ auto DuelSim::SetLogging(const bool value) -> void {
   logging = value;
 }
 auto DuelSim::IsFree(const Animator &animator) const -> bool {
-  return animator.state == Idle || animator.state == Walk || animator.state == Back;
+  return animator.state == Idle || animator.state == Walk || animator.state == Back || animator.state == Guarding;
 }
 auto DuelSim::Think(const int player) const -> ButtonMask {
   const auto &self = fighters[player];
@@ -177,12 +181,17 @@ auto DuelSim::Advance(const int64_t, const std::span<const ButtonMask> buttons, 
     if (!IsFree(animator))
       continue;
     const auto direction = static_cast<int>(held[player] >> Right & 1u) - static_cast<int>(held[player] >> Left & 1u);
+    // A blow asked for while the guard is held is thrown, and the guard goes back up after it if the
+    // button is still down: holding guard and tapping a blow is how to strike from behind it. The
+    // guard itself wins over walking, so a figure on guard stands its ground.
     if (wantsLunge[player])
       Go(controller, animator, Lunge);
     else if (wantsKick[player])
       Go(controller, animator, Kicking);
     else if (wantsPunch[player])
       Go(controller, animator, Punching);
+    else if (held[player] >> Guard & 1u)
+      Go(controller, animator, Guarding);
     else
       Go(controller, animator, direction > 0 ? Walk : direction < 0 ? Back : Idle);
   }
@@ -205,10 +214,20 @@ auto DuelSim::Step(const int player) -> void {
 auto DuelSim::Strike(const int player, const float reach, const float height) -> void {
   auto &fighter = fighters[player];
   const auto &other = fighters[1 - player];
+  auto &defender = animators[1 - player];
   const auto distance = std::abs(other.position - fighter.position);
-  const auto landed = distance <= reach;
-  if (logging && !replaying)
-    spdlog::info("[Duel] tick {}: fighter {} strikes at {:.2f} with reach {:.2f}: {}", tick, player, distance, reach, landed ? "hit" : "miss");
+  const auto inReach = distance <= reach;
+  // A figure still reeling from a blow it guarded is still behind its guard, so a second blow in
+  // quick succession is stopped too. Which way the guard faces is not asked: the figures cannot
+  // pass each other (`MIN_GAP`), so every blow comes from in front.
+  const auto blocked = inReach && (defender.state == Guarding || defender.state == Blocking);
+  const auto landed = inReach && !blocked;
+  if (logging && !replaying) {
+    const auto *outcome = landed ? "hit" : "miss";
+    if (blocked)
+      outcome = "blocked";
+    spdlog::info("[Duel] tick {}: fighter {} strikes at {:.2f} with reach {:.2f}: {}", tick, player, distance, reach, outcome);
+  }
   const auto where = other.position - fighter.facing * .2f;
   // A tick run again finds its own record and writes over it, keeping whether it has been shown.
   auto found = std::ranges::find_if(impacts, [&](const Impact &impact) { return impact.tick == tick && impact.attacker == player; });
@@ -217,13 +236,20 @@ auto DuelSim::Strike(const int player, const float reach, const float height) ->
     found = std::prev(impacts.end());
   }
   found->hit = landed;
+  found->blocked = blocked;
   found->x = where;
   found->height = height;
   std::erase_if(impacts, [this](const Impact &impact) { return impact.tick < tick - IMPACT_MEMORY; });
+  // A blocked blow knocks the defender back, by the block clip's own travel as a hit's is, and holds
+  // them for less time than one that landed. See `Block` in `tools/make_fighter.py`.
+  if (blocked) {
+    Go(controller, defender, Blocking, true);
+    return;
+  }
   if (!landed)
     return;
   ++fighter.hits;
-  Go(controller, animators[1 - player], Hit, true);
+  Go(controller, defender, Hit, true);
 }
 auto DuelSim::Save(std::vector<std::byte> &out) const -> void {
   StateWriter writer(out);

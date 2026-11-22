@@ -19,8 +19,8 @@ auto Clip(std::string name, const float seconds) -> AnimationClip {
   clip.ticksPerSecond = 30.f;
   return clip;
 }
-/// @brief A fighter with the five clips the game asks for, and a walk that carries the root two
-/// units along Z in a second, which is a thirtieth of a unit a tick.
+/// @brief A fighter with the clips the game asks for, a walk that carries the root two units along
+/// Z in a second, which is a thirtieth of a unit a tick, and a block that pushes it back.
 auto MakeModel() -> ModelAsset {
   ModelAsset model{AssetID{}};
   model.nodes.resize(2);
@@ -31,13 +31,29 @@ auto MakeModel() -> ModelAsset {
   model.nodes[1].transform = glm::mat4(1.f);
   auto walk = Clip("Walk", 1.f);
   walk.channels.push_back({.nodeIndex = 1, .nodeName = "Root", .positions = {{.0f, {.0f, .0f, .0f}}, {30.f, {.0f, .0f, 2.f}}}});
-  model.animations = {Clip("Idle", 1.f), walk, Clip("Punch", 1.f), Clip("Kick", 1.f), Clip("Hit", .5f)};
+  auto block = Clip("Block", 6.f / 30.f);
+  block.channels.push_back({.nodeIndex = 1, .nodeName = "Root", .positions = {{.0f, {.0f, .0f, .0f}}, {6.f, {.0f, .0f, -.14f}}}});
+  model.animations = {Clip("Idle", 1.f), walk, Clip("Punch", 1.f), Clip("Kick", 1.f), Clip("Hit", .5f), Clip("Guard", 2.f), block};
+  return model;
+}
+/// @brief `MakeModel` with the blows and the stagger as long as `tools/make_fighter.py` makes them,
+/// for what depends on how many ticks each side has to spare.
+auto MakeTimedModel() -> ModelAsset {
+  auto model = MakeModel();
+  for (auto &clip : model.animations)
+    if (clip.name == "Punch")
+      clip.duration = 24.f;
+    else if (clip.name == "Kick")
+      clip.duration = 30.f;
+    else if (clip.name == "Hit")
+      clip.duration = 20.f;
   return model;
 }
 constexpr ButtonMask LEFT = 1u << Button::Left;
 constexpr ButtonMask RIGHT = 1u << Button::Right;
 constexpr ButtonMask PUNCH = 1u << Button::Punch;
 constexpr ButtonMask KICK = 1u << Button::Kick;
+constexpr ButtonMask GUARD = 1u << Button::Guard;
 auto Distance(const DuelSim &sim) -> float {
   return sim.GetFighter(1).position - sim.GetFighter(0).position;
 }
@@ -45,6 +61,32 @@ auto Step(DuelSim &sim, const ButtonMask first, const ButtonMask second, const i
   const std::array<ButtonMask, 2> masks{first, second};
   for (auto tick = 0; tick < ticks; ++tick)
     sim.Advance(sim.GetTick(), masks, false);
+}
+/// @brief Walks both figures in until each is within reach of the other's punch, and stops them: a
+/// walk's last stride is taken on the tick after its button comes up.
+auto Close(DuelSim &sim) -> void {
+  for (auto tick = 0; tick < 600 && Distance(sim) > 1.1f; ++tick)
+    Step(sim, RIGHT, LEFT);
+  Step(sim, 0, 0, 2);
+  ASSERT_LE(Distance(sim), 1.1f);
+  ASSERT_EQ(sim.GetAnimator(0).state, Idle);
+}
+/// @brief The first figure throws a blow at the second's guard and then guards; the second answers
+/// with punches the moment the block lets it, a press every other tick as a player hammering the
+/// button would. Answers how many of those punches landed.
+auto AnswerABlockedBlow(const ModelAsset &model, const ButtonMask blow) -> int {
+  DuelSim sim(model, RATE);
+  sim.SetLogging(false);
+  Close(sim);
+  Step(sim, blow, GUARD);
+  auto blocked = false;
+  for (auto tick = 0; tick < 200; ++tick) {
+    blocked |= sim.GetAnimator(1).state == Blocking;
+    Step(sim, GUARD, blocked ? (tick % 2 == 0 ? PUNCH : 0u) : GUARD);
+  }
+  EXPECT_TRUE(blocked) << "the blow was never blocked, so there was nothing to answer";
+  EXPECT_EQ(sim.GetFighter(0).hits, 0);
+  return sim.GetFighter(1).hits;
 }
 auto Snapshot(const DuelSim &sim) -> std::vector<std::byte> {
   std::vector<std::byte> bytes;
@@ -128,6 +170,54 @@ TEST(DuelSim, ABlowOutOfReachMissesAndIsStillRecorded) {
   EXPECT_EQ(sim.GetFighter(0).hits, 0);
   ASSERT_EQ(sim.GetImpacts().size(), 1u);
   EXPECT_FALSE(sim.GetImpacts()[0].hit);
+}
+TEST(DuelSim, AGuardedBlowDoesNotLandAndPushesTheDefenderBack) {
+  const auto model = MakeModel();
+  DuelSim sim(model, RATE);
+  sim.SetLogging(false);
+  ASSERT_NO_FATAL_FAILURE(Close(sim));
+  const auto before = Distance(sim);
+  Step(sim, PUNCH, GUARD);
+  auto blocking = false;
+  for (auto tick = 0; tick < 40; ++tick) {
+    Step(sim, 0, GUARD);
+    blocking |= sim.GetAnimator(1).state == Blocking;
+  }
+  EXPECT_TRUE(blocking);
+  EXPECT_EQ(sim.GetFighter(0).hits, 0);
+  ASSERT_EQ(sim.GetImpacts().size(), 1u);
+  EXPECT_FALSE(sim.GetImpacts()[0].hit);
+  EXPECT_TRUE(sim.GetImpacts()[0].blocked);
+  EXPECT_GT(Distance(sim), before + .1f);
+  // The block hands back to the guard while the button is still held, and lets go when it is not.
+  EXPECT_EQ(sim.GetAnimator(1).state, Guarding);
+  Step(sim, 0, 0);
+  EXPECT_EQ(sim.GetAnimator(1).state, Idle);
+}
+TEST(DuelSim, AFigureOnGuardStandsItsGround) {
+  const auto model = MakeModel();
+  DuelSim sim(model, RATE);
+  sim.SetLogging(false);
+  const auto before = Distance(sim);
+  Step(sim, RIGHT | GUARD, LEFT | GUARD, 30);
+  EXPECT_EQ(sim.GetAnimator(0).state, Guarding);
+  EXPECT_EQ(sim.GetAnimator(1).state, Guarding);
+  EXPECT_EQ(Distance(sim), before);
+}
+TEST(DuelSim, ABlowIsThrownFromBehindTheGuardAndTheGuardGoesBackUp) {
+  const auto model = MakeModel();
+  DuelSim sim(model, RATE);
+  sim.SetLogging(false);
+  Step(sim, GUARD, 0, 5);
+  Step(sim, GUARD | PUNCH, 0);
+  EXPECT_EQ(sim.GetAnimator(0).state, Punching);
+  Step(sim, GUARD, 0, 80);
+  EXPECT_EQ(sim.GetAnimator(0).state, Guarding);
+}
+TEST(DuelSim, AKickOnGuardCanBePunishedAndAPunchCannot) {
+  const auto model = MakeTimedModel();
+  EXPECT_EQ(AnswerABlockedBlow(model, PUNCH), 0);
+  EXPECT_EQ(AnswerABlockedBlow(model, KICK), 1);
 }
 TEST(DuelSim, ALungeIsTwoTapsForwardsForEitherFigure) {
   const auto model = MakeModel();

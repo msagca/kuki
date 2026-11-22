@@ -16,12 +16,13 @@ namespace duel {
 /// A number for this game and its version, given to the network system. Two machines that give
 /// different ones are not let play each other, so change it whenever a change to the rules would make
 /// an old build and a new one play different games.
-inline constexpr uint32_t PROTOCOL = 1;
+inline constexpr uint32_t PROTOCOL = 2;
 /// The bit each button has in the mask, in the order the game registers them.
 enum Button : int { Left,
   Right,
   Punch,
-  Kick };
+  Kick,
+  Guard };
 /// The states a figure can be in, which is also their order in `DuelStates`.
 enum State : int { Idle,
   Walk,
@@ -29,7 +30,9 @@ enum State : int { Idle,
   Lunge,
   Punching,
   Kicking,
-  Hit };
+  Hit,
+  Guarding,
+  Blocking };
 /// @brief Where a figure stands, as far as the rules are concerned.
 ///
 /// Along the floor, which is the X axis; nothing in the game moves on any other. The scene's copy of
@@ -51,6 +54,8 @@ struct Impact {
   int64_t tick{};
   int attacker{};
   bool hit{};
+  /// Whether it would have landed but for the other's guard.
+  bool blocked{};
   /// Where it landed, along the floor and up from it.
   float x{};
   float height{};
@@ -131,7 +136,8 @@ private:
   /// @brief Moves a figure by what its animation travelled this tick and resolves what it started.
   auto Step(const int) -> void;
   auto Strike(const int, const float, const float) -> void;
-  /// @brief Whether a figure is doing nothing it has to finish, and so may start something.
+  /// @brief Whether a figure is doing nothing it has to finish, and so may start something. Standing
+  /// on guard is one of those: the guard comes down for whatever is asked for next.
   auto IsFree(const kuki::Animator &) const -> bool;
 };
 } // namespace duel
