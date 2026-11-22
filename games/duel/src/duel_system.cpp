@@ -74,6 +74,7 @@ auto DuelSystem::PostStart() -> void {
   app.RegisterButton("Duel.Right", Key::D, "Step right");
   app.RegisterButton("Duel.Punch", Key::J, "Punch");
   app.RegisterButton("Duel.Kick", Key::K, "Kick");
+  app.RegisterButton("Duel.Guard", Key::L, "Hold up the guard");
   app.RegisterBinding(START_BINDING, Key::Enter, "Fight");
   // Presentation only, so carried into every match. See `StartFight`. The flags are for a run, and
   // win over what was saved without overwriting it.
@@ -153,7 +154,7 @@ auto DuelSystem::PostStart() -> void {
            })
            .Id();
   AddSettings();
-  spdlog::info("[Duel] A and D choose, Enter fights; in a match A and D step, J punches, K kicks, D twice lunges; Escape opens the settings");
+  spdlog::info("[Duel] A and D choose, Enter fights; in a match A and D step, J punches, K kicks, L held guards, D twice lunges; Escape opens the settings");
   EnterSelect();
 }
 auto DuelSystem::AddSettings() -> void {
@@ -498,6 +499,13 @@ auto DuelSystem::Update(const float) -> void {
     if (impact.shown)
       continue;
     impact.shown = true;
+    // A blow stopped by a guard is the ring alone: the sparks, the flash and the shake say a blow
+    // landed, and a block that showed them too would read as one.
+    if (impact.blocked)
+      if (auto *ring = shockwave ? DuelWorld::Get<ParticleEmitter>(app, shockwave) : nullptr; ring) {
+        DuelWorld::Game(app).Scene("Main").Entity<ParticleObject>(shockwave).At({impact.x, impact.height, .0f});
+        ++ring->fired;
+      }
     if (!impact.hit)
       continue;
     if (auto *emitter = sparks ? DuelWorld::Get<ParticleEmitter>(app, sparks) : nullptr; emitter) {
@@ -512,10 +520,11 @@ auto DuelSystem::Update(const float) -> void {
     hitStrength = sim->GetAnimator(impact.attacker).state == Kicking ? 1.f : .7f;
     hitPoint = {impact.x, impact.height, .0f};
   }
-  // Dust where a figure lunges off or is knocked back: the moment its state becomes one of those.
+  // Dust where a figure lunges off or is knocked back, struck or on guard: the moment its state
+  // becomes one of those.
   for (auto index = 0; index < DuelSim::PLAYERS; ++index) {
     const auto state = sim->GetAnimator(index).state;
-    if (state != shownState[index] && (state == Lunge || state == Hit))
+    if (state != shownState[index] && (state == Lunge || state == Hit || state == Blocking))
       if (auto *puff = dust ? DuelWorld::Get<ParticleEmitter>(app, dust) : nullptr; puff) {
         DuelWorld::Game(app).Scene("Main").Entity<ParticleObject>(dust).At({sim->GetFighter(index).position, .05f, .0f});
         ++puff->fired;

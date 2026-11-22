@@ -51,6 +51,12 @@ def pose(**changes):
     return result
 
 
+# Behind the guard: the fists brought up from the chest to the chin, the chin
+# tucked, and the knees bent lower than the stance's.
+def covered(**changes):
+    return pose(**{"UpperArm_L": 50, "ForeArm_L": 100, "UpperArm_R": 50, "ForeArm_R": 100, "Spine": 10, "Head": 4, "Thigh_L": 16, "Shin_L": -28, "Thigh_R": 16, "Shin_R": -28, **changes})
+
+
 # Each clip: whether it loops, then (frame, forward swing by bone, twist of the spine about the
 # upright, how far forward the root has travelled, how far the hips have dropped).
 CLIPS = {
@@ -85,6 +91,22 @@ CLIPS = {
         (4, pose(Spine=-26, Head=-18, UpperArm_L=10, UpperArm_R=10, Thigh_L=-6, Thigh_R=-6), 8, -0.18, 0.02),
         (10, pose(Spine=-14, Head=-8), 4, -0.3, 0.03),
         (20, pose(), 0, -0.34, 0),
+    ],
+    "Guard": [
+        (0, covered(), 0, 0, 0.05),
+        (30, covered(Spine=12), 0, 0, 0.06),
+        (60, covered(), 0, 0, 0.05),
+    ],
+    # A blow stopped by the guard: the arms driven back into the face and the figure pushed a step
+    # along the floor. Six frames, twelve ticks, which is what decides what a blow is worth on guard:
+    # a punch thrown back the moment the block ends lands thirty-one ticks after the blow it blocked.
+    # A puncher is free twenty-nine ticks after its punch lands, in time to put up a guard of its
+    # own; a kicker is free thirty-five after, too late. So a punch is safe to throw at a guard and a
+    # kick is not. `AKickOnGuardCanBePunishedAndAPunchCannot` holds the game to it.
+    "Block": [
+        (0, covered(), 0, 0, 0.05),
+        (2, covered(UpperArm_L=42, ForeArm_L=114, UpperArm_R=42, ForeArm_R=114, Spine=-6, Head=-8), 0, -0.1, 0.06),
+        (6, covered(), 0, -0.14, 0.05),
     ],
 }
 
